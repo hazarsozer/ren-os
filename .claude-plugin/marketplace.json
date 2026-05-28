@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-marketplace.json",
+  "name": "sf-marketplace",
+  "description": "Startup Framework — private friend-group distribution. Per-friend hierarchical wiki + curated plugin stack + Activity Feed + self-improving skills.",
+  "version": "1.0.0",
+  "owner": {
+    "name": "Startup Framework Maintainers"
+  },
+  "plugins": [
+    {
+      "name": "startup-framework",
+      "source": "./plugins/startup-framework",
+      "description": "Per-friend hierarchical wiki + curated plugin stack + Activity Feed + skill self-improvement. See README.md for the full feature surface.",
+      "author": {
+        "name": "Startup Framework Maintainers"
+      },
+      "homepage": "https://github.com/PLACEHOLDER-ORG/sf-marketplace",
+      "repository": "https://github.com/PLACEHOLDER-ORG/sf-marketplace",
+      "license": "MIT",
+      "keywords": [
+        "wiki",
+        "memory",
+        "friend-group",
+        "ideation",
+        "startup",
+        "claude-code"
+      ],
+      "category": "productivity",
+      "strict": true
+    }
+  ]
+}

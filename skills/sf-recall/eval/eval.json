@@ -1,0 +1,88 @@
+{
+  "name": "sf-recall",
+  "description": "Binary-assertion test suite for /sf:recall. Validates wiki-grep ranking, read-only invariant, silent feed degradation, and empty-query refusal.",
+  "schema_version": 1,
+  "framework_version": "1.0.0",
+  "tests": [
+    {
+      "id": "decision-query-finds-decision-first",
+      "fixture": "fixtures/sample-wiki-with-postgres-decision.yaml",
+      "prompt": "/sf:recall postgres decision",
+      "expected_output_summary": "Wiki match for the postgres-vs-mongo decision page ranks first; snippet includes the matching line.",
+      "trigger_test": true,
+      "binary_assertions": [
+        "The user-facing output contains the path 'wiki/decisions/' followed by a slug containing 'postgres'",
+        "The first listed wiki hit has higher score than any subsequent hit",
+        "Each listed wiki hit's snippet contains at least one query token (case-insensitive)",
+        "No file under wiki/ was modified by the run (sha256 checksums of all wiki/**/*.md unchanged)"
+      ]
+    },
+    {
+      "id": "no-matches-explicit-message",
+      "fixture": "fixtures/sample-wiki-with-postgres-decision.yaml",
+      "prompt": "/sf:recall xyzzy quux frobnitz",
+      "expected_output_summary": "Query tokens don't appear in any wiki page or feed entry. Skill prints an explicit no-results message.",
+      "trigger_test": true,
+      "binary_assertions": [
+        "User-facing output contains the substring 'No matches' (or equivalent explicit no-results phrasing)",
+        "Zero wiki hits are listed",
+        "No error or stack trace appears in the output"
+      ]
+    },
+    {
+      "id": "empty-query-refused",
+      "fixture": "fixtures/sample-wiki-with-postgres-decision.yaml",
+      "prompt": "/sf:recall ",
+      "expected_output_summary": "Skill refuses with a usage prompt.",
+      "trigger_test": true,
+      "binary_assertions": [
+        "User-facing output contains the substring 'Empty query' OR 'Usage: /sf:recall'",
+        "No file under wiki/ is read for content matching (skill exits before grep)",
+        "No call to feed.feed_read_tail or feed.config.handle is made"
+      ]
+    },
+    {
+      "id": "feed-degrades-silently-when-identity-missing",
+      "fixture": "fixtures/sample-wiki-no-identity.yaml",
+      "prompt": "/sf:recall pattern",
+      "expected_output_summary": "Wiki search runs; feed integration silently returns no entries because identity.md is missing.",
+      "trigger_test": true,
+      "binary_assertions": [
+        "Wiki hits section appears in output (if any matches exist)",
+        "User-facing output does NOT contain 'HandleNotConfiguredError' or similar diagnostic stack trace",
+        "User-facing output does NOT contain 'feed disabled' or 'run /sf:interview' (silent-degradation per plan §5)",
+        "No exception is raised by recall()"
+      ]
+    },
+    {
+      "id": "read-only-invariant-load-bearing",
+      "fixture": "fixtures/sample-wiki-with-postgres-decision.yaml",
+      "prompt": "/sf:recall postgres",
+      "expected_output_summary": "After the run, every wiki file's content is byte-identical to its pre-run state (the LOAD-BEARING invariant).",
+      "trigger_test": true,
+      "binary_assertions": [
+        "sha256 of every file under wiki/**/*.md is unchanged after the run",
+        "No new files are created under wiki/ during the run",
+        "No files are deleted from wiki/ during the run",
+        "Git status (if wiki is a git repo) shows zero modified/untracked/deleted files post-run"
+      ]
+    }
+  ],
+  "non_triggers": [
+    {
+      "id": "wrap-not-recall",
+      "prompt": "/sf:wrap",
+      "expected_outcome": "skill_not_activated"
+    },
+    {
+      "id": "note-not-recall",
+      "prompt": "/sf:note something to remember",
+      "expected_outcome": "skill_not_activated"
+    },
+    {
+      "id": "catch-up-not-recall",
+      "prompt": "/sf:catch-up sidecar",
+      "expected_outcome": "skill_not_activated"
+    }
+  ]
+}

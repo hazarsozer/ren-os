@@ -1,0 +1,38 @@
+{
+  "$schema": "../../verify.schema.json",
+  "migration": "example-page-1-to-2",
+  "page_type": "example-page",
+  "assertions": [
+    {
+      "id": "yaml-valid",
+      "description": "Output file has valid YAML frontmatter delimited by ---",
+      "predicate": "yaml.valid",
+      "target": "frontmatter"
+    },
+    {
+      "id": "schema-bumped",
+      "description": "schema_version is exactly the target version",
+      "predicate": "yaml.equals",
+      "field": "schema_version",
+      "value": 2
+    },
+    {
+      "id": "framework-version-set",
+      "description": "framework_version is present (any value)",
+      "predicate": "yaml.present",
+      "field": "framework_version"
+    },
+    {
+      "id": "type-preserved",
+      "description": "type field is present and matches the page-type this migration applies to",
+      "predicate": "yaml.equals",
+      "field": "type",
+      "value": "example-page"
+    },
+    {
+      "id": "no-body-content-loss",
+      "description": "Body (everything after frontmatter) is byte-identical to snapshot. REMOVE this assertion if your migration intentionally rewrites body content.",
+      "predicate": "snapshot.body-identical"
+    }
+  ]
+}

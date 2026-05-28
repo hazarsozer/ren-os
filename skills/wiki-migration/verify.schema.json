@@ -1,0 +1,127 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://startup-framework.local/schemas/verify.schema.json",
+  "title": "Migration Verify Manifest",
+  "description": "JSON Schema for a migration directory's verify.json file (per ADR-027 § Hybrid migrations). Binary assertions confirming a migration produced valid output. /sf:update's VERIFYING state runs each assertion against every migrated page; FAIL triggers ROLLBACK_PAGE.",
+  "type": "object",
+  "required": ["migration", "page_type", "assertions"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {"type": "string"},
+    "migration": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*-[0-9]+-to-[0-9]+$",
+      "description": "Migration identifier; matches the basename of the directory holding this file (e.g. 'identity-1-to-2')."
+    },
+    "page_type": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$",
+      "description": "The page-type this migration applies to. Must be a key in schemas.json#page_types."
+    },
+    "assertions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/assertion"},
+      "description": "Each assertion is evaluated against the migrated page. All non-optional assertions must PASS for the page to be accepted."
+    }
+  },
+  "$defs": {
+    "assertion": {
+      "type": "object",
+      "required": ["id", "description", "predicate"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*$",
+          "description": "Stable identifier for logging + debugging."
+        },
+        "description": {
+          "type": "string",
+          "minLength": 5,
+          "description": "Human-readable explanation. Surfaced in /sf:update output on failure."
+        },
+        "predicate": {
+          "type": "string",
+          "enum": [
+            "yaml.valid",
+            "yaml.equals",
+            "yaml.in",
+            "yaml.absent",
+            "yaml.present",
+            "snapshot.value-preserved",
+            "snapshot.body-identical",
+            "regex.matches",
+            "file.exists"
+          ],
+          "description": "The check kind. v1 vocabulary; extended in MAJOR framework bumps."
+        },
+        "optional": {
+          "type": "boolean",
+          "default": false,
+          "description": "If true, a FAIL is reported but does not trigger ROLLBACK_PAGE. Useful for conditional-shape assertions (e.g. a field that only existed if the source had it)."
+        },
+        "target": {
+          "type": "string",
+          "enum": ["frontmatter", "body", "whole"],
+          "default": "frontmatter",
+          "description": "Which part of the page the predicate evaluates against. Defaults to frontmatter."
+        },
+        "field": {
+          "type": "string",
+          "description": "Frontmatter key referenced by yaml.* predicates."
+        },
+        "value": {
+          "description": "Expected value for yaml.equals."
+        },
+        "values": {
+          "type": "array",
+          "description": "Allowed values for yaml.in.",
+          "items": {}
+        },
+        "pattern": {
+          "type": "string",
+          "description": "Regex for regex.matches (POSIX ERE)."
+        },
+        "snapshot_field": {
+          "type": "string",
+          "description": "Pre-migration field name read from the snapshot for snapshot.value-preserved."
+        },
+        "post_field": {
+          "type": "string",
+          "description": "Post-migration field name read from the migrated file for snapshot.value-preserved."
+        },
+        "path": {
+          "type": "string",
+          "description": "File path for file.exists. ${page_dir} and ${wiki_root} placeholders supported."
+        }
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"predicate": {"const": "yaml.equals"}}, "required": ["predicate"]},
+          "then": {"required": ["field", "value"]}
+        },
+        {
+          "if": {"properties": {"predicate": {"const": "yaml.in"}}, "required": ["predicate"]},
+          "then": {"required": ["field", "values"]}
+        },
+        {
+          "if": {"properties": {"predicate": {"enum": ["yaml.absent", "yaml.present"]}}, "required": ["predicate"]},
+          "then": {"required": ["field"]}
+        },
+        {
+          "if": {"properties": {"predicate": {"const": "snapshot.value-preserved"}}, "required": ["predicate"]},
+          "then": {"required": ["snapshot_field", "post_field"]}
+        },
+        {
+          "if": {"properties": {"predicate": {"const": "regex.matches"}}, "required": ["predicate"]},
+          "then": {"required": ["pattern"]}
+        },
+        {
+          "if": {"properties": {"predicate": {"const": "file.exists"}}, "required": ["predicate"]},
+          "then": {"required": ["path"]}
+        }
+      ]
+    }
+  }
+}

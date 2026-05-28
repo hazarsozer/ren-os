@@ -1,0 +1,17 @@
+{
+  "$comment": "Probe arms B and C: registers the experimental SessionStart hook. Arm differentiation happens via SF_PROBE_ARM env var read by the hook script.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash $CLAUDE_PROJECT_DIR/hooks/wake-up/verify/experimental-hook.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

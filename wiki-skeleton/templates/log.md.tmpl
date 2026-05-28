@@ -1,0 +1,27 @@
+---
+title: "Wiki Log"
+type: log-entry
+schema_version: 1
+framework_version: "{{framework_version}}"
+created: {{today}}
+updated: {{today}}
+---
+
+# Wiki Log
+
+Chronological, append-only record of wiki events. Each entry starts with `## [YYYY-MM-DD] <type> | <description>` for grep-parseable navigation.
+
+Event types:
+- `init` — wiki bootstrap events
+- `ingest` — external source brought in
+- `decision` — ADR recorded
+- `lint` — health check pass
+- `query` — wiki search that produced a filed answer
+
+Chronological order is the invariant. Same-day reordering is fine while you're still appending today; once the next day's first entry lands, earlier days are frozen.
+
+---
+
+## [{{today}}] init | Wiki bootstrapped
+
+Created by `/sf:install` for {{handle}}. Empty skeleton from framework version {{framework_version}}. Structure: `research/`, `decisions/`, `alternatives/`, `patterns/`, `projects/`, plus `index.md`, `identity.md`, and this log.

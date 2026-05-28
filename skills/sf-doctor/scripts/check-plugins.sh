@@ -1,0 +1,222 @@
+#!/usr/bin/env bash
+# check-plugins.sh — sf-doctor PLUGINS section
+#
+# Output format: same as check-env.sh — `KEY|STATUS|VALUE|HINT`.
+#
+# Plugins checked (per ADR-006):
+#   startup-framework, superpowers, skill-creator, claude-mem, context-mode,
+#   context7, claude-md-management, frontend-design (conditional)
+#
+# Also:
+#   hooks-sessionstart (per references/hook-id-registry.md)
+#   activity-feed (per references/hook-id-registry.md § Activity Feed)
+#   wiki (counts entries + projects)
+#
+# Side effects: NONE. Reads marketplace cache, hooks.json, calls feed status.sh (with 5s timeout).
+
+set -uo pipefail
+
+emit() { printf '%s|%s|%s|%s\n' "$1" "$2" "${3:-}" "${4:-}"; }
+
+# ──────────────────────────────────────────────────────────────────────
+# Locate the framework plugin install
+# ──────────────────────────────────────────────────────────────────────
+# CC plugin cache lives at ~/.claude/plugins/cache/<marketplace>/<plugin>/<version>/
+# We look for any installed startup-framework version.
+PLUGIN_CACHE_ROOT="${HOME}/.claude/plugins/cache"
+SF_PLUGIN_DIR=""
+SF_VERSION=""
+SF_MARKETPLACE=""
+
+if [[ -d "$PLUGIN_CACHE_ROOT" ]]; then
+  # Find the newest installed version (sort by version dir mtime, latest wins)
+  for mkt_dir in "$PLUGIN_CACHE_ROOT"/*/; do
+    [[ -d "$mkt_dir/startup-framework" ]] || continue
+    for ver_dir in "$mkt_dir/startup-framework"/*/; do
+      [[ -f "$ver_dir/.claude-plugin/plugin.json" ]] || continue
+      ver_basename="$(basename "$ver_dir")"
+      if [[ -z "$SF_VERSION" ]] || [[ "$ver_basename" > "$SF_VERSION" ]]; then
+        SF_VERSION="$ver_basename"
+        SF_PLUGIN_DIR="$ver_dir"
+        SF_MARKETPLACE="$(basename "$mkt_dir")"
+      fi
+    done
+  done
+fi
+
+if [[ -n "$SF_PLUGIN_DIR" ]]; then
+  # Parse version from plugin.json (source of truth per CC docs)
+  SF_PLUGIN_JSON_VER="$(grep -oE '"version"\s*:\s*"[^"]+"' "$SF_PLUGIN_DIR/.claude-plugin/plugin.json" | head -1 | sed 's/.*"\([^"]*\)"$/\1/')"
+  emit "startup-framework" "ok" "v${SF_PLUGIN_JSON_VER:-$SF_VERSION} (installed via ${SF_MARKETPLACE})" ""
+else
+  emit "startup-framework" "error" "not found in plugin cache" "→ /plugin install startup-framework@sf-marketplace"
+fi
+
+# ──────────────────────────────────────────────────────────────────────
+# Sibling required plugins
+# ──────────────────────────────────────────────────────────────────────
+check_sibling_plugin() {
+  local key="$1" display="$2" extra_hint="$3"
+  if [[ -z "$PLUGIN_CACHE_ROOT" || ! -d "$PLUGIN_CACHE_ROOT" ]]; then
+    emit "$key" "skip" "" "(plugin cache not found)"
+    return
+  fi
+  # Search all marketplaces for any version of the plugin
+  local plugin_dir=""
+  for mkt_dir in "$PLUGIN_CACHE_ROOT"/*/; do
+    if compgen -G "$mkt_dir/$key" >/dev/null; then
+      plugin_dir="$(find "$mkt_dir/$key" -maxdepth 1 -type d -mindepth 1 | sort -V | tail -1)"
+      break
+    fi
+  done
+  if [[ -n "$plugin_dir" ]]; then
+    local ver=""
+    if [[ -f "$plugin_dir/.claude-plugin/plugin.json" ]]; then
+      ver="$(grep -oE '"version"\s*:\s*"[^"]+"' "$plugin_dir/.claude-plugin/plugin.json" | head -1 | sed 's/.*"\([^"]*\)"$/\1/')"
+    fi
+    emit "$key" "ok" "${ver:+v$ver }installed${extra_hint:+ ${extra_hint}}" ""
+  else
+    emit "$key" "error" "not installed" "→ /plugin install ${key}@<its marketplace>"
+  fi
+}
+
+check_sibling_plugin "superpowers" "Superpowers" ""
+check_sibling_plugin "skill-creator" "Skill Creator" ""
+check_sibling_plugin "claude-mem" "claude-mem" ""
+check_sibling_plugin "context-mode" "Context Mode" "(ELv2 — SaaS distribution restricted; see LICENSES.md)"
+check_sibling_plugin "context7" "context7" "(Upstash API key required)"
+check_sibling_plugin "claude-md-management" "claude-md-management" ""
+
+# Frontend Design — conditional
+if [[ -n "$PLUGIN_CACHE_ROOT" && -d "$PLUGIN_CACHE_ROOT" ]]; then
+  fd_found=""
+  for mkt_dir in "$PLUGIN_CACHE_ROOT"/*/; do
+    if compgen -G "$mkt_dir/frontend-design" >/dev/null; then
+      fd_found="yes"
+      break
+    fi
+  done
+  if [[ -n "$fd_found" ]]; then
+    emit "frontend-design" "ok" "installed" "(conditional — UI work enabled)"
+  else
+    emit "frontend-design" "skip" "" "(conditional — not installed; skip if no UI work)"
+  fi
+fi
+
+# ──────────────────────────────────────────────────────────────────────
+# Hooks registration
+# ──────────────────────────────────────────────────────────────────────
+# Per references/hook-id-registry.md, two-way detection:
+#   primary  : grep for 'sf-wake-up.js' in the command field (more precise than directory)
+#   secondary: grep for 'sf-wake-up:' in description field (defense in depth)
+if [[ -n "$SF_PLUGIN_DIR" && -f "$SF_PLUGIN_DIR/hooks/hooks.json" ]]; then
+  HOOKS_JSON="$SF_PLUGIN_DIR/hooks/hooks.json"
+  PRIMARY_HIT=0
+  SECONDARY_HIT=0
+  grep -q "sf-wake-up\.js" "$HOOKS_JSON" && PRIMARY_HIT=1
+  # Description sentinel: must include "sf-wake-up:" inside a description field
+  grep -qE '"description"\s*:\s*"[^"]*sf-wake-up:' "$HOOKS_JSON" && SECONDARY_HIT=1
+
+  if (( PRIMARY_HIT )); then
+    # Try to extract matcher + timeout for nicer reporting (best-effort, no full JSON parser)
+    SS_MATCHER="$(grep -A1 '"SessionStart"' "$HOOKS_JSON" | grep -oE '"matcher"\s*:\s*"[^"]+"' | head -1 | sed 's/.*"\([^"]*\)"$/\1/' || echo '*')"
+    SS_TIMEOUT="$(grep -oE '"timeout"\s*:\s*[0-9]+' "$HOOKS_JSON" | head -1 | awk -F: '{print $2}' | tr -d ' ' || echo 'default')"
+    if [[ "$SS_MATCHER" == "startup" || "$SS_MATCHER" == "*" || -z "$SS_MATCHER" ]]; then
+      emit "hooks-sessionstart" "ok" "SessionStart (sf-wake-up.js, matcher: ${SS_MATCHER:-*}, timeout: ${SS_TIMEOUT}s)" ""
+    else
+      emit "hooks-sessionstart" "warn" "SessionStart hook registered but matcher='${SS_MATCHER}' — wake-up will not fire on fresh sessions" "→ Update matcher to 'startup' or '*'"
+    fi
+  elif (( SECONDARY_HIT )); then
+    # Description sentinel found but command path didn't match. Degraded green per registry.
+    emit "hooks-sessionstart" "warn" "SessionStart description matches but command path is wrong" "→ Check \${CLAUDE_PLUGIN_ROOT}/hooks/wake-up/sf-wake-up.js exists"
+  else
+    emit "hooks-sessionstart" "warn" "SessionStart hook missing (sf-wake-up not active)" "→ Run /sf:update which re-registers hooks, OR /reload-plugins"
+  fi
+else
+  emit "hooks-sessionstart" "skip" "" "(plugin not installed; hooks check skipped)"
+fi
+
+# ──────────────────────────────────────────────────────────────────────
+# Activity Feed (status.sh JSON-shape per feed-2's shipped impl, 2026-05-28)
+# Path:        skills/activity-feed/scripts/status.sh (NOT feed/scripts/status.sh as originally specced)
+# Exit codes:  0 always for normal operation; failure encoded in JSON `auth_ok`/`push_ok`/etc.
+#              1 only on catastrophic Python crash.
+# ──────────────────────────────────────────────────────────────────────
+FEED_URL="${CLAUDE_PLUGIN_OPTION_ACTIVITYFEEDURL:-}"
+FEED_LOCAL="${CLAUDE_PLUGIN_OPTION_ACTIVITYFEEDLOCALCLONE:-$HOME/.startup-framework/activity-feed}"
+FEED_STATUS_SH=""
+if [[ -n "$SF_PLUGIN_DIR" ]]; then
+  if [[ -x "$SF_PLUGIN_DIR/skills/activity-feed/scripts/status.sh" ]]; then
+    FEED_STATUS_SH="$SF_PLUGIN_DIR/skills/activity-feed/scripts/status.sh"
+  elif [[ -x "$SF_PLUGIN_DIR/feed/scripts/status.sh" ]]; then
+    # legacy fallback during build phase
+    FEED_STATUS_SH="$SF_PLUGIN_DIR/feed/scripts/status.sh"
+  fi
+fi
+
+if [[ -z "$FEED_URL" && -z "$FEED_STATUS_SH" ]]; then
+  emit "activity-feed" "skip" "" "(activityFeedUrl not set — feed disabled)"
+elif [[ -z "$FEED_STATUS_SH" ]]; then
+  emit "activity-feed" "warn" "status.sh not found at expected path" "→ See references/hook-id-registry.md § Activity Feed for current contract"
+else
+  # 5s timeout on the status call
+  FEED_JSON="$(timeout 5 "$FEED_STATUS_SH" "$FEED_LOCAL" 2>/dev/null)"
+  FEED_RC=$?
+
+  if (( FEED_RC == 1 )); then
+    # Catastrophic per feed-2 contract
+    emit "activity-feed" "error" "status.sh crashed (exit 1)" "→ Installation likely broken; run /sf:update or reinstall"
+  elif (( FEED_RC != 0 )) || [[ -z "$FEED_JSON" ]]; then
+    emit "activity-feed" "warn" "status.sh did not respond cleanly (exit ${FEED_RC})" "→ Try: ${FEED_STATUS_SH} ${FEED_LOCAL}"
+  else
+    # Parse JSON fields. Best-effort string extraction; doctor's JSON output mode uses jq.
+    fv() { echo "$FEED_JSON" | grep -oE "\"$1\"\\s*:\\s*\"[^\"]*\"" | head -1 | sed 's/.*"\([^"]*\)"$/\1/'; }
+    fb() { echo "$FEED_JSON" | grep -oE "\"$1\"\\s*:\\s*(true|false)" | head -1 | awk -F: '{print $2}' | tr -d ' '; }
+    fn() { echo "$FEED_JSON" | grep -oE "\"$1\"\\s*:\\s*[0-9]+" | head -1 | awk -F: '{print $2}' | tr -d ' '; }
+
+    FEED_REMOTE="$(fv remote)"
+    FEED_SYNC="$(fv last_sync_iso)"
+    FEED_AUTH_OK="$(fb auth_ok)"
+    FEED_PUSH_OK="$(fb push_ok)"
+    FEED_AUTH_REASON="$(fv auth_reason)"
+    FEED_PENDING="$(fn pending_commit_count)"
+    FEED_FAILS="$(fn consecutive_push_failures)"
+
+    if [[ -z "$FEED_REMOTE" && -z "$FEED_URL" ]]; then
+      emit "activity-feed" "skip" "" "(activityFeedUrl not set — feed disabled)"
+    elif [[ "$FEED_AUTH_OK" == "false" ]]; then
+      emit "activity-feed" "error" "${FEED_REMOTE:-$FEED_URL} — auth failed" "→ Run: gh auth login${FEED_AUTH_REASON:+  |  reason: $FEED_AUTH_REASON}"
+    elif [[ "$FEED_PUSH_OK" == "false" ]]; then
+      detail="${FEED_REMOTE:-$FEED_URL} — push failing"
+      [[ -n "$FEED_FAILS" && "$FEED_FAILS" != "0" ]] && detail="${detail} (×${FEED_FAILS})"
+      # Strip SSH prefix + .git suffix to form a gh-api-friendly org/repo path
+      api_repo="${FEED_REMOTE#git@github.com:}"
+      api_repo="${api_repo#https://github.com/}"
+      api_repo="${api_repo%.git}"
+      emit "activity-feed" "warn" "$detail" "→ Check 'gh api repos/${api_repo}' or 'git push' manually"
+    else
+      # All green
+      detail="${FEED_REMOTE:-$FEED_URL}"
+      [[ -n "$FEED_SYNC" ]] && detail="${detail} (last sync ${FEED_SYNC})" || detail="${detail} — first sync pending"
+      [[ -n "$FEED_PENDING" && "$FEED_PENDING" != "0" ]] && detail="${detail} (${FEED_PENDING} commit(s) pending push)"
+      emit "activity-feed" "ok" "$detail" ""
+    fi
+  fi
+fi
+
+# ──────────────────────────────────────────────────────────────────────
+# Wiki
+# ──────────────────────────────────────────────────────────────────────
+WIKI_ROOT="${CLAUDE_PLUGIN_OPTION_WIKIROOT:-$HOME/.startup-framework/wiki}"
+if [[ -d "$WIKI_ROOT" ]]; then
+  ENTRY_COUNT="$(find "$WIKI_ROOT" -maxdepth 4 -name '*.md' -type f 2>/dev/null | wc -l)"
+  PROJECT_COUNT=0
+  if [[ -d "$WIKI_ROOT/projects" ]]; then
+    PROJECT_COUNT="$(find "$WIKI_ROOT/projects" -maxdepth 1 -mindepth 1 -type d 2>/dev/null | wc -l)"
+  fi
+  emit "wiki" "ok" "${WIKI_ROOT} (${ENTRY_COUNT} entries, ${PROJECT_COUNT} projects)" ""
+else
+  emit "wiki" "error" "${WIKI_ROOT} not found" "→ Run /sf:install to bootstrap; or /sf:install --restore <wiki-remote-url> to recover"
+fi
+
+exit 0

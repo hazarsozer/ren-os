@@ -1,0 +1,86 @@
+# Fixture: a JOINER — second-or-later friend joining an existing group.
+# Activity Feed repo exists with prior friends' log + identity files.
+# Tests Stage 3 detection branching to joiner-clone mode + handle collision logic.
+#
+# Consumed by eval.json test "joiner-detect-existing-feed".
+
+fixture_name: joiner
+framework_version: "1.0.0"
+simulated_date: "2026-07-12"
+
+environment:
+  XDG_STATE_HOME: /tmp/sf-eval-state
+  home: /tmp/sf-eval-home
+  ANTHROPIC_API_KEY: "sk-ant-eval-9999"
+  UPSTASH_CONTEXT7_API_KEY: "upstash-eval-8888"
+
+system_probes:
+  claude_version: "1.2.0"
+  claude_auth_status: "Logged in as joiner@example.com"
+  node_version: "22.7.1"
+  git_version: "2.43.0"
+  gh_version: "2.45.0"
+  gh_auth_status: "Logged in to github.com as joiner-user"
+
+filesystem:
+  - path: ~/.startup-framework/
+    kind: absent
+  - path: $XDG_STATE_HOME/sf/install-state.json
+    kind: absent
+
+simulated_friend_responses:
+  stage_3:
+    repo_url: "eval-friends/activity-feed"
+    # First attempt at a handle: collides with existing 'eval-friend'.
+    # Re-prompt; friend picks a valid non-colliding handle.
+    handle_attempts:
+      - "eval-friend"          # COLLISION — must be rejected
+      - "eval-joiner"          # accepted
+    frontend_design_choice: "yes"
+    ralph_acknowledged: true
+  stage_4_interview:
+    short: |
+      eval-joiner, terse-no-emoji, building phase, go+typescript, aws+cloudflare,
+      postgresql, devops + backend skills.
+  stage_6:
+    otel_choice: "skip"
+  stage_7:
+    acknowledged: true
+
+simulated_plugin_registry: { inherits: fresh-machine }
+
+simulated_feed:
+  detect_repo_state:
+    mode: "joiner-clone"
+    has_other_friends: true
+    existing_handles: ["eval-friend", "second-friend"]
+    needs_init: false
+    local_path: "~/.startup-framework/activity-feed"
+  clone_existing_result: success
+  upsert_identity_result:
+    committed: true
+    sha: "feedfeed4444555566667777"
+    message: "add identities/eval-joiner.md"
+  pre_existing_files_in_feed:
+    - identities/eval-friend.md
+    - identities/second-friend.md
+    - eval-friend.log.md
+    - second-friend.log.md
+    - README.md
+
+simulated_doctor_report: { inherits: fresh-machine }
+
+expected_terminal_state:
+  completed_stages: [1, 2, 3, 4, 5, 6, 7]
+  files_present:
+    - ~/.startup-framework/wiki/index.md             # FRESH wiki; no group history inherited
+    - ~/.startup-framework/wiki/identity.md
+    - ~/.startup-framework/activity-feed/identities/eval-joiner.md
+    - ~/.startup-framework/activity-feed/identities/eval-friend.md   # pre-existing; untouched
+    - ~/.startup-framework/activity-feed/identities/second-friend.md # pre-existing; untouched
+    - ~/.startup-framework/activity-feed/eval-joiner.log.md          # new
+    - ~/.startup-framework/activity-feed/eval-friend.log.md          # pre-existing
+  files_absent:
+    # Critical: per ADR-017, joiner's local wiki must NOT inherit group history.
+    - ~/.startup-framework/wiki/research/eval-friend-research.md
+    - ~/.startup-framework/wiki/projects/  # not empty, but no other friends' projects

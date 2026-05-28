@@ -1,0 +1,97 @@
+{
+  "name": "sf-wrap",
+  "description": "Binary-assertion test suite for /sf:wrap. Each test provides a fixture session transcript + expected classifier label + expected wiki-page diff plan + expected feed-call args. Tests are run by /sf:improve-skill's Karpathy loop (per ADR-012) and by CI.",
+  "schema_version": 1,
+  "framework_version": "1.0.0",
+  "_status": "scaffold — fixtures pending; assertions are the testable goals as /sf:wrap implementation lands. Schema conforms to ADR-011 §eval.json schema.",
+  "tests": [
+    {
+      "id": "routine-debug-session-no-signal",
+      "fixture": "fixtures/routine-debug.transcript.json",
+      "prompt": "/sf:wrap",
+      "expected_output_summary": "Classifier returns 'none'; zero wiki edits except CONTEXT.md rewrite + log.md append; feed entry written.",
+      "trigger_test": true,
+      "binary_assertions": [
+        "Classifier output 'labels' field equals exactly ['none']",
+        "No new file is created under wiki/projects/<active>/decisions/ after the run",
+        "No new file is created under wiki/projects/<active>/patterns/ after the run",
+        "wiki/projects/<active>/CONTEXT.md content differs from its pre-wrap state",
+        "wiki/projects/<active>/log.md has exactly one new line whose date matches today",
+        "Master wiki/log.md is byte-identical to its pre-wrap state (routine sessions skip master log)",
+        "feed.feed_write_session_end was called exactly once during the run",
+        "The feed_write_session_end call passed skip=False (no SF_SKIP_FEED env, no --skip-feed flag)"
+      ]
+    },
+    {
+      "id": "decision-session-creates-adr",
+      "fixture": "fixtures/decision-postgres-over-mongo.transcript.json",
+      "prompt": "/sf:wrap",
+      "expected_output_summary": "Classifier returns 'decision'; new file under decisions/; STATE.md updated; master log appended.",
+      "trigger_test": true,
+      "binary_assertions": [
+        "Classifier output 'labels' field contains 'decision'",
+        "A new file is created at wiki/projects/<active>/decisions/<slug>.md where <slug> is non-empty kebab-case",
+        "The new decisions file's YAML frontmatter includes 'framework_version', 'schema_version', and 'type: decision' fields",
+        "wiki/projects/<active>/STATE.md contains a new entry under the 'Recent decisions' section pointing at the new decisions file",
+        "Master wiki/log.md gains exactly one new entry whose date matches today (non-routine sessions update master log)"
+      ]
+    },
+    {
+      "id": "format-violation-recovery",
+      "fixture": "fixtures/format-violation.transcript.json",
+      "prompt": "/sf:wrap",
+      "expected_output_summary": "First feed write rejected on a format-shape violation; one LLM re-prompt; second write succeeds; wiki updates remain intact.",
+      "trigger_test": true,
+      "binary_assertions": [
+        "feed.feed_write_session_end is called exactly twice during the run",
+        "The first feed_write_session_end call returns FeedWriteResult(success=False) with a non-empty violation field",
+        "Between the two calls, the LLM is re-prompted with the violation reason from the first call",
+        "The second feed_write_session_end call returns FeedWriteResult(success=True)",
+        "All wiki diffs that the pre-feed step staged are applied (no rollback occurred)"
+      ]
+    },
+    {
+      "id": "skip-feed-flag",
+      "fixture": "fixtures/decision-with-skip-flag.transcript.json",
+      "prompt": "/sf:wrap --skip-feed",
+      "expected_output_summary": "Skip-chain active; no feed write; wiki updates still applied; user sees 'feed skipped' message.",
+      "trigger_test": true,
+      "binary_assertions": [
+        "feed.is_skip_active was called with wrap_flag=True and returned (True, 'wrap-flag')",
+        "feed.feed_write_session_end either was not invoked OR was invoked with skip=True and returned success=True with empty entry_id",
+        "The wiki diff plan was still applied (a decisions/<slug>.md file exists after the run)",
+        "The user-facing output contains the substring 'feed skipped' or '(feed skipped:' "
+      ]
+    },
+    {
+      "id": "wiki-write-failure-rollback",
+      "fixture": "fixtures/wiki-write-fails-mid-batch.transcript.json",
+      "prompt": "/sf:wrap",
+      "expected_output_summary": "Mid-batch wiki write fails (simulated permission error); all wiki changes rolled back via git restore; feed call NOT made; user sees retry instructions.",
+      "trigger_test": true,
+      "binary_assertions": [
+        "The command 'git restore wiki/' (or equivalent) was invoked during the run",
+        "After the run, wiki/ has zero diffs against its pre-run state (full rollback confirmed)",
+        "feed.feed_write_session_end was NOT invoked (consistency: wiki failed, feed deferred)",
+        "The user-facing output contains instructions explaining how to retry the wrap"
+      ]
+    }
+  ],
+  "non_triggers": [
+    {
+      "id": "mid-session-note",
+      "prompt": "Pin this for later: we decided to use Postgres.",
+      "expected_outcome": "skill_not_activated"
+    },
+    {
+      "id": "ad-hoc-recall",
+      "prompt": "What did we decide about auth last week?",
+      "expected_outcome": "skill_not_activated"
+    }
+  ],
+  "_notes": [
+    "Fixtures under fixtures/ are populated incrementally as /sf:wrap implementation lands.",
+    "Run via: uv run pytest skills/sf-wrap/eval/ (TBD wiring).",
+    "These assertions are also the targets for /sf:improve-skill's Karpathy loop per ADR-012."
+  ]
+}
