@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "$comment": "Startup-framework hook registrations. Distribution-2's /sf:doctor greps the 'command' field for 'sf-wake-up.py' (primary) and the 'description' field for 'sf-wake-up:' (sentinel) — both should be preserved when editing.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PLUGIN_ROOT/hooks/wake-up/sf-wake-up.py\"",
+            "timeout": 10,
+            "description": "sf-wake-up: SessionStart context injection per ADR-008 (fresh sessions)",
+            "id": "sf-wake-up-startup"
+          }
+        ]
+      },
+      {
+        "matcher": "compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PLUGIN_ROOT/hooks/wake-up/sf-wake-up.py\"",
+            "timeout": 10,
+            "description": "sf-wake-up: re-inject context after compaction per hooks-guide compact-matcher pattern",
+            "id": "sf-wake-up-compact"
+          }
+        ]
+      }
+    ]
+  }
+}

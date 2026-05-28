@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://startup-framework.local/schemas/schemas.schema.json",
+  "title": "Schema-Version Registry",
+  "description": "JSON Schema for skills/wiki-migration/schemas.json (per ADR-027). Validates the canonical page-type registry the framework uses to compute schema drift in /sf:doctor and migration chains in /sf:update.",
+  "type": "object",
+  "required": ["framework_version", "page_types"],
+  "additionalProperties": false,
+  "patternProperties": {
+    "^_": {"description": "Underscore-prefixed keys are free-form maintainer notes; ignored by tooling. Used for `_comment`, `_path_pattern_note`, etc."}
+  },
+  "properties": {
+    "$schema": {"type": "string"},
+    "_comment": {"type": "string", "description": "Free-form note for maintainers; ignored by tooling."},
+    "framework_version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(-[A-Za-z0-9.]+)?$",
+      "description": "The framework version this registry snapshot belongs to. Matches plugin.json#version."
+    },
+    "page_types": {
+      "type": "object",
+      "description": "Map of page-type identifier → schema metadata. Keys are kebab-case identifiers used in each page's YAML frontmatter `type:` field.",
+      "minProperties": 1,
+      "propertyNames": {"pattern": "^[a-z][a-z0-9-]*$"},
+      "additionalProperties": {"$ref": "#/$defs/page_type_entry"}
+    }
+  },
+  "$defs": {
+    "page_type_entry": {
+      "type": "object",
+      "required": ["current", "supported_from", "deprecated_below", "path_pattern", "description", "owner_module", "migrations"],
+      "additionalProperties": false,
+      "properties": {
+        "current": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "The current schema version. Bumped when a migration ships for this page type."
+        },
+        "supported_from": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "The lowest schema version still auto-migrate-able. Pages below this become read-only (N+3 deprecation window per ADR-027)."
+        },
+        "deprecated_below": {
+          "type": ["integer", "null"],
+          "minimum": 1,
+          "description": "If non-null, schemas strictly below this number are deprecated (one bump away from read-only). Use to give friends an early warning before the N+3 cliff."
+        },
+        "path_pattern": {
+          "type": "string",
+          "description": "Glob-style path within a friend's wiki where pages of this type live. <name>, <handle>, <topic>, <slug>, <NNN> are placeholders."
+        },
+        "description": {"type": "string", "minLength": 10},
+        "owner_module": {
+          "type": "string",
+          "enum": ["sf-onboarding", "sf-lifecycle", "sf-feed", "sf-distribution", "universal"],
+          "description": "Which build-team module owns the writer/template for this page type. 'universal' means friend-authored with no single owning module."
+        },
+        "adr_refs": {
+          "type": "array",
+          "items": {"type": "string", "pattern": "^ADR-[0-9]{3}$"},
+          "description": "ADR identifiers that define this page type's shape."
+        },
+        "migrations": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[0-9]+-to-[0-9]+$",
+            "description": "Migration directory basename (e.g. '1-to-2'). Each must exist as skills/wiki-migration/migrations/<page-type>-<basename>/."
+          },
+          "description": "Ordered list of available migrations for this page type. /sf:update composes the chain from these. Element N takes schema N → N+1."
+        }
+      },
+      "allOf": [
+        {
+          "description": "supported_from must not exceed current.",
+          "if": {"required": ["current", "supported_from"]},
+          "then": {
+            "properties": {
+              "supported_from": {"maximum": 9999}
+            }
+          }
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,538 @@
+Video: Agentic development wasn't working for my large codebase. Then I implemented anchor tags
+Owner: Agentic Development - Ben Fellows
+
+Transcript:
+0:00
+So, like most people, as my code bases
+0:03
+get bigger, I've really struggled in the
+0:05
+past to keep Agentic development
+0:07
+working. This is a well doumented thing.
+0:10
+The larger the codebase, the larger the
+0:11
+context windows needed, which although
+0:13
+context windows have gotten so much
+0:15
+bigger, you still struggle. The grepping
+0:17
+is not accurate. The planning leaves
+0:19
+some stuff to be desired. And
+0:21
+ultimately, when you do the work, you
+0:22
+end up with orphan code all over. I
+0:24
+probably spent months trying to figure
+0:26
+out a way to get around this. and
+0:28
+ultimately implemented anchor tags which
+0:31
+to me have solved a tremendous amount of
+0:35
+the accuracy both in planning as well as
+0:38
+the validation. I don't struggle with
+0:41
+legacy leftover code just random pockets
+0:43
+of the codebase. I can validate the work
+0:46
+with a lot more confidence. So today I
+0:48
+want to show you anchor tags and how you
+0:51
+can use them yourself. Hey guys, Ben
+0:53
+here. Uh, quick pause in the video to
+0:55
+say if you like this content, please
+0:58
+like and subscribe. We're very close to
+1:00
+2,000 subscribers. I would really
+1:02
+appreciate it. Back to the hut. Bye. All
+1:04
+right, so let's get into it. What are
+1:06
+anchor tags? Anchor tags are essentially
+1:08
+just metadata. And there's a lot of, by
+1:09
+the way, like anchor tags are not
+1:11
+something that like I'm trying to claim
+1:12
+I made the name of or something like
+1:14
+that. You could probably tell me that
+1:16
+this is even the wrong name, but anchor
+1:18
+tags are essentially just metadata. Like
+1:19
+I think I have an example done here
+1:20
+before I get into it. Let me find it.
+1:23
+Yeah. So, like just metadata. And in
+1:26
+short, what I've started to do with my
+1:28
+apps is basically put this metadata like
+1:32
+throughout the entire codebase. And I'll
+1:34
+answer why in a second. But for context,
+1:37
+one of my code bases has roughly 35,000
+1:40
+anchor tags in it. And there's about
+1:42
+1,300 different services. Now, the key
+1:45
+thing comes down to like why like why is
+1:47
+this necessary? And to understand this,
+1:50
+you have to understand how AI reads code
+1:52
+bases. And like once again, I'm not an
+1:55
+expert by any means in this, but my
+1:57
+understanding is that AI largely is
+1:59
+relying on GPS for code bases as well as
+2:02
+its own kind of like queryesque
+2:04
+systems. But what it's doing is just
+2:06
+essentially trying to like make some
+2:09
+kind of a query, find a bunch of files,
+2:11
+and then reads the files, right? And for
+2:14
+whatever reason, and once again, I don't
+2:16
+quite understand this, what I find is
+2:18
+that with very large code bases, it
+2:20
+traditionally
+2:22
+is going to just miss things too often.
+2:26
+And I fought this in a whole variety of
+2:27
+ways. If I go to this, right? So, I'll
+2:32
+say stuff like use five research agents,
+2:36
+right? and it would use five research
+2:38
+agents and go through the whole codebase
+2:40
+and I would have plans that like look on
+2:42
+the surface super super detailed and
+2:44
+comprehensive and then just too often in
+2:46
+the codebase it would just be missing
+2:48
+stuff. By the way, you can see like
+2:49
+here's examples, right? So here's the
+2:51
+surface, here's the role, here's some
+2:52
+tags. So why do anchor data like anchor
+2:55
+tags make this more effective? Because
+2:58
+essentially it provides two things. One
+3:00
+is it provides context and linking
+3:03
+across code that otherwise can be hard
+3:06
+for AI to figure out at scale. It's
+3:08
+remarkably good at doing it in like
+3:09
+small scale but not necessarily at
+3:12
+scale. And then the second is it allows
+3:14
+basically a deterministic queryable
+3:16
+system that AI can use. What we do now,
+3:20
+what we're doing when we're doing our
+3:21
+coding is we're not telling AI, hey, go
+3:25
+research this. What we do is we
+3:27
+basically have a ledger system that it
+3:30
+is a single manifest that has every like
+3:33
+different surface that the angular tags
+3:35
+use. So in this case like all these
+3:37
+things roll up right. So then AI starts
+3:40
+there and it basically says okay like
+3:44
+between this and the grepping what do I
+3:47
+think I need from a context perspective
+3:49
+and then [snorts] what it does is it
+3:51
+writes custom queries against that. And
+3:53
+then against those custom queries now it
+3:56
+starts to do all of its grepping
+3:57
+basically right and what it's doing is
+3:59
+you're basically guaranteeing that you
+4:02
+are pulling in theory if assuming your
+4:04
+anchor tags are accurate all of the
+4:07
+relevant information that then AI will
+4:10
+need to then run its scripts against.
+4:12
+And what we have found is this is
+4:14
+substantially more effective at getting
+4:16
+the complete context for something for
+4:19
+AI to be able to make plans than just
+4:22
+having no like metadata system within
+4:25
+the code. And the main I think
+4:27
+difference or reason why this didn't
+4:30
+exist like in like human world is like
+4:33
+it's so tedious to do this at scale,
+4:35
+right? 35,000 also to try to come up
+4:38
+with all the different groupings, stuff
+4:39
+like that. Also, I'm not claiming it's
+4:41
+perfect by any means. One of the most
+4:43
+common things that I find when I pause
+4:46
+and do some cleanup stuff is that like I
+4:48
+have very related anchor tag like
+4:50
+surfaces and stuff that probably should
+4:52
+be one. And so, it's not perfect, but it
+4:54
+has made it super super helpful. What's
+4:57
+also really helpful about having this
+4:59
+sort of deterministic queryable system
+5:01
+is that basically your planning and your
+5:03
+validation can now use a deterministic
+5:07
+sort of source of truth as opposed to
+5:10
+having to try to do planning just with
+5:12
+AI and then write all your test
+5:14
+automation. Right? So basically as part
+5:16
+of your planning you can basically work
+5:18
+in a lot of your anchor tags and then so
+5:20
+your validation you basically are
+5:22
+validating for example if you're
+5:23
+refactoring something and therefore like
+5:26
+a feature which has an anchor tag
+5:27
+surface and that anchor tag surface
+5:29
+shows up in 30 places of the codebase
+5:31
+right if that's supposed to be
+5:32
+deprecated then how I said depreciated
+5:36
+or deprecated deprecated I always mix
+5:38
+that up deprecated then you can actually
+5:40
+write custom queries to basically make
+5:42
+sure hey that doesn't exist right and
+5:44
+the key thing though is you don't make
+5:46
+your prompt like, "Hey, just make the
+5:47
+anchor tag go away." You basically say,
+5:48
+"Hey, we're deprecating this feature. It
+5:51
+should not be in the codebase anymore.
+5:53
+Look for this anchor tag and if you see
+5:55
+any code related to the feature that's
+5:56
+in the anchor tag, remove it." Right?
+5:58
+And so what you're doing is you're
+6:00
+basically introducing determinism along
+6:02
+with the
+6:05
+system. Now, how we choose to do anchor
+6:07
+tags is basically in pairs essentially
+6:10
+with our policy as code system. So what
+6:13
+we do is we have for example rules for
+6:15
+the codebase that say if x amount of
+6:18
+lines of code exist without an anchor
+6:19
+tag that's a problem. Alternatively if
+6:22
+we have too many anchor tags in a
+6:24
+density of code that's a problem. We
+6:26
+have uh like rules like no anchor tags
+6:29
+or surfaces or whatever can basically be
+6:32
+added to the codebase without being
+6:33
+added to the manifest. And so like most
+6:35
+things I try to talk about like this
+6:38
+system doesn't really work in isolation.
+6:40
+It works basically in concert with the
+6:44
+other systems, right? It works because
+6:45
+we have other systems when we're doing
+6:48
+agentic development that are basically
+6:49
+enforcing how and when this system is
+6:51
+being used. The other thing that it does
+6:53
+is it is a really nice metadata for
+6:55
+linking a lot of test automation
+6:57
+coverage to the code that's covered. So,
+6:59
+for example, you can obviously use a
+7:01
+bunch of coverage frameworks and stuff
+7:03
+like that with unit test to map out code
+7:05
+coverage, particularly at the code
+7:06
+level. But what this is really doing is
+7:08
+allowing us to start to map out, okay,
+7:10
+here's the end to end, the API, the
+7:12
+integration, the unit tests, all
+7:13
+associated with these anchor tags. And
+7:15
+it gives us a much more effective view
+7:17
+of the entire test pyramid. And yeah,
+7:20
+I'm going to guess like the 70% it's not
+7:22
+I have no real data or evidence to back
+7:24
+that up. But what I found particularly
+7:27
+with these large code bases is that my
+7:30
+planning like even if I ran agents five
+7:32
+times or multiple rounds, like I was
+7:34
+still just missing too many things. And
+7:36
+then the other thing that was really
+7:37
+interesting is when I was doing the
+7:38
+development on these really complex
+7:40
+plans, you would just leave orphan code
+7:42
+that it thinks, oh yeah, I signed off.
+7:44
+The plan's good. And then you like add
+7:46
+the anchor system and then you're like,
+7:48
+oh god, there's like all of this orphan
+7:49
+code that's just left there from like
+7:51
+leftover things. Make the tag system
+7:53
+boring. It doesn't work if basically
+7:55
+every anchor tag is a completely
+7:57
+different bespoke set of tags or
+8:00
+anything like that. You want boring
+8:01
+anchor tags. You want to limit and
+8:03
+logically group. I think our rule is
+8:05
+that anchor tags can't be the exact same
+8:08
+from more than like 25, but they also
+8:10
+cannot be like unique. So I think it's
+8:13
+like somewhere in the range of like 10
+8:15
+to 15 kind of similar anchor tags for
+8:18
+linking things together from a metadata
+8:20
+perspective is how we basically do it.
+8:22
+And then yeah the point is AI did not
+8:24
+understand the whole repo does not
+8:26
+understand the whole repo the repo
+8:27
+becomes more legible and that's a rule
+8:28
+of it right. Right. So if we go look at
+8:30
+this, you can see anchor tags. And I was
+8:32
+actually looking this example cuz I
+8:33
+think this is probably overkill in files
+8:36
+that like largely are the singlepurpose
+8:38
+files. I don't think you need anchor
+8:40
+tags for every single method. And I was
+8:42
+actually thinking I don't know if I want
+8:43
+to show this, but I also want to
+8:44
+basically explain that I don't think
+8:46
+that these rules are always perfect. And
+8:48
+so you can see basically like this is
+8:50
+all of the anchor tags, right? And so
+8:52
+when we are doing our planning, it
+8:55
+basically can see this is an anchor tag
+8:57
+related to billing. And so anytime it's
+8:59
+looking at billing anchor tags, this
+9:01
+comes in. But then also you have like
+9:03
+where and how it's being used and other
+9:05
+tags. So yeah, what I would tell you is
+9:08
+like this as a planning and verification
+9:12
+tool particularly when your codebase
+9:13
+reaches a certain threshold has
+9:16
+absolutely been critical for our
+9:18
+continued success in doing large scale
+9:20
+development on large code bases. If you
+9:22
+have any questions about it or want this
+9:24
+presentation, I'm going to try to post
+9:25
+this up soon. And yeah, I know I dropped
+9:27
+off YouTube there for a few weeks. Life
+9:29
+got a bit busy, so I'm gonna hopefully
+9:30
+get back onto this track. If you have
+9:33
+any questions or other future video
+9:34
+topics, hit me up. Um, always really
+9:36
+excited to get into your things that you
+9:38
+care about. And yeah, really appreciate
+9:40
+the support. Looking forward to getting
+9:41
+back on it. Talk soon.

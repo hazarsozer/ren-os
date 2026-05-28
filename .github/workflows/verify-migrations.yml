@@ -1,0 +1,136 @@
+name: verify-migrations
+
+on:
+  push:
+    branches: [main, rc]
+    paths:
+      - 'skills/wiki-migration/**'
+      - '.github/workflows/verify-migrations.yml'
+  pull_request:
+    branches: [main, rc]
+    paths:
+      - 'skills/wiki-migration/**'
+  workflow_dispatch:
+
+jobs:
+  # ──────────────────────────────────────────────────────────────────
+  # For each migration dir (except _template), apply migrate.sh to its
+  # fixtures and run verify.json assertions. All non-optional must PASS.
+  # ──────────────────────────────────────────────────────────────────
+  apply-and-verify:
+    name: apply each migration to fixtures + verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Discover migrations
+        id: discover
+        run: |
+          set -euo pipefail
+          migs=$(find skills/wiki-migration/migrations -maxdepth 1 -mindepth 1 -type d ! -name '_template' | sort)
+          echo "Discovered migrations:"
+          echo "$migs"
+          echo "migs<<EOF" >> $GITHUB_OUTPUT
+          echo "$migs" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Apply + verify each migration against its fixtures
+        env:
+          # Pass the discovered list via env so it can't be interpolated as shell.
+          # The values come from `find` over our own repo, but env+quoting is the safe pattern.
+          MIGS: ${{ steps.discover.outputs.migs }}
+        run: |
+          set -uo pipefail
+          if [[ -z "$MIGS" ]]; then
+            echo "No real migrations to test (v1.0 ships with none — _template excluded). PASS by vacuous truth."
+            exit 0
+          fi
+          FAIL=0
+          for mig in $MIGS; do
+            mig_basename="$(basename "$mig")"
+            # Migration basename: <page-type>-<from>-to-<to>
+            page_type="${mig_basename%-*-to-*}"
+            from_ver="$(echo "$mig_basename" | grep -oE '[0-9]+-to-[0-9]+' | head -1 | cut -d- -f1)"
+            fixture_dir="skills/wiki-migration/tests/fixtures/${page_type}-v${from_ver}"
+            if [[ ! -d "$fixture_dir" ]]; then
+              echo "  FAIL: $mig has no fixtures at $fixture_dir"
+              FAIL=1
+              continue
+            fi
+            for fp in "$fixture_dir"/*.md; do
+              [[ -f "$fp" ]] || continue
+              echo "::group::Apply $mig to $(basename "$fp")"
+              work=$(mktemp -d)
+              cp "$fp" "$work/page.md"
+              cp "$fp" "$work/snapshot.md"
+              if SF_WIKI_ROOT="$work" SF_SNAPSHOT_DIR="$work" \
+                 skills/wiki-migration/scripts/apply-migration.sh "$mig" "$work/page.md" 2>&1; then
+                if SF_WIKI_ROOT="$work" \
+                   skills/wiki-migration/scripts/verify-page.sh "$mig/verify.json" "$work/page.md" "$work/snapshot.md" 2>&1; then
+                  echo "  OK: $mig × $(basename "$fp")"
+                else
+                  echo "  FAIL: verify.json assertions failed for $mig × $(basename "$fp")"
+                  FAIL=1
+                fi
+              else
+                echo "  FAIL: apply-migration.sh failed for $mig × $(basename "$fp")"
+                FAIL=1
+              fi
+              rm -rf "$work"
+              echo "::endgroup::"
+            done
+          done
+          exit $FAIL
+
+      - name: Confirm _template/ is gated (cannot be invoked)
+        run: |
+          set -uo pipefail
+          tmp=$(mktemp -d)
+          cp skills/wiki-migration/migrations/_template/verify.json "$tmp/v.json"  # any file
+          if SF_WIKI_ROOT="$tmp" SF_SNAPSHOT_DIR="$tmp" \
+             skills/wiki-migration/scripts/apply-migration.sh skills/wiki-migration/migrations/_template "$tmp/v.json" 2>&1 | grep -q "_template is not a real migration"; then
+            echo "  OK: apply-migration.sh refuses _template"
+          else
+            echo "  FAIL: _template gate is not enforced"
+            exit 1
+          fi
+
+  # ──────────────────────────────────────────────────────────────────
+  # schemas.json registry integrity: every migration directory listed
+  # in a page-type's `migrations` array must exist on disk.
+  # ──────────────────────────────────────────────────────────────────
+  registry-integrity:
+    name: schemas.json points only at existing migrations
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          python3 <<'PY'
+          import json, os, sys
+          reg = json.load(open("skills/wiki-migration/schemas.json"))
+          missing = []
+          for pt, meta in reg["page_types"].items():
+              for mig_id in meta.get("migrations", []):
+                  expected = f"skills/wiki-migration/migrations/{pt}-{mig_id}"
+                  if not os.path.isdir(expected):
+                      missing.append((pt, mig_id, expected))
+                      continue
+                  for required in ("README.md", "verify.json"):
+                      if not os.path.isfile(os.path.join(expected, required)):
+                          missing.append((pt, mig_id, f"{expected}/{required}"))
+                  has_sh = os.path.isfile(os.path.join(expected, "migrate.sh"))
+                  has_md = os.path.isfile(os.path.join(expected, "migrate.md"))
+                  if not (has_sh or has_md):
+                      missing.append((pt, mig_id, f"{expected}/migrate.sh OR migrate.md"))
+          if missing:
+              print("MISSING migration artifacts:")
+              for pt, mig_id, path in missing:
+                  print(f"  {pt} {mig_id}: {path}")
+              sys.exit(1)
+          print(f"OK: all registered migrations exist on disk ({sum(len(m.get('migrations', [])) for m in reg['page_types'].values())} migrations checked)")
+          PY

@@ -1,0 +1,68 @@
+# `claude plugin validate` baseline — captured 2026-05-28 (refreshed after lifecycle-2 YAML fix)
+
+This file is the verbatim output of running the validator against the in-progress plugin tree. CI re-runs the same commands in `.github/workflows/validate.yml`. Any new warnings/errors are flagged for triage.
+
+CC version at capture time: 2.1.154 (verified via `claude --version`)
+
+## Command 1: plugin validation (strict mode)
+
+```
+$ claude plugin validate ./plugins/startup-framework --strict
+
+Validating plugin manifest: /home/hsozer/Dev/startup-framework/plugins/startup-framework/.claude-plugin/plugin.json
+
+✔ Validation passed
+```
+
+**Status**: clean. Previous ERROR 1 (sf-improve-skill YAML parse error) resolved by lifecycle-2 via Option B (annotation moved to YAML comment).
+
+## Command 2: marketplace validation
+
+```
+$ claude plugin validate /home/hsozer/Dev/startup-framework
+
+Validating marketplace manifest: /home/hsozer/Dev/startup-framework/.claude-plugin/marketplace.json
+
+✔ Validation passed
+```
+
+**Status**: marketplace manifest clean.
+
+## Composite state
+
+Both manifest validations pass with `--strict`. Zero errors, zero warnings, zero notes.
+
+## Plugin tree assembly via symlinks
+
+Per CC docs (https://code.claude.com/docs/en/plugins-reference § Share files within a marketplace with symlinks): "Elsewhere within the same marketplace: the symlink is dereferenced. The target's content is copied into the cache in its place."
+
+The dev repo's `plugins/startup-framework/` contains:
+- `.claude-plugin/plugin.json` — physical manifest
+- `skills` → symlink to `../../skills` (resolved on publish — dereferenced into the cache)
+- `hooks` → symlink to `../../hooks` (resolved on publish)
+- `commands` → not yet created; will symlink to `../../commands` once peers land slash command markdown
+
+This lets every teammate continue developing in flat top-level dirs (the team's converged convention) while the published plugin tree assembles into the CC-expected layout via symlinks. Validator confirms this is supported.
+
+## Regenerating this baseline
+
+```bash
+cd /home/hsozer/Dev/startup-framework
+{
+  echo '# `claude plugin validate` baseline — captured '$(date -u +%Y-%m-%d)
+  echo
+  echo '## Command 1: plugin validation (strict mode)'
+  echo
+  echo '```'
+  claude plugin validate ./plugins/startup-framework --strict
+  echo '```'
+  echo
+  echo '## Command 2: marketplace validation'
+  echo
+  echo '```'
+  claude plugin validate .
+  echo '```'
+} > tests/integration/plugin-validate-baseline.txt 2>&1
+```
+
+CI workflow `validate.yml` runs the equivalent commands on every push to main and rc, plus every PR. The CI's expectation: ZERO errors. Currently 1 error tracked (sf-improve-skill YAML) — fix lands, CI flips green, this baseline regenerates.

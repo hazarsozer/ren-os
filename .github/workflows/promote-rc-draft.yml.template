@@ -1,0 +1,164 @@
+# promote-rc-draft.yml.template
+#
+# This workflow lives in the sf-marketplace-rc REPO, not in this (sf-marketplace stable) repo.
+# Copy to `<sf-marketplace-rc>/.github/workflows/promote-rc-draft.yml` at first-ship.
+#
+# Purpose: when an RC tag matching `v*.*.*-rc.final` is pushed to sf-marketplace-rc,
+# open a DRAFT pull request against sf-marketplace's main branch containing the diff.
+# Human gate preserved — no auto-merge. Maintainer reviews + merges manually.
+#
+# Per docs/RELEASING.md § Step 6 of the RC pipeline.
+#
+# Requires a PAT (PERSONAL_ACCESS_TOKEN secret) with `repo` scope on BOTH repos —
+# the default GITHUB_TOKEN can't open PRs across repositories. The maintainer creates
+# this PAT in their GitHub settings and stores it as a secret named PROMOTE_RC_PAT
+# on the sf-marketplace-rc repo.
+#
+# To activate after first-ship:
+#   1. cp .github/workflows/promote-rc-draft.yml.template .github/workflows/promote-rc-draft.yml
+#   2. Replace PLACEHOLDER-ORG with the actual org name in both repo references
+#   3. Push to sf-marketplace-rc
+#   4. Tag a release candidate with the suffix `-rc.final` to trigger
+#
+# Optional v1.1 enhancement: emit a Slack/Discord notification when the draft PR opens.
+
+name: promote-rc-to-stable-draft
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+-rc.final'
+
+permissions:
+  contents: read
+
+jobs:
+  open-draft-pr:
+    name: Open draft PR against sf-marketplace
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sf-marketplace-rc at the tag
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Parse rc tag
+        id: parse
+        env:
+          RAW_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          # github.ref_name for tag pushes is the bare tag name (e.g. v1.3.0-rc.final).
+          # Strip -rc.final to compute the stable version.
+          STABLE_VER="${RAW_TAG#v}"
+          STABLE_VER="${STABLE_VER%-rc.final}"
+          echo "stable-ver=$STABLE_VER" >> "$GITHUB_OUTPUT"
+          echo "rc-tag=$RAW_TAG" >> "$GITHUB_OUTPUT"
+          echo "Tag $RAW_TAG → stable v$STABLE_VER"
+
+      - name: Set up workspaces
+        env:
+          PAT: ${{ secrets.PROMOTE_RC_PAT }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${PAT}" ]]; then
+            echo "FAIL: PROMOTE_RC_PAT secret not set. See top of this workflow for setup instructions."
+            exit 1
+          fi
+          # Clone the stable repo into ./stable
+          git clone https://x-access-token:${PAT}@github.com/PLACEHOLDER-ORG/sf-marketplace.git stable
+          # rc repo is already in the workspace (where actions/checkout deposited it)
+
+      - name: Sync rc plugin tree into stable
+        env:
+          STABLE_VER: ${{ steps.parse.outputs.stable-ver }}
+        run: |
+          set -euo pipefail
+          # Create the promotion branch
+          cd stable
+          BRANCH="promote/v${STABLE_VER}"
+          git checkout -b "$BRANCH"
+
+          # Copy the entire plugin tree from rc to stable.
+          # NOTE: this overwrites stable's plugins/ — the human reviewer's job is to confirm this is correct.
+          rsync -av --delete ../plugins/ ./plugins/
+
+          # Update plugin.json version to drop the -rc suffix (we're promoting THIS rc to stable)
+          PJ=plugins/startup-framework/.claude-plugin/plugin.json
+          python3 -c "
+          import json
+          d = json.load(open('$PJ'))
+          d['version'] = '$STABLE_VER'
+          json.dump(d, open('$PJ', 'w'), indent=2)
+          print(f'  set plugin.json#version = \"$STABLE_VER\"')
+          "
+
+          # CHANGELOG entry for the stable release — borrow from rc's CHANGELOG.
+          # The reviewer should verify the date + ensure the entry reflects the promoted state.
+          # We don't auto-edit CHANGELOG.md here; we leave it for human review.
+
+          git config user.name "promote-rc-bot"
+          git config user.email "promote-rc@github.actions"
+          git add -A
+          git commit -m "promote: v${STABLE_VER} (from rc tag ${{ steps.parse.outputs.rc-tag }})"
+
+      - name: Push promotion branch + open draft PR
+        env:
+          PAT: ${{ secrets.PROMOTE_RC_PAT }}
+          STABLE_VER: ${{ steps.parse.outputs.stable-ver }}
+          RC_TAG: ${{ steps.parse.outputs.rc-tag }}
+        run: |
+          set -euo pipefail
+          cd stable
+          BRANCH="promote/v${STABLE_VER}"
+          git push origin "$BRANCH"
+
+          # Open the draft PR via gh
+          gh auth setup-git --hostname github.com
+          BODY=$(cat <<EOF
+          # Promote v${STABLE_VER} from RC
+
+          Source: sf-marketplace-rc \`${RC_TAG}\`
+          Dogfood period: see the rc tag's commit history.
+
+          ## Reviewer checklist
+
+          - [ ] CHANGELOG.md has an entry for v${STABLE_VER} with the correct date
+          - [ ] plugin.json#version is exactly \`${STABLE_VER}\` (NOT \`${STABLE_VER}-rc.final\` or similar)
+          - [ ] All workflows on the rc branch were green on the \`${RC_TAG}\` commit
+          - [ ] No schema migrations broken during dogfood
+          - [ ] Activity Feed announcement template ready to post (see docs/RELEASING.md § Stable → Step 5)
+
+          ## When merged
+
+          Tag the merge commit as \`v${STABLE_VER}\`. CI's release workflow takes over from there.
+
+          ## Auto-generated
+
+          This PR was opened automatically by \`promote-rc-draft.yml\` in sf-marketplace-rc.
+          Created via the rc.final tag on the dogfood branch.
+          EOF
+          )
+
+          GH_TOKEN="${PAT}" gh pr create \
+            --repo PLACEHOLDER-ORG/sf-marketplace \
+            --title "Promote v${STABLE_VER} from RC (draft — human review required)" \
+            --body "$BODY" \
+            --base main \
+            --head "$BRANCH" \
+            --draft
+
+      - name: Print maintainer next-step reminder
+        env:
+          STABLE_VER: ${{ steps.parse.outputs.stable-ver }}
+        run: |
+          echo ""
+          echo "Draft PR opened at PLACEHOLDER-ORG/sf-marketplace#<...>"
+          echo ""
+          echo "Maintainer's next steps:"
+          echo "  1. Review the PR diff"
+          echo "  2. Verify the reviewer checklist in the PR body"
+          echo "  3. Mark Ready for Review when satisfied"
+          echo "  4. Merge"
+          echo "  5. Tag the merge commit as v${STABLE_VER} (triggers release workflow)"
+          echo "  6. Post the Activity Feed announcement per docs/RELEASING.md"

@@ -1,0 +1,136 @@
+name: validate
+
+on:
+  push:
+    branches: [main, rc]
+  pull_request:
+    branches: [main, rc]
+  workflow_dispatch:
+
+jobs:
+  # ──────────────────────────────────────────────────────────────────
+  # JSON-syntax + JSON-Schema validation of registries + manifests
+  # ──────────────────────────────────────────────────────────────────
+  schemas:
+    name: validate JSON schemas + registry
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install jsonschema
+        run: pip install --quiet jsonschema
+
+      - name: Validate JSON syntax of all manifests + registries
+        run: |
+          set -euo pipefail
+          FILES=(
+            .claude-plugin/marketplace.json
+            plugins/startup-framework/.claude-plugin/plugin.json
+            skills/wiki-migration/schemas.json
+            skills/wiki-migration/schemas.schema.json
+            skills/wiki-migration/verify.schema.json
+            skills/wiki-migration/migrations/_template/verify.json
+          )
+          for f in "${FILES[@]}"; do
+            python3 -c "import json; json.load(open('$f'))" && echo "  OK: $f"
+          done
+
+      - name: Validate schemas.json against schemas.schema.json
+        run: |
+          python3 <<'PY'
+          import json, jsonschema
+          reg = json.load(open("skills/wiki-migration/schemas.json"))
+          schema = json.load(open("skills/wiki-migration/schemas.schema.json"))
+          jsonschema.validate(reg, schema)
+          print("  OK: schemas.json conforms to schemas.schema.json")
+          PY
+
+      - name: Validate schemas.schema.json + verify.schema.json are valid Draft 2020-12
+        run: |
+          python3 <<'PY'
+          import json, jsonschema
+          for f in ("skills/wiki-migration/schemas.schema.json", "skills/wiki-migration/verify.schema.json"):
+              s = json.load(open(f))
+              jsonschema.Draft202012Validator.check_schema(s)
+              print(f"  OK: {f} is a valid Draft 2020-12 JSON Schema")
+          PY
+
+      - name: Validate _template/verify.json against verify.schema.json
+        run: |
+          python3 <<'PY'
+          import json, jsonschema
+          v = json.load(open("skills/wiki-migration/migrations/_template/verify.json"))
+          s = json.load(open("skills/wiki-migration/verify.schema.json"))
+          jsonschema.validate(v, s)
+          print("  OK: _template/verify.json conforms to verify.schema.json")
+          PY
+
+      - name: Ensure plugin.json#version matches marketplace.json#plugins[0] (if both have version)
+        run: |
+          python3 <<'PY'
+          import json
+          pj = json.load(open("plugins/startup-framework/.claude-plugin/plugin.json"))
+          mj = json.load(open(".claude-plugin/marketplace.json"))
+          mj_plugin = mj["plugins"][0]
+          # Per CC docs: plugin.json wins silently when both are set. We chose to NOT set version in marketplace entry.
+          assert "version" not in mj_plugin, (
+              "marketplace.json plugin entry should NOT set 'version' (per CC docs warning about silent override). "
+              "Bump plugin.json#version instead."
+          )
+          assert pj["version"], "plugin.json must declare a version"
+          print(f"  OK: plugin.json#version = {pj['version']}; marketplace entry correctly omits version")
+          PY
+
+      - name: Run claude plugin validate --strict (if available)
+        run: |
+          if command -v claude >/dev/null; then
+            claude plugin validate ./plugins/startup-framework --strict
+          else
+            echo "  SKIP: claude CLI not available in this runner (acceptable for v1.0; tighten in v1.1)"
+          fi
+
+  # ──────────────────────────────────────────────────────────────────
+  # Shell scripts: syntax check + shellcheck (if available)
+  # ──────────────────────────────────────────────────────────────────
+  shell:
+    name: shell-script lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: bash -n on every .sh
+        run: |
+          set -euo pipefail
+          FAIL=0
+          while IFS= read -r f; do
+            if bash -n "$f"; then
+              echo "  OK: $f"
+            else
+              echo "  FAIL: $f"
+              FAIL=1
+            fi
+          done < <(find skills hooks -name '*.sh' -type f 2>/dev/null)
+          exit $FAIL
+
+      - name: shellcheck (warn-only)
+        run: |
+          if command -v shellcheck >/dev/null; then
+            find skills hooks -name '*.sh' -type f -exec shellcheck --severity=warning {} + || true
+          else
+            echo "shellcheck not in PATH; install in v1.1"
+          fi
+
+  # ──────────────────────────────────────────────────────────────────
+  # version-compare.sh self-tests
+  # ──────────────────────────────────────────────────────────────────
+  semver:
+    name: semver comparison self-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash skills/sf-update/scripts/version-compare.sh --self-test

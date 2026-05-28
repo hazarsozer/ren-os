@@ -1,0 +1,29 @@
+---
+title: "{{project_title}} — Log"
+type: project-log-entry
+schema_version: 1
+framework_version: "{{framework_version}}"
+project_name: {{project_name}}
+created: {{today}}
+updated: {{today}}
+---
+
+# {{project_title}} — Log
+
+Chronological, append-only record of events for this project. Each entry starts with `## [YYYY-MM-DD] <type> | <description>` for grep-parseable navigation.
+
+Event types:
+- `init` — sub-wiki bootstrap
+- `ingest` — external source brought into this project's `research/`
+- `decision` — project-level ADR recorded in `decisions/`
+- `milestone` — roadmap milestone completed
+- `phase` — roadmap phase transition
+- `wrap` — `/sf:wrap` promoted session signal
+
+Chronological order is the invariant. Same-day reordering is fine while you're still appending today; once the next day's first entry lands, earlier days are frozen.
+
+---
+
+## [{{today}}] init | Project sub-wiki bootstrapped
+
+Created by `/sf:bootstrap-project` for {{handle}}. Framework version {{framework_version}}. Standard taxonomy stamped: PROJECT, REQUIREMENTS, ROADMAP, STATE, CONTEXT + research/decisions/patterns subdirs.

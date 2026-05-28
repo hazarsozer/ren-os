@@ -1,0 +1,138 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'           # stable tags
+      - 'v[0-9]+.[0-9]+.[0-9]+-rc.[0-9]+' # RC tags
+
+permissions:
+  contents: write  # for creating GitHub releases
+
+jobs:
+  preflight:
+    name: assert tag matches plugin.json + CHANGELOG entry
+    runs-on: ubuntu-latest
+    outputs:
+      tag-version: ${{ steps.parse.outputs.tag-version }}
+      is-rc: ${{ steps.parse.outputs.is-rc }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # need history for CHANGELOG date check
+
+      - name: Parse tag
+        id: parse
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF#refs/tags/}"
+          VER="${TAG#v}"
+          echo "tag-version=$VER" >> $GITHUB_OUTPUT
+          if [[ "$VER" =~ -rc\.[0-9]+$ ]]; then
+            echo "is-rc=true" >> $GITHUB_OUTPUT
+          else
+            echo "is-rc=false" >> $GITHUB_OUTPUT
+          fi
+          echo "Tagged version: $VER (RC: $([ "$VER" != "${VER%-rc.*}" ] && echo yes || echo no))"
+
+      - name: Assert plugin.json#version == tag
+        env:
+          TAG_VER: ${{ steps.parse.outputs.tag-version }}
+        run: |
+          set -euo pipefail
+          PJ_VER=$(python3 -c "import json; print(json.load(open('plugins/startup-framework/.claude-plugin/plugin.json'))['version'])")
+          if [[ "$TAG_VER" != "$PJ_VER" ]]; then
+            echo "FAIL: tag is v${TAG_VER} but plugin.json#version is $PJ_VER"
+            echo "Either bump plugin.json#version to $TAG_VER, or delete the tag locally + retag with v$PJ_VER."
+            echo "NEVER delete + re-push a public tag (per docs/RELEASING.md)."
+            exit 1
+          fi
+          echo "OK: plugin.json#version matches tag: $PJ_VER"
+
+      - name: Assert CHANGELOG entry exists for this version
+        env:
+          TAG_VER: ${{ steps.parse.outputs.tag-version }}
+        run: |
+          set -euo pipefail
+          # Use grep -F with -e to avoid regex injection from TAG_VER (defensive even though
+          # the tag glob restricts it to numeric semver).
+          if ! grep -qE "^## \[?${TAG_VER}\]?" CHANGELOG.md; then
+            echo "FAIL: CHANGELOG.md has no entry for v${TAG_VER}"
+            echo "Add one under '## [${TAG_VER}] — YYYY-MM-DD' with the standard sections."
+            exit 1
+          fi
+          echo "OK: CHANGELOG entry present for v${TAG_VER}"
+
+      - name: Run validate workflow's checks inline (last gate)
+        run: |
+          set -euo pipefail
+          # JSON syntax
+          python3 -c "
+          import json
+          for f in ['.claude-plugin/marketplace.json',
+                    'plugins/startup-framework/.claude-plugin/plugin.json',
+                    'skills/wiki-migration/schemas.json']:
+              json.load(open(f))
+              print(f'  OK: {f}')
+          "
+          # Shell syntax
+          while IFS= read -r f; do bash -n "$f"; done < <(find skills hooks -name '*.sh' -type f 2>/dev/null)
+          echo "  OK: all shell scripts pass bash -n"
+          # Semver self-test
+          bash skills/sf-update/scripts/version-compare.sh --self-test
+
+  release:
+    name: create GitHub Release
+    needs: preflight
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract CHANGELOG excerpt
+        id: changelog
+        env:
+          TAG_VER: ${{ needs.preflight.outputs.tag-version }}
+        run: |
+          set -euo pipefail
+          # Print everything between this version's heading and the next ## heading.
+          # TAG_VER comes from a tag matched by the on.push.tags glob (numeric semver only),
+          # so awk regex injection is bounded. We still pass via env+awk -v for cleanliness.
+          awk -v ver="$TAG_VER" '
+            $0 ~ "^## \\[?" ver "\\]?" { capture=1; next }
+            capture && /^## / { exit }
+            capture { print }
+          ' CHANGELOG.md > /tmp/changelog_excerpt.md
+          echo "Excerpt preview:"
+          head -30 /tmp/changelog_excerpt.md
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          IS_RC: ${{ needs.preflight.outputs.is-rc }}
+        run: |
+          set -euo pipefail
+          # GITHUB_REF is provided by the Actions runner; tag content already gated by on.push.tags glob.
+          TAG="${GITHUB_REF#refs/tags/}"
+          PRERELEASE_FLAG=""
+          if [[ "$IS_RC" == "true" ]]; then
+            PRERELEASE_FLAG="--prerelease"
+          fi
+          gh release create "$TAG" \
+            --title "Startup Framework $TAG" \
+            --notes-file /tmp/changelog_excerpt.md \
+            $PRERELEASE_FLAG
+
+      - name: Print Activity Feed announcement template
+        env:
+          TAG_VER: ${{ needs.preflight.outputs.tag-version }}
+          IS_RC: ${{ needs.preflight.outputs.is-rc }}
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          NOW=$(date -u +'%Y-%m-%d %H:%M')
+          echo "Post this in your <handle>.log.md in the activity-feed repo:"
+          echo ""
+          if [[ "$IS_RC" == "true" ]]; then
+            echo "## [$NOW] release | <handle> | framework $TAG (release candidate) shipped — see CHANGELOG; dogfooding"
+          else
+            echo "## [$NOW] release | <handle> | framework $TAG stable shipped — see CHANGELOG"
+          fi

@@ -1,0 +1,906 @@
+Video: What is an Agent Harness? and how to build a great one!
+Owner: Prompt Engineering
+
+Transcript:
+What Is a Harness
+0:00
+Everybody talks about agent harnesses,
+0:02
+but what exactly is a harness? Now, even
+0:05
+people who are actively building agents
+0:07
+can't always gives you a clean answer.
+0:10
+Uh, the word gets thrown around
+0:12
+constantly, but nobody really agrees on
+0:15
+what exactly it means. So, in this
+0:17
+video, I want to do three things. First,
+0:21
+define what a harness actually is and
+0:24
+[snorts] just as more importantly, what
+0:26
+it's not.
+0:28
+Then we will walk through nine
+0:30
+components that I think makes a modern
+0:33
+harness. And finally we will build a
+0:35
+tiny one in Python. So you can see
+0:38
+exactly what is going inside. This is
+0:42
+going to be especially important for
+0:43
+people who are thinking about building
+0:45
+agents and harnesses. In simple term, a
+0:49
+harness is a fixed architecture that
+0:51
+turns a model into an agent. So if you
+0:54
+think about modern LLMs or models, these
+0:57
+are just one short text generators.
+1:01
+You ask a question, it it answers and
+1:03
+stops. A harness is what gives it the
+1:06
+ability to take action, see the
+1:08
+consequences and keep going until the
+1:11
+problem is actually solved. So think of
+1:15
+um a model as the engine and the harness
+1:18
+around it as the car. that what's make
+1:22
+an agent. So a really good example of
+1:25
+this is um agentic coding tools like
+1:28
+Codex, cursor,
+1:31
+uh clot code, winds surf. These are all
+1:34
+harnesses.
+1:35
+Each one started from a concrete problem
+1:38
+making a model write and edit code
+1:41
+across a real repository.
+1:44
+And I think they have uh converged on
+1:47
+remarkably similar architectures. Now
+Harness vs Frameworks
+1:50
+we're going to look at that architecture
+1:52
+in a minute but first I want to talk
+1:54
+about something else that you probably
+1:56
+have heard about and this is frameworks.
+1:59
+So think about things like langchain
+2:01
+langraph autogen crewi these are not
+2:04
+harnesses and I think this distinction
+2:07
+is really worth making because right now
+2:09
+people are using these terms
+2:11
+interchangeably and it's kind of getting
+2:14
+confusing.
+2:16
+So a framework gives you abstraction. uh
+2:19
+think about statecraftrafts, chains,
+2:21
+memory cans and retrievers. You as a
+2:24
+user have to wire them together.
+2:28
+The fundamental assumption is that you
+2:30
+the human architect will configure these
+2:33
+pieces together.
+2:35
+Now harness on the other side uh
+2:38
+is from opposite direction. There's no
+2:42
+assembly step. It basically uh ships a
+2:46
+working agent and in simple terms it's
+2:50
+just a while loop with a tool registry
+2:53
+and permission layer and everything
+2:55
+comes wired together. Now another way to
+2:58
+think about this is that a framework is
+3:00
+built for a human to assemble an agent.
+3:03
+A harness is built for the agent itself
+3:05
+to a task. And in big picture you just
+3:09
+provide the goal. The harness will
+3:11
+handle the rest. So in the rest of the
+3:13
+video, we're going to primarily focus on
+3:15
+harnesses and what make them
+3:18
+interesting. Okay. So what exactly is
+Nine Core Components
+3:20
+inside a harness? I would say there are
+3:22
+nine main components that you need to
+3:24
+consider if you're building an agentic
+3:27
+harness. Now we're going to uh go
+3:30
+through the list. This is mostly
+3:32
+opinionated
+3:34
+uh architecture, but something that I
+3:36
+have seen to work really nicely in
+3:38
+practice. I'll try to tie it together to
+3:42
+clot code because I think this is um an
+3:44
+example of a really great harness put
+3:47
+together.
+3:48
+Okay. So the first component is the
+Loop and Context Control
+3:50
+while loop. Um this is basically the
+3:54
+foundation. It's the outer iteration
+3:57
+loop.
+3:58
+The harness is at its core of while
+4:02
+loop. The model reads its system uh
+4:04
+prompt, decides which tool to call, runs
+4:08
+the tool, feeds the result back into the
+4:10
+context and loops again.
+4:13
+And this process keeps the uh model
+4:16
+produces a text only response or it uh
+4:22
+hits a maximum iteration cap. Now we're
+4:24
+talking about uh text only models but
+4:27
+the same can apply to multimodel models
+4:29
+as well. So think of this outer loop as
+4:34
+the whole engine that runs everything.
+4:37
+Now number two is context management. On
+4:40
+every turn the tree grows. Um as you
+4:44
+encounter more uh user messages, more
+4:47
+tool calls, more you're going to see
+4:49
+that uh you hit the context limit of
+4:54
+your large language model.
+4:57
+So the harness has to decide what to
+5:00
+keep verbatim, what to summarize and
+5:02
+what to throw away. In cloud codes
+5:05
+example, the budget used to be around
+5:07
+200,000 tokens. Now they have increased
+5:09
+it to 1 million token in case of opus.
+5:12
+But let's say when you are reaching
+5:14
+almost half of it um or maybe 80 to 90%,
+5:18
+it triggers a compaction. Some of the
+5:21
+most recent messages are going to stay
+5:22
+in full. everything older gets
+5:25
+summarized. Now this compaction is very
+5:29
+important um and it can have some real
+5:33
+bad consequences if not um properly.
+5:37
+So you need to be very careful about
+5:39
+context management. Now the third
+Tools Skills and Subagents
+5:41
+component uh is skills and tools. So
+5:44
+tools are the primitives that reads a
+5:47
+file, a data file, run bash, search
+5:50
+code. skills are a top a layer on the
+5:55
+top. So they are how organizational
+5:58
+knowledge gets encoded. Uh usually
+6:01
+you're going to see them in my own
+6:03
+files. Now to think about u tools and
+6:06
+skills, I would say tools are universal.
+6:08
+Uh skills are specific to your team,
+6:11
+your workflow and then there is the
+6:14
+registry. uh so it tells what is
+6:16
+available uh what permission each uh
+6:19
+thing needs how the call gets
+6:21
+dispatched. Now the fourth component is
+6:24
+sub agent management. Now at some point
+6:27
+um a task gets too big or too parallel
+6:30
+for a single conversation thread. So the
+6:33
+harness uh is going to create sub aents
+6:36
+that work in isolation. Each sub agent
+6:39
+gets its own session, its own restricted
+6:43
+set of tools and a focus system prompt
+6:46
+that says uh you're working on this
+6:48
+specific task. Now the idea over there
+6:50
+is to span, restrict and collect uh the
+6:54
+outputs. That's kind of the pattern you
+6:56
+want to use. If you want to learn about
+Sponsor - Coursera
+6:59
+generative AI in a structured way, you
+7:01
+will love today's sponsor, which is
+7:04
+Corsera. They have a number of different
+7:06
+courses on generative AI. Here are the
+7:09
+four that I highly recommend for you as
+7:12
+a beginner.
+7:14
+Start with Google AI essential. It's
+7:16
+about 10 hours taught by Google's own AI
+7:19
+team. Over 1.7 million people have
+7:23
+already enrolled. Next, Wonderbuilts
+7:25
+prompt engineering for chart GPT. This
+7:28
+is where you learn the actual patterns.
+7:30
+Chain of thought, few short, persona
+7:31
+prompting, etc. If you are a developer,
+7:35
+jump to their generative AI with large
+7:38
+language models built with AWS. It's a
+7:41
+hands-on lab. You fine-tune, deploy, and
+7:44
+ship real LLM applications.
+7:46
+And if you want a full career on ramp,
+7:50
+IBM's AI developer professional
+7:52
+certificate is for you. You get to build
+7:54
+chatbots, apps, rack, and agents. Right
+7:59
+now, get 40% off of three months of
+8:02
+Corsera Plus through the link in the
+8:04
+description. Now, back to the video.
+8:08
+Number five is built-in skills. So, we
+8:10
+already talked about skills um that you
+8:12
+provide as a user, but every harness
+8:15
+ships with a baseline set of kit that
+8:18
+are going to work out of the box. So,
+8:20
+think about file operation, read, write,
+8:23
+edit, search, or cell execution, um code
+8:26
+navigation, things like that. Now for
+8:29
+modern horses, these are really
+8:31
+non-negotiable. If your agent cannot
+8:33
+read or edit files, it isn't a coding
+8:36
+agent.
+8:38
+So beyond the primitives, modern
+8:40
+harnesses also ship with higher level
+8:42
+skills. Uh for example,
+8:46
+a harness can have a skill of how to
+8:48
+make a git commit. Uh how to open a pull
+8:51
+request, how to run test results. Now,
+8:54
+some of these built-in scales are going
+8:56
+to be uh specific to the vendor or
+9:01
+creator of the harness. Number six is
+Memory Prompts and Hooks
+9:04
+session persistence or memory. So, a
+9:07
+long agent session is stateful. If the
+9:09
+process crashes, you lose everything
+9:12
+unless the harness writes state to disk.
+9:16
+And the mo uh the way the modern
+9:18
+harnesses do this is pretty elegant. So
+9:20
+typically uh they're going to use append
+9:24
+only JSON files or maybe markdown files.
+9:27
+So every message, every tool results,
+9:30
+every compaction event gets one line.
+9:33
+Now the beauty of this is that you can
+9:35
+resume exactly where you left off. U I
+9:39
+actually recently uh attended a talk
+9:41
+from the anthropic team where they were
+9:43
+discussing about how they built managed
+9:46
+agents. uh I'm going to create cover
+9:49
+that in another video but they had the
+9:52
+session uh management separate from the
+9:55
+harness itself which was I think a very
+9:57
+interesting design.
+9:59
+Number seven is system prompt assembly.
+10:03
+Now this is the one that will surprise
+10:05
+most people. The system prompt is not a
+10:08
+static string. It's basically a pipeline
+10:11
+that walks um ancestor directories
+10:15
+looking for specific types of
+10:17
+instructions. So if you have cloud.md or
+10:19
+agents.md
+10:22
+is going to inject those into the system
+10:25
+prompt. Now you also want to be a little
+10:27
+careful here um because most these um
+10:31
+third party harnesses or even the first
+10:34
+party harnesses have really strict
+10:36
+prompt caching. Now if you dynamically
+10:40
+introduce uh components to the system
+10:42
+prompt that is going to break the
+10:43
+caching right so you need to be careful
+10:46
+about that but in certain situations you
+10:48
+want to uh assemble the system prompts.
+10:53
+Okay number eight is going to be life
+10:55
+cycle hooks. So this is extensibility
+10:58
+scene u hooks let you inject custom
+11:01
+logic before or after a tool runs
+11:04
+without touching the harness itself. So
+11:07
+a pre-tool hook fires before execution.
+11:10
+Uh it receives the tool name the input
+11:14
+and can allow deny or modify the call. A
+11:18
+post tool hook uh runs after and can
+11:22
+inspect the results. So the protocol is
+11:24
+kind of uh think about uh a JSON file
+11:28
+with exit codes for allow or deny. Now
+11:31
+the beauty is that hooks also enable uh
+11:34
+intercom communication between different
+11:36
+hard and hooks are how enterprises today
+11:38
+adopt harnesses themselves. Now let's
+Permissions and Safety Layer
+11:41
+talk about number nine permissions and
+11:43
+safety. So this is the layer that makes
+11:45
+the difference between a useful tool and
+11:48
+a dangerous one. Modern harnesses define
+11:51
+a hierarchy of permission modes.
+11:55
+You can have read on space right um full
+11:57
+access. Each tool declares the minimum
+12:00
+permission it requires. Now the job of
+12:03
+the harness is to enforce that at
+12:06
+dispatch time before the tool even um
+12:10
+ever runs. And for tools like bash the
+12:12
+harness even classifies the commands
+12:14
+dynamically.
+12:16
+So let's say u if you say list files uh
+12:20
+is going to be read only. uh if you want
+12:23
+to delete something that will need full
+12:25
+access and uh the harness figures it out
+12:29
+by passing the commands string on top of
+12:32
+the static permission you get
+12:34
+interactive approvals the agent can
+12:36
+pause ask should I run this right so
+12:39
+before executing anything dangerous you
+12:41
+want to have this safety layer built
+12:44
+into the harness all right so these are
+12:47
+um the nine uh components that I think
+12:49
+every harness needs to have iteration
+12:52
+loop, context management, skills and
+12:54
+tools, sub aents, built-in uh skills,
+12:57
+session persistence or memory, system
+13:00
+prompt assembly, life cycle hooks and
+13:02
+permissions. Now, the easiest way to
+Build a Mini Harness
+13:05
+actually understand um a harness is to
+13:08
+build one. So, let's write a minimal
+13:10
+version of Python. Um nothing fancy,
+13:14
+just enough to see all these components
+13:15
+together.
+Reference Implementation Walkthrough
+13:18
+Okay, so in this part we're going to
+13:20
+quickly go over a reference
+13:21
+implementation. Uh so think of this as a
+13:25
+structure or template that you want to
+13:27
+use if you're building a harness.
+13:30
+Okay, so the main engine is the while
+13:33
+loop uh that basically controls
+13:35
+everything. It assembles the system
+13:36
+prompt and starts looping. Now on every
+13:39
+iteration um the context
+13:43
+is going to be compacted if it grows too
+13:46
+large. All of these things plus the two
+13:49
+calls and uh calling to sub agents are
+13:53
+going to be implemented within this
+13:55
+while loop.
+13:57
+You also want to cap how many iterations
+13:59
+are going to be in this loop so that it
+14:02
+never runs forever. This is really the
+14:05
+entire engine. Uh every other file in
+14:07
+the project exists to support these few
+14:09
+lines. Now uh this code implements
+14:12
+simple context management. Um in in this
+14:15
+very simple form we are just doing
+14:18
+compaction. So if the
+14:22
+history uh grows beyond a certain point
+14:25
+we just summarize uh some of the older
+14:28
+conversations and put them together. Now
+14:30
+there are more advanced uh compaction
+14:32
+techniques but this is a very simple
+14:35
+reference implementation.
+14:37
+Now, if you're making tool calls, you
+14:39
+also need to decide whether you're going
+14:40
+to bring in everything that is done
+14:43
+within the tool call or only the input
+14:45
+and outputs. So, those are the design
+14:48
+design decisions that you'll have to
+14:49
+take as an architect. Okay, this code uh
+14:53
+implements a simple tool and skills
+14:55
+registry. So every tool in the harness
+14:56
+is described by a small um data class, a
+15:00
+name, what type of permissions they're
+15:02
+are going to have in a handler function
+15:04
+and one live line um description. The
+15:08
+registry is just a dictionary that maps
+15:11
+the tool name to that record. Now there
+15:14
+are a few functions. Uh calling register
+15:17
+adds a new tool. Calling get u retrieves
+15:21
+one for dispatch. calling descriptors
+15:25
+return a lightweight version of the list
+15:28
+which is going to contain name
+15:29
+permissions description
+15:32
+that we are going to send to the model
+15:34
+so it knows what is available scales are
+15:37
+registered um the exact same way they
+15:40
+are just tools whose handle handler uh
+15:43
+reads a markdown file at invocation time
+15:48
+next is sub aents uh so you can
+15:51
+implement multiple different sub aents
+15:53
+This code looks at three different
+15:55
+things for
+15:57
+uh exploration, general and then
+16:00
+verification.
+16:02
+Now each archetype has its own
+16:04
+permission levels, its own restricted
+16:06
+tool list and its own focus uh system
+16:09
+prompt. Now every uh harness also needs
+16:12
+to have built-in primitives. Uh these
+16:14
+are the non-negotiable tools every
+16:16
+coding harness must ship with. Uh
+16:19
+example of this would be reading files,
+16:21
+running bash commands. Now this also
+16:23
+depends on uh the type of work you want
+16:27
+your agent to perform.
+16:30
+Now in this case one thing to keep in
+16:32
+mind um these primitives
+16:35
+need to use pure standard libraries. You
+16:38
+don't want to rely on uh framework
+16:40
+dependencies
+16:41
+u which is going to be critical because
+16:44
+that actually enables the model to take
+16:46
+actions.
+16:49
+Okay. So here is a simple reference
+16:51
+implementation for um session memory or
+16:56
+uh context p uh persistence.
+17:00
+Now every event the agent generates gets
+17:02
+written to disk as one line of JSON. You
+17:06
+can also use markdowns but JSON seems to
+17:08
+be uh the better choice.
+17:12
+The append method opens the file in uh
+17:15
+append mode, writes the event and
+17:17
+immediately fleshes it. That way if the
+17:21
+process crashes after the next line,
+17:23
+this one is already safe on disk. The
+17:27
+replay method reads the uh file back
+17:30
+line by line and reconstructs the full
+17:32
+session because the file is append only.
+17:35
+uh two runs of the harness can share the
+17:38
+same log without stepping on each other.
+17:41
+If the harness dies, the file does not.
+17:44
+This is the whole durability story. Uh
+17:47
+if you want to persist memory.
+17:52
+Okay. Uh next one is system prompt
+17:54
+assembly. Uh so you don't have to have a
+17:57
+fixed system prompt. You can actually
+17:59
+dynamically
+18:01
+uh load things into the system prompt.
+18:03
+So for example uh you can load
+18:06
+agents.mmdcloud
+18:08
+MD or any other memory files that you
+18:11
+have stored into the system prompt
+18:13
+dynamically just by reading a directory
+18:16
+uh and reading files from disk.
+18:20
+One thing to uh be aware of the order
+18:25
+matters here. So keep the static part
+18:27
+first uh and then dynamically load
+18:30
+content uh second otherwise you're going
+18:33
+to break the prefix caching.
+18:37
+Okay. So next one is hooks uh which are
+18:39
+used for extensibility. Now there are
+18:42
+two different types of hooks. Uh one is
+18:44
+pre-tool hook and the other one is post
+18:47
+tool hook. And the idea is the pre-tool
+18:49
+hook fires before any tool runs and can
+18:53
+u either allow or deny the call. A post
+18:57
+tool hook fires after the tool runs and
+19:00
+sees the output. U it cannot block
+19:03
+anything. It's there to audit uh can be
+19:07
+used for logging and observability.
+19:10
+Okay. The last component is permissions
+19:13
+um and safety. So each tool declares the
+19:17
+minimum permissions it needs. U it can
+19:20
+be read, workspace or full. And now the
+19:22
+hardness needs to uh provide that
+19:25
+extensibility and uh control the
+19:28
+permissions of every tool.
+19:31
+Now there's one more thing that you need
+19:33
+to be aware of. Uh the same tool can be
+19:35
+safe or dangerous depending on the
+19:37
+command. Uh so we uh classify it
+19:41
+dynamically. Safe commands like list uh
+19:45
+concatenation and grip uh stay at read
+19:48
+only. Dangerous commands like uh delete,
+19:51
+pseudo or shutdown jump straight to the
+19:54
+full access. So anything else gets
+19:56
+workspace level. On top of uh these
+19:59
+static rules, the agent can also pause
+20:02
+and ask the user for explicit approval
+20:06
+before running anything destructive. And
+20:09
+this is the part that you need to
+20:11
+implement within your harness. Now,
+20:14
+these are the components that I think
+20:15
+every harness needs to have. Now, do let
+20:18
+me know your thoughts. What type of of
+20:20
+uh components your harness have? And if
+20:24
+you're interested in technical contents
+20:26
+like this, make sure to subscribe to the
+20:28
+channel. Anyways, thanks for watching
+20:30
+and I'll see you in the next one.

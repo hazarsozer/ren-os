@@ -1,0 +1,89 @@
+# Fixture: fresh project bootstrap from a friend who has completed /sf:install
+# and has a populated wiki/identity.md, but no projects yet.
+#
+# Consumed by eval.json test "fresh-bootstrap" (and "kebab-case-validation"
+# which exercises the same starting state with a malformed name).
+
+fixture_name: bootstrap-new-project
+framework_version: "1.0.0"
+simulated_date: "2026-05-29"
+
+environment:
+  XDG_STATE_HOME: /tmp/sf-eval-state
+  home: /tmp/sf-eval-home
+
+filesystem:
+  # ~/.startup-framework/wiki/ exists and is populated by a prior /sf:install run.
+  - path: ~/.startup-framework/wiki/index.md
+    kind: file
+    content_summary: |
+      Master index with frontmatter (schema_version 1, framework_version 1.0.0),
+      empty section headers including '## Projects' (no entries yet),
+      and a 'See also' pointer to log.md.
+
+  - path: ~/.startup-framework/wiki/log.md
+    kind: file
+    content_summary: |
+      Master log with frontmatter and a single init entry from 2026-05-28
+      attributing wiki creation to /sf:install for handle 'hazar'.
+
+  - path: ~/.startup-framework/wiki/identity.md
+    kind: file
+    frontmatter:
+      title: "Hazar's Identity"
+      type: identity
+      schema_version: 1
+      framework_version: "1.0.0"
+      handle: hazar
+      name: "Hazar"
+      created: "2026-05-28"
+      updated: "2026-05-28"
+      phase: ideation
+      languages: [python, typescript]
+      package_managers: [uv, pnpm]
+      clouds: [vercel, supabase]
+      databases: [postgresql, supabase]
+      working_style: balanced
+      communication_style: casual-no-emoji
+      plans_before_code: often
+      tdd_attitude: case-by-case
+      strong_skills: [ai-ml, backend]
+      growth_areas: [frontend, design]
+      contact:
+        timezone: "Europe/Istanbul"
+        working_hours: "10-19 local"
+      skipped_questions: []
+    content_summary: |
+      Markdown body with the standard 5 sections; all populated by a prior
+      /sf:interview run.
+
+  - path: ~/.startup-framework/wiki/research/
+    kind: directory
+  - path: ~/.startup-framework/wiki/decisions/
+    kind: directory
+  - path: ~/.startup-framework/wiki/alternatives/
+    kind: directory
+  - path: ~/.startup-framework/wiki/patterns/
+    kind: directory
+  - path: ~/.startup-framework/wiki/projects/
+    kind: directory
+    note: "Empty — no projects yet. Bootstrap creates the first one under it."
+
+invocation:
+  cwd: ~/.startup-framework/wiki/
+
+expected_writes_after_run:
+  - ~/.startup-framework/wiki/projects/sidecar-v2/PROJECT.md
+  - ~/.startup-framework/wiki/projects/sidecar-v2/REQUIREMENTS.md
+  - ~/.startup-framework/wiki/projects/sidecar-v2/ROADMAP.md
+  - ~/.startup-framework/wiki/projects/sidecar-v2/STATE.md
+  - ~/.startup-framework/wiki/projects/sidecar-v2/CONTEXT.md
+  - ~/.startup-framework/wiki/projects/sidecar-v2/index.md
+  - ~/.startup-framework/wiki/projects/sidecar-v2/log.md
+  - ~/.startup-framework/wiki/projects/sidecar-v2/research/.gitkeep
+  - ~/.startup-framework/wiki/projects/sidecar-v2/decisions/.gitkeep
+  - ~/.startup-framework/wiki/projects/sidecar-v2/patterns/.gitkeep
+
+expected_edits_after_run:
+  - ~/.startup-framework/wiki/index.md
+  - ~/.startup-framework/wiki/log.md

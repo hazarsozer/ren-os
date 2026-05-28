@@ -1,0 +1,311 @@
+Video: THIS Gives Claude Skills a Massive Upgrade (It’s Easy!)
+Owner: Simon Scrapes
+
+Transcript:
+Chapter 1: Stop Downloading Claude Code Skills. Do This Instead.
+0:00
+Downloaded claw code skills are generic.
+0:02
+2 seconds
+They're bloated and they're also at the same time lacking context. But that's not even their biggest problem. They're still built for one task at a time.
+0:10
+10 seconds
+Think copywriting, researching, whatever. Whilst real businesses don't operate like that at all, because real work isn't one process document with
+0:19
+19 seconds
+five different steps, [music] it's a sequence of processes that need to connect to each other. So if you keep thinking of skills in isolation, you'll
+0:27
+27 seconds
+never build out systems that run end to end. So, in this video, I'll show you how to turn your skills into building blocks for bigger workflows. This is
+0:35
+35 seconds
+what I call skill systems so that each output feeds the next and actually drives a real business goal. So, let's get straight into it. So, here's the
+Chapter 2: The Problem with Isolated Skills
+0:43
+43 seconds
+thing about skills. They're designed to do one thing really well. So, if you actually read Anthropic's own guidance on skills, they're really clear about
+0:51
+51 seconds
+this. Skills are supposed to be modular, composable building blocks. The official line is that clog can load multiple
+0:58
+58 seconds
+skills simultaneously and your skill therefore should work well alongside others. So not assuming it's going to be the only skill running. So skills are
+1:07
+1 minute, 7 seconds
+effectively packages of instructions and context with one job each built to plug into bigger systems. But that's where most people go wrong. They take that one
+1:15
+1 minute, 15 seconds
+job rule and use it the wrong way. So two things happen. The first mistake is using skills in total isolation. So
+1:23
+1 minute, 23 seconds
+let's say you download a copywriting skill. It could be this Cory Haynes copywriting skill from his marketing skill pack. You want to use it to improve the way you write LinkedIn
+1:30
+1 minute, 30 seconds
+posts. You manually ask it to draft a LinkedIn post using your copyrightiting skill. It's going to output some copy. But what have you actually done here?
+1:39
+1 minute, 39 seconds
+You've used clog code the same way in which you would actually use something like chat GBT. You've asked it a question. It's come back with advice.
+1:46
+1 minute, 46 seconds
+Yes, it's written a file, but it's effectively given you a single isolated output. You're still going to do the topic research yourself. You're still scheduling this on LinkedIn manually and
+1:55
+1 minute, 55 seconds
+that's because you're treating this copywriting skill as the full process, but it isn't the full process. Think about all the other manual steps that you take. You need to decide on a topic.
+2:05
+2 minutes, 5 seconds
+You need to do research into what other people have posted about that topic. You then might find associated visuals to go with it and then your scheduling on
+2:12
+2 minutes, 12 seconds
+LinkedIn. But what if you could actually package all of that together into one skill system? So instead of a copywriting skill, it's a content
+2:20
+2 minutes, 20 seconds
+creation skill that embodies a copywriting skill, a research skill, a scheduling skill, and it runs on autopilot every week without your
+2:29
+2 minutes, 29 seconds
+inputs. Would that be more of a timesaver for you? Because that's exactly what skill systems are about.
+2:35
+2 minutes, 35 seconds
+And I'm going to show you how to actually build those end to end in cycllo code. And the second mistake is building mega skills. So then you have
+2:42
+2 minutes, 42 seconds
+the opposite end of the spectrum and arguably this one's worse. So people feel that pain of using skills in isolation. So actually end up
+2:50
+2 minutes, 50 seconds
+overcorrecting. They build one giant skill that tries to do everything. So think a 1,000line skill.mmd document.
+2:56
+2 minutes, 56 seconds
+And this is surprisingly common actually. So just check out some marketplace skill.md docs. And unsurprisingly most of them there are
+3:04
+3 minutes, 4 seconds
+built by AI and therefore they overcompensate to try and niche down on a specific process. So you can think of this like a content creation skill that
+3:13
+3 minutes, 13 seconds
+is not only handling the research, it's handling the writing, the repurposing, the scheduling and posting, but it's all condensed into one huge skill.md file.
+3:21
+3 minutes, 21 seconds
+And this sounds really smart, but it's not because you've just thrown away everything that made skills useful in the first place. You lose modularity.
+3:29
+3 minutes, 29 seconds
+The copyrightiting logic inside that mega skill is now locked into there and you can't reuse that. So it won't go on your newsletter intros or your landing page unless you rewrite the skills for
+3:37
+3 minutes, 37 seconds
+those two. you lose maintainability. So when you update it now, you're going to hunt through that 1,000line skill for the right lines. And every other
+3:45
+3 minutes, 45 seconds
+workflow that actually needs this copywriting skill, you're going to have to update those completely separately.
+3:50
+3 minutes, 50 seconds
+And you also lose the inbuilt progressive disclosure. So Anthropic specifically designed skills to load only the context that's needed. And
+3:57
+3 minutes, 57 seconds
+that's how they keep responses fast and maintain their high quality. So a mega skill in this case is going to blow that all up. So everything's going to load at
+4:05
+4 minutes, 5 seconds
+once once the skill loads and the model is going to get overwhelmed and therefore the quality of output is going to drop significantly. And this is something that Anthropic's own teams
+4:12
+4 minutes, 12 seconds
+have been clear about. So their growth marketing team built ad copy automations and they explicitly broke them into specialized sub aents. So not skills but
+4:20
+4 minutes, 20 seconds
+sub aents. One for headlines, one for descriptions. and not because it was easier to write it in that way, but because in their words, it makes
+4:29
+4 minutes, 29 seconds
+debugging easier and improves output quality when dealing with complex requirements. So, if you take one giant content creation skill, research,
+4:37
+4 minutes, 37 seconds
+writing, visuals, scheduling, what you should actually do is break that down into four small skills, each one doing its job properly, each one can be
+4:46
+4 minutes, 46 seconds
+reused, and each one can be updated independently. So, with skills in isolation, you're still the connector between them. But on the other side,
+4:54
+4 minutes, 54 seconds
+mega skills, you lose all the benefits of the original skill design. So, both aren't quite right. And the right answer is actually somewhere in the middle. You
+5:01
+5 minutes, 1 second
+build small focused skills and then you wire them together into something bigger using one orchestrator skill. So, skills
+Chapter 3: The Solution: Skill Systems
+5:09
+5 minutes, 9 seconds
+are effectively treated then as components of the skill system. And really, what we're talking about here is not novel at all. It's an automation
+5:17
+5 minutes, 17 seconds
+made up of multiple skills being chained together in a sequence with the intelligence of an LLM model to route and format inputs and outputs as well as
+5:25
+5 minutes, 25 seconds
+check in with a human when required. And it's exactly the same way that Open Claw and Hermes are able to actually execute tasks on your behalf. Right? So at its
+5:33
+5 minutes, 33 seconds
+crux, a skill system is a prompt and an instruction set wired around multiple skills. So the prompt kicks off and the
+5:41
+5 minutes, 41 seconds
+instruction set is the brain that runs the chain or the sequence of multiple skills. So that instruction set has to understand five things fundamentally.
+5:50
+5 minutes, 50 seconds
+One is the skill architecture. Which skills are involved and in what order? Two, the inputs needed for each skill.
+5:57
+5 minutes, 57 seconds
+What does each step need to do its job properly basically? Three, how outputs hand off between the skills. So the output of skill one has to become the
+6:04
+6 minutes, 4 seconds
+clean input for skill two. Four, the human in the loop checkpoints. So, where do you step in to approve or adjust the system before it carries on? And this
+6:12
+6 minutes, 12 seconds
+varies from user to user. And five, how visual results are actually going to get displayed back to the user. So, you can actually see what's happening as it runs. Is it going to load up markdown
+6:20
+6 minutes, 20 seconds
+files and give them a link to that? Is it going to be a HTML dashboard, PNGs?
+6:24
+6 minutes, 24 seconds
+It totally depends on what the skill is actually creating. And then the wiring between them and the ability to work until completion with this loop here is
+6:33
+6 minutes, 33 seconds
+what makes it actually work end to end without you sitting there copying outputs and pasting them into the next prompt. And this is exactly the pattern
+6:40
+6 minutes, 40 seconds
+that Anthropic talks about in their own skills guide. They call it sequential workflow orchestration which is explicit step ordering, clear dependencies
+6:49
+6 minutes, 49 seconds
+between steps and validation at each stage. So skills are effectively your components and skill systems are the automations that you build with them.
+6:57
+6 minutes, 57 seconds
+It's a wrapper around skills. So let me show you what one looks like in practice. So here's a skill system that we've just built on top of to run every
+Chapter 4: Building a Real Skill System
+7:05
+7 minutes, 5 seconds
+single week. And it basically takes one long form YouTube video and produces five short form clips at the end of it.
+7:11
+7 minutes, 11 seconds
+So they're all faceted, refframed to portrait mode instead of landscape, captioned, illustrated, and ready to post on YouTube shorts, LinkedIn X. And
+7:20
+7 minutes, 20 seconds
+I just want to say a massive shout out to Enrique here who built V1 of this and we've taken this concept and built on top of that. And as you'll see, it's a
+7:28
+7 minutes, 28 seconds
+brilliant flow that can just run on autopilot in the background. Get one of your tasks done every single week without touching it. Now, if you want to grab this exact system, it's available
+7:36
+7 minutes, 36 seconds
+in the Agentic Academy in the community below. And we'll be releasing more systems like this in May, which we'll talk about later. So, let me walk you
+7:43
+7 minutes, 43 seconds
+through the chain. The orchestrator skill contains the prompt connecting them. So, this is dead simple. It's basically take this video from a URL and
+7:52
+7 minutes, 52 seconds
+produce five short form clips ready to post. So the instruction set is then basically a skill.md file that orchestrates the full chain and make
+8:01
+8 minutes, 1 second
+sure the outputs go from one step to the next. So in terms of the skills that make this up, we've got transcript extraction. So the input is the video
+8:08
+8 minutes, 8 seconds
+URL and the output is a word level timestamped transcript. And that precision really matters because later we sync pop out illustrations to that
+8:16
+8 minutes, 16 seconds
+exact frame when somebody says a keyword. For the second skill, we've got clip selection or basically working out what hooks we want and generating five
+8:24
+8 minutes, 24 seconds
+clip worthy moments each scored across five different categories to work out how good that clip is to actually share.
+8:30
+8 minutes, 30 seconds
+Then we've got the reframe or clip extraction. So this is where it gets a bit technical, but the input is effectively then those approved clips
+8:37
+8 minutes, 37 seconds
+from the source video. It runs face detection on every sampled frame because we want faces to appear in these short form clips and then it's going to render
+8:45
+8 minutes, 45 seconds
+each clip down to that 9x6 portrait mode. It's going to face track the whole time. So even if the face moves across the screen, it's going to track that
+8:54
+8 minutes, 54 seconds
+face and make sure that that is the primary focus. That is my favorite thing about what Enrique has built here. Then we've effectively got an editing stage.
+9:01
+9 minutes, 1 second
+So the input is the refframed clip plus that transcript. And the output is going to create pop out illustrations timed to the exact frame when a keyword is spoken
+9:09
+9 minutes, 9 seconds
+just to make it a little bit more dynamic. And it's important to note that every illustration is created in Remotion. So it's going to be completely unique. There's no repeated visuals
+9:17
+9 minutes, 17 seconds
+between your videos. And that's something that would often take a human editor, you know, 20 30 minutes to create one single animation. It's able
+9:24
+9 minutes, 24 seconds
+to generate these in a few minutes by itself. And then skill five is when we have the complete rendered clip and the output is like packaging that up with a
+9:33
+9 minutes, 33 seconds
+thumbnail with description with title and the file and getting that in a position where it's ready to actually be scheduled. And we use a publishing tool
+9:41
+9 minutes, 41 seconds
+called zioo.com to actually schedule those posts on the different platforms.
+9:45
+9 minutes, 45 seconds
+So that is a skill system. So it's five skills but one automation end to end with one orchestration skill wrapped
+9:52
+9 minutes, 52 seconds
+around it. And the whole thing is going to run from a single prompt. So I kick it off with a video URL and you can even extend this to actually just scan a
+9:59
+9 minutes, 59 seconds
+folder or scan your YouTube channel for latest videos and then I basically come back when it pings me when it's done with all the outputs just to check. So
+10:07
+10 minutes, 7 seconds
+when you're chaining skills like this, context management becomes everything.
+10:11
+10 minutes, 11 seconds
+Each skill in the chain gets exactly what it needs to do its job. Nothing more and nothing less. So we spin off sub aents at relevant parts to keep the
+10:20
+10 minutes, 20 seconds
+context window narrow and the quality of each output high before it's passed on between the skills. So those skills, it's important to know, aren't locked
+10:28
+10 minutes, 28 seconds
+into this one skill system. So once you've built your skills as proper modular components, they plug into other skill system, too. So you have a skill
+Chapter 5: Reusing Skills Across Your Business
+10:36
+10 minutes, 36 seconds
+library, a refined library of, let's say, 10 to 30 skills that you build once and reuse it everywhere. So any changes you make to the transcript skill will
+10:45
+10 minutes, 45 seconds
+automatically be ported into any skill system that's using it. So in practice it might look a little bit like this where you have a transcript skill which
+10:52
+10 minutes, 52 seconds
+obviously takes a video and transcribes it that feeds into our short form video skill system as we saw before but we use the exact same transcript skill for our
+11:00
+11 minutes
+newsletter creation skill system. We're just using it in entirely different ways. So we chain that transcript skill to push into a copywriting skill that
+11:08
+11 minutes, 8 seconds
+then generates a newsletter based on a video that we've produced too. So not only are we producing short form video, we're producing newsletters from that
+11:16
+11 minutes, 16 seconds
+same transcript skill. We could also then turn that into a blog post and have that in the SEO content production skill too. So systems you build get faster
+11:25
+11 minutes, 25 seconds
+because you're already most of the way there. You've got a refined set of skills which feed into multiple skill systems. So by the time you've got 10
+11:32
+11 minutes, 32 seconds
+skill systems running, you might only need actually 20 or 30 unique skills powering all of them. And it's the exact conversation we've been having inside
+11:40
+11 minutes, 40 seconds
+the Aentic Academy where we've recently had a vote on what skill systems to build out next. So you can see that we're going to start working on ad generation and outlier detection, SEO
+11:48
+11 minutes, 48 seconds
+and GEO content production like blog generation and page optimization, social media carousels and long- form content generating those carousels and a whole
+11:57
+11 minutes, 57 seconds
+bunch of other stuff that we're starting to actually deploy in systems that are just plugandplay one-click in stores for everyone inside the academy. And the
+12:05
+12 minutes, 5 seconds
+point is to get highquality outputs, not AI slot. There's no point in doing this if you're going to generate rubbish outputs. So, actually just focused on
+12:13
+12 minutes, 13 seconds
+producing those high-quality outputs that save you a ton of time on all your admin tasks. So, these are the systems then we're going to be shipping over the next few weeks. If you want access to
+12:21
+12 minutes, 21 seconds
+those, then check out the link in the description below. Skills aren't single isolated endpoints, and they're not meant to be megapiles that do everything
+12:29
+12 minutes, 29 seconds
+either. They're modular components designed to plug into skill systems. So build them small, build them really focused and build them around real
+12:37
+12 minutes, 37 seconds
+workflows. And when you start thinking about it like that, you start to design every single skill for reuse from day one. So next video I'm going to walk you
+12:46
+12 minutes, 46 seconds
+through the full Aentic OS setup to show you how we inject the right context into these skill systems without high effort.
+12:54
+12 minutes, 54 seconds
+Thanks for watching. See you in the next one.

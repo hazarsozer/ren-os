@@ -1,0 +1,4 @@
+{
+  "$comment": "Probe arm A: NO SessionStart hook. Baseline for the cache-preservation experiment per lifecycle plan §2.3.",
+  "hooks": {}
+}

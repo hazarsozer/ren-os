@@ -1,0 +1,258 @@
+Video: Build Self-Improving Claude Code Skills. The Results Are Crazy.
+Owner: Simon Scrapes
+
+Transcript:
+0:00
+Skills are one of the most powerful things you can build inside Claw Code for your business. But what if those skills could even improve themselves overnight? I've built over 20 so far,
+0:08
+8 seconds
+and getting them from version one to something reliable usually takes weeks of tweaking. So you run the skill, you spot something wrong, you open up the skill.md file and make a change, and
+0:17
+17 seconds
+it's pretty repetitive. It's slow and it's inconsistent. And then last week, Andre Carpathy, part of the founding team at OpenAI and former head of AI at
+0:25
+25 seconds
+Tesla, shared an idea called auto research. So the idea is simple. You give an AI system something to improve and one clear way to measure if it got
+0:34
+34 seconds
+better. Then it just loops. So it's trying a change. It's running a test.
+0:37
+37 seconds
+It's checking the score. And if the results improves, it keeps the change.
+0:41
+41 seconds
+If not, it rolls it back and tries something else. And the best thing about it is it keeps going all night so you get to sleep and wake up to a better
+0:48
+48 seconds
+system. So today we're applying that exact idea, but to Claude Code skills.
+0:53
+53 seconds
+I'm going to show you how to set up a loop where your skills improve themselves automatically. Let's get straight into it. So let's take a quick look at what Carpathy actually built and
+1:01
+1 minute, 1 second
+it can pretty much be summarized by three different files here. So first we have the program.md which is just a markdown instruction file that we give
+1:08
+1 minute, 8 seconds
+to that agent telling it what we want to test. We have a fixed data file for recording all the results. And then we have a training script that the agent
+1:16
+1 minute, 16 seconds
+actually goes in and edits. And the core of the program.md file or the one that we edit is actually really summarized by about 10 lines. And that's all we need
+1:24
+1 minute, 24 seconds
+to make it our own. So we've got tune train.py Pi with an experimental idea by directly hacking the code, i.e. make a change. We've got run the experiment as
+1:32
+1 minute, 32 seconds
+it sounds. Read out the results. If the value has improved, then we're going to advance the branch and keep the commit.
+1:38
+1 minute, 38 seconds
+If the value is worse, then we're going to reset to where we started. And I love this line down here, too. Never stop.
+1:44
+1 minute, 44 seconds
+Once the experiment loop has begun, do not pause to ask the human if you should continue. Do not ask if I should keep going or is this a good stopping point.
+1:51
+1 minute, 51 seconds
+The human might be asleep or gone from the computer and expects you to continue working indefinitely until you are manually stopped. You are autonomous.
+1:59
+1 minute, 59 seconds
+I.e. just keep working until you've either improved the results indefinitely where there's no additional gains to be
+2:06
+2 minutes, 6 seconds
+made or we interrupt you. So let's talk about how we apply this directly to our skills. So before we improve our skills
+2:13
+2 minutes, 13 seconds
+output, we need Claude to actually use the skill. So a quick recap because we covered this in the last video. So Claude reads, "Your YAML description
+2:20
+2 minutes, 20 seconds
+decide relevance of the skill and community testing found that activation was as low as 20% when you've got vague descriptions." So basically descriptions
+2:28
+2 minutes, 28 seconds
+in the YAML are super important inside the skill. Now the skill creator anthropic skill, the upgrade already has a built-in loop for this. So it's
+2:36
+2 minutes, 36 seconds
+effectively the same pattern as Carpathy. You give it test queries to see if a skill activates. Some are going to trigger the skill, some aren't going to trigger the skill. and it runs each
+2:45
+2 minutes, 45 seconds
+multiple times, checks the trigger accuracy and proposes a better description to trigger the skill and then retests that. So you can see this
+2:52
+2 minutes, 52 seconds
+directly in the improved description.py file here which is designed to improve a skill description based on evaluation results and that runs through the run
+3:01
+3 minutes, 1 second
+loop which combines the evaluation and the improved description Python files in a loop. So i.e. it keeps running and improves the description based on the
+3:09
+3 minutes, 9 seconds
+trigger accuracy. So did Claude actually activate the skill at the right time?
+3:13
+3 minutes, 13 seconds
+Yes or no? That's basically how it works. So, we already know by this that this is automated and built into this skills 2.0 version. So, there's no need
+3:21
+3 minutes, 21 seconds
+to reinvent the wheel here with skill descriptions. We're just going to use anthropics built-in skill creator skill.
+3:26
+3 minutes, 26 seconds
+But, triggering reliably and producing actual great outputs from the skills are different problems. So, the skill creators eval which we covered in the
+3:34
+3 minutes, 34 seconds
+last video let you test and score output quality based on your own defined metrics. So, we actually went ahead and tested this. So we had optimize my skill
+3:42
+3 minutes, 42 seconds
+for making sure my copy follows the persuasive techniques listed in my persuasion toolkit reference file which was just a reference file that we had inside the marketing copywriting skill.
+3:52
+3 minutes, 52 seconds
+And then we said measure it on does it always use that reference file? Does it use curiosity and open loops? And how often is it using proof or founderled
+4:00
+4 minutes
+stories which were both metrics inside that persuasion toolkit. And then we tested it by getting it to write landing page copy for my school community five times and testing it against that
+4:08
+4 minutes, 8 seconds
+criteria. And it was brilliant. It came up with qualitative feedback on the skill quality and even displayed it in a nice click-through dashboard, but it
+4:16
+4 minutes, 16 seconds
+wasn't self-improving. So, what we're adding today is making that loop run autonomously Carpathy style, so it improves overnight without your inputs.
+4:24
+4 minutes, 24 seconds
+So, let's visualize them now side by side so you can see the exact framework and the same or similar logic that we're using between Karpathy's original loop
+4:33
+4 minutes, 33 seconds
+or ours here when applied to skills. So, we've got read the train.python Python file, change a value, run a test, check
+4:41
+4 minutes, 41 seconds
+the value. So this is the metric they're using, val_bpb, keep or revert. So it's either going to if if the score is improved, get commit
+4:49
+4 minutes, 49 seconds
+it and keep it and run the next loop. Or if the score is dropped, it's going to get reset and actually start again and make a different change. So ours is seriously similar. It's going to be the
+4:58
+4 minutes, 58 seconds
+same logic, same infrastructure, but what we're actually doing is reading this skill.md file instead. So reading our skill instructions, process
+5:05
+5 minutes, 5 seconds
+instructions, changing a value, we're going to run a test, we're going to check the pass rate, and then we're going to keep or revert. So the only difference here is the metric by which
+5:13
+5 minutes, 13 seconds
+we're measuring it by. So they're using a value here. We're checking the pass rate against 25 binary assertions across
+5:22
+5 minutes, 22 seconds
+five tests. So we're going to talk about uh what binary assertions are right now and why they're important. Now the word binary is everything here and this is where most people are getting it wrong
+5:30
+5 minutes, 30 seconds
+when they're te executing tests on their skills. So for example we have something binary on the right hand side. It does not contain m dashes. So our text
+5:39
+5 minutes, 39 seconds
+doesn't contain m dashes or it's under 300 words or the final line is a question. It's all true or false statements versus something very
+5:46
+5 minutes, 46 seconds
+subjective like does it have a compelling subject line. And this is obviously not binary because two people can disagree on what compelling actually means which means we can't actually
+5:55
+5 minutes, 55 seconds
+automate it. Of course, we can get the assistance from claw code to say actually based on certain frameworks, this is considered compelling, but it's
+6:02
+6 minutes, 2 seconds
+not this binary true false approach. So, here's my actual setup. So, inside my skills here, we've got a marketing copywriting skill and what we need to do
+6:10
+6 minutes, 10 seconds
+is set up an eval folder. So, this is something that the skill creator skill can actually do for you or you can actually create this yourself. So, we set up an eval folder and an eval.json.
+6:21
+6 minutes, 21 seconds
+And inside that eval.json, JSON, we've got 25 assertions or true or false binary things that we can check or the autonomous agent can actually go through and check and make sure are true or not.
+6:32
+6 minutes, 32 seconds
+So, for example, for the copyrightiting skill for the first test, we're going to feed in the prompt, write a LinkedIn post about why simple automations beat
+6:39
+6 minutes, 39 seconds
+complex ones with an expected output of a LinkedIn post following brand structure rules. And it's grabbing those brand structure rules from our reference files. So, our contextual files inside
+6:48
+6 minutes, 48 seconds
+the skill. So, we've got a tone of voice guide, we've got persuasion toolkit, we've got examples of good posts inside there. But what we're doing is actually
+6:55
+6 minutes, 55 seconds
+testing things that are totally based on this skill.md and the process. So, does the first line appear as a standalone sentence and not part as paragraph? That is going to be marked true or false.
+7:05
+7 minutes, 5 seconds
+Does it contain at least one specific number or statistic? Is the final line not a question? I don't like questions as the final line in my posts. Is the
+7:13
+7 minutes, 13 seconds
+total word count under 300? And you get the point. We have various different uh tests that we run with different prompts and different assertions that are going to come back true or false. And this
+7:21
+7 minutes, 21 seconds
+enables the loop to go through each of these assertions, validate whether it's true or false, and then make a change to the skill.md if it's not hit perfect
+7:30
+7 minutes, 30 seconds
+score. And of course, you don't need to go through and actually create this manually, this evals.json. You can just ask cloud code to spin up an evals.json
+7:37
+7 minutes, 37 seconds
+file with assertions that can be validated by true or false questions based on your skill.md. And then what we're effectively doing is feeding in a prompt, seeing does it hit those
+7:46
+7 minutes, 46 seconds
+assertions. If it doesn't, then we need to improve our skill.md so that clog code is able to follow it every single time. And then after that, all you need
+7:53
+7 minutes, 53 seconds
+to do to run this autonomously is say to use the skill creator skill. We probably didn't need to say that even run a self-improvement loop on my copywriting
+8:01
+8 minutes, 1 second
+skill. We'll point it to our evals file to evaluate each iteration. We're telling it to basically use the same principles, detect whether it passes or fails, and then return a pass fail mark.
+8:11
+8 minutes, 11 seconds
+If any of the assertions fail, make one change to the skilled atm. So, we're doing the exact same logic that we spoke about in that diagram. If any fail,
+8:18
+8 minutes, 18 seconds
+rerun the tests and recalculate. If the score improved, keep the change and get commit. If it dropped, get reset and make a new change. It's going to log
+8:26
+8 minutes, 26 seconds
+everything. And we've also given it the instruction to not ask for my permissions and keep looping until I interrupt you or you hit a perfect score. So, we can run through that. And
+8:35
+8 minutes, 35 seconds
+what we've effectively got here is on the first run of this, we've scored 23 out of 24. So, as I've already mentioned, this is like the fifth
+8:42
+8 minutes, 42 seconds
+version of this marketing copywriting skill. So, it's already gone through quite comprehensive iterations and changes. But you can see on the first
+8:49
+8 minutes, 49 seconds
+iteration of this test, we had a 95.8% success rate. One of the assertions failed, which was end with a question rule, which was actually a rule in the
+8:58
+8 minutes, 58 seconds
+tone of voice.md, but not in the skill.md. So, that we had contrasting information there. So, it added a rule to the skill.md. LinkedIn post must not
+9:06
+9 minutes, 6 seconds
+end with a question, close with declarative statement, CTA, or a punchy fragment. And then on the second time it actually ran that and it got a perfect
+9:13
+9 minutes, 13 seconds
+score. So obviously we're talking about an example that only need two runs to be perfect, but where you've just created a skill. This will take many runs to
+9:20
+9 minutes, 20 seconds
+actually refine and improve on the skill here. So get claw code to write your assertions once, set up the loop and you can literally let it run overnight and
+9:29
+9 minutes, 29 seconds
+come back to a skill the next day or multiple agents running multiple tests on these skills. They're actually structurally more sound. So there's two
+9:36
+9 minutes, 36 seconds
+layers of skill self-improvement. Layer one is the skill creator's own description improvement loop to improve skill activation to get it to actually
+9:44
+9 minutes, 44 seconds
+trigger a skill in the first place. And layer two is our amended carpathy loop for skill outputs that use those binary
+9:51
+9 minutes, 51 seconds
+true false assertions and a score and then autonomous improvement through a simple prompt where we ask it to
+9:58
+9 minutes, 58 seconds
+actually use the evals and continue to loop until we are happy it's met a certain criteria. Now a quick note on limitations. The binary loop handles
+10:07
+10 minutes, 7 seconds
+structure, format, word counts, forbidden patterns, but it does not handle tone of voice, creative quality, whether your skill is actually using the context you've put in your reference
+10:15
+10 minutes, 15 seconds
+files properly. Those still need a bit of human judgment. But if you watched the last video, you already know how to use the skill creator tool for that where it gives you a sideby-side
+10:23
+10 minutes, 23 seconds
+dashboard to review the qualitative output, write feedback, and even AB test your reference files. Whereas this binary loop can be used for the more
+10:30
+10 minutes, 30 seconds
+structural stuff. Now, if you're looking for bespoke skills to run your business, we've just launched a complete agentic operating system built on claw code that
+10:38
+10 minutes, 38 seconds
+ties all of this, including all the skills into one system. So, it has your brand memory, 18 production skills across marketing, strategy, ops, and
+10:46
+10 minutes, 46 seconds
+visuals, too. A self-learning loop, self-maintenance, and you can access it through your phone through Telegram, too. So, it's not a personal assistant.
+10:53
+10 minutes, 53 seconds
+It's entire business context packaged into a system that gets sharper every time you use it. Links down in the description if you want more info. And thanks so much for watching.

@@ -1,0 +1,2722 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>The Startup Framework — A Tour</title>
+<meta name="description" content="A walk-through of the friend-group meta-harness configuration for Claude Code." />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..900;1,9..144,300..900&family=Newsreader:ital,opsz,wght@0,6..72,300..600;1,6..72,300..600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  /* ─────────────────────────────  tokens  ───────────────────────────── */
+  :root {
+    --bg:           #f4f1ea;
+    --bg-soft:      #faf7ef;
+    --bg-card:      #fffbf3;
+    --bg-deep:      #ebe6d8;
+    --ink:          #15110d;
+    --ink-soft:     #3a3328;
+    --ink-mute:     #6b5f4f;
+    --ink-faint:    #95897a;
+    --rule:         #d8cfb9;
+    --rule-soft:    #e4dcc7;
+    --rust:         #b14820;
+    --rust-bright:  #d4571f;
+    --rust-soft:    #f0d9c6;
+    --olive:        #6b7754;
+    --inkwash:      rgba(21, 17, 13, 0.04);
+
+    --serif:    "Fraunces", "Newsreader", Georgia, serif;
+    --body:     "Newsreader", "Fraunces", Georgia, serif;
+    --mono:     "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+    --ease:     cubic-bezier(0.2, 0.7, 0.2, 1);
+    --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+
+    --pad-x: clamp(1.25rem, 3.5vw, 3.5rem);
+    --col-max: 1240px;
+  }
+
+  /* ─────────────────────────────  reset  ───────────────────────────── */
+  *, *::before, *::after { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    font-family: var(--body);
+    background: var(--bg);
+    color: var(--ink);
+    font-size: 17px;
+    line-height: 1.55;
+    font-feature-settings: "ss01", "kern";
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+  body::before {
+    /* paper texture */
+    content: "";
+    position: fixed; inset: 0;
+    background-image: radial-gradient(rgba(21,17,13,0.025) 1px, transparent 1px);
+    background-size: 3px 3px;
+    pointer-events: none;
+    z-index: 100;
+    opacity: 0.5;
+  }
+
+  a { color: inherit; text-underline-offset: 3px; text-decoration-thickness: 1px; }
+  a:hover { color: var(--rust); }
+
+  ::selection { background: var(--rust); color: var(--bg-soft); }
+
+  /* ─────────────────────────────  layout  ───────────────────────────── */
+  .wrap {
+    max-width: var(--col-max);
+    margin: 0 auto;
+    padding: 0 var(--pad-x);
+  }
+
+  section { position: relative; }
+  section + section { border-top: 1px solid var(--rule); }
+
+  /* ─────────────────────────────  type  ───────────────────────────── */
+  .display {
+    font-family: var(--serif);
+    font-weight: 400;
+    font-variation-settings: "opsz" 144;
+    line-height: 0.92;
+    letter-spacing: -0.02em;
+  }
+  .small-caps {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    font-weight: 500;
+  }
+  .label-num {
+    font-family: var(--serif);
+    font-style: italic;
+    font-weight: 400;
+    color: var(--ink-faint);
+  }
+  .section-head {
+    display: grid;
+    grid-template-columns: minmax(0,1fr) auto;
+    align-items: end;
+    gap: 1rem;
+    padding-bottom: 1.5rem;
+    margin-bottom: 3rem;
+    border-bottom: 1px solid var(--rule);
+  }
+  .section-head .eyebrow {
+    color: var(--rust);
+    margin-bottom: 0.75rem;
+    display: block;
+  }
+  .section-head h2 {
+    font-family: var(--serif);
+    font-weight: 400;
+    font-variation-settings: "opsz" 144;
+    font-size: clamp(2.4rem, 5vw, 4rem);
+    line-height: 1;
+    letter-spacing: -0.025em;
+    margin: 0;
+  }
+  .section-head .section-num {
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: clamp(1.4rem, 3vw, 2.4rem);
+    color: var(--ink-faint);
+    font-weight: 300;
+  }
+  .section-head .lede {
+    grid-column: 1 / -1;
+    max-width: 60ch;
+    margin-top: 1.25rem;
+    font-size: 1.1rem;
+    line-height: 1.5;
+    color: var(--ink-soft);
+  }
+
+  /* ─────────────────────────────  nav (top)  ───────────────────────────── */
+  header.masthead {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    background: rgba(244, 241, 234, 0.85);
+    backdrop-filter: saturate(140%) blur(10px);
+    -webkit-backdrop-filter: saturate(140%) blur(10px);
+    border-bottom: 1px solid var(--rule);
+  }
+  header.masthead .bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.85rem var(--pad-x);
+    max-width: var(--col-max);
+    margin: 0 auto;
+    gap: 1.5rem;
+  }
+  header.masthead .brand {
+    display: flex;
+    align-items: baseline;
+    gap: 0.75rem;
+  }
+  header.masthead .brand-mark {
+    font-family: var(--serif);
+    font-weight: 500;
+    font-size: 1.15rem;
+    letter-spacing: -0.01em;
+  }
+  header.masthead .brand-vol {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    color: var(--ink-mute);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+  header.masthead nav {
+    display: flex;
+    gap: 1.4rem;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  header.masthead nav::-webkit-scrollbar { display: none; }
+  header.masthead nav a {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    text-decoration: none;
+    color: var(--ink-mute);
+    padding: 0.4rem 0;
+    border-bottom: 1px solid transparent;
+    transition: color 0.25s var(--ease), border-color 0.25s var(--ease);
+    white-space: nowrap;
+  }
+  header.masthead nav a:hover { color: var(--ink); }
+  header.masthead nav a.active {
+    color: var(--rust);
+    border-bottom-color: var(--rust);
+  }
+
+  /* ─────────────────────────────  hero  ───────────────────────────── */
+  .hero {
+    padding: clamp(3rem, 8vw, 6rem) 0 clamp(4rem, 10vw, 8rem);
+  }
+  .hero .topline {
+    display: flex;
+    align-items: center;
+    gap: 1.25rem;
+    margin-bottom: clamp(2rem, 5vw, 3rem);
+    color: var(--ink-mute);
+  }
+  .hero .topline .rule {
+    flex: 1;
+    height: 1px;
+    background: var(--rule);
+  }
+  .hero .topline .date {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+  }
+  .hero h1 {
+    font-family: var(--serif);
+    font-weight: 380;
+    font-variation-settings: "opsz" 144;
+    font-size: clamp(3.5rem, 12vw, 9.5rem);
+    line-height: 0.88;
+    letter-spacing: -0.035em;
+    margin: 0;
+  }
+  .hero h1 em {
+    font-style: italic;
+    font-weight: 320;
+    color: var(--rust);
+  }
+  .hero .deck {
+    display: grid;
+    grid-template-columns: 3fr 2fr;
+    gap: clamp(2rem, 5vw, 5rem);
+    margin-top: clamp(3rem, 6vw, 5rem);
+    align-items: start;
+  }
+  @media (max-width: 720px) { .hero .deck { grid-template-columns: 1fr; } }
+  .hero .deck .pitch {
+    font-family: var(--body);
+    font-size: clamp(1.05rem, 1.5vw, 1.3rem);
+    line-height: 1.55;
+    color: var(--ink-soft);
+    max-width: 42ch;
+  }
+  .hero .deck .pitch .dropcap {
+    font-family: var(--serif);
+    font-weight: 400;
+    font-variation-settings: "opsz" 144;
+    font-size: 3.4em;
+    float: left;
+    line-height: 0.85;
+    margin: 0.06em 0.1em -0.05em -0.05em;
+    color: var(--rust);
+  }
+  .hero .deck aside {
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    line-height: 1.7;
+    color: var(--ink-mute);
+    padding-left: 1.25rem;
+    border-left: 1px solid var(--rule);
+  }
+  .hero .deck aside .field { display: flex; gap: 1rem; margin-bottom: 0.45rem; }
+  .hero .deck aside .field b {
+    font-weight: 500;
+    color: var(--ink);
+    min-width: 5.5rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    font-size: 0.72rem;
+  }
+
+  .index-strip {
+    margin-top: clamp(3rem, 6vw, 5rem);
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--rule);
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 1.25rem;
+  }
+  @media (max-width: 1080px) { .index-strip { grid-template-columns: repeat(4, 1fr); } }
+  @media (max-width: 720px)  { .index-strip { grid-template-columns: repeat(3, 1fr); } }
+  @media (max-width: 480px)  { .index-strip { grid-template-columns: repeat(2, 1fr); } }
+  .index-strip a {
+    display: block;
+    text-decoration: none;
+    padding-top: 0.5rem;
+    border-top: 1px solid transparent;
+    transition: border-color 0.25s var(--ease);
+  }
+  .index-strip a:hover { border-top-color: var(--rust); }
+  .index-strip a:hover .idx-title { color: var(--rust); }
+  .index-strip .idx-num {
+    font-family: var(--serif);
+    font-style: italic;
+    color: var(--ink-faint);
+    font-size: 0.85rem;
+    display: block;
+    margin-bottom: 0.15rem;
+  }
+  .index-strip .idx-title {
+    font-family: var(--serif);
+    font-size: 0.95rem;
+    line-height: 1.2;
+    color: var(--ink);
+    transition: color 0.25s var(--ease);
+  }
+
+  /* ─────────────────────────────  repos (§01)  ───────────────────────────── */
+  .repos-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1px;
+    background: var(--rule);
+    border: 1px solid var(--rule);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  @media (max-width: 780px) { .repos-grid { grid-template-columns: 1fr; } }
+  .repo-card {
+    background: var(--bg-card);
+    padding: 2rem 1.75rem;
+    position: relative;
+    cursor: pointer;
+    transition: background 0.3s var(--ease);
+    min-height: 18rem;
+  }
+  .repo-card:hover { background: var(--bg-soft); }
+  .repo-card .repo-num {
+    position: absolute;
+    top: 1.25rem; right: 1.5rem;
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 1.5rem;
+    color: var(--ink-faint);
+  }
+  .repo-card .repo-label {
+    color: var(--ink-mute);
+    margin-bottom: 0.85rem;
+  }
+  .repo-card .repo-label .dot {
+    display: inline-block;
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--olive);
+    margin-right: 0.5rem;
+    vertical-align: middle;
+    transition: background 0.3s var(--ease);
+  }
+  .repo-card[data-access="maintainers"] .dot   { background: var(--rust); }
+  .repo-card[data-access="read"] .dot          { background: var(--olive); }
+  .repo-card[data-access="write"] .dot         { background: #b58b35; }
+  .repo-card[data-access="local"] .dot         { background: var(--ink-soft); }
+
+  .repo-card h3 {
+    font-family: var(--serif);
+    font-weight: 400;
+    font-variation-settings: "opsz" 144;
+    font-size: clamp(1.4rem, 2vw, 1.85rem);
+    line-height: 1.05;
+    margin: 0 0 0.85rem;
+    letter-spacing: -0.015em;
+  }
+  .repo-card p { margin: 0; max-width: 36ch; color: var(--ink-soft); }
+  .repo-card .repo-detail {
+    margin-top: 1.5rem;
+    padding-top: 1.25rem;
+    border-top: 1px dashed var(--rule);
+    max-height: 0;
+    overflow: hidden;
+    opacity: 0;
+    transition: max-height 0.5s var(--ease-out), opacity 0.4s var(--ease-out), margin-top 0.4s var(--ease-out);
+  }
+  .repo-card.open .repo-detail {
+    max-height: 600px;
+    opacity: 1;
+  }
+  .repo-card .repo-detail dl {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 0.4rem 1rem;
+    margin: 0;
+  }
+  .repo-card .repo-detail dt {
+    color: var(--ink-mute);
+    font-size: 0.72rem;
+  }
+  .repo-card .repo-detail dd {
+    margin: 0;
+    color: var(--ink);
+    font-size: 0.92rem;
+  }
+  .repo-card .toggle {
+    position: absolute;
+    bottom: 1.25rem; left: 1.75rem;
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    color: var(--ink-mute);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    transition: color 0.25s var(--ease);
+  }
+  .repo-card:hover .toggle { color: var(--rust); }
+  .repo-card .toggle::after { content: " ↓"; }
+  .repo-card.open .toggle::after { content: " ↑"; }
+
+  /* note below grid */
+  .repos-note {
+    margin-top: 2rem;
+    padding-left: 1.5rem;
+    border-left: 2px solid var(--rust);
+    max-width: 56ch;
+    color: var(--ink-soft);
+    font-family: var(--body);
+    font-style: italic;
+    font-size: 1.02rem;
+  }
+
+  /* ─────────────────────────────  memory (§02)  ───────────────────────────── */
+  .mem-stack {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1px;
+    background: var(--rule);
+    border: 1px solid var(--rule);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .mem-row {
+    display: grid;
+    grid-template-columns: 12rem 1fr auto;
+    align-items: center;
+    background: var(--bg-card);
+    padding: 1.5rem 1.75rem;
+    gap: 2rem;
+    transition: background 0.3s var(--ease);
+  }
+  @media (max-width: 780px) {
+    .mem-row { grid-template-columns: 1fr; gap: 0.6rem; padding: 1.25rem 1.5rem; }
+    .mem-row .mem-meter { display: none; }
+  }
+  .mem-row:hover { background: var(--bg-soft); }
+  .mem-row .mem-layer {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+  .mem-row .mem-layer .small-caps { color: var(--ink-mute); }
+  .mem-row .mem-tool {
+    font-family: var(--serif);
+    font-weight: 400;
+    font-size: 1.55rem;
+    letter-spacing: -0.015em;
+  }
+  .mem-row .mem-desc {
+    color: var(--ink-soft);
+    font-size: 1rem;
+    line-height: 1.5;
+    max-width: 56ch;
+  }
+  .mem-row .mem-meter {
+    width: 8rem;
+    text-align: right;
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+    color: var(--ink-mute);
+    text-transform: uppercase;
+    line-height: 1.5;
+  }
+  .mem-row .mem-meter strong {
+    display: block;
+    color: var(--rust);
+    font-weight: 500;
+    font-size: 0.95rem;
+    letter-spacing: 0;
+    text-transform: none;
+    font-family: var(--serif);
+    font-style: italic;
+  }
+  .mem-row[data-tier="v2"] {
+    background: linear-gradient(135deg, var(--bg-card) 70%, var(--bg-deep) 100%);
+    opacity: 0.85;
+  }
+  .mem-row[data-tier="v2"] .mem-tool::after {
+    content: " · deferred";
+    font-style: italic;
+    font-size: 0.85rem;
+    color: var(--ink-faint);
+    font-weight: 300;
+  }
+  .mem-row[data-tier="cross"] {
+    background: var(--bg-deep);
+  }
+  .mem-row[data-tier="cross"] .mem-layer .small-caps { color: var(--rust); }
+
+  .mem-caption {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2rem;
+    margin-top: 2.5rem;
+  }
+  @media (max-width: 780px) { .mem-caption { grid-template-columns: 1fr; } }
+  .mem-caption .note {
+    padding: 1.5rem 1.75rem;
+    background: var(--bg-soft);
+    border: 1px solid var(--rule);
+    border-radius: 2px;
+  }
+  .mem-caption .note .small-caps {
+    color: var(--rust);
+    display: block;
+    margin-bottom: 0.6rem;
+  }
+  .mem-caption .note h4 {
+    font-family: var(--serif);
+    font-weight: 400;
+    margin: 0 0 0.6rem;
+    font-size: 1.2rem;
+  }
+  .mem-caption .note p { margin: 0; color: var(--ink-soft); font-size: 0.95rem; line-height: 1.5; }
+
+  /* ─────────────────────────────  loop (§03)  ───────────────────────────── */
+  .loop-controls {
+    display: flex;
+    gap: 0;
+    border: 1px solid var(--rule);
+    border-radius: 2px;
+    overflow: hidden;
+    margin-bottom: 2.5rem;
+    background: var(--bg-card);
+  }
+  .loop-tab {
+    flex: 1;
+    background: transparent;
+    border: none;
+    border-right: 1px solid var(--rule);
+    padding: 1.25rem 1.5rem;
+    cursor: pointer;
+    text-align: left;
+    font: inherit;
+    color: var(--ink);
+    transition: background 0.3s var(--ease), color 0.3s var(--ease);
+  }
+  .loop-tab:last-child { border-right: none; }
+  .loop-tab:hover { background: var(--bg-soft); }
+  .loop-tab.active { background: var(--ink); color: var(--bg); }
+  .loop-tab.active .loop-tab-num { color: var(--rust-soft); }
+  .loop-tab .loop-tab-num {
+    font-family: var(--serif);
+    font-style: italic;
+    color: var(--ink-faint);
+    font-size: 0.9rem;
+    transition: color 0.3s var(--ease);
+  }
+  .loop-tab .loop-tab-title {
+    font-family: var(--serif);
+    font-size: 1.4rem;
+    font-weight: 400;
+    margin: 0.25rem 0 0.5rem;
+    letter-spacing: -0.01em;
+  }
+  .loop-tab .loop-tab-time {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-mute);
+    transition: color 0.3s var(--ease);
+  }
+  .loop-tab.active .loop-tab-time { color: var(--rust-soft); }
+
+  .loop-panel {
+    display: none;
+    grid-template-columns: 1fr 1fr;
+    gap: 0;
+    background: var(--rule);
+    border: 1px solid var(--rule);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  @media (max-width: 820px) { .loop-panel { grid-template-columns: 1fr; gap: 1px; } }
+  .loop-panel.active { display: grid; }
+  .loop-panel .lp-steps {
+    background: var(--bg-card);
+    padding: 2rem 2rem 2rem 2.5rem;
+  }
+  .loop-panel .lp-aside {
+    background: var(--bg-soft);
+    padding: 2rem 2rem 2rem 2.25rem;
+  }
+  .loop-panel h4 {
+    font-family: var(--serif);
+    font-weight: 400;
+    font-size: 1.4rem;
+    margin: 0 0 1.25rem;
+    letter-spacing: -0.01em;
+  }
+  .loop-panel ol {
+    counter-reset: step;
+    list-style: none;
+    padding: 0; margin: 0;
+  }
+  .loop-panel ol li {
+    counter-increment: step;
+    padding: 0.55rem 0 0.55rem 2.25rem;
+    position: relative;
+    border-bottom: 1px dashed var(--rule-soft);
+    color: var(--ink-soft);
+    font-size: 0.98rem;
+    line-height: 1.5;
+  }
+  .loop-panel ol li:last-child { border-bottom: none; }
+  .loop-panel ol li::before {
+    content: counter(step, decimal-leading-zero);
+    position: absolute;
+    left: 0; top: 0.55rem;
+    font-family: var(--serif);
+    font-style: italic;
+    color: var(--rust);
+    font-size: 0.9rem;
+    width: 1.6rem;
+  }
+  .loop-panel ol li code, .loop-panel .lp-aside code {
+    font-family: var(--mono);
+    font-size: 0.85em;
+    background: var(--bg-deep);
+    padding: 0.08em 0.4em;
+    border-radius: 2px;
+    color: var(--ink);
+  }
+  .loop-panel .lp-aside .small-caps { color: var(--rust); display: block; margin-bottom: 0.85rem; }
+  .loop-panel .lp-aside p { margin: 0 0 0.85rem; color: var(--ink-soft); font-size: 0.95rem; line-height: 1.55; }
+  .loop-panel .lp-aside .quote {
+    margin-top: 1.25rem;
+    padding-left: 1rem;
+    border-left: 2px solid var(--rust);
+    font-style: italic;
+    font-family: var(--body);
+    font-size: 1rem;
+    color: var(--ink);
+  }
+  .loop-panel .lp-aside .console {
+    margin-top: 1.25rem;
+    background: var(--ink);
+    color: #e8e2d4;
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    line-height: 1.65;
+    padding: 1rem 1.15rem;
+    border-radius: 2px;
+    white-space: pre;
+    overflow-x: auto;
+  }
+  .loop-panel .lp-aside .console .accent { color: #d4571f; }
+  .loop-panel .lp-aside .console .dim    { color: #85786a; }
+
+  /* ─────────────────────────────  flow (§04)  ───────────────────────────── */
+  .flow-controls {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    border: 1px solid var(--rule);
+    border-radius: 2px;
+    overflow: hidden;
+    margin-bottom: 2.5rem;
+    background: var(--bg-card);
+  }
+  @media (max-width: 760px) {
+    .flow-controls { grid-template-columns: repeat(2, 1fr); }
+    .flow-tab:nth-child(1), .flow-tab:nth-child(2) { border-bottom: 1px solid var(--rule); }
+    .flow-tab:nth-child(2) { border-right: none; }
+  }
+  .flow-tab {
+    background: transparent;
+    border: none;
+    border-right: 1px solid var(--rule);
+    padding: 1.05rem 1.25rem;
+    cursor: pointer;
+    text-align: left;
+    font: inherit;
+    color: var(--ink);
+    transition: background 0.3s var(--ease), color 0.3s var(--ease);
+  }
+  .flow-tab:last-child { border-right: none; }
+  .flow-tab:hover { background: var(--bg-soft); }
+  .flow-tab.active { background: var(--ink); color: var(--bg); }
+  .flow-tab .ft-num {
+    font-family: var(--serif);
+    font-style: italic;
+    color: var(--ink-faint);
+    font-size: 0.85rem;
+    transition: color 0.3s var(--ease);
+  }
+  .flow-tab.active .ft-num { color: var(--rust-soft); }
+  .flow-tab .ft-title {
+    font-family: var(--serif);
+    font-weight: 400;
+    font-size: 1.15rem;
+    margin: 0.15rem 0 0.3rem;
+    letter-spacing: -0.005em;
+    line-height: 1.1;
+  }
+  .flow-tab .ft-sub {
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-mute);
+    transition: color 0.3s var(--ease);
+  }
+  .flow-tab.active .ft-sub { color: var(--rust-soft); }
+
+  .flow-frame {
+    border: 1px solid var(--rule);
+    border-radius: 2px;
+    background: var(--bg-card);
+    overflow: hidden;
+  }
+
+  .flow-canvas { display: none; }
+  .flow-canvas.active { display: block; }
+
+  .flow-canvas-head {
+    padding: 1.75rem 2.25rem 1.35rem;
+    border-bottom: 1px solid var(--rule);
+    background: var(--bg-soft);
+  }
+  .flow-canvas-head h4 {
+    font-family: var(--serif);
+    font-weight: 400;
+    font-size: 1.5rem;
+    margin: 0 0 0.45rem;
+    letter-spacing: -0.01em;
+    line-height: 1.1;
+  }
+  .flow-canvas-head p {
+    margin: 0;
+    color: var(--ink-soft);
+    font-size: 0.98rem;
+    line-height: 1.5;
+    max-width: 62ch;
+  }
+  .flow-canvas-head code {
+    font-family: var(--mono);
+    font-size: 0.85em;
+    background: var(--bg-deep);
+    padding: 0.08em 0.4em;
+    border-radius: 2px;
+  }
+
+  .flow-rail {
+    list-style: none;
+    margin: 0;
+    padding: 1.5rem 2.25rem 0.75rem;
+  }
+
+  .flow-event {
+    display: grid;
+    grid-template-columns: 4.75rem 1fr;
+    gap: 1.4rem;
+    align-items: start;
+  }
+  .flow-event .flow-time {
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    padding-top: 0.55rem;
+    text-align: right;
+    white-space: nowrap;
+  }
+  .flow-event-body {
+    position: relative;
+    padding-left: 2rem;
+    padding-bottom: 1.35rem;
+    border-left: 1px solid var(--rule);
+  }
+  .flow-event:last-of-type .flow-event-body {
+    border-left-color: transparent;
+  }
+  .flow-event-body::before {
+    content: "";
+    position: absolute;
+    left: -0.45rem; top: 0.45rem;
+    width: 0.85rem; height: 0.85rem;
+    border-radius: 50%;
+    background: var(--bg-card);
+    border: 2px solid var(--ink-faint);
+    z-index: 1;
+    transition: background 0.25s var(--ease), border-color 0.25s var(--ease);
+  }
+
+  /* actor colors */
+  .flow-event[data-actor="you"]    .flow-event-body::before { background: var(--rust); border-color: var(--rust); }
+  .flow-event[data-actor="hook"]   .flow-event-body::before { background: var(--bg-card); border-color: var(--ink); }
+  .flow-event[data-actor="plugin"] .flow-event-body::before { background: var(--olive); border-color: var(--olive); }
+  .flow-event[data-actor="sf"]     .flow-event-body::before { background: var(--ink); border-color: var(--ink); }
+  .flow-event[data-actor="end"]    .flow-event-body::before {
+    background: var(--ink); border-color: var(--ink);
+    border-radius: 1px;
+    width: 0.7rem; height: 0.7rem;
+    transform: rotate(45deg);
+    left: -0.35rem; top: 0.55rem;
+  }
+
+  .flow-event-body .flow-actor {
+    font-family: var(--mono);
+    font-size: 0.62rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--ink-mute);
+    display: inline-block;
+    padding: 0.18rem 0.55rem;
+    border: 1px solid var(--rule);
+    border-radius: 2px;
+    margin-bottom: 0.55rem;
+    background: var(--bg-soft);
+    line-height: 1;
+  }
+  .flow-event[data-actor="you"]    .flow-actor { color: var(--rust); border-color: var(--rust); background: var(--rust-soft); }
+  .flow-event[data-actor="hook"]   .flow-actor { color: var(--ink); border-color: var(--ink); background: var(--bg-card); }
+  .flow-event[data-actor="plugin"] .flow-actor { color: var(--bg-soft); border-color: var(--olive); background: var(--olive); }
+  .flow-event[data-actor="sf"]     .flow-actor { color: var(--bg-soft); border-color: var(--ink); background: var(--ink); }
+  .flow-event[data-actor="end"]    .flow-actor { color: var(--bg-soft); border-color: var(--ink); background: var(--ink); }
+
+  .flow-event-body h5 {
+    font-family: var(--serif);
+    font-weight: 400;
+    font-size: 1.1rem;
+    margin: 0 0 0.3rem;
+    line-height: 1.2;
+    letter-spacing: -0.005em;
+  }
+  .flow-event-body h5 code {
+    font-family: var(--mono);
+    font-size: 0.85em;
+    background: var(--bg-deep);
+    padding: 0.08em 0.4em;
+    border-radius: 2px;
+    font-weight: 500;
+  }
+  .flow-event-body p {
+    margin: 0;
+    color: var(--ink-soft);
+    font-size: 0.93rem;
+    line-height: 1.55;
+    max-width: 58ch;
+  }
+  .flow-event-body p code {
+    font-family: var(--mono);
+    font-size: 0.85em;
+    background: var(--bg-deep);
+    padding: 0.05em 0.35em;
+    border-radius: 2px;
+    color: var(--ink);
+  }
+
+  /* skipped events (--skip-feed scenario) */
+  .flow-event.flow-skip .flow-event-body::before {
+    background: var(--bg-card);
+    border-color: var(--rust);
+    border-style: dashed;
+  }
+  .flow-event.flow-skip .flow-actor {
+    color: var(--rust);
+    background: var(--bg-card);
+    border-color: var(--rust);
+    border-style: dashed;
+  }
+  .flow-event.flow-skip .flow-event-body h5 {
+    text-decoration: line-through;
+    text-decoration-color: var(--rust);
+    text-decoration-thickness: 1px;
+    color: var(--ink-mute);
+  }
+  .flow-event.flow-skip .flow-event-body p {
+    color: var(--ink-faint);
+    font-style: italic;
+  }
+
+  /* phase markers between events */
+  .flow-marker {
+    display: grid;
+    grid-template-columns: 4.75rem 1fr;
+    gap: 1.4rem;
+    align-items: stretch;
+  }
+  .flow-marker-time {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    color: var(--ink-faint);
+    text-align: right;
+    padding-top: 0.65rem;
+  }
+  .flow-marker-body {
+    position: relative;
+    padding: 0.55rem 0 0.7rem 2rem;
+    border-left: 1px solid var(--rule);
+    display: flex;
+    align-items: center;
+    gap: 0.9rem;
+  }
+  .flow-marker-label {
+    font-family: var(--serif);
+    font-style: italic;
+    color: var(--rust);
+    font-size: 1rem;
+    white-space: nowrap;
+  }
+  .flow-marker-line {
+    flex: 1;
+    height: 1px;
+    background: var(--rule);
+  }
+  .flow-marker-note {
+    font-family: var(--mono);
+    font-size: 0.62rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    white-space: nowrap;
+  }
+
+  /* legend strip below the timeline */
+  .flow-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.1rem 1.85rem;
+    align-items: center;
+    padding: 1.1rem 2.25rem;
+    border-top: 1px solid var(--rule);
+    background: var(--bg-soft);
+  }
+  .flow-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-mute);
+  }
+  .flow-legend-dot {
+    width: 0.7rem; height: 0.7rem;
+    border-radius: 50%;
+    border: 2px solid var(--ink-faint);
+    background: var(--bg-card);
+    flex-shrink: 0;
+  }
+  .flow-legend-dot.you    { background: var(--rust); border-color: var(--rust); }
+  .flow-legend-dot.hook   { background: var(--bg-card); border-color: var(--ink); }
+  .flow-legend-dot.plugin { background: var(--olive); border-color: var(--olive); }
+  .flow-legend-dot.sf     { background: var(--ink); border-color: var(--ink); }
+  .flow-legend-dot.skip   { background: var(--bg-card); border-color: var(--rust); border-style: dashed; }
+
+  /* stagger reveal on canvas switch */
+  .flow-canvas.active .flow-rail > * {
+    animation: flowFadeIn 0.45s var(--ease-out) both;
+  }
+  .flow-canvas.active .flow-rail > *:nth-child(1)  { animation-delay: 0.02s; }
+  .flow-canvas.active .flow-rail > *:nth-child(2)  { animation-delay: 0.05s; }
+  .flow-canvas.active .flow-rail > *:nth-child(3)  { animation-delay: 0.08s; }
+  .flow-canvas.active .flow-rail > *:nth-child(4)  { animation-delay: 0.11s; }
+  .flow-canvas.active .flow-rail > *:nth-child(5)  { animation-delay: 0.14s; }
+  .flow-canvas.active .flow-rail > *:nth-child(6)  { animation-delay: 0.17s; }
+  .flow-canvas.active .flow-rail > *:nth-child(7)  { animation-delay: 0.20s; }
+  .flow-canvas.active .flow-rail > *:nth-child(8)  { animation-delay: 0.23s; }
+  .flow-canvas.active .flow-rail > *:nth-child(9)  { animation-delay: 0.26s; }
+  .flow-canvas.active .flow-rail > *:nth-child(10) { animation-delay: 0.29s; }
+  .flow-canvas.active .flow-rail > *:nth-child(11) { animation-delay: 0.32s; }
+  .flow-canvas.active .flow-rail > *:nth-child(12) { animation-delay: 0.35s; }
+  .flow-canvas.active .flow-rail > *:nth-child(13) { animation-delay: 0.38s; }
+  .flow-canvas.active .flow-rail > *:nth-child(14) { animation-delay: 0.41s; }
+  .flow-canvas.active .flow-rail > *:nth-child(15) { animation-delay: 0.44s; }
+  .flow-canvas.active .flow-rail > *:nth-child(16) { animation-delay: 0.47s; }
+  .flow-canvas.active .flow-rail > *:nth-child(17) { animation-delay: 0.50s; }
+  @keyframes flowFadeIn {
+    from { opacity: 0; transform: translateX(-8px); }
+    to   { opacity: 1; transform: translateX(0); }
+  }
+
+  @media (max-width: 600px) {
+    .flow-rail { padding: 1.25rem 1.25rem 0.5rem; }
+    .flow-canvas-head { padding: 1.25rem 1.25rem 1rem; }
+    .flow-legend { padding: 1rem 1.25rem; }
+    .flow-event, .flow-marker { grid-template-columns: 1fr; gap: 0; }
+    .flow-event .flow-time, .flow-marker-time {
+      text-align: left;
+      padding: 0 0 0.3rem 2rem;
+      font-size: 0.62rem;
+      letter-spacing: 0.08em;
+    }
+  }
+
+  /* ─────────────────────────────  stack (§05)  ───────────────────────────── */
+  .stack-section { margin-bottom: 2.5rem; }
+  .stack-section-head {
+    display: flex;
+    align-items: baseline;
+    gap: 1.25rem;
+    margin-bottom: 1.25rem;
+  }
+  .stack-section-head .small-caps {
+    color: var(--rust);
+  }
+  .stack-section-head .stack-rule {
+    flex: 1;
+    height: 1px;
+    background: var(--rule);
+  }
+  .stack-section-head .count {
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 0.95rem;
+    color: var(--ink-faint);
+  }
+
+  .stack-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1px;
+    background: var(--rule);
+    border: 1px solid var(--rule);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  @media (max-width: 820px) { .stack-grid { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 520px) { .stack-grid { grid-template-columns: 1fr; } }
+  .stack-card {
+    background: var(--bg-card);
+    padding: 1.5rem 1.5rem 1.4rem;
+    transition: background 0.3s var(--ease);
+    min-height: 12rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    position: relative;
+  }
+  .stack-card:hover { background: var(--bg-soft); }
+  .stack-card .stack-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+  .stack-card h4 {
+    font-family: var(--serif);
+    font-weight: 400;
+    font-size: 1.35rem;
+    margin: 0;
+    letter-spacing: -0.01em;
+    line-height: 1.1;
+  }
+  .stack-card .stack-author {
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    white-space: nowrap;
+  }
+  .stack-card p {
+    margin: 0;
+    color: var(--ink-soft);
+    font-size: 0.94rem;
+    line-height: 1.5;
+    flex-grow: 1;
+  }
+  .stack-card .stack-license {
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    border-top: 1px dashed var(--rule);
+    padding-top: 0.6rem;
+    margin-top: 0.5rem;
+  }
+  .stack-section.cond .stack-card,
+  .stack-section.docs .stack-card {
+    background: var(--bg-soft);
+  }
+  .stack-section.cond .stack-card:hover,
+  .stack-section.docs .stack-card:hover {
+    background: var(--bg-card);
+  }
+
+  /* rejected items */
+  .stack-rejected {
+    margin-top: 3.5rem;
+    padding-top: 2rem;
+    border-top: 1px solid var(--rule);
+  }
+  .stack-rejected .small-caps {
+    color: var(--ink-faint);
+    margin-bottom: 1rem;
+    display: block;
+  }
+  .stack-rejected .reject-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+  .stack-rejected .reject-list span {
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    padding: 0.35rem 0.7rem;
+    border: 1px solid var(--rule);
+    border-radius: 2px;
+    color: var(--ink-mute);
+    text-decoration: line-through;
+    text-decoration-thickness: 1px;
+    text-decoration-color: var(--rust);
+  }
+
+  /* ─────────────────────────────  onboarding (§06)  ───────────────────────────── */
+  .onb-frame {
+    display: grid;
+    grid-template-columns: 1fr 1.4fr;
+    gap: 2.5rem;
+  }
+  @media (max-width: 880px) { .onb-frame { grid-template-columns: 1fr; gap: 1.5rem; } }
+  .onb-steps {
+    border-left: 1px solid var(--rule);
+    padding-left: 0;
+  }
+  .onb-step {
+    position: relative;
+    padding: 1.1rem 1.5rem 1.1rem 3.5rem;
+    cursor: pointer;
+    border-bottom: 1px solid var(--rule);
+    transition: background 0.3s var(--ease);
+  }
+  .onb-step:last-child { border-bottom: none; }
+  .onb-step:hover { background: var(--bg-soft); }
+  .onb-step::before {
+    content: attr(data-num);
+    position: absolute;
+    left: -1px; top: 50%;
+    transform: translateY(-50%);
+    width: 2.5rem;
+    text-align: center;
+    font-family: var(--serif);
+    font-style: italic;
+    color: var(--ink-faint);
+    font-size: 1.1rem;
+    border-right: 1px solid var(--rule);
+    padding: 0.5rem 0;
+    transition: color 0.3s var(--ease), background 0.3s var(--ease);
+  }
+  .onb-step.active::before {
+    color: var(--bg);
+    background: var(--rust);
+    border-right-color: var(--rust);
+  }
+  .onb-step .onb-title {
+    font-family: var(--serif);
+    font-size: 1.15rem;
+    line-height: 1.2;
+    letter-spacing: -0.005em;
+    margin: 0;
+  }
+  .onb-step .onb-sub {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-mute);
+    margin-top: 0.2rem;
+  }
+  .onb-step.active .onb-sub { color: var(--rust); }
+
+  .onb-detail-frame {
+    padding: 2rem 2.25rem;
+    background: var(--bg-card);
+    border: 1px solid var(--rule);
+    border-radius: 2px;
+    min-height: 26rem;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+  }
+  .onb-detail {
+    display: none;
+    position: relative;
+    flex: 1;
+  }
+  .onb-detail.active { display: block; }
+  .onb-detail .onb-d-num {
+    position: absolute;
+    top: -0.5rem; right: -0.5rem;
+    font-family: var(--serif);
+    font-style: italic;
+    color: var(--ink-faint);
+    font-size: 1.5rem;
+  }
+  .onb-detail h4 {
+    font-family: var(--serif);
+    font-weight: 400;
+    font-size: 1.7rem;
+    line-height: 1.1;
+    letter-spacing: -0.01em;
+    margin: 0 0 0.85rem;
+  }
+  .onb-detail .onb-d-lede {
+    color: var(--ink-soft);
+    margin: 0 0 1.5rem;
+    max-width: 52ch;
+  }
+  .onb-detail ul {
+    margin: 0; padding-left: 1.2rem;
+  }
+  .onb-detail ul li {
+    color: var(--ink-soft);
+    margin-bottom: 0.55rem;
+    font-size: 0.97rem;
+    line-height: 1.5;
+  }
+  .onb-detail ul li::marker { color: var(--rust); }
+  .onb-detail code {
+    font-family: var(--mono);
+    font-size: 0.83em;
+    background: var(--bg-deep);
+    padding: 0.08em 0.4em;
+    border-radius: 2px;
+    color: var(--ink);
+  }
+  .onb-progress {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-top: 2rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--rule-soft);
+  }
+  .onb-progress .pbar {
+    flex: 1;
+    height: 2px;
+    background: var(--rule);
+    position: relative;
+    overflow: hidden;
+  }
+  .onb-progress .pbar .pfill {
+    position: absolute;
+    inset: 0 auto 0 0;
+    background: var(--rust);
+    transition: right 0.4s var(--ease-out);
+    width: 0%;
+  }
+  .onb-progress .pcount {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-mute);
+  }
+  .onb-progress button {
+    background: transparent;
+    border: 1px solid var(--rule);
+    color: var(--ink);
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 0.5rem 0.85rem;
+    cursor: pointer;
+    border-radius: 2px;
+    transition: background 0.25s var(--ease), border-color 0.25s var(--ease), color 0.25s var(--ease);
+  }
+  .onb-progress button:hover {
+    background: var(--ink);
+    color: var(--bg);
+    border-color: var(--ink);
+  }
+  .onb-progress button[disabled] {
+    opacity: 0.35;
+    cursor: not-allowed;
+  }
+
+  /* ─────────────────────────────  principles (§07)  ───────────────────────────── */
+  .principles {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1px;
+    background: var(--rule);
+    border: 1px solid var(--rule);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  @media (max-width: 720px) { .principles { grid-template-columns: 1fr; } }
+  .pq {
+    background: var(--bg-card);
+    padding: 2.5rem 2.25rem;
+    position: relative;
+  }
+  .pq::before {
+    content: "“";
+    position: absolute;
+    top: 0.5rem; left: 1.25rem;
+    font-family: var(--serif);
+    font-weight: 300;
+    font-size: 5rem;
+    line-height: 1;
+    color: var(--rust);
+    opacity: 0.35;
+  }
+  .pq blockquote {
+    font-family: var(--serif);
+    font-style: italic;
+    font-weight: 350;
+    font-size: clamp(1.5rem, 2.4vw, 2rem);
+    line-height: 1.15;
+    letter-spacing: -0.01em;
+    margin: 0 0 1.25rem;
+    position: relative;
+  }
+  .pq cite {
+    font-family: var(--mono);
+    font-style: normal;
+    font-size: 0.72rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-mute);
+  }
+
+  /* ─────────────────────────────  footer  ───────────────────────────── */
+  footer {
+    padding: clamp(2rem, 5vw, 4rem) 0;
+    border-top: 1px solid var(--rule);
+    margin-top: clamp(2rem, 5vw, 4rem);
+  }
+  footer .foot {
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 1.5rem;
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    color: var(--ink-mute);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  footer .foot span {
+    font-family: var(--serif);
+    font-style: italic;
+    text-transform: none;
+    letter-spacing: 0;
+    color: var(--ink-faint);
+    font-size: 0.85rem;
+  }
+
+  /* ─────────────────────────────  scroll animation  ───────────────────────────── */
+  .reveal {
+    opacity: 0;
+    transform: translateY(20px);
+    transition: opacity 0.7s var(--ease-out), transform 0.7s var(--ease-out);
+  }
+  .reveal.in {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  .reveal[data-delay="1"] { transition-delay: 0.08s; }
+  .reveal[data-delay="2"] { transition-delay: 0.16s; }
+  .reveal[data-delay="3"] { transition-delay: 0.24s; }
+  .reveal[data-delay="4"] { transition-delay: 0.32s; }
+  .reveal[data-delay="5"] { transition-delay: 0.40s; }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      transition-duration: 0.01ms !important;
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+    }
+    .reveal { opacity: 1; transform: none; }
+  }
+
+  /* spacing utility */
+  section { padding: clamp(3.5rem, 7vw, 6rem) 0; }
+</style>
+</head>
+<body>
+
+<!-- ─────────────────────────────  MASTHEAD  ───────────────────────────── -->
+<header class="masthead">
+  <div class="bar">
+    <div class="brand">
+      <span class="brand-mark">sf</span>
+      <span class="brand-vol">Vol. 1 · No. 1 · A Tour</span>
+    </div>
+    <nav id="topnav">
+      <a href="#repos">01 · Repos</a>
+      <a href="#memory">02 · Memory</a>
+      <a href="#loop">03 · Loop</a>
+      <a href="#flow">04 · Flow</a>
+      <a href="#stack">05 · Stack</a>
+      <a href="#onboarding">06 · Onboarding</a>
+      <a href="#principles">07 · Principles</a>
+    </nav>
+  </div>
+</header>
+
+<!-- ─────────────────────────────  HERO  ───────────────────────────── -->
+<section class="hero">
+  <div class="wrap">
+    <div class="topline reveal">
+      <span class="date">An installable startup framework</span>
+      <span class="rule"></span>
+      <span class="date">2026 · 05 · 28</span>
+    </div>
+
+    <h1 class="display reveal" data-delay="1">
+      The Startup<br>
+      <em>Framework</em>
+    </h1>
+
+    <div class="deck">
+      <div class="pitch reveal" data-delay="2">
+        <span class="dropcap">A</span>meta-harness configuration for Claude Code, built for a small friend group shipping startup ideas together. Token-efficient by design, opinionated by necessity, lightweight enough to throw away when models evolve past it. Installed once via the plugin marketplace; mostly invisible while it works.
+      </div>
+      <aside class="reveal" data-delay="3">
+        <div class="field"><b>For</b><span>Friend groups building startups</span></div>
+        <div class="field"><b>Layer</b><span>Above Claude Code, below your project</span></div>
+        <div class="field"><b>Install</b><span><code style="font-family:var(--mono);font-size:0.85em">/plugin install</code></span></div>
+        <div class="field"><b>Boots in</b><span>≈ 10 minutes</span></div>
+        <div class="field"><b>Distrib.</b><span>Private GitHub marketplace</span></div>
+        <div class="field"><b>License</b><span>MIT</span></div>
+      </aside>
+    </div>
+
+    <div class="index-strip reveal" data-delay="4">
+      <a href="#repos"><span class="idx-num">i.</span><span class="idx-title">The four repos</span></a>
+      <a href="#memory"><span class="idx-num">ii.</span><span class="idx-title">Memory, in four layers</span></a>
+      <a href="#loop"><span class="idx-num">iii.</span><span class="idx-title">The daily loop</span></a>
+      <a href="#flow"><span class="idx-num">iv.</span><span class="idx-title">The flow, traced</span></a>
+      <a href="#stack"><span class="idx-num">v.</span><span class="idx-title">A curated stack</span></a>
+      <a href="#onboarding"><span class="idx-num">vi.</span><span class="idx-title">Onboarding in 7 stages</span></a>
+      <a href="#principles"><span class="idx-num">vii.</span><span class="idx-title">What it stands on</span></a>
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────────────────  §01 — REPOS  ───────────────────────────── -->
+<section id="repos">
+  <div class="wrap">
+    <div class="section-head reveal">
+      <div>
+        <span class="small-caps eyebrow">§ 01 · Distribution surface</span>
+        <h2>Four repos,<br>different access.</h2>
+        <p class="lede">The framework lives across four git repositories, each with a distinct role and a distinct circle of access. Confusing them is the first mistake a new contributor makes — settling them in your head is the first thing to do.</p>
+      </div>
+      <span class="section-num">— Tap a card to open —</span>
+    </div>
+
+    <div class="repos-grid reveal" data-delay="1">
+
+      <article class="repo-card" data-access="maintainers" data-key="dev">
+        <span class="repo-num">01</span>
+        <div class="small-caps repo-label"><span class="dot"></span>Maintainers only</div>
+        <h3>Framework Dev Wiki</h3>
+        <p>Our record of how we built the framework — ADRs, research, decisions. The repo you're reading this from. Does <em>not</em> ship inside the plugin.</p>
+        <div class="toggle">Open</div>
+        <div class="repo-detail">
+          <dl>
+            <dt>Path</dt><dd><code style="font-family:var(--mono);font-size:0.85em">~/Dev/startup-framework/</code></dd>
+            <dt>Owner</dt><dd>Hazar + future maintainers</dd>
+            <dt>Contents</dt><dd>27 ADRs, 25 research pages, this design doc</dd>
+            <dt>Visibility</dt><dd>Private, write-restricted</dd>
+            <dt>Why</dt><dd>The frame's argument trail — provides "why" for every choice without bloating what friends install</dd>
+          </dl>
+        </div>
+      </article>
+
+      <article class="repo-card" data-access="read" data-key="market">
+        <span class="repo-num">02</span>
+        <div class="small-caps repo-label"><span class="dot"></span>Read collaborators</div>
+        <h3>Marketplace Repo</h3>
+        <p>The distribution surface. Plugin source + <code style="font-family:var(--mono);font-size:0.85em">marketplace.json</code> + <code style="font-family:var(--mono);font-size:0.85em">CHANGELOG</code>. Where every friend installs <em>from</em>.</p>
+        <div class="toggle">Open</div>
+        <div class="repo-detail">
+          <dl>
+            <dt>Access</dt><dd>All friends, read-only</dd>
+            <dt>Releases</dt><dd>Monthly stable, semver</dd>
+            <dt>Updates</dt><dd>Opt-in via <code style="font-family:var(--mono);font-size:0.85em">/sf:update</code>, never automatic</dd>
+            <dt>Migrations</dt><dd>Snapshot · diff · approve · keep / revert</dd>
+            <dt>Why</dt><dd>Friends pin to versions; maintainer controls release rhythm</dd>
+          </dl>
+        </div>
+      </article>
+
+      <article class="repo-card" data-access="write" data-key="feed">
+        <span class="repo-num">03</span>
+        <div class="small-caps repo-label"><span class="dot"></span>Write collaborators</div>
+        <h3>Activity Feed Repo</h3>
+        <p>The only cross-friend layer. Per-friend log files + identity pages. Couple sentences per session-end — never code, never decisions.</p>
+        <div class="toggle">Open</div>
+        <div class="repo-detail">
+          <dl>
+            <dt>Access</dt><dd>All friends, write</dd>
+            <dt>Structure</dt><dd>One <code style="font-family:var(--mono);font-size:0.85em">&lt;handle&gt;.log.md</code> per friend</dd>
+            <dt>Entry</dt><dd><code style="font-family:var(--mono);font-size:0.85em">## [HH:MM] end · hazar · ...</code></dd>
+            <dt>Privacy</dt><dd>Format itself is the firewall · <code style="font-family:var(--mono);font-size:0.85em">--skip-feed</code> opt-out</dd>
+            <dt>Why</dt><dd>See what others are working on without a Slack thread</dd>
+          </dl>
+        </div>
+      </article>
+
+      <article class="repo-card" data-access="local" data-key="wiki">
+        <span class="repo-num">04</span>
+        <div class="small-caps repo-label"><span class="dot"></span>Local only</div>
+        <h3>Friend's Installed Wiki</h3>
+        <p>Each friend's personal memory layer on their own machine. Starts empty when they install — grows with their work. <em>Never</em> shared.</p>
+        <div class="toggle">Open</div>
+        <div class="repo-detail">
+          <dl>
+            <dt>Path</dt><dd><code style="font-family:var(--mono);font-size:0.85em">~/.claude/sf/wiki/</code></dd>
+            <dt>Owner</dt><dd>That friend, locally</dd>
+            <dt>Structure</dt><dd>Master + per-project sub-wikis</dd>
+            <dt>Backup</dt><dd>Optional remote · <code style="font-family:var(--mono);font-size:0.85em">/sf:backup</code></dd>
+            <dt>Why</dt><dd>Each friend's hard-won synthesis stays with them — private by default</dd>
+          </dl>
+        </div>
+      </article>
+
+    </div>
+
+    <div class="repos-note reveal" data-delay="2">
+      The framework's development wiki — the one you're reading from — is our record of <em>how</em> we built the framework. It doesn't ship inside the plugin. When a friend installs, they get an empty wiki <em>skeleton</em>: directories and page templates only. They grow their own wiki from there.
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────────────────  §02 — MEMORY  ───────────────────────────── -->
+<section id="memory">
+  <div class="wrap">
+    <div class="section-head reveal">
+      <div>
+        <span class="small-caps eyebrow">§ 02 · Memory architecture</span>
+        <h2>Four layers,<br>each scoped tight.</h2>
+        <p class="lede">Off-the-shelf tools waste tokens. The framework's memory model layers four mechanisms with deliberately different jobs — and treats the prompt cache as sacred (Anthropic monitors cache hit rate at SEV level; we honor that).</p>
+      </div>
+      <span class="section-num"><i>iii. · iv. for scale</i></span>
+    </div>
+
+    <div class="mem-stack reveal" data-delay="1">
+
+      <div class="mem-row" data-tier="v1">
+        <div class="mem-layer">
+          <span class="small-caps">Within session</span>
+          <span class="mem-tool">Context Mode</span>
+        </div>
+        <p class="mem-desc">Sandboxes tool output. A 315 KB Playwright snapshot becomes a 5.4 KB compact summary the model actually reads.</p>
+        <div class="mem-meter"><strong>98 %</strong>output reduction</div>
+      </div>
+
+      <div class="mem-row" data-tier="v1">
+        <div class="mem-layer">
+          <span class="small-caps">Cross session</span>
+          <span class="mem-tool">claude-mem</span>
+        </div>
+        <p class="mem-desc">Compressed observations across sessions. SQLite + ChromaDB + ONNX embeddings, three-layer progressive disclosure retrieval.</p>
+        <div class="mem-meter"><strong>auto</strong>per session-end</div>
+      </div>
+
+      <div class="mem-row" data-tier="v1">
+        <div class="mem-layer">
+          <span class="small-caps">Personal synthesis</span>
+          <span class="mem-tool">Your wiki</span>
+        </div>
+        <p class="mem-desc">Hand-curated markdown. Decisions, patterns, lessons — the friend's own knowledge graph. Hierarchical: one master + a sub-wiki per project.</p>
+        <div class="mem-meter"><strong>signal</strong>only · zero default edits</div>
+      </div>
+
+      <div class="mem-row" data-tier="v2">
+        <div class="mem-layer">
+          <span class="small-caps">Wiki at scale</span>
+          <span class="mem-tool">qmd</span>
+        </div>
+        <p class="mem-desc">Hybrid BM25 + vector + LLM re-rank for when the wiki crosses 200 pages. Drops in cleanly because v1 already enforces plain markdown + stable frontmatter.</p>
+        <div class="mem-meter"><strong>v2</strong>upgrade path</div>
+      </div>
+
+      <div class="mem-row" data-tier="cross">
+        <div class="mem-layer">
+          <span class="small-caps">Cross friend</span>
+          <span class="mem-tool">Activity Feed</span>
+        </div>
+        <p class="mem-desc">The only layer that crosses friend boundaries. Deliberately terse — couple sentences per session-end, only project + task + files. Format itself is the privacy mechanism.</p>
+        <div class="mem-meter"><strong>opt-in</strong>per session</div>
+      </div>
+
+    </div>
+
+    <div class="mem-caption">
+      <div class="note reveal" data-delay="2">
+        <span class="small-caps">A constraint we honor</span>
+        <h4>Never the system prompt.</h4>
+        <p>The wake-up hook injects wiki context into the <em>conversation layer</em>, never the system prompt. Cached tokens cost 10 % of normal input; modifying the system prompt mid-session breaks the prefix and the whole cache evaporates.</p>
+      </div>
+      <div class="note reveal" data-delay="3">
+        <span class="small-caps">A budget we live in</span>
+        <h4>3 – 5 K tokens at wake-up.</h4>
+        <p>Master index + project index + last 10 log entries + session pointer + recent friend activity. Never the whole wiki. The remaining budget belongs to the friend's actual work.</p>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ─────────────────────────────  §03 — DAILY LOOP  ───────────────────────────── -->
+<section id="loop">
+  <div class="wrap">
+    <div class="section-head reveal">
+      <div>
+        <span class="small-caps eyebrow">§ 03 · The daily loop</span>
+        <h2>Open the laptop.<br>Close the laptop.</h2>
+        <p class="lede">The framework's value shows up at session boundaries. Start of session: wake-up loads what matters. During: hooks run silently while you work. End: <code style="font-family:var(--mono);font-size:0.85em">/sf:wrap</code> promotes high-signal moments to the wiki and writes a terse line to the Activity Feed.</p>
+      </div>
+      <span class="section-num"><i>Three phases.</i></span>
+    </div>
+
+    <div class="loop-controls reveal" data-delay="1" role="tablist">
+      <button class="loop-tab active" data-loop="start" role="tab">
+        <div class="loop-tab-num">i.</div>
+        <div class="loop-tab-title">Start of session</div>
+        <div class="loop-tab-time">SessionStart hook</div>
+      </button>
+      <button class="loop-tab" data-loop="middle" role="tab">
+        <div class="loop-tab-num">ii.</div>
+        <div class="loop-tab-title">During the session</div>
+        <div class="loop-tab-time">Silent · always on</div>
+      </button>
+      <button class="loop-tab" data-loop="end" role="tab">
+        <div class="loop-tab-num">iii.</div>
+        <div class="loop-tab-title">End of session</div>
+        <div class="loop-tab-time">/sf:wrap · friend-invoked</div>
+      </button>
+    </div>
+
+    <div class="loop-panel active" data-loop-panel="start" role="tabpanel">
+      <div class="lp-steps">
+        <h4>What the wake-up hook does</h4>
+        <ol>
+          <li>Reads <code>pwd</code> to determine which project you're in.</li>
+          <li>Loads master <code>wiki/index.md</code> (small catalog).</li>
+          <li>If you're in a project: loads its <code>index.md</code>, <code>CONTEXT.md</code>, and the last 10 <code>log.md</code> entries.</li>
+          <li>Loads the master <code>log.md</code> tail.</li>
+          <li>Pulls the Activity Feed; skims other friends' recent log entries.</li>
+          <li>Composes one context-injection message in the conversation layer.</li>
+          <li>Posts a new entry in your <code>&lt;handle&gt;.log.md</code>: <em>start · working in</em> ...</li>
+          <li>Pushes the Activity Feed update to GitHub.</li>
+        </ol>
+      </div>
+      <div class="lp-aside">
+        <span class="small-caps">What you actually see</span>
+        <p>Before your first prompt, you see a single message: "Framework wake-up context." It's mostly index entries, last 10 log lines, the session pointer from your last wrap, and a couple lines about what your friends touched recently.</p>
+        <div class="quote">You were working on JWT auth middleware. Open thread: write tests for the expired-token edge case.</div>
+        <div class="console"><span class="dim"># Recent friend activity</span>
+<span class="accent">›</span> friend-b · yesterday · landing page copy on Sidecar
+<span class="accent">›</span> friend-c · 3 days ago · Restore onboarding debug</div>
+      </div>
+    </div>
+
+    <div class="loop-panel" data-loop-panel="middle" role="tabpanel">
+      <div class="lp-steps">
+        <h4>What runs while you work</h4>
+        <ol>
+          <li><strong>Context Mode</strong> sandboxes every tool output — keeps the conversation lean.</li>
+          <li><strong>claude-mem</strong> quietly captures observations for next session's recall.</li>
+          <li><strong>Superpowers</strong> skills activate as work matches them: brainstorming, TDD, debugging, code-review.</li>
+          <li><strong>context7</strong> fetches up-to-date version-specific docs for libraries you touch.</li>
+          <li><strong>claude-md-management</strong> audits CLAUDE.md if you edit it.</li>
+          <li><code>/sf:note "..."</code> — pin a thought for <code>/sf:wrap</code> to consider later.</li>
+          <li><code>/sf:recall "..."</code> — query the wiki mid-session without loading more.</li>
+        </ol>
+      </div>
+      <div class="lp-aside">
+        <span class="small-caps">Designed not to interrupt</span>
+        <p>The framework's daily-loop discipline: don't ask the friend to <em>do</em> anything new. Hooks coordinate themselves. Skills activate themselves. The friend builds the thing they sat down to build.</p>
+        <div class="quote">"Mature harness work looks less like building structure up and more like pruning it down." — PY, harness research</div>
+        <div class="console"><span class="dim">$</span> /sf:note "JWT secret rotates weekly"
+<span class="accent">✓</span> pinned for /sf:wrap
+
+<span class="dim">$</span> /sf:recall "refresh-token approach"
+<span class="dim">  → wiki/decisions/auth-refresh-flow.md</span></div>
+      </div>
+    </div>
+
+    <div class="loop-panel" data-loop-panel="end" role="tabpanel">
+      <div class="lp-steps">
+        <h4>What <code>/sf:wrap</code> does</h4>
+        <ol>
+          <li>Reads the session log (CC's record + any <code>/sf:note</code> pins).</li>
+          <li>Applies a <strong>high-signal threshold</strong>: real decision, pattern, or lesson? If not, <em>zero edits</em>. That's the discipline.</li>
+          <li>If signal exists: updates affected pages — diffs shown for approval.</li>
+          <li>Updates <code>CONTEXT.md</code> with the session pointer for next time.</li>
+          <li>Writes the terse Activity Feed entry — never code, never reasoning.</li>
+          <li>Commits and pushes the feed.</li>
+          <li>Returns a brief summary.</li>
+        </ol>
+      </div>
+      <div class="lp-aside">
+        <span class="small-caps">The terse format itself is the firewall</span>
+        <p>Project + task + files. That's the entire shape of a session-end entry. The format constraint prevents accidental leakage by default — you don't <em>need</em> a diff-review safety net.</p>
+        <p>For sensitive work: <code>/sf:wrap --skip-feed</code> or <code>SF_SKIP_FEED=1</code>.</p>
+        <div class="console"><span class="dim">## [18:45] end · hazar · session complete</span>
+
+Worked on <span class="accent">Dev/sidecar/</span> — wrote JWT
+expired-token tests and fixed off-by-one
+in token validation.
+Touched: tests/test_auth.py, api/auth.py.</div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ─────────────────────────────  §04 — FLOW  ───────────────────────────── -->
+<section id="flow">
+  <div class="wrap">
+    <div class="section-head reveal">
+      <div>
+        <span class="small-caps eyebrow">§ 04 · Flow, traced</span>
+        <h2>What fires,<br>when, and why.</h2>
+        <p class="lede">Same architecture, different lens. Pick a scenario; watch which triggers fire — and which deliberately don't. Time runs top to bottom; actor lives in the colour of the dot.</p>
+      </div>
+      <span class="section-num"><i>Four scenarios.</i></span>
+    </div>
+
+    <div class="flow-controls reveal" data-delay="1" role="tablist">
+      <button class="flow-tab active" data-flow="daily" role="tab">
+        <div class="ft-num">i.</div>
+        <div class="ft-title">Daily session</div>
+        <div class="ft-sub">known project</div>
+      </button>
+      <button class="flow-tab" data-flow="install" role="tab">
+        <div class="ft-num">ii.</div>
+        <div class="ft-title">First install</div>
+        <div class="ft-sub">7-stage onboarding</div>
+      </button>
+      <button class="flow-tab" data-flow="private" role="tab">
+        <div class="ft-num">iii.</div>
+        <div class="ft-title">Private</div>
+        <div class="ft-sub">--skip-feed</div>
+      </button>
+      <button class="flow-tab" data-flow="zero" role="tab">
+        <div class="ft-num">iv.</div>
+        <div class="ft-title">Zero-signal wrap</div>
+        <div class="ft-sub">the discipline</div>
+      </button>
+    </div>
+
+    <div class="flow-frame reveal" data-delay="2">
+
+      <!-- Scenario 1 — Daily session, known project -->
+      <div class="flow-canvas active" data-flow-panel="daily" role="tabpanel">
+        <header class="flow-canvas-head">
+          <h4>Daily session · known project</h4>
+          <p>The happy path. Wake-up loads ~ 5 K tokens of relevant context; plugins run silently while you work; <code>/sf:wrap</code> promotes the one or two high-signal moments to the wiki.</p>
+        </header>
+        <ol class="flow-rail">
+
+          <li class="flow-event" data-actor="you">
+            <span class="flow-time">t = 00:00</span>
+            <div class="flow-event-body">
+              <span class="flow-actor">You</span>
+              <h5>Open Claude Code in the project</h5>
+              <p><code>cd ~/Dev/sidecar && claude</code></p>
+            </div>
+          </li>
+
+          <li class="flow-event" data-actor="hook">
+            <span class="flow-time">t = 00:01</span>
+            <div class="flow-event-body">
+              <span class="flow-actor">Hook</span>
+              <h5>SessionStart fires</h5>
+              <p>Reads <code>pwd</code>, identifies the project context that drives everything below.</p>
+            </div>
+          </li>
+
+          <li class="flow-event" data-actor="hook">
+            <span class="flow-time">t = 00:01</span>
+            <div class="flow-event-body">
+              <span class="flow-actor">Hook</span>
+              <h5>Load wiki layers</h5>
+              <p>Master <code>index.md</code> · project sub-wiki <code>index.md</code> + <code>CONTEXT.md</code> + last 10 <code>log.md</code> entries. Budget: 3 – 5 K tokens.</p>
+            </div>
+          </li>
+
+          <li class="flow-event" data-actor="hook">
+            <span class="flow-time">t = 00:02</span>
+            <div class="flow-event-body">
+              <span class="flow-actor">Hook</span>
+              <h5>Pull Activity Feed</h5>
+              <p>Reads other friends' recent <code>&lt;handle&gt;.log.md</code> entries — what they were touching last.</p>
+            </div>
+          </li>
+
+          <li class="flow-event" data-actor="hook">
+            <span class="flow-time">t = 00:02</span>
+            <div class="flow-event-body">
+              <span class="flow-actor">Hook</span>
+              <h5>Inject context</h5>
+              <p>All of that composed into one conversation-layer message. <em>Never</em> the system prompt — that would void the prompt cache.</p>
+            </div>
+          </li>
+
+          <li class="flow-event" data-actor="hook">
+            <span class="flow-time">t = 00:02</span>
+            <div class="flow-event-body">
+              <span class="flow-actor">Hook</span>
+              <h5>Post "start" + push feed</h5>
+              <p>Your <code>&lt;handle&gt;.log.md</code> gets one line. <code>git push</code>. Visible to friends immediately.</p>
+            </div>
+          </li>
+
+          <li class="flow-marker">
+            <span class="flow-marker-time">↓</span>
+            <div class="flow-marker-body">
+              <span class="flow-marker-label">Session active</span>
+              <span class="flow-marker-line"></span>
+              <span class="flow-marker-note">duration varies</span>
+            </div>
+          </li>
+
+          <li class="flow-event" data-actor="plugin">
+            <span class="flow-time">— silent</span>
+            <div class="flow-event-body">
+              <span class="flow-actor">Plugin</span>
+              <h5>Context Mode sandboxes outputs</h5>
+              <p>Every tool call (Playwright, file reads, shell): 315 KB raw → 5 KB compact summary. Conversation stays lean.</p>
+            </div>
+          </li>
+
+          <li class="flow-event" data-actor="plugin">
+            <span class="flow-time">— silent</span>
+            <div class="flow-event-body">
+              <span class="flow-actor">Plugin</span>
+              <h5>claude-mem captures observations</h5>
+              <p>Compressed cross-session memory. Tomorrow's wake-up can recall what mattered.</p>
+            </div>
+          </li>
+
+          <li class="flow-event" data-actor="plugin">
+            <span class="flow-time">— silent</span>
+            <div class="flow-event-body">
+              <span class="flow-actor">Plugin</span>
+              <h5>Skills auto-activate</h5>
+              <p>Superpowers: brainstorming · TDD · debugging · code-review. context7 fetches version-specific docs on demand.</p>
+            </div>
+          </li>
+
+          <li class="flow-event" data-actor="you">
+            <span class="flow-time">t = 00:30</span>
+            <div class="flow-event-body">
+              <span class="flow-actor">You</span>
+              <h5>Optional: <code>/sf:note</code> · <code>/sf:recall</code></h5>
+              <p>Pin a thought for <code>/sf:wrap</code> to consider · or query the wiki mid-session without loading more.</p>
+            </div>
+          </li>
+
+          <li class="flow-marker">
+            <span class="flow-marker-time">↓</span>
+            <div class="flow-marker-body">
+              <span class="flow-marker-label">Wrap-up</span>
+              <span class="flow-marker-line"></span>
+              <span class="flow-marker-note">friend-invoked</span>
+            </div>
+          </li>
+
+          <li class="flow-event" data-actor="you">
+            <span class="flow-time">t = 01:00</span>
+            <div class="flow-event-body">
+              <span class="flow-actor">You</span>
+              <h5><code>/sf:wrap</code></h5>
+              <p>Friend-invoked, never an auto-hook — avoids Ralph + claude-mem Stop-hook collision.</p>
+            </div>
+          </li>
+
+          <li class="flow-event" data-actor="sf">
+            <span class="flow-time">t = 01:01</span>
+            <div class="flow-event-body">
+              <span class="flow-actor">SF</span>
+              <h5>Apply high-signal threshold</h5>
+              <p>Real decision, pattern, or lesson in this session? Signal found → diffs shown for approval.</p>
+            </div>
+          </li>
+
+          <li class="flow-event" data-actor="sf">
+            <span class="flow-time">t = 01:02</span>
+            <div class="flow-event-body">
+              <span class="flow-actor">SF</span>
+              <h5>Update wiki + CONTEXT.md</h5>
+              <p>Affected pages get diffs applied · session pointer set for tomorrow's wake-up.</p>
+            </div>
+          </li>
+
+          <li class="flow-event" data-actor="sf">
+            <span class="flow-time">t = 01:03</span>
+            <div class="flow-event-body">
+              <span class="flow-actor">SF</span>
+              <h5>Write terse feed entry + push</h5>
+              <p><code>worked on Dev/sidecar/ — &lt;1-2 sentences&gt;. touched: &lt;files&gt;.</code></p>
+            </div>
+          </li>
+
+          <li class="flow-event" data-actor="end">
+            <span class="flow-time">t = 01:04</span>
+            <div class="flow-event-body">
+              <span class="flow-actor">End</span>
+              <h5>Session done</h5>
+              <p>Tomorrow's wake-up reads <code>CONTEXT.md</code>. The loop closes.</p>
+            </div>
+          </li>
+
+        </ol>
+      </div>
+
+      <!-- Scenario 2 — First-time install -->
+      <div class="flow-canvas" data-flow-panel="install" role="tabpanel">
+        <header class="flow-canvas-head">
+          <h4>First install · seven stages · ≈ 10 minutes</h4>
+          <p>From "I just got added as a collaborator" to "I'm ready to work." Each <code>SF</code> stage is gated; <code>/sf:doctor</code> at the end verifies everything before the friend's first real prompt.</p>
+        </header>
+        <ol class="flow-rail">
+
+          <li class="flow-event" data-actor="you">
+            <span class="flow-time">t = 00:00</span>
+            <div class="flow-event-body">
+              <span class="flow-actor">You</span>
+              <h5>Add the marketplace</h5>
+              <p><code>/plugin marketplace add &lt;our-org&gt;/&lt;framework-marketplace&gt;</code></p>
+            </div>
+          </li>
+
+          <li class="flow-event" data-actor="you">
+            <span class="flow-time">t = 00:01</span>
+            <div class="flow-event-body">
+              <span class="flow-actor">You</span>
+              <h5>Install the plugin</h5>
+              <p><code>/plugin install startup-framework@latest</code></p>
+            </div>
+          </li>
+
+          <li class="flow-event" data-actor="you">
+            <span class="flow-time">t = 00:02</span>
+            <div class="flow-event-body">
+              <span class="flow-actor">You</span>
+              <h5>Run the installer</h5>
+              <p><code>/sf:install</code> — kicks off the 7-stage flow below.</p>
+            </div>
+          </li>
+
+          <li class="flow-event" data-actor="sf">
+            <span class="flow-time">stage 1</span>
+            <div class="flow-event-body">
+              <span class="flow-actor">SF</span>
+              <h5>Environment check</h5>
+              <p>CC <code>1.0.33+</code>, Node <code>22.5+</code>, git, <code>gh</code> CLI, <code>ANTHROPIC_API_KEY</code>, Upstash key.</p>
+            </div>
+          </li>
+
+          <li class="flow-event" data-actor="sf">
+            <span class="flow-time">stage 2</span>
+            <div class="flow-event-body">
+              <span class="flow-actor">SF</span>
+              <h5>Install 6 required plugins</h5>
+              <p>Context Mode → claude-mem → Superpowers → Skill Creator → context7 → claude-md-management. Hook-coordination order: most specific first.</p>
+            </div>
+          </li>
+
+          <li class="flow-event" data-actor="sf">
+            <span class="flow-time">stage 3</span>
+            <div class="flow-event-body">
+              <span class="flow-actor">SF</span>
+              <h5>Activity Feed + conditional plugins</h5>
+              <p>Shared private GitHub repo URL · clone · identities setup. Ask: Frontend Design? Ralph?</p>
+            </div>
+          </li>
+
+          <li class="flow-event" data-actor="sf">
+            <span class="flow-time">stage 4</span>
+            <div class="flow-event-body">
+              <span class="flow-actor">SF</span>
+              <h5>Identity interview</h5>
+              <p><code>/sf:interview</code> · ~ 17 questions across 5 sections · writes <code>identity.md</code> locally and an identity summary to the Activity Feed.</p>
+            </div>
+          </li>
+
+          <li class="flow-event" data-actor="sf">
+            <span class="flow-time">stage 5</span>
+            <div class="flow-event-body">
+              <span class="flow-actor">SF</span>
+              <h5>Wiki bootstrap</h5>
+              <p>Empty skeleton at <code>~/.claude/sf/wiki/</code>. Per-friend principle: framework ships structure, not content.</p>
+            </div>
+          </li>
+
+          <li class="flow-event" data-actor="sf">
+            <span class="flow-time">stage 6</span>
+            <div class="flow-event-body">
+              <span class="flow-actor">SF</span>
+              <h5>Doctor verification</h5>
+              <p><code>/sf:doctor</code> — every plugin, hook, key, remote. Optional: native OpenTelemetry for token observability.</p>
+            </div>
+          </li>
+
+          <li class="flow-event" data-actor="sf">
+            <span class="flow-time">stage 7</span>
+            <div class="flow-event-body">
+              <span class="flow-actor">SF</span>
+              <h5>First-session walkthrough</h5>
+              <p>Command tour: <code>/sf:wake-up</code>, <code>/sf:wrap</code>, <code>/sf:note</code>, <code>/sf:recall</code>, <code>/sf:improve-skill</code>, <code>/sf:bootstrap-project</code>, <code>/sf:catch-up</code>, <code>/sf:backup</code>.</p>
+            </div>
+          </li>
+
+          <li class="flow-event" data-actor="end">
+            <span class="flow-time">t ≈ 10:00</span>
+            <div class="flow-event-body">
+              <span class="flow-actor">End</span>
+              <h5>Ready to work</h5>
+              <p>Next session, the daily loop kicks in. The framework gets out of the way.</p>
+            </div>
+          </li>
+
+        </ol>
+      </div>
+
+      <!-- Scenario 3 — Private session (--skip-feed) -->
+      <div class="flow-canvas" data-flow-panel="private" role="tabpanel">
+        <header class="flow-canvas-head">
+          <h4>Private session · <code>--skip-feed</code></h4>
+          <p>When you'd rather not telegraph the session to the group. Wiki still grows (locally); Activity Feed events are skipped at both ends. Dashed dots mark what <em>doesn't</em> happen.</p>
+        </header>
+        <ol class="flow-rail">
+
+          <li class="flow-event" data-actor="you">
+            <span class="flow-time">t = 00:00</span>
+            <div class="flow-event-body">
+              <span class="flow-actor">You</span>
+              <h5>Start with the env var</h5>
+              <p><code>SF_SKIP_FEED=1 claude</code> · or wrap later with <code>/sf:wrap --skip-feed</code>.</p>
+            </div>
+          </li>
+
+          <li class="flow-event" data-actor="hook">
+            <span class="flow-time">t = 00:01</span>
+            <div class="flow-event-body">
+              <span class="flow-actor">Hook</span>
+              <h5>SessionStart · load wiki</h5>
+              <p>Same wake-up as normal · master index + project sub-wiki + log tail.</p>
+            </div>
+          </li>
+
+          <li class="flow-event flow-skip" data-actor="hook">
+            <span class="flow-time">— skipped</span>
+            <div class="flow-event-body">
+              <span class="flow-actor">Hook</span>
+              <h5>Pull Activity Feed</h5>
+              <p>Does not fetch friends' recent entries. Your wake-up is local-only.</p>
+            </div>
+          </li>
+
+          <li class="flow-event flow-skip" data-actor="hook">
+            <span class="flow-time">— skipped</span>
+            <div class="flow-event-body">
+              <span class="flow-actor">Hook</span>
+              <h5>Post "start" entry</h5>
+              <p>No line written to <code>&lt;handle&gt;.log.md</code>; no git push; friends don't see you're online.</p>
+            </div>
+          </li>
+
+          <li class="flow-marker">
+            <span class="flow-marker-time">↓</span>
+            <div class="flow-marker-body">
+              <span class="flow-marker-label">Session active</span>
+              <span class="flow-marker-line"></span>
+              <span class="flow-marker-note">plugins behave normally</span>
+            </div>
+          </li>
+
+          <li class="flow-event" data-actor="plugin">
+            <span class="flow-time">— silent</span>
+            <div class="flow-event-body">
+              <span class="flow-actor">Plugin</span>
+              <h5>Plugins run as usual</h5>
+              <p>Context Mode + claude-mem + context7 + Superpowers — all local to your machine. None of them touch the feed.</p>
+            </div>
+          </li>
+
+          <li class="flow-marker">
+            <span class="flow-marker-time">↓</span>
+            <div class="flow-marker-body">
+              <span class="flow-marker-label">Wrap-up</span>
+              <span class="flow-marker-line"></span>
+              <span class="flow-marker-note">private wrap</span>
+            </div>
+          </li>
+
+          <li class="flow-event" data-actor="you">
+            <span class="flow-time">t = 01:00</span>
+            <div class="flow-event-body">
+              <span class="flow-actor">You</span>
+              <h5><code>/sf:wrap --skip-feed</code></h5>
+              <p>Same threshold logic; same wiki updates; just doesn't write anywhere shared.</p>
+            </div>
+          </li>
+
+          <li class="flow-event" data-actor="sf">
+            <span class="flow-time">t = 01:01</span>
+            <div class="flow-event-body">
+              <span class="flow-actor">SF</span>
+              <h5>Wiki + CONTEXT.md updated</h5>
+              <p>If there was signal: diffs applied, session pointer set. Everything stays on your disk.</p>
+            </div>
+          </li>
+
+          <li class="flow-event flow-skip" data-actor="sf">
+            <span class="flow-time">— skipped</span>
+            <div class="flow-event-body">
+              <span class="flow-actor">SF</span>
+              <h5>Feed entry write</h5>
+              <p>No terse "end" line added to <code>&lt;handle&gt;.log.md</code>.</p>
+            </div>
+          </li>
+
+          <li class="flow-event flow-skip" data-actor="sf">
+            <span class="flow-time">— skipped</span>
+            <div class="flow-event-body">
+              <span class="flow-actor">SF</span>
+              <h5>Git push to feed</h5>
+              <p>Nothing leaves your machine. The friend group never sees this session existed.</p>
+            </div>
+          </li>
+
+          <li class="flow-event" data-actor="end">
+            <span class="flow-time">t = 01:03</span>
+            <div class="flow-event-body">
+              <span class="flow-actor">End</span>
+              <h5>Session done · entirely local</h5>
+              <p>Format-as-firewall + <code>--skip-feed</code>: two layers of privacy. Trust the constraint.</p>
+            </div>
+          </li>
+
+        </ol>
+      </div>
+
+      <!-- Scenario 4 — Zero-signal wrap -->
+      <div class="flow-canvas" data-flow-panel="zero" role="tabpanel">
+        <header class="flow-canvas-head">
+          <h4>Zero-signal wrap · the discipline</h4>
+          <p>Most sessions are routine. The threshold check finds nothing worth promoting. The wiki stays exactly the same size; the feed still gets a line. This is the framework working as designed — not failing.</p>
+        </header>
+        <ol class="flow-rail">
+
+          <li class="flow-event" data-actor="you">
+            <span class="flow-time">t = 00:00</span>
+            <div class="flow-event-body">
+              <span class="flow-actor">You</span>
+              <h5>Open Claude Code</h5>
+              <p><code>cd ~/Dev/sidecar && claude</code></p>
+            </div>
+          </li>
+
+          <li class="flow-event" data-actor="hook">
+            <span class="flow-time">t = 00:01</span>
+            <div class="flow-event-body">
+              <span class="flow-actor">Hook</span>
+              <h5>Wake-up runs · context loaded</h5>
+              <p>Same as a normal day · master + project + feed + start entry pushed.</p>
+            </div>
+          </li>
+
+          <li class="flow-marker">
+            <span class="flow-marker-time">↓</span>
+            <div class="flow-marker-body">
+              <span class="flow-marker-label">Session active</span>
+              <span class="flow-marker-line"></span>
+              <span class="flow-marker-note">routine work</span>
+            </div>
+          </li>
+
+          <li class="flow-event" data-actor="you">
+            <span class="flow-time">~ 45 min</span>
+            <div class="flow-event-body">
+              <span class="flow-actor">You</span>
+              <h5>Routine fixes, small refactors</h5>
+              <p>Bug squashing, dependency bumps, doc cleanups. No big decisions, no patterns surfaced, no new lessons.</p>
+            </div>
+          </li>
+
+          <li class="flow-marker">
+            <span class="flow-marker-time">↓</span>
+            <div class="flow-marker-body">
+              <span class="flow-marker-label">Wrap-up</span>
+              <span class="flow-marker-line"></span>
+              <span class="flow-marker-note">most sessions</span>
+            </div>
+          </li>
+
+          <li class="flow-event" data-actor="you">
+            <span class="flow-time">t = 00:46</span>
+            <div class="flow-event-body">
+              <span class="flow-actor">You</span>
+              <h5><code>/sf:wrap</code></h5>
+              <p>Same command, same flow.</p>
+            </div>
+          </li>
+
+          <li class="flow-event" data-actor="sf">
+            <span class="flow-time">t = 00:47</span>
+            <div class="flow-event-body">
+              <span class="flow-actor">SF</span>
+              <h5>Threshold check → no signal</h5>
+              <p>No real decision, pattern, or lesson surfaced this session. The high-signal threshold says: leave the wiki alone.</p>
+            </div>
+          </li>
+
+          <li class="flow-event flow-skip" data-actor="sf">
+            <span class="flow-time">— zero</span>
+            <div class="flow-event-body">
+              <span class="flow-actor">SF</span>
+              <h5>Wiki edits</h5>
+              <p>Zero pages touched. <em>This is the feature.</em> Promoting routine work would dilute every future search across the wiki.</p>
+            </div>
+          </li>
+
+          <li class="flow-event" data-actor="sf">
+            <span class="flow-time">t = 00:47</span>
+            <div class="flow-event-body">
+              <span class="flow-actor">SF</span>
+              <h5>Update CONTEXT.md pointer</h5>
+              <p>Where you were when you stopped — for tomorrow's wake-up.</p>
+            </div>
+          </li>
+
+          <li class="flow-event" data-actor="sf">
+            <span class="flow-time">t = 00:48</span>
+            <div class="flow-event-body">
+              <span class="flow-actor">SF</span>
+              <h5>Write feed entry + push</h5>
+              <p>Terse · 1 – 2 sentences · files touched. Friends still see you were working.</p>
+            </div>
+          </li>
+
+          <li class="flow-event" data-actor="end">
+            <span class="flow-time">t = 00:48</span>
+            <div class="flow-event-body">
+              <span class="flow-actor">End</span>
+              <h5>Session captured at the right level</h5>
+              <p>No false signal, no wiki bloat. The discipline is in the <em>absence</em> of an edit.</p>
+            </div>
+          </li>
+
+        </ol>
+      </div>
+
+      <!-- Legend -->
+      <div class="flow-legend">
+        <div class="flow-legend-item"><span class="flow-legend-dot you"></span>You · manual</div>
+        <div class="flow-legend-item"><span class="flow-legend-dot hook"></span>Hook · auto</div>
+        <div class="flow-legend-item"><span class="flow-legend-dot plugin"></span>Plugin · ambient</div>
+        <div class="flow-legend-item"><span class="flow-legend-dot sf"></span>SF command</div>
+        <div class="flow-legend-item"><span class="flow-legend-dot skip"></span>Skipped · doesn't fire</div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────────────────  §05 — STACK  ───────────────────────────── -->
+<section id="stack">
+  <div class="wrap">
+    <div class="section-head reveal">
+      <div>
+        <span class="small-caps eyebrow">§ 05 · Curated stack</span>
+        <h2>Eight plugins.<br>Every one earns its slot.</h2>
+        <p class="lede">Six required at install, one conditional, one documented-not-bundled. The framework's value is what it <em>leaves out</em>. Each plugin is judged on two axes: tool fit, and provider trust (the meme-coin rug-pull incident taught us popularity ≠ safety).</p>
+      </div>
+      <span class="section-num"><i>6 + 1 + 1</i></span>
+    </div>
+
+    <div class="stack-section reveal" data-delay="1">
+      <div class="stack-section-head">
+        <span class="small-caps">Required at install</span>
+        <span class="stack-rule"></span>
+        <span class="count">six plugins · methodology, memory, efficiency, docs</span>
+      </div>
+      <div class="stack-grid">
+
+        <div class="stack-card">
+          <div class="stack-head"><h4>Superpowers</h4><span class="stack-author">obra</span></div>
+          <p>The development methodology layer. Seven-phase workflow — brainstorm → worktree → plan → TDD → subagent → review → finish. Powered the brainstorming session this design came out of.</p>
+          <div class="stack-license">MIT · official marketplace</div>
+        </div>
+
+        <div class="stack-card">
+          <div class="stack-head"><h4>Skill Creator</h4><span class="stack-author">Anthropic</span></div>
+          <p>Skill authoring + Layer 1 description optimizer. 60 / 40 train-test split, 3 runs per query, 5 iterations. Foundation of the framework's two-layer self-improvement loop.</p>
+          <div class="stack-license">Apache 2.0</div>
+        </div>
+
+        <div class="stack-card">
+          <div class="stack-head"><h4>claude-mem</h4><span class="stack-author">thedotmack</span></div>
+          <p>Cross-session memory. SQLite + ChromaDB + three-layer progressive-disclosure retrieval. Two independent practitioner recommendations · most-cited tool for the job.</p>
+          <div class="stack-license">Apache 2.0</div>
+        </div>
+
+        <div class="stack-card">
+          <div class="stack-head"><h4>Context Mode</h4><span class="stack-author">mksglu</span></div>
+          <p>Within-session token efficiency. Sandboxes tool output via subprocess isolation. 315 KB → 5.4 KB (98 % reduction). No daemon.</p>
+          <div class="stack-license">ELv2 · personal / team use</div>
+        </div>
+
+        <div class="stack-card">
+          <div class="stack-head"><h4>context7</h4><span class="stack-author">Upstash</span></div>
+          <p>Version-aware documentation lookup. Solves "Claude wrote code against an outdated version of the library." Auto-activating; cheap sub-agent on Sonnet for docs research.</p>
+          <div class="stack-license">Permissive · Upstash key needed</div>
+        </div>
+
+        <div class="stack-card">
+          <div class="stack-head"><h4>claude-md-management</h4><span class="stack-author">Anthropic</span></div>
+          <p>CLAUDE.md hygiene + <code>/revise-claude-md</code>. Captures session learnings into project CLAUDE.md. Complements <code>/sf:wrap</code> at a different layer (CLAUDE.md vs. wiki).</p>
+          <div class="stack-license">Permissive · 205K installs</div>
+        </div>
+
+      </div>
+    </div>
+
+    <div class="stack-section cond reveal" data-delay="2">
+      <div class="stack-section-head">
+        <span class="small-caps">Conditional · asked at onboarding</span>
+        <span class="stack-rule"></span>
+        <span class="count">one plugin · UI projects only</span>
+      </div>
+      <div class="stack-grid">
+        <div class="stack-card">
+          <div class="stack-head"><h4>Frontend Design</h4><span class="stack-author">Anthropic</span></div>
+          <p>Auto-activating skill for distinctive frontend work. Rejects generic AI aesthetics; teaches bold typography and color choices. The friend gets asked at <code>/sf:install</code> — skipped for backend-only groups.</p>
+          <div class="stack-license">Permissive · skipped if no UI</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="stack-section docs reveal" data-delay="3">
+      <div class="stack-section-head">
+        <span class="small-caps">Documented · not bundled</span>
+        <span class="stack-rule"></span>
+        <span class="count">one plugin · install on demand</span>
+      </div>
+      <div class="stack-grid">
+        <div class="stack-card">
+          <div class="stack-head"><h4>Ralph</h4><span class="stack-author">Anthropic</span></div>
+          <p>The canonical lightweight autonomous-loop pattern. Stop-hook session loop for overnight runs. Not bundled — its Stop hook would compete with claude-mem's lifecycle hooks. Documented; install on demand.</p>
+          <div class="stack-license">Permissive · install on demand</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="stack-rejected reveal" data-delay="4">
+      <span class="small-caps">Explicitly rejected — and why</span>
+      <div class="reject-list">
+        <span title="Single-maintainer + commercial tier; smaller scope misfit">ECC (Everything Claude Code)</span>
+        <span title="Methodology overlap with Superpowers — one is enough">GSD Redux</span>
+        <span title="ADR-018 builds simpler Activity Feed directly">MCP Agent Mail</span>
+        <span title="Data leaves friend group's machines">Mercury / Proton SaaS</span>
+        <span title="Framework-agnostic — wrong scope for CC-specific use">Mem0 / Letta / Zep / LangMem</span>
+        <span title="Newer + memory-layer overlap with claude-mem">lean-ctx</span>
+        <span title="Terse format constraint handles privacy; per-project choice">framework-level secret scanning</span>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ─────────────────────────────  §06 — ONBOARDING  ───────────────────────────── -->
+<section id="onboarding">
+  <div class="wrap">
+    <div class="section-head reveal">
+      <div>
+        <span class="small-caps eyebrow">§ 06 · Onboarding</span>
+        <h2>Zero to productive,<br>in seven stages.</h2>
+        <p class="lede">A friend installs once. The experience matters as much as anything else in the framework. Seven stages, an identity interview, an empty wiki to grow into. Target: ten minutes — and then they get out of the friend's way.</p>
+      </div>
+      <span class="section-num"><i>Click a step.</i></span>
+    </div>
+
+    <div class="onb-frame reveal" data-delay="1">
+
+      <ol class="onb-steps" id="onbSteps" reversed style="list-style:none;padding:0;margin:0;">
+        <li class="onb-step active" data-step="1" data-num="01">
+          <p class="onb-title">Environment check</p>
+          <p class="onb-sub">CC 1.0.33+ · Node 22.5+ · gh · keys</p>
+        </li>
+        <li class="onb-step" data-step="2" data-num="02">
+          <p class="onb-title">Required plugins</p>
+          <p class="onb-sub">six, in hook-coordination order</p>
+        </li>
+        <li class="onb-step" data-step="3" data-num="03">
+          <p class="onb-title">Activity Feed + conditional</p>
+          <p class="onb-sub">shared repo · Frontend Design · Ralph</p>
+        </li>
+        <li class="onb-step" data-step="4" data-num="04">
+          <p class="onb-title">Identity interview</p>
+          <p class="onb-sub">/sf:interview · ~17 questions · 5 sections</p>
+        </li>
+        <li class="onb-step" data-step="5" data-num="05">
+          <p class="onb-title">Wiki bootstrap</p>
+          <p class="onb-sub">empty skeleton · optional backup remote</p>
+        </li>
+        <li class="onb-step" data-step="6" data-num="06">
+          <p class="onb-title">Doctor verification</p>
+          <p class="onb-sub">/sf:doctor · hooks · keys · OTel optional</p>
+        </li>
+        <li class="onb-step" data-step="7" data-num="07">
+          <p class="onb-title">First-session walkthrough</p>
+          <p class="onb-sub">commands tour · ready in 10 min</p>
+        </li>
+      </ol>
+
+      <div class="onb-detail-frame">
+
+        <div class="onb-detail active" data-step="1">
+          <div class="onb-d-num">01</div>
+          <h4>Environment check</h4>
+          <p class="onb-d-lede">Before anything else: confirm the friend's machine has the prerequisites the framework assumes.</p>
+          <ul>
+            <li>Claude Code <code>1.0.33+</code>, Node <code>22.5+</code>, git, <code>gh</code> CLI</li>
+            <li><code>claude auth login</code> + <code>gh auth status</code> both healthy</li>
+            <li><code>ANTHROPIC_API_KEY</code> in environment</li>
+            <li>Upstash API key (for <code>context7</code> docs lookups)</li>
+            <li>OS: Linux or macOS primary; Windows via WSL</li>
+          </ul>
+        </div>
+
+        <div class="onb-detail" data-step="2">
+          <div class="onb-d-num">02</div>
+          <h4>Required plugins</h4>
+          <p class="onb-d-lede">Six required plugins installed in hook-coordination order — most specific first, most general last.</p>
+          <ul>
+            <li><code>Context Mode</code> — sandboxes tool output first</li>
+            <li><code>claude-mem</code> — cross-session memory second</li>
+            <li><code>Superpowers</code> — methodology skills</li>
+            <li><code>Skill Creator</code> — authoring + L1 optimizer</li>
+            <li><code>context7</code> — version-aware docs</li>
+            <li><code>claude-md-management</code> — CLAUDE.md hygiene</li>
+          </ul>
+        </div>
+
+        <div class="onb-detail" data-step="3">
+          <div class="onb-d-num">03</div>
+          <h4>Activity Feed + conditional plugins</h4>
+          <p class="onb-d-lede">Cross-friend visibility wired up; conditional plugins offered.</p>
+          <ul>
+            <li>Activity Feed: shared private GitHub repo URL → clone → identities setup</li>
+            <li>Ask: Frontend Design? (UI work)</li>
+            <li>Ask: Ralph documented for overnight loops? (no auto-install)</li>
+            <li>Existing group? Stage detects existing feed; clones instead of bootstrap</li>
+            <li>New machine for existing friend? Local wiki starts empty by design (per-friend principle)</li>
+          </ul>
+        </div>
+
+        <div class="onb-detail" data-step="4">
+          <div class="onb-d-num">04</div>
+          <h4>Identity interview</h4>
+          <p class="onb-d-lede">AI-driven onboarding interview that writes <code>identity.md</code> locally + a public identity summary to the Activity Feed.</p>
+          <ul>
+            <li><code>/sf:interview</code> — about 17 questions across 5 sections</li>
+            <li><em>About you</em> · <em>Working style</em> · <em>Tech preferences</em> · <em>Opinions / non-goals</em> · <em>Contribution</em></li>
+            <li>Multiple-choice + open-ended; phase question is informational not mechanical</li>
+            <li>Re-runnable later: <code>/sf:interview --refresh</code> for shifts</li>
+            <li>Writes <code>wiki/identity.md</code> + <code>&lt;activity-feed&gt;/identities/&lt;handle&gt;.md</code></li>
+          </ul>
+        </div>
+
+        <div class="onb-detail" data-step="5">
+          <div class="onb-d-num">05</div>
+          <h4>Wiki bootstrap</h4>
+          <p class="onb-d-lede">Create the master wiki skeleton if it doesn't exist yet — directories and page templates only, never content.</p>
+          <ul>
+            <li><code>~/.claude/sf/wiki/</code> created with subdirs: research / decisions / alternatives / patterns / projects</li>
+            <li><code>index.md</code> + <code>log.md</code> seeded</li>
+            <li>Optionally set up a git remote for backup (private repo)</li>
+            <li><code>/sf:backup</code> pushes wiki to remote on demand</li>
+            <li>Per-friend principle: friend grows their own knowledge from here</li>
+          </ul>
+        </div>
+
+        <div class="onb-detail" data-step="6">
+          <div class="onb-d-num">06</div>
+          <h4>Doctor verification</h4>
+          <p class="onb-d-lede">Confirm everything works before the friend's first prompt. Optional: turn on Claude Code's native OpenTelemetry for token observability.</p>
+          <ul>
+            <li><code>/sf:doctor</code> reports on every plugin, hook, key, and remote</li>
+            <li>All hooks registered in expected order</li>
+            <li>All API keys present and reachable</li>
+            <li>Optional: <code>OTEL_EXPORTER_OTLP_ENDPOINT</code> + headers for token + session observability</li>
+            <li>Surfaces any drift the next morning if something breaks</li>
+          </ul>
+        </div>
+
+        <div class="onb-detail" data-step="7">
+          <div class="onb-d-num">07</div>
+          <h4>First-session walkthrough</h4>
+          <p class="onb-d-lede">Quick tour of the commands the friend will actually run, day after day. Then we get out of the way.</p>
+          <ul>
+            <li><code>/sf:wake-up</code> — auto on every session start</li>
+            <li><code>/sf:wrap</code> — end-of-session consolidate</li>
+            <li><code>/sf:note &lt;text&gt;</code> · <code>/sf:recall &lt;query&gt;</code></li>
+            <li><code>/sf:improve-skill &lt;name&gt;</code> — Karpathy auto-research loop</li>
+            <li><code>/sf:bootstrap-project</code> · <code>/sf:catch-up</code> · <code>/sf:backup</code></li>
+            <li><code>/revise-claude-md</code> — from claude-md-management (CLAUDE.md layer complement to /sf:wrap)</li>
+          </ul>
+        </div>
+
+        <div class="onb-progress">
+          <button id="onbPrev" disabled>← Prev</button>
+          <div class="pbar"><div class="pfill" id="onbFill"></div></div>
+          <span class="pcount" id="onbCount">01 / 07</span>
+          <button id="onbNext">Next →</button>
+        </div>
+
+      </div>
+
+    </div>
+
+  </div>
+</section>
+
+<!-- ─────────────────────────────  §07 — PRINCIPLES  ───────────────────────────── -->
+<section id="principles">
+  <div class="wrap">
+    <div class="section-head reveal">
+      <div>
+        <span class="small-caps eyebrow">§ 07 · What it stands on</span>
+        <h2>Eight principles<br>worth being annoying about.</h2>
+        <p class="lede">Every architectural choice is downstream of these. When the framework grows past one of them, the principle wins — the feature gets cut.</p>
+      </div>
+      <span class="section-num"><i>finis.</i></span>
+    </div>
+
+    <div class="principles reveal" data-delay="1">
+      <div class="pq">
+        <blockquote>Token efficiency is the north star. Every design decision is checked against it.</blockquote>
+        <cite>i. — north star</cite>
+      </div>
+      <div class="pq">
+        <blockquote>Per-friend local. Share by action — never by leak.</blockquote>
+        <cite>ii. — privacy default</cite>
+      </div>
+      <div class="pq">
+        <blockquote>Curation over kitchen-sink. The framework's value is what it leaves out.</blockquote>
+        <cite>iii. — opinionated</cite>
+      </div>
+      <div class="pq">
+        <blockquote>Files and configs only. No daemons at our layer. Plugins may have their own.</blockquote>
+        <cite>iv. — auditable</cite>
+      </div>
+      <div class="pq">
+        <blockquote>Friends shouldn't lose work because the framework moved. Schema-versioned migrations.</blockquote>
+        <cite>v. — backwards compatibility</cite>
+      </div>
+      <div class="pq">
+        <blockquote>Curation extends to maintainers. Popularity ≠ safety. Vet identity and incentives.</blockquote>
+        <cite>vi. — provider trust</cite>
+      </div>
+      <div class="pq">
+        <blockquote>Format constraint as privacy. Trust terseness — not safety nets like diff-review-by-default.</blockquote>
+        <cite>vii. — terse-as-firewall</cite>
+      </div>
+      <div class="pq">
+        <blockquote>Small enough to throw away when models evolve past it. Manus rewrote their harness five times in six months.</blockquote>
+        <cite>viii. — disposable</cite>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────────────────  FOOTER  ───────────────────────────── -->
+<footer>
+  <div class="wrap foot">
+    <div>The Startup Framework · A meta-harness configuration · MIT</div>
+    <div><span>One paragraph if you read nothing else:</span> the friend group spends more time building startup ideas, less time fighting their tools.</div>
+  </div>
+</footer>
+
+<!-- ─────────────────────────────  SCRIPT  ───────────────────────────── -->
+<script>
+  /* ───── nav: active section highlight + smooth scroll ───── */
+  const sections = document.querySelectorAll('section[id]');
+  const navLinks = document.querySelectorAll('header.masthead nav a');
+
+  const navObs = new IntersectionObserver(
+    (entries) => {
+      entries.forEach((e) => {
+        if (e.isIntersecting) {
+          const id = e.target.id;
+          navLinks.forEach((a) =>
+            a.classList.toggle('active', a.getAttribute('href') === '#' + id)
+          );
+        }
+      });
+    },
+    { rootMargin: '-40% 0px -50% 0px', threshold: 0 }
+  );
+  sections.forEach((s) => navObs.observe(s));
+
+  /* ───── reveal on scroll ───── */
+  const revealEls = document.querySelectorAll('.reveal');
+  const revealObs = new IntersectionObserver(
+    (entries) => {
+      entries.forEach((e) => {
+        if (e.isIntersecting) {
+          e.target.classList.add('in');
+          revealObs.unobserve(e.target);
+        }
+      });
+    },
+    { rootMargin: '0px 0px -10% 0px', threshold: 0.05 }
+  );
+  revealEls.forEach((el) => revealObs.observe(el));
+
+  /* ───── §01 repo cards: click to expand ───── */
+  document.querySelectorAll('.repo-card').forEach((card) => {
+    card.addEventListener('click', () => {
+      card.classList.toggle('open');
+    });
+  });
+
+  /* ───── §03 daily-loop tabs ───── */
+  const loopTabs = document.querySelectorAll('.loop-tab');
+  const loopPanels = document.querySelectorAll('.loop-panel');
+  loopTabs.forEach((tab) => {
+    tab.addEventListener('click', () => {
+      const key = tab.dataset.loop;
+      loopTabs.forEach((t) => t.classList.toggle('active', t === tab));
+      loopPanels.forEach((p) =>
+        p.classList.toggle('active', p.dataset.loopPanel === key)
+      );
+    });
+  });
+
+  /* ───── §04 flow scenario tabs ───── */
+  const flowTabs = document.querySelectorAll('.flow-tab');
+  const flowPanels = document.querySelectorAll('.flow-canvas');
+  flowTabs.forEach((tab) => {
+    tab.addEventListener('click', () => {
+      const key = tab.dataset.flow;
+      flowTabs.forEach((t) => t.classList.toggle('active', t === tab));
+      flowPanels.forEach((p) => {
+        const match = p.dataset.flowPanel === key;
+        /* re-trigger CSS stagger animation by removing & re-adding the class */
+        if (match && !p.classList.contains('active')) {
+          /* force reflow to restart keyframes on the children */
+          p.classList.remove('active');
+          // eslint-disable-next-line no-unused-expressions
+          p.offsetWidth;
+        }
+        p.classList.toggle('active', match);
+      });
+    });
+  });
+
+  /* ───── §05 onboarding stepper ─────
+     All seven panels live in the HTML as pre-rendered nodes.
+     This script only toggles which is visible — never injects markup. */
+  const ONB_TOTAL = 7;
+  let onbCurrent = 1;
+  const onbSteps   = document.querySelectorAll('.onb-step');
+  const onbDetails = document.querySelectorAll('.onb-detail');
+  const onbFill    = document.getElementById('onbFill');
+  const onbCount   = document.getElementById('onbCount');
+  const onbPrev    = document.getElementById('onbPrev');
+  const onbNext    = document.getElementById('onbNext');
+
+  function onbRender(step) {
+    onbCurrent = step;
+    onbSteps.forEach((el) =>
+      el.classList.toggle('active', Number(el.dataset.step) === step)
+    );
+    onbDetails.forEach((el) =>
+      el.classList.toggle('active', Number(el.dataset.step) === step)
+    );
+    onbFill.style.width = ((step / ONB_TOTAL) * 100).toFixed(1) + '%';
+    onbCount.textContent =
+      String(step).padStart(2, '0') + ' / ' + String(ONB_TOTAL).padStart(2, '0');
+    onbPrev.disabled = step === 1;
+    onbNext.disabled = step === ONB_TOTAL;
+  }
+  onbSteps.forEach((el) =>
+    el.addEventListener('click', () => onbRender(Number(el.dataset.step)))
+  );
+  onbPrev.addEventListener('click', () => onbCurrent > 1 && onbRender(onbCurrent - 1));
+  onbNext.addEventListener('click', () => onbCurrent < ONB_TOTAL && onbRender(onbCurrent + 1));
+  onbRender(1);
+
+  /* ───── keyboard nav for onboarding ───── */
+  document.addEventListener('keydown', (e) => {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+    // only when onboarding is roughly in view
+    const onbRect = document.getElementById('onboarding').getBoundingClientRect();
+    const inView = onbRect.top < window.innerHeight * 0.5 && onbRect.bottom > 0;
+    if (!inView) return;
+    if (e.key === 'ArrowRight' && onbCurrent < 7) onbRender(onbCurrent + 1);
+    if (e.key === 'ArrowLeft' && onbCurrent > 1) onbRender(onbCurrent - 1);
+  });
+</script>
+
+</body>
+</html>

@@ -1,0 +1,573 @@
+Video: Creating Your Own Agentic OS is Easy (Insanely Powerful)
+Owner: Simon Scrapes
+
+Transcript:
+Chapter 1: The Problem & The Goal
+0:00
+So, some people use tools like Claw Code and it looks a little bit like this.
+0:03
+3 seconds
+It's forgetting context. You've got generic outputs and you're wasting time quite frankly. [music] Whilst other people use the exact same tools and it
+0:11
+11 seconds
+feels a little more like this. They're shipping faster. They're getting better results and are actually saving time.
+0:17
+17 seconds
+So, the funny thing is they're both using the same tools, the same models underneath, but have completely different outcomes. And it's not because they're better at prompting. It's
+0:25
+25 seconds
+because one group built something underneath the tool and the other group didn't. And that is an agentic operating system. So it's a system that tells the
+0:31
+31 seconds
+AI who you are, what you've done, what matters to you, how [music] you work, and how to execute on complex briefs.
+0:38
+38 seconds
+And with the right system in place, you too can get these consistent high-quality outputs 90% of the time that you use it. So in this video, I'm
+0:46
+46 seconds
+going to break down exactly how to build your own Aentic OS step by step. So whatever AI tool you're using right now, it will actually work the way you expect
+0:54
+54 seconds
+it to. So let's get in to the goal of the system. So we effectively want to build with the Aentico S something that overcomes the limitations of LLM out the
+1:03
+1 minute, 3 seconds
+box. So we want it to know who you are and how you work and that extends all the way to actually your business, your clients, what projects you're working on
+1:12
+1 minute, 12 seconds
+and we want that to be understood and injected at the right time in granular detail. We want it to be able to remember exactly what we worked on last
+1:20
+1 minute, 20 seconds
+week, last month, recall those decisions, recall the sessions, and actually inject that context without us having to reprompt it. We want to overcome the limitations that our LLMs
+1:29
+1 minute, 29 seconds
+are generalists and make them specialists in our processes. Make those processes repeatable with consistent high-quality outputs. And of course, the
+1:37
+1 minute, 37 seconds
+dream is to go away from the laptop and have these operate as multi-step workflows that execute autonomously without your supervision on a schedule.
+1:45
+1 minute, 45 seconds
+We want to be able to plan for different types of projects. So, if we're building out a complex SAS, we want to make sure that the planning is in granular detail
+1:53
+1 minute, 53 seconds
+to match that project. Many of you will be working across multiple clients, multiple businesses, multiple projects.
+1:59
+1 minute, 59 seconds
+So, we want to ensure the architecture maintains that clean separation between clients. One of the most painful things I've seen is outputs being put
+2:06
+2 minutes, 6 seconds
+everywhere in different file structures, etc. So, we're going to show you how to put those in predictable places and of course access it from anywhere. So, you
+2:13
+2 minutes, 13 seconds
+don't need to be sat at your laptop to actually run these systems. You've got the power of the system, but the ability to actually access it from anywhere in the world. So each one of these is
+2:22
+2 minutes, 22 seconds
+actually a limitation of the LLMs and the tools we're using out of the box and each one is a section inside this video.
+2:29
+2 minutes, 29 seconds
+So tick all of these nine off and you've got an agentic operating system that's going to produce you highquality outputs on a consistent basis. So we'll walk you
+2:37
+2 minutes, 37 seconds
+through one at a time and as we go we'll build up a full architecture diagram. So by the end of the video you've got a complete picture that you can take away and you'll know exactly where to start
+2:46
+2 minutes, 46 seconds
+when building out your own Aentos. And the simplest way to think about all of this is that an Aentic OS is just clever
+2:54
+2 minutes, 54 seconds
+context management. So it's all about folders, files, and a structure that tells your AI tool exactly what it needs to know, exactly when it needs to know
+3:02
+3 minutes, 2 seconds
+it. And by the way, none of this is code. If you can organize a notion workspace, then you can actually build out this for yourself, too. So out of
+Chapter 2: Part 1: Static context (you & your business)
+3:10
+3 minutes, 10 seconds
+the box, your AI tool is going to start every session from zero. and [snorts] you're going to reexlain your role, your communication style, and all of those
+3:18
+3 minutes, 18 seconds
+non-negotiables. So, we need to build a system that effectively tells the AI who you are, who it is, and how you work.
+3:25
+3 minutes, 25 seconds
+And that extends then to knowing your business context, your clients, and your projects. And if AI is missing this foundational layer, then you're going to
+3:34
+3 minutes, 34 seconds
+keep getting generic outputs every single time. So, the fix is what I call static context. So static context about you as the user and static context about
+3:43
+3 minutes, 43 seconds
+your business. So let's start with you because every agentic tool reads an identity file first and it just goes by a different name depending on the tool that you're actually using. So in claw
+3:52
+3 minutes, 52 seconds
+code you might be familiar with claude.md in codeex and some others is agents.md. In openclaw it's going to be the soul.md file but it's the same idea.
+4:02
+4 minutes, 2 seconds
+It's just held with different names. And you can think of this as just something that's injected into the system prompt at the start of every session so that
+4:09
+4 minutes, 9 seconds
+the AI tool responds in a way that is relevant to you and or your context.
+4:13
+4 minutes, 13 seconds
+Now, here's the trap that most people fall into when they're creating these.
+4:17
+4 minutes, 17 seconds
+They're going to start building these from scratch. But actually, I wouldn't do that at all. I'd highly recommend actually just letting AI interview you.
+4:23
+4 minutes, 23 seconds
+So, you can open any of your tools, ideally one that has some past conversations with you cuz it will have some memory already of the things you've spoken to it about. And you can leverage
+4:32
+4 minutes, 32 seconds
+the in-built ask user questions feature to get it to actually interview you. So say something like, I'm building my identity file. Ask me 15 questions about
+4:40
+4 minutes, 40 seconds
+how I work, what I want, what I don't want, how I want you to respond. And once you answer those questions, you'll effectively be able to put that into
+4:48
+4 minutes, 48 seconds
+your user.md or your personality.md file. Now, it doesn't matter the naming of user.md personality.md, but the way we've distinguished these is user is all
+4:57
+4 minutes, 57 seconds
+about you. The personality is all about the agent that's going to respond to you. And then in your claw.md file, if you're working in claw code, you'd reference these files to get that to
+5:06
+5 minutes, 6 seconds
+inject the context at the right time. So that covers you. But the other part of static context, and the reason we call it static is it's not going to change very often, is your brand context. So
+5:14
+5 minutes, 14 seconds
+this is things that like how your business speaks in the marketing messaging they produce, who is your ideal customer profile, how are you
+5:21
+5 minutes, 21 seconds
+positioned in the market, etc., etc. Now this won't necessarily be injected at the start of the conversation inside the claud but there are certain things when
+5:29
+5 minutes, 29 seconds
+you converse with the LLM and certain skills which we'll come to later that will be able to reference them for your context and this alone will 3x your
+5:39
+5 minutes, 39 seconds
+output quality if you're producing any sort of knowledge work having inbuilt context shared brand context is going to 3x to 10x your output quality I
+5:48
+5 minutes, 48 seconds
+guarantee it now if you're looking for an offthe-shelf system a good Aentic OS will not just ask you to actually write your identity file from scratch, not ask
+5:55
+5 minutes, 55 seconds
+you to input your brand voice. It's actually going to run interviews on your behalf. So when you do install it, it will run you through a process of actually gathering examples of your
+6:03
+6 minutes, 3 seconds
+brand voice or getting you to answer questions so they can actually spin out those documents in as short as time as possible and get to a 70% version within
+6:11
+6 minutes, 11 seconds
+10 minutes or so. So the way we've tackled these two things in our own Agent OS, firstly we have a context folder which you can consider the agent
+6:18
+6 minutes, 18 seconds
+and user context. We have the user.md and we've also emulated the open claw method of having a soul.md file which is
+6:25
+6 minutes, 25 seconds
+effectively the personality of the agent responding to us. And all of these are generated on first install of the system. Then separately we've got a
+6:33
+6 minutes, 33 seconds
+shared brand context folder with all of our business assets like our brand links, our links to our school. It scrapes those automatically. our positioning and most importantly our
+6:42
+6 minutes, 42 seconds
+voice profile which is a comprehensive log of examples of how we speak in all of our messaging that's injected into certain skills at the right time. And
+6:50
+6 minutes, 50 seconds
+the reason it's important to be shared is you update it in one place and all the skills then pull from that shared context folder. So that's all static
+Chapter 3: Part 2: Improved memory
+6:57
+6 minutes, 57 seconds
+context. Let's talk about your ongoing projects and your dynamic context which you need to maintain with a memory system. So this is all about recalling
+7:04
+7 minutes, 4 seconds
+session data, recalling your decisions you made a couple of months ago. All the learnings then feeding in to self-improve the Aentic OS. And you know
+7:13
+7 minutes, 13 seconds
+this is the stuff that happened yesterday, last week, three sessions ago, whatever. And there's a ton of options in the memory space. But what I
+7:21
+7 minutes, 21 seconds
+will say is the out of the box memory is pretty poor. So the more context and knowledge you push into a conversation window, the worse the recall will
+7:29
+7 minutes, 29 seconds
+become. And that is effectively called context rot. So, if you're trying to run a business on this system, it's literally impossible because your AI is forgetting what it learned about the
+7:37
+7 minutes, 37 seconds
+project progress in the previous week and you might as well just start the project from scratch. So, it's so critical to have a memory system and there's a ton of frameworks out there.
+7:44
+7 minutes, 44 seconds
+So, let me distill it for you. And I made a full video recently breaking down memory systems. I tried a ton of them and I researched a whole lot to break
+7:54
+7 minutes, 54 seconds
+down these memory systems into just six levels. So, this is all the way from your native files like your claw. MD or your agents.m MD and the inbuilt
+8:01
+8 minutes, 1 second
+functionality there all the way up to cross tool shared memory. So if you're working across different devices, different LLMs, shared memory across
+8:09
+8 minutes, 9 seconds
+those. But here's the quick 101 on that and where most people will land for this. So level one is your Claude MD or
+8:17
+8 minutes, 17 seconds
+the equivalent. So these are, as we've discussed, static rules that never change and that's totally builtin, but that still relies on Claude actually reading and understanding those
+8:25
+8 minutes, 25 seconds
+instructions. So level two is a step higher and it's a session start hook. So all this does is forces your project context to load every single time. So a
+8:33
+8 minutes, 33 seconds
+hook deterministically says push this data into the conversation window.
+8:37
+8 minutes, 37 seconds
+Whether it likes it or not, it's going in. Whereas a claw.md file might tell it to read another file for context, but Claude doesn't actually have to listen.
+8:44
+8 minutes, 44 seconds
+A session start hook forces that action to take place. So if you want your business context or your brand voice to go into that conversation every single
+8:51
+8 minutes, 51 seconds
+time, you can force it in with a session start hook. Now level three is what most businesses probably need on top of that which is a framework that's separate
+9:00
+9 minutes
+that is all about semantic search. So searching by meaning and you've got tools like mem search or claude mem that effectively help you recall information
+9:08
+9 minutes, 8 seconds
+at the right time that help you search over notes that are stored from your structured markdown conversations. So think of it like you ask a question and
+9:16
+9 minutes, 16 seconds
+the system is going to look for the most relevant memory pieces and pull that out into the context. So level three there
+9:24
+9 minutes, 24 seconds
+is the 80/20. So you can combine levels one, two, and three. And that's going to be sufficient for most people. Levels four, five, and six are the optional
+9:31
+9 minutes, 31 seconds
+bolt-ons for specific use cases. So level four is like word for word verbatim recall. And you can use something like me palace for this. And
+9:40
+9 minutes, 40 seconds
+you probably add this if you're doing client work where exact phrasing matters. So then we have like a step up from there. We have levels five and six, knowledge bases and cross tool memory.
+9:49
+9 minutes, 49 seconds
+So, this is only worth it if you've got a specific reason to do that. And you can always check out that separate video if you want to check out more about those memory systems. But the important
+9:58
+9 minutes, 58 seconds
+part here is you don't have to pick one and stick with it. You can actually layer multiple of these concepts together with one file structure. And that's exactly what we're doing inside
+10:05
+10 minutes, 5 seconds
+our Aentos. So, we've got level two with the hook injection of the right context at the right time with level three with the semantic search bolted on so that we
+10:14
+10 minutes, 14 seconds
+improve the recall across multiple projects. And that semantic search is alone one of the reason that everybody loves a framework like openclaw because
+10:22
+10 minutes, 22 seconds
+its ability to actually remember what you've spoken about in previous conversations kind of just blows your mind. So then with memory sorted and
+10:30
+10 minutes, 30 seconds
+once you've picked a framework your system is actually going to start remembering what matters across sessions and massively improve what you get out the box. Okay. So that is all the input
+10:39
+10 minutes, 39 seconds
+layers covered your identity your business context your memory. Now, let's talk about getting high quality from doing the work itself. And as a quick
+10:46
+10 minutes, 46 seconds
+aside, if everything I've shown you so far sounds like a lot to set up, the identity files, the brand context, structured folders, the interview process, the memory layer, we've already
+10:55
+10 minutes, 55 seconds
+done it. So, if you just want to grab it out the box, one line install, 10 minutes to get all this context set up, then make sure to check out the Aentic Academy linked in the description below.
+11:04
+11 minutes, 4 seconds
+And if you'd rather keep building it yourself, then no stress. Just keep watching and we're going to walk you through every single piece left. Now, how do we achieve repeatable processes
+Chapter 4: Part 3: Creating repeatable processes
+11:13
+11 minutes, 13 seconds
+with consistent outputs when AI models are designed out the box to be jack of all trades, not specialists? We actually have to teach it how to do those specialist process through our skills.
+11:23
+11 minutes, 23 seconds
+So, the methodology, same as everywhere else in this video, is build a scrappy MVP version of a skill, use it for a week, try and actually get good outputs
+11:32
+11 minutes, 32 seconds
+with that process, notice what's broken, fix it all up. Don't try and make a perfect skill on day one. But you can leverage things like anthropic skill
+11:39
+11 minutes, 39 seconds
+creator skill to get a head start and build it in the right way. And the most important thing for your agentic operating system is keeping your skills
+11:46
+11 minutes, 46 seconds
+short and modular. So they're designed to use something called progressive disclosure. So they always load the name and the description and that tells
+11:54
+11 minutes, 54 seconds
+Claude if they need to be used. Then the full skill.mmd file gets loaded in next.
+11:58
+11 minutes, 58 seconds
+So we want to keep this under 200 lines as we know for a fact that Claude can reliably recall this amount of information. Then in each instruction
+12:05
+12 minutes, 5 seconds
+set we actually separate out additional context like examples of best practice and Claude then can choose whether it loads and unloads that context and it
+12:14
+12 minutes, 14 seconds
+can do that exactly when it needs it in that step only i.e. not bloating our context window. Skills should also always reference your business context.
+12:21
+12 minutes, 21 seconds
+So when your copywriting skill runs it's not guessing your brand voice. It has access to that shared brand context that we brought up earlier. So when the research skill runs, it knows your
+12:30
+12 minutes, 30 seconds
+custom segments because it's going to pull exactly from your positioning or your ICP. So when you're actually building these out for yourself, you just need to make sure you're always
+12:38
+12 minutes, 38 seconds
+building them to reference your brand context. And you probably adapt anthropic skill creator skill to actually tell Claude how to build it so
+12:46
+12 minutes, 46 seconds
+that it always references brand context when relevant from your shared folder.
+12:50
+12 minutes, 50 seconds
+So what we're doing is building skills that are designed for the way in which your folder architecture works. And you get some bonus points if you've built in
+12:58
+12 minutes, 58 seconds
+a rule inside your skill, which is effectively self-learning. So every time a skill is used, it's going to ask you for feedback, you're going to give it feedback, and then every time it runs
+13:06
+13 minutes, 6 seconds
+again, it's going to read the feedback first before it runs. And you can do that through something like a learnings.mmd file or in the skill
+13:14
+13 minutes, 14 seconds
+directly with a step in the skill to say read the feedback before you take any action. So skills are going to give us specialist knowledge to do certain
+13:21
+13 minutes, 21 seconds
+things like copywriting, video creation, repurposing our content. Anything that you have a process for should be turned into a modular skill that can be used
+13:30
+13 minutes, 30 seconds
+across multiple processes. So think of a skill as one step, something that can be reused and something that can be chained together to make multiple repeatable
+13:38
+13 minutes, 38 seconds
+processes. So you might have a skill for example that just transcribes videos. So you give it a URL and it transcribes videos. That is a process in of itself.
+13:47
+13 minutes, 47 seconds
+But that transcription skill can actually be used in multiple processes, right? It can be used in short form video creation. It can be used to
+13:54
+13 minutes, 54 seconds
+actually generate newsletters or blog articles. So what we've done then when we've built this skill is made it completely modular so that other domains and skill systems can actually pull from
+14:03
+14 minutes, 3 seconds
+that which is when we start chaining them together which is the next step.
+Chapter 5: Part 4: Multi-step workflows on a schedule
+14:07
+14 minutes, 7 seconds
+And this is something I rarely see people cover and I rarely see in other Aentic OS. I want you to start thinking about your skills not as single isolated
+14:16
+14 minutes, 16 seconds
+skills, but as part of a full pipeline or process. So you don't build a copywriting skill to use it in isolation. That's not going to save you
+14:24
+14 minutes, 24 seconds
+much time. You're still going to manually then need to schedule your content, find out about the topics. What you're actually going to do is chain
+14:31
+14 minutes, 31 seconds
+multiple of these skills together in a chain as it sounds. Something that we call skill systems. So you might actually have a scheduled task and you
+14:38
+14 minutes, 38 seconds
+can do this through the Claude desktop app. And that scheduled task is going to conduct your topic research. From that topic research, another skill is going
+14:46
+14 minutes, 46 seconds
+to actually write a script maybe for a short form video, maybe for a long form video. And then that is actually going to then either create the video or do
+14:53
+14 minutes, 53 seconds
+something in the next step. We might have a separate scheduled task, a separate skill system that is all about repurposing the content. So it understands that a video has been
+15:01
+15 minutes, 1 second
+posted. It then uses the transcription skill. It's then going to go and actually repurpose the content. We might have a human in the loop step where we
+15:09
+15 minutes, 9 seconds
+review, approve and make changes and then from that it goes and posts the content. So actually I want you to start thinking about skills as these modular
+15:16
+15 minutes, 16 seconds
+components that you piece together on a schedule so that you don't have to be there when these skills run. And that's really how you get your time back, right? You're using this as an
+15:24
+15 minutes, 24 seconds
+autonomous skill loop. So skill A is going to complete. We might have that human in the loop step. Skill B is going to continue to iterate until it's complete. and each one passes to the
+15:33
+15 minutes, 33 seconds
+next with one skill orchestrator actually kind of a meta skill chaining all of these together to finally achieve an output. Like for example, inside our
+15:42
+15 minutes, 42 seconds
+community, we've been voting on what skill systems to build out next, which are chains of multiple isolated individual skills together. So like
+15:50
+15 minutes, 50 seconds
+social media content generation, social carousels, ad generation and monitoring, SEO, blog content generation or GAO, uh
+15:58
+15 minutes, 58 seconds
+page optimization. So, it's something we're really focused on for our own Agentico essence, something that you should be heavily focused on if you're looking to actually get back your time
+16:06
+16 minutes, 6 seconds
+to and they don't need to be completely autonomous. They can have multiple human in the loop steps as well. Now, single tasks and chained workflows are kind of
+Chapter 6: Part 5: Planning that matches the project
+16:14
+16 minutes, 14 seconds
+one thing, but you need to make sure when you're doing day-to-day work that you have different levels of planning that match the project spec. So what I
+16:21
+16 minutes, 21 seconds
+mean by that is when we're actually working across task, right? We can be doing a small simple task in our day-to-day and that we might just use the in-built shift tab twice planning
+16:30
+16 minutes, 30 seconds
+mode inside claude to generate a small plan for us or we might have a more complex plan or even something highly complicated where we're building out a
+16:38
+16 minutes, 38 seconds
+full SAS application for example and for those I just highly recommend finding and solidifying three or four levels of planning so that you can actually leverage those frameworks out the box.
+16:49
+16 minutes, 49 seconds
+Now level one is kind of inbuilt planning and only goes so far. You can absolutely build a complex SAS using the in-built planning mode with claw code,
+16:58
+16 minutes, 58 seconds
+but I guarantee as you get a few hours into the project, it will start forgetting your original requirements even if you documented those in certain
+17:05
+17 minutes, 5 seconds
+files. So what we do is we pick two other levels of planning. Plenty of frameworks out there. Just Google planning frameworks clock code. But the ones I'd recommend are something that
+17:13
+17 minutes, 13 seconds
+generates a planned project like a PRD for half a day to multi-day is scopes out your project, puts them in specific files, and we can go through and actually tick boxes against those files.
+17:23
+17 minutes, 23 seconds
+It's just breaking down your tasks into more granular detail. And then I'd highly recommend using the get done or GSD framework, which a lightweight
+17:32
+17 minutes, 32 seconds
+metaprompting context engineering, whatever you want to call it, framework for breaking down complex tasks into phases. And this is just a simple way to
+17:39
+17 minutes, 39 seconds
+plan out and inject context at the right time. So it's designed to solve the context rot that we talked about and quite literally has three things going
+17:46
+17 minutes, 46 seconds
+on. So you start a new project, it's going to plan each phase, it's going to execute each phase, and then it's going to go through and help you verify each
+17:55
+17 minutes, 55 seconds
+phase. So what you're doing is just walking through a complex plan broken down into much smaller plans, milestones, tasks, etc. with a road map
+18:02
+18 minutes, 2 seconds
+so you can actually inject the context at the right time. That is literally all it is doing. But I just highly recommend that if you're going to build out an operating system, you want some level of
+18:12
+18 minutes, 12 seconds
+planning determination dependent on the question you're asking or the task you're completing. So the reason I know that this is a really critical feature
+18:19
+18 minutes, 19 seconds
+for an operating system is that we've had so many people actually ask us when we were building out our own Aentic OS to add the functionality and
+18:26
+18 minutes, 26 seconds
+architecture to handle this. So, I know it's a problem for many of you because it's all good and well thinking about the structure when you have one set of
+18:34
+18 minutes, 34 seconds
+contacts, but what happens when you have five different layers with five different client contacts that you need to manage and inject into the right
+18:42
+18 minutes, 42 seconds
+conversation at the right time. So the way we've effectively set this up is to have a multi-client architecture that at the root folder level handles a lot of
+Chapter 7: Part 6: Managing projects & clients
+18:50
+18 minutes, 50 seconds
+shared skills, shared scripts, shared methodology, but we can still retain the business context that we mentioned earlier, this brand context at a client
+18:59
+18 minutes, 59 seconds
+level. So for client A, B, and C. So the easiest way is just to show you exactly what we've done. So we've used the inbuilt context inheritance from parent
+19:07
+19 minutes, 7 seconds
+folders inside claw code. So we have one masterclude.mmd and that is the parent folder that passes down a lot of the methodology
+19:15
+19 minutes, 15 seconds
+that's consistent across multiple clients and then inside the root folder we have individual client folders inside those client folders we have client one
+19:22
+19 minutes, 22 seconds
+client 2 etc. Wherever we want specific client instructions we've actually duplicated that claude.md at the top and
+19:30
+19 minutes, 30 seconds
+just added specific instructions which either conflict or override the claude.md from the parent methodology.
+19:37
+19 minutes, 37 seconds
+Then at each client level we have its own client brand context. So the same concept that we talked about before but just at a client level we have individual brand context at that level.
+19:47
+19 minutes, 47 seconds
+We also have the agent context at that level too. So the memory that we talked about and the learnings are all on a per client basis. And because the skills
+19:56
+19 minutes, 56 seconds
+need to work from the do.claude/skills Claude/skills folder. Whenever we're working in that client folder by just cding into that client folder, we need
+20:04
+20 minutes, 4 seconds
+to make sure that we have access to those skills or make sure they're globally installed on our computer. So, we choose to keep them at the root level
+20:12
+20 minutes, 12 seconds
+and actually have a working copy synced from the root that you can customize at the client level. This means we have a bunch of information in the shared layer and separately we have stuff at the
+20:20
+20 minutes, 20 seconds
+client level so that we can deliberately work inside that client on their projects only. And that just represents itself as a client folder in the agents
+20:29
+20 minutes, 29 seconds
+root directory. So all of this inheritance of context means you can actually run as many clients as you want without inheriting the context from it
+20:36
+20 minutes, 36 seconds
+all but still sharing the important stuff like the skill methodologies which make it a specialist. Now two really quick but important ones to finish.
+Chapter 8: Part 7: Output consolidation
+20:44
+20 minutes, 44 seconds
+Number eight outputs in one predictable place came from a personal limitation that I observed when I was getting so frustrated with producing a ton of
+20:52
+20 minutes, 52 seconds
+outputs inside claw code. So when you start working with claw code or any of these apps, you'll realize that they store outputs wherever they want
+21:00
+21 minutes
+effectively. There's no constraints on purpose around where outputs are stored and whether they're even put into files.
+21:05
+21 minutes, 5 seconds
+So you get a lot of outputs in the terminal window. You get outputs saved in files, subfiles, wherever, but there's no specific file structure deemed necessary. So it seems really
+21:14
+21 minutes, 14 seconds
+simple, but there's no out of the box way to solve this. So we've just created a simple folder structured per project per skill so that when we run a specific
+21:23
+21 minutes, 23 seconds
+skill let's say the excaladraw diagram skill we can jump into the output folder which is the agentos video this video
+21:30
+21 minutes, 30 seconds
+and we can see directly the image that we're looking at inside of excaladraw.
+21:35
+21 minutes, 35 seconds
+So it's a projects folder which is all the outputs inside that we have it listed by skill which are categorized by type hence marketing is like marketing
+21:43
+21 minutes, 43 seconds
+content repurposing and then when it's not done by skill when it's done by a skill system or collection of skills together then we're actually creating more complex briefs. So we store all of
+21:52
+21 minutes, 52 seconds
+our plans inside the briefs and then any outputs from those briefs are stored inside that relevant folder. For example, landing page copy is stored
+21:59
+21 minutes, 59 seconds
+alongside the plan there. We can open that up and see directly that file. So it's just a simple way to frame putting all the context of that specific client
+22:08
+22 minutes, 8 seconds
+in a project folder so that you can see it all in one place. Very simple but very effective because it works with the client's methodology. Each client has
+22:16
+22 minutes, 16 seconds
+their own projects folder i.e. we're storing it with that client. And the last important thing is that you want to access it from anywhere. So you effectively want the system to come with
+Chapter 9: Part 8: Access it anywhere
+22:25
+22 minutes, 25 seconds
+you. So the fix for accessing it from anywhere is kind of two parts. First is get the system off your laptop. And secondly, it's giving yourself a way to
+22:33
+22 minutes, 33 seconds
+message it. So part one is actually running the system on a server and not on your laptop. So you can use something like a VPS or literally use claw cloud
+22:42
+22 minutes, 42 seconds
+to host it anywhere and access these jobs from afar. So you don't need to keep running your machine continuously 24/7 to get these scheduled tasks done.
+22:51
+22 minutes, 51 seconds
+And I'll admit at this point we don't actually do this just yet with our own agent OS. We just run it off our laptops. And the second part is actually
+22:58
+22 minutes, 58 seconds
+just an access layer. So, do you need to open up the terminal to actually message and talk to the folders inside the Aenttos? And the easiest way to fix this
+23:07
+23 minutes, 7 seconds
+one to get access on Telegram or Discord is to use Anthropic's built-in channels feature, which allows you to effectively talk from your phone via Telegram to the
+23:16
+23 minutes, 16 seconds
+instance which has access to all of your files in the background. And this isn't just claw code. Codeex is heading the same way. Openclaw has it natively.
+23:23
+23 minutes, 23 seconds
+Hermes has it natively. So in practice, you can actually just message it from anywhere and it still has access to all of the underlying file structure and
+23:31
+23 minutes, 31 seconds
+therefore context that you've built in the background. So that is the nine pieces that make up an Aentic operating system. And you can just think about it
+23:40
+23 minutes, 40 seconds
+as a structure that you're building to manage context under the hood for different use cases. And this architecture is completely portable. The
+23:47
+23 minutes, 47 seconds
+tools are going to keep changing, but the underlying structure and the foundations that you built here today are going to stay true until the tools get better and they're able to do these
+23:55
+23 minutes, 55 seconds
+things out of the box. We'll still need to continue to build our own clawed operating system or a Gentic operating system. So, you can either roll up your
+24:02
+24 minutes, 2 seconds
+sleeves and build this yourself using everything we've walked through today and you will learn a ton as you build that out. Or if you want to skip the build, you can actually purchase one off
+24:11
+24 minutes, 11 seconds
+the shelf, head to a community like our Aentico Academy or any of the other Aentico SS out there, whichever one feels like the right path for you and spin it up in a much quicker way and
+24:19
+24 minutes, 19 seconds
+then iterate from there. So, in the next video, I'm going to dig deeper into this multi-step workflows on a schedule and talk about exactly why they're so
+24:27
+24 minutes, 27 seconds
+powerful in improving your output quality. Thanks for watching. and subscribe if you haven't already.

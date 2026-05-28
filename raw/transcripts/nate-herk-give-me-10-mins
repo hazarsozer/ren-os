@@ -1,0 +1,718 @@
+Video: Give Me 10 Mins and I'll Save You Millions of Claude Tokens
+Owner: Nate Herk | AI Automation
+
+Transcript:
+
+91 Million Tokens Saved
+0:00
+So look at this. On this day, I saved 91
+0:02
+million tokens because of cash read. And
+0:03
+in the past week, I've saved over 300
+0:05
+million tokens because of it. Now, don't
+0:07
+freak out. This isn't anything that you
+0:08
+have to go change. This is happening
+0:10
+automatically if you are using Claude
+0:12
+Code or Claude. And I know that the
+0:13
+concept of prompt caching might seem a
+0:15
+little bit overwhelming, but today I'm
+0:16
+going to make it as simple as possible
+0:17
+and only really tell you what you need
+0:19
+to know in order to make sure that you
+0:20
+are saving your session limits and
+0:22
+saving tokens. I'll also give you guys
+0:23
+this entire token dashboard for free so
+0:25
+you can actually start tracking your
+0:26
+tokens a little bit better. Anyways, so
+0:27
+let's talk about prompt caching. why
+0:29
+your sessions burn out and how to stop
+0:31
+it. So, what does caching actually cost
+What Caching Actually Costs
+0:32
+you? Well, cached tokens only cost you
+0:35
+10% of normal input. So, all the tokens
+0:38
+that are getting cashed are saving you a
+0:39
+ton of money. So, if we go back to this
+0:40
+example on this day when I had 91
+0:43
+million tokens cached, that costed me
+0:45
+only as if I was processing about 9
+0:47
+million of those tokens. The cash window
+0:49
+on a cloud subscription is an hour.
+0:51
+Meaning if you're working with cloud
+0:53
+code and you don't touch it for an hour
+0:54
+and then you send another message,
+0:56
+everything in that session gets
+0:58
+uncashed. So if you leave a session
+1:00
+sitting for an hour or longer, then
+1:02
+you're going to pay more for it. And if
+1:03
+you're using Claude via API or sub
+1:05
+agents, then the TTL or the time to live
+1:07
+is only 5 minutes. You can change that,
+1:09
+but it's just a little bit more
+1:10
+expensive. You can bump it up to an hour
+1:11
+if you want. But for cloud code inside
+1:13
+of your terminal or your extension,
+Why Anthropic Cares About Hit Rate
+1:14
+whatever it is, that's an hour. And now
+1:16
+here's a quote from Thoric from
+1:17
+Enthropic. He said that we actually run
+1:19
+alerts on our prompt cache hit rate and
+1:20
+declare SUVs if they're too low. So
+1:22
+basically them saying we take this stuff
+1:24
+really really seriously and if we see
+1:26
+that the hit rate isn't very high for
+1:28
+users cloud code caching then we do
+1:31
+something about it immediately and
+1:32
+that's very nice of them but also of
+1:34
+course it benefits themselves because
+1:36
+with a high cache hit rate cloud code
+1:38
+feels faster their serving cost is lower
+1:40
+subscription limits feel more generous
+1:42
+you know because you're using less and
+1:44
+long coding sessions stay practical and
+1:46
+then if you have low cash hit rate this
+1:48
+is what happens and obviously it's just
+1:50
+a lose-lose for everybody and that's why
+1:51
+I said like prompt caching can get very
+1:54
+very complex and if you want to check
+1:56
+out more then I'll link this article
+1:58
+right here which Thor really goes into
+2:01
+some depth here but if you read this at
+2:02
+least when I did I was like okay this is
+2:03
+a little bit overwhelming I have a
+2:05
+feeling I don't actually need to know
+2:06
+all of this but I do need to know at
+2:08
+least a little bit at least you know the
+2:09
+8020 of prompt caching so that I can get
+2:12
+the most out of my session limits and
+2:13
+that's what I'm going to break down
+2:14
+today. So let's take a look at an
+How the Cache Grows Each Turn
+2:16
+example of how this actually grows. So,
+2:19
+by default, when you shoot off a message
+2:21
+to Claude, there's going to be some
+2:23
+information that needs to be cached
+2:24
+right away. And actually, let me just
+2:25
+switch back to one of Thor's graphics
+2:27
+real quick. You can see here that we
+2:29
+have the base system instructions get
+2:31
+globally cached. We have tools like
+2:32
+read, write, bash, grap, glob globally
+2:34
+cached. We have per memory or sorry, per
+2:37
+project things like cloudmd in memory
+2:39
+and that gets cached per project. We've
+2:40
+got session state and then we have user
+2:43
+messages which grow each turn. So now
+2:45
+that we take this into context and we
+2:48
+flip back over here, this is what it
+2:50
+looks like. This is an example where we
+2:51
+have four turns. So on turn one, there's
+2:53
+no cache. Basically, we're matching on a
+2:55
+prefix. So don't really have to worry
+2:57
+about what that means, but I might
+2:59
+mention that later. So anyways, on turn
+3:01
+one, there's nothing, right? We're
+3:02
+opening up a fresh session. We load in
+3:04
+the system prompt, the project context,
+3:06
+and we shoot off our first message. And
+3:08
+all of this is kind of in this like
+3:09
+brown highlight border which means that
+3:12
+this is new and it has to be fully
+3:14
+processed and it's being written to the
+3:16
+cache here. So before I continue down
+3:19
+this graphic in this dashboard you can
+3:20
+see that we have the difference between
+3:23
+cache create and cash read. So on these
+3:25
+days you can see what are my input
+3:27
+tokens, my output tokens and my cash
+3:28
+create and then over here you can see my
+3:30
+daily cash reads. And just a quick
+3:32
+explanation a cash create is writing
+3:34
+something into cache for the first time.
+3:36
+It's a one-time cost and it pays off the
+3:39
+next turn unless of course everything
+3:40
+gets uncashed. And the cache read is
+3:42
+tokens that Claude reused from a cache
+3:44
+like your cloud.MD or some of the files
+3:46
+or some of the global system
+3:47
+instructions. And these are the things
+3:49
+that are 10 times cheaper than fresh
+3:51
+input. So anyways, on turn two, given
+3:54
+that we're within that 1 hour TTL
+3:56
+window, everything here is already in
+3:58
+context. So it's cached. And then all
+4:00
+that Claude actually has to process for
+4:02
+the first time is reply one and message
+4:04
+two. And it caches that. So then down
+4:06
+here in turn three, all of that's cached
+4:08
+and we are bumping up a reply and a
+4:11
+message and those are the things that
+4:12
+only get processed each time. But if we
+4:14
+waited an hour and then we sent another
+4:16
+message or if we change the system
+4:18
+prompt then everything from the very
+4:20
+beginning has to get fully reached. So
+4:22
+imagine if you were on message like you
+4:25
+know 16 and you're way way way over here
+4:27
+on the right and you change the system
+4:28
+prompt or you wait an hour then
+4:30
+everything getting reached is going to
+4:33
+be a pretty expensive move that you just
+4:34
+made. So anyways, once again we have the
+4:36
+system layer, the project layer, and the
+4:37
+conversation layer. The system layer has
+4:39
+instructions, tool definitions, output
+4:41
+style. And here's where it might break.
+4:44
+The project level or the project layer
+4:46
+has cloudmd, memory, and rules. And then
+4:48
+here's when that might break. And then
+4:50
+we have, of course, the conversation,
+4:51
+which is just like the replies and the
+4:52
+messages, which gets reached every time,
+4:55
+but that's how it should be. So here's
+4:57
+where there's been some confusion among
+4:59
+the community. So, how long does the
+Cache TTL Confusion
+5:02
+cash snapshot live? Which is kind of
+5:03
+called the TTL, the time to live. So, on
+5:06
+your cloud subscription, you have an
+5:08
+hour by default because it uses your
+5:10
+subscription. But if you go over that
+5:12
+weekly limit and you are now playing in
+5:14
+your extra usage territory where you are
+5:16
+paying per token API, then by default
+5:19
+that will be 5 minutes, which is very
+5:21
+dangerous. If you're managing multiple
+5:22
+sessions and you're constantly reaching
+5:24
+everything because five minutes is
+5:26
+passing, you got to be careful about
+5:27
+that. And people were kind of
+5:28
+suspicious. I don't know if you remember
+5:30
+like a month or so ago when everyone was
+5:31
+complaining about their clawed uh
+5:33
+subscriptions how quick they were eating
+5:35
+it up. People thought maybe that they
+5:37
+switched the cache TTL from an hour to 5
+5:39
+minutes without like saying anything to
+5:41
+anybody. It turns out they didn't. So it
+5:43
+is an hour but that's just like you know
+5:46
+there was a lot of confusion around
+5:47
+that. And I get why because honestly
+5:48
+it's not super clear. Like if you're on
+5:51
+an API, you have 5 minutes by default,
+5:53
+but you can increase the cost and you
+5:55
+can do an hour and then your sub aents
+5:57
+on any plan are going to be 5 minutes.
+5:58
+And for some reason, all of this is
+6:00
+documented about claude code and the
+6:01
+API, which are two very different
+6:02
+things. But the claw.ai, like on the
+6:05
+web, we don't know exactly how that
+6:07
+works. At least I haven't found
+6:09
+documentation on that exact. I'm
+6:11
+assuming it's the same as your
+6:12
+subscription, but I don't know 100% for
+Three Habits to Stop Burning Tokens
+6:14
+for fact. Anyways, three habits that
+6:16
+cover 95% of people. Don't pause too
+6:19
+long. So if you've gone over an hour on
+6:22
+a session, just hand it off to a new
+6:24
+session. Obviously, start fresh when you
+6:26
+switch tasks. So do a slash compact,
+6:28
+which will break the cache, or do a
+6:30
+slash clear. Or you can also use my
+6:31
+session handoff skill, which I will
+6:33
+include as well for free. So both the
+6:35
+token dashboard GitHub repo and the
+6:37
+skill will be in my free school
+6:38
+community. The link for that down in the
+6:40
+description. But basically what that
+6:41
+means is let's say right here I've got
+6:43
+this project which helps me build this
+6:44
+HTML file you guys are looking at. It's
+6:46
+got 205,000 tokens in here. And if I
+6:48
+come in here and just do a session
+6:49
+handoff, this basically summarizes
+6:51
+everything we've done, all the important
+6:52
+files that we've built, all of the open
+6:54
+decisions, exactly where to pick back
+6:56
+up. And then I basically am able to just
+6:58
+copy that summary, do a slash clear, and
+7:00
+then keep going. And it feels like I
+7:02
+haven't actually lost anything. So that
+7:04
+has been basically my replacement for
+7:05
+doing /compact. I've just enjoyed doing
+7:07
+this better. And sometimes the compact
+7:09
+takes a long time. This typically
+7:10
+doesn't take anywhere over a minute.
+7:12
+There you go. So that is my session
+7:14
+handoff. I do a /copy and then I just go
+7:16
+ahead and clear that, paste it in, hit
+7:18
+enter, and now I'm basically right back
+7:19
+where I was. And then this last one is
+7:21
+for if you're using Claude Chat
+7:22
+specifically. If you're going to be
+7:24
+pasting big documents in there, you're
+7:26
+probably better off doing a project
+7:27
+because like I said, I don't know
+7:28
+exactly how the caching works in Claude
+7:30
+chat. But we do have some confidence in
+7:33
+saying that projects, those files are
+7:35
+cached a little bit differently and
+7:37
+probably more optimized for storing a
+7:39
+bunch of documents compared to just
+7:40
+dropping them into your cloud chat. So,
+7:42
+keep it alive, keep it focused, and
+What Breaks the Cache
+7:44
+start fresh when you switch. Now,
+7:45
+there's a few other things that were a
+7:47
+little bit confusing to me as far as
+7:49
+like what breaks the cache. So, the
+7:51
+first one is if you switch the model.
+7:53
+So, you know, if you're in here and
+7:55
+you're talking to Claude, hello, hello,
+7:57
+hello, and then you go in here and you
+7:58
+do a /model and you actually switch the
+8:00
+model, that's going to reach everything.
+8:02
+Because if you remember earlier, I said
+8:03
+it's prefix matching, which I'm not
+8:04
+going to dive into right now. But if you
+8:06
+switch the model then you are switching
+8:09
+essentially the prefix and it can't
+8:10
+match [clears throat] on that same
+8:11
+cache. So if you switch the model you
+8:13
+are reaching everything. Now I do want
+8:15
+to apologize for something here because
+8:16
+if you do model opus plan which is
+8:20
+something that I've shown before in like
+8:21
+token hacks videos. This basically means
+8:24
+it uses opus for plan mode and then it
+8:25
+switches to sonnet for the execution.
+8:28
+But if you do that just keep in mind
+8:30
+that's actually going to break the cache
+8:31
+because you're switching model halfway
+8:33
+through. So right here you can see each
+8:34
+model has its own cache. Switching with
+8:36
+model means the next request reads the
+8:38
+entire conversation history with no
+8:39
+cache hits even though the context is
+8:41
+identical. The opus plan model setting
+8:43
+resolves to opus during plan mode and
+8:45
+sonnet during execution. So each plan
+8:47
+toggle is a model switch and starts a
+8:49
+fresh cache. So it's very interesting
+8:51
+because typically the point of that is
+8:53
+to save your session limit and I think
+8:54
+ultimately in long run it does but it is
+8:56
+important to understand that doing that
+8:57
+does reset the cache. Now what you can
+9:00
+do is you can edit your cloud.MD MD and
+9:02
+you can do that mid session because the
+9:04
+edit actually doesn't apply until you
+9:06
+restart that session. So the cache stays
+9:08
+safe. And then of course the cloud.AI
+9:10
+projects caching. It's not exactly
+9:11
+documented but pretty confident that it
+9:14
+does help to drop docs in projects
+Free Token Dashboard
+9:15
+rather than in the chat. But anyways
+9:17
+this token dashboard like I said is very
+9:19
+helpful to just be able to understand
+9:21
+get a little bit more visibility into
+9:23
+your tokens. This does track your tokens
+9:26
+on a local device. So, if you switch
+9:28
+over to a laptop, then your dashboard is
+9:30
+going to look different than on your
+9:31
+main like PC or whatever you use, but
+9:33
+it's very, very simple. It is a GitHub
+9:35
+repo. You will go to my free school
+9:36
+community. The link is in the
+9:37
+description. You'll click on classroom.
+9:38
+You'll click on all YouTube resources.
+9:40
+And then you'll be able to find it right
+9:41
+in there. And once you get that GitHub
+9:43
+repo, all you have to do is give the
+9:44
+link to cloud code and say, "Hey, this
+9:46
+is a token dashboard. Set this up on a
+9:48
+local host." Boom. You've got it open.
+9:50
+And it will pull in all of your past
+9:52
+sessions. So, it's not like you're going
+9:53
+to start fresh as soon as you uh, you
+9:56
+know, link in this repo. It will read
+9:58
+your past files and it will pull in your
+9:59
+tokens. And then, of course, I will also
+10:01
+include that session handoff skill that
+10:03
+I just mentioned to you guys. So, I know
+10:04
+this one was super quick. Hopefully,
+Final Thoughts
+10:05
+this one was helpful, though. Um, it's
+10:07
+just important. Like I said, when I hear
+10:10
+about stuff like this, I love to
+10:11
+understand it to the point where I know
+10:12
+how to use it and I know what's going on
+10:14
+under the hood. But truthfully, if I
+10:16
+looked at some of these other articles,
+10:17
+like how in-depth they go and how much
+10:20
+nuance there is, most of the stuff right
+10:22
+now, I just don't need to know because
+10:24
+I'm not using the the API in this way
+10:26
+super heavily. So, the reason I wanted
+10:27
+to throw that out there is because it's
+10:28
+important to stay updated and follow
+10:30
+things, but just understand what do you
+10:32
+really need to know at its core. So, if
+10:34
+you guys enjoyed the video or you
+10:35
+learned something new, please give a
+10:36
+like. It helps me out a ton. And as
+10:38
+always, I appreciate you guys making it
+10:39
+to the end of the video, and I'll see
+10:40
+you on the next one. Thanks guys.
