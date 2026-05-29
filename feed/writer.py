@@ -355,6 +355,17 @@ def _write_entry_dispatch(
     if skip:
         return _skip_result()
 
+    # M2/L7: reject a malformed handle before it reaches path construction
+    # (`<local_path>/<handle>.log.md`) or the git commit message. The public writers take
+    # `handle` as a param, so a direct caller could bypass config.handle()'s guard.
+    try:
+        config.validate_handle(handle)
+    except config.InvalidHandleError as e:
+        return FeedWriteResult(
+            success=False, entry_id="", pushed=False, queued=False,
+            error=str(e), violation="invalid-handle",
+        )
+
     # Bootstrap pre-check: distinct from auth/network errors per lifecycle-2's ask.
     # Detected by absence of .git in local_path. Callers surface as "run /sf:install
     # Stage 3" — distinct UX from generic push failures.

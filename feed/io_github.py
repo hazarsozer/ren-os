@@ -316,18 +316,60 @@ def _try_push(repo: Path, *, timeout_s: int) -> Optional[str]:
     return result.stderr.strip() or "git push failed (no stderr)"
 
 
+def _rebase_in_progress(repo: Path) -> bool:
+    """True if a git rebase is mid-flight, i.e. the clone is stuck in REBASE state (M5).
+
+    Detected by git's rebase state directory (merge backend `.git/rebase-merge` or the
+    older am backend `.git/rebase-apply`). Filesystem-based, so it is locale-independent
+    — unlike message parsing it does not depend on H2's forced C locale.
+    """
+    git_dir = repo / ".git"
+    return (git_dir / "rebase-merge").exists() or (git_dir / "rebase-apply").exists()
+
+
+def _abort_rebase(repo: Path, *, timeout_s: int) -> None:
+    """Best-effort `git rebase --abort` to clear a stuck rebase. Never raises."""
+    try:
+        subprocess.run(
+            ["git", "-C", str(repo), "rebase", "--abort"],
+            capture_output=True, text=True, timeout=timeout_s, env=_c_locale_env(),
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+
+
 def _try_rebase(repo: Path, *, timeout_s: int) -> Optional[str]:
-    """git pull --rebase --autostash. None on success, error string on failure."""
+    """git pull --rebase --autostash, with stalled-rebase recovery (M5).
+
+    None on success, error string on failure. Guarantees the clone is never left stuck in
+    REBASE state: a pre-existing stalled rebase is aborted before we start, and if the
+    pull leaves a conflict mid-rebase we abort it too. The caller then queues the push
+    (eventually-consistent) instead of locking up permanently and silently swallowing all
+    future feed writes — which is the failure C3 prevents on fresh repos and M5 recovers
+    on already-corrupted ones.
+    """
+    # Clear a rebase left mid-flight by a previous run (an already-corrupted clone, or a
+    # session killed during a conflict) so this attempt can proceed.
+    if _rebase_in_progress(repo):
+        _abort_rebase(repo, timeout_s=timeout_s)
+
     try:
         result = subprocess.run(
             ["git", "-C", str(repo), "pull", "--rebase", "--autostash"],
             capture_output=True, text=True, timeout=timeout_s, env=_c_locale_env(),
         )
     except (FileNotFoundError, subprocess.TimeoutExpired) as e:
+        if _rebase_in_progress(repo):
+            _abort_rebase(repo, timeout_s=timeout_s)
         return f"git rebase error: {e}"
 
     if result.returncode == 0:
         return None
+
+    # Non-zero: a conflict may have left a rebase in progress → abort so the clone stays
+    # usable (the push queues and flushes on a later, conflict-free session).
+    if _rebase_in_progress(repo):
+        _abort_rebase(repo, timeout_s=timeout_s)
     return result.stderr.strip() or "git pull --rebase failed"
 
 

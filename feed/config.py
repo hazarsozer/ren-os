@@ -17,6 +17,7 @@ Per ADR-018 §"Identity in the activity feed" + onboarding-2's identity.md.tmpl:
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 
 
@@ -176,6 +177,19 @@ class HandleNotConfiguredError(RuntimeError):
     """
 
 
+class InvalidHandleError(HandleNotConfiguredError):
+    """Raised when a handle is present but malformed (doesn't match HANDLE_RE).
+
+    A malformed handle is a path-traversal / malformed-commit-message risk (M2/L7): it
+    flows into `<local_path>/<handle>.log.md`, `identities/<handle>.md`, and git commit
+    messages. /sf:interview validates the pattern at input; we enforce it at every use so
+    a hand-edited identity.md can't escape the feed directory.
+
+    Subclasses HandleNotConfiguredError so existing `except HandleNotConfiguredError`
+    handlers (sf-recall, sf-wrap) catch it with the same /sf:interview remediation.
+    """
+
+
 class SchemaVersionMismatchError(RuntimeError):
     """Raised when a file's `schema_version` frontmatter field doesn't match what
     this build of the feed module expects (`EXPECTED_*_SCHEMA_VERSION`).
@@ -200,6 +214,30 @@ class SchemaVersionMismatchError(RuntimeError):
         )
 
 
+HANDLE_RE = re.compile(r"^[a-z][a-z0-9-]*$")
+"""The handle contract: a lowercase letter followed by lowercase letters, digits, and
+hyphens. Mirrors the pattern /sf:interview validates at input. Enforced at every use of
+the handle (M2) so a hand-edited identity.md can't introduce a path-traversal value."""
+
+
+def validate_handle(value: str) -> str:
+    """Return `value` unchanged if it matches HANDLE_RE; otherwise raise InvalidHandleError.
+
+    The handle is load-bearing for filesystem paths (`<handle>.log.md`,
+    `identities/<handle>.md`) and git commit messages, so a malformed value is a
+    path-traversal vector (M2/L7). We reject rather than sanitize-and-fall-back (unlike
+    sf-note's local-only notes): the feed handle is identity and must be correct, not
+    silently rewritten.
+    """
+    if not isinstance(value, str) or not HANDLE_RE.match(value):
+        raise InvalidHandleError(
+            f"handle {value!r} is invalid; it must match ^[a-z][a-z0-9-]*$ "
+            "(a lowercase letter, then lowercase letters/digits/hyphens). "
+            "Run /sf:interview to set a valid handle."
+        )
+    return value
+
+
 def handle(*, strict_schema: bool = True) -> str:
     """Return the friend's handle, read from wiki/identity.md frontmatter.
 
@@ -211,6 +249,7 @@ def handle(*, strict_schema: bool = True) -> str:
 
     Raises:
         HandleNotConfiguredError: identity.md is missing or has no `handle:` field
+        InvalidHandleError: handle is present but malformed (M2; subclass of the above)
         SchemaVersionMismatchError: schema_version frontmatter field doesn't match
 
     The handle is the load-bearing identifier for everything in the feed:
@@ -237,7 +276,9 @@ def handle(*, strict_schema: bool = True) -> str:
             f"{identity_md} has no `handle:` field in YAML frontmatter. "
             "Run /sf:interview to repair, or hand-edit the frontmatter."
         )
-    return parsed
+    # M2: enforce the handle format at use (path-safety), independent of strict_schema —
+    # a malformed handle is dangerous regardless of the file's schema_version.
+    return validate_handle(parsed)
 
 
 def _parse_schema_version_from_frontmatter(text: str) -> int | None:

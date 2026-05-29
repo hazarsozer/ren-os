@@ -133,3 +133,30 @@ def test_validator_accepts_happy_path():
     body = "Worked on sidecar — fix login.\nTouched: src/api/login.ts."
     # Should not raise
     validate_end_entry(body)
+
+
+# --- L4: length cap is on the task brief, not the assembled body ------------
+
+
+def test_end_entry_accepts_max_brief_even_when_assembled_body_exceeds_300():
+    """A 300-char brief is valid even though the assembled body (brief + wrapper +
+    files) exceeds 300. Matches sf-wrap's task_brief≤300 contract so a brief sf-wrap
+    accepts is one feed accepts (L4 desync fix)."""
+    brief = "x" * 300
+    out = build_end_entry("hazar", "sidecar", brief, ["a.py"], REF_TS)
+    assert f"Worked on sidecar — {brief}." in out  # did not raise; body is well over 300
+
+
+def test_end_entry_rejects_brief_over_cap_with_actionable_message():
+    brief = "x" * 301
+    with pytest.raises(FormatViolation, match="too-long") as exc:
+        build_end_entry("hazar", "sidecar", brief, ["a.py"], REF_TS)
+    assert "task brief" in str(exc.value)
+    assert "301" in str(exc.value)
+
+
+def test_validate_end_entry_body_backstop_when_brief_absent():
+    """Direct/legacy callers that pass only `body` still get the body-length backstop."""
+    body = "Worked on sidecar — " + ("x" * 300) + ".\nTouched: a.py."
+    with pytest.raises(FormatViolation, match="too-long"):
+        validate_end_entry(body)  # no task_brief → body backstop applies

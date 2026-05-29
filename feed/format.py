@@ -17,8 +17,16 @@ from typing import Literal, Optional
 
 FeedEntryKind = Literal["start", "end", "release"]
 
+MAX_TASK_BRIEF_CHARS = 300
+"""The locked cap on the user-controlled task brief (L4). Matches sf-wrap's
+`validate.MAX_SUMMARY_CHARS=300` so the pre-validator and feed agree: a brief sf-wrap
+accepts is one feed accepts. The brief is the free prose the user writes; the file list
+and the 'Worked on … — ….' / 'Touched: ….' wrapper are structural and don't count."""
+
 MAX_BODY_CHARS = 300
-"""Per ADR-021 §Open Q#3: hard cap on the end-entry body. Truncate, don't violate."""
+"""Backstop cap on the assembled end-entry body, used only when `validate_end_entry` is
+called WITHOUT the separate `task_brief` (direct/legacy callers). The real contract is
+`MAX_TASK_BRIEF_CHARS`; this just guards pathological direct-call bodies (L4)."""
 
 MAX_FILES_DISPLAYED = 8
 """Per team-lead addition (2026-05-28): show ≤8 files; render overflow as '…and N more'."""
@@ -115,7 +123,7 @@ def build_end_entry(
     files_csv = _format_files(files_touched)
 
     body = f"Worked on {project} — {task_brief}.\nTouched: {files_csv}."
-    validate_end_entry(body, files_touched=files_touched)
+    validate_end_entry(body, files_touched=files_touched, task_brief=task_brief)
 
     return f"## [{ts}] end | {handle} | session complete\n\n{body}"
 
@@ -163,11 +171,15 @@ def validate_start_entry(body: str | None) -> None:
         raise FormatViolation("multi-line-hint")
 
 
-def validate_end_entry(body: str, files_touched: list[str] | None = None) -> None:
+def validate_end_entry(
+    body: str,
+    files_touched: list[str] | None = None,
+    task_brief: str | None = None,
+) -> None:
     """Hard-fail validation of an end-entry body.
 
     Per ADR-021 + lead-approved validator set:
-    - body ≤ 300 chars
+    - task brief ≤ 300 chars (the user-controlled prose; see length note below)
     - no triple-backticks
     - no 'Error:' or 'Traceback' substrings
     - no '<' or '>' outside the header line (header isn't passed to this fn; we just
@@ -177,11 +189,25 @@ def validate_end_entry(body: str, files_touched: list[str] | None = None) -> Non
 
     Raises FormatViolation with a specific reason on first failure. Order matches the
     plan's §2.4 checklist.
+
+    Length (L4): the contract caps the user-controlled TASK BRIEF, not the assembled
+    body (which also carries the structural 'Worked on … — ….' / 'Touched: ….' wrapper
+    + the already-capped file list). When `task_brief` is supplied — `build_end_entry`
+    always does — we check it directly so the message is actionable and we agree with
+    sf-wrap's pre-validator. When only `body` is given (direct/legacy callers), we fall
+    back to the `MAX_BODY_CHARS` backstop.
     """
-    if len(body) > MAX_BODY_CHARS:
+    if task_brief is not None:
+        if len(task_brief) > MAX_TASK_BRIEF_CHARS:
+            raise FormatViolation(
+                "too-long",
+                f"task brief is {len(task_brief)} chars; cap is {MAX_TASK_BRIEF_CHARS} "
+                "(the file list and 'Worked on …' wrapper don't count — shorten the summary)",
+            )
+    elif len(body) > MAX_BODY_CHARS:
         raise FormatViolation(
             "too-long",
-            f"body is {len(body)} chars; cap is {MAX_BODY_CHARS}",
+            f"entry body is {len(body)} chars; cap is {MAX_BODY_CHARS}",
         )
 
     for forbidden in FORBIDDEN_SUBSTRINGS_END:
