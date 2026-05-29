@@ -32,9 +32,16 @@
 
 set -euo pipefail
 
-# Find the repo root relative to this script so we work regardless of cwd.
+# Resolve the plugin root (where the feed/ package lives). Prefer the env CC
+# sets ($CLAUDE_PLUGIN_ROOT); else fall back to the relative ../../.. from this
+# script (skills/activity-feed/scripts → plugin root). Mirrors sf-wake-up.py's
+# _plugin_root() so the feed import resolves in the installed runtime (C2).
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
+if [[ -n "${CLAUDE_PLUGIN_ROOT:-}" ]]; then
+  REPO_ROOT="${CLAUDE_PLUGIN_ROOT}"
+else
+  REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
+fi
 
 # Honor PYTHON env override for environments that pin a specific interpreter.
 PYTHON_BIN="${PYTHON:-python3}"

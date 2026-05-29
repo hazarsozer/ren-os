@@ -170,3 +170,61 @@ class TestWikiRootResolution:
         resolved = _WAKE_UP._resolve_wiki_root()
         assert resolved == Path.home() / "wiki"
         assert "~" not in str(resolved)
+
+
+class TestPluginRootResolution:
+    """Regression guard for C2 (REVIEW-v1.0-preship.md §C2 / ADR-030).
+
+    The pre-fix hook only added its own dir (hooks/wake-up/, which resolves
+    `lib` but NOT `feed`) to sys.path, so `from feed import …` failed in the
+    installed runtime and the feed integration silently degraded. _plugin_root()
+    must resolve the plugin root (where feed/ is a real dir post-Crucible) via
+    $CLAUDE_PLUGIN_ROOT, falling back to Path(__file__).resolve().parents[2].
+    """
+
+    # parents[2] of hooks/wake-up/sf-wake-up.py == plugin root (repo root).
+    REAL_PLUGIN_ROOT = SF_WAKE_UP.resolve().parents[2]
+
+    def test_env_honored(self, monkeypatch):
+        monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", "/cache/plugins/startup-framework")
+        assert _WAKE_UP._plugin_root() == Path("/cache/plugins/startup-framework")
+
+    def test_fallback_to_parents2(self, monkeypatch):
+        """Unset env → parents[2] resolves to the real plugin root, where feed/
+        actually lives (proves the fallback finds an importable feed)."""
+        monkeypatch.delenv("CLAUDE_PLUGIN_ROOT", raising=False)
+        resolved = _WAKE_UP._plugin_root()
+        assert resolved == self.REAL_PLUGIN_ROOT
+        assert (resolved / "feed" / "__init__.py").is_file()
+
+    def test_whitespace_treated_as_unset(self, monkeypatch):
+        monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", "   ")
+        assert _WAKE_UP._plugin_root() == self.REAL_PLUGIN_ROOT
+
+    def test_expands_dollar_home(self, monkeypatch):
+        monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", "${HOME}/plugins/sf")
+        resolved = _WAKE_UP._plugin_root()
+        assert resolved == Path.home() / "plugins" / "sf"
+        assert "${HOME}" not in str(resolved)
+
+    def test_expands_tilde(self, monkeypatch):
+        monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", "~/plugins/sf")
+        resolved = _WAKE_UP._plugin_root()
+        assert resolved == Path.home() / "plugins" / "sf"
+        assert "~" not in str(resolved)
+
+    def test_ensure_inserts_root_at_front(self, monkeypatch):
+        fake_root = "/tmp/sf-fake-plugin-root"
+        monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", fake_root)
+        # Fresh list so monkeypatch restores the real sys.path afterward.
+        monkeypatch.setattr(sys, "path", ["/some/unrelated/path"])
+        _WAKE_UP._ensure_plugin_root_on_path()
+        assert sys.path[0] == fake_root
+
+    def test_ensure_is_idempotent(self, monkeypatch):
+        fake_root = "/tmp/sf-fake-plugin-root"
+        monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", fake_root)
+        monkeypatch.setattr(sys, "path", [fake_root, "/other"])
+        _WAKE_UP._ensure_plugin_root_on_path()
+        _WAKE_UP._ensure_plugin_root_on_path()
+        assert sys.path.count(fake_root) == 1

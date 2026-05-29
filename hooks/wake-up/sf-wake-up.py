@@ -81,6 +81,10 @@ def _build_feed_callback(*, cwd: str):
     All exceptions caught inside; never propagates up.
     """
     def fetch_tail() -> str:
+        # Ensure the plugin root is importable so `from feed import …` resolves
+        # in the installed runtime (C2). Self-sufficient here so the closure does
+        # not depend on main() having run the same insert.
+        _ensure_plugin_root_on_path()
         try:
             from feed import (
                 feed_read_friends_tails,
@@ -189,6 +193,42 @@ def _render_friends_tail(tail) -> str:
     return "\n".join(lines).rstrip() + "\n"
 
 
+def _plugin_root() -> Path:
+    """
+    Resolve the plugin root — the directory where feed/, hooks/, skills/ live as
+    real dirs (post-Crucible restructure, ADR-030; the root IS the plugin).
+
+    Prefer $CLAUDE_PLUGIN_ROOT (the env Claude Code sets when invoking the hook:
+    hooks.json runs `python3 "$CLAUDE_PLUGIN_ROOT/hooks/wake-up/sf-wake-up.py"`),
+    .strip()+expand-guarded for the same reasons as _resolve_wiki_root. Else fall
+    back to Path(__file__).resolve().parents[2] — hooks/wake-up/sf-wake-up.py →
+    parents[2] == plugin root. Both agree in production (verified against the
+    real tree).
+    """
+    val = os.environ.get("CLAUDE_PLUGIN_ROOT", "").strip()
+    if val:
+        return Path(os.path.expanduser(os.path.expandvars(val)))
+    return Path(__file__).resolve().parents[2]
+
+
+def _ensure_plugin_root_on_path() -> None:
+    """
+    Put the plugin root on sys.path[0] so `from feed import …` resolves in the
+    installed runtime.
+
+    Closes C2: hooks.json invokes the hook by absolute path with cwd set to the
+    session's project (not the plugin root) and no PYTHONPATH, so `feed` is not
+    importable unless we add the plugin root explicitly. The pre-fix hook only
+    added its OWN dir (hooks/wake-up/, which resolves `lib`, NOT `feed`), so the
+    feed integration silently degraded via `except ImportError: return ""`.
+
+    Idempotent: a no-op if the root is already on sys.path.
+    """
+    root = str(_plugin_root())
+    if root not in sys.path:
+        sys.path.insert(0, root)
+
+
 def _resolve_wiki_root() -> Path:
     """
     Resolve the wiki root with an explicit three-way fallback matching the
@@ -259,6 +299,10 @@ def main() -> int:
         script_dir = Path(__file__).resolve().parent
         if str(script_dir) not in sys.path:
             sys.path.insert(0, str(script_dir))
+        # Also put the plugin root on sys.path so `from feed import …` resolves
+        # (C2). _render_friends_tail (invoked inside compose below) imports feed
+        # too, so this must be set before compose runs.
+        _ensure_plugin_root_on_path()
         from lib import compose_wake_up_context  # type: ignore[import-not-found]
 
         context_text = compose_wake_up_context(
