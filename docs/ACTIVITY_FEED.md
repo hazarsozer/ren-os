@@ -50,6 +50,12 @@ The two pieces of info you can't avoid sharing:
    is sensitive, rename it locally OR skip the session (see below).
 2. **The file paths you touched** in end entries. Same workaround.
 
+> **Note on `~/Dev`.** The wake-up hook detects which project you're in by looking under your
+> projects root, which **defaults to `~/Dev`**. If you keep code elsewhere (`~/code`, `~/work`,
+> etc.), set the **`devRoot`** plugin setting (exposed as `CLAUDE_PLUGIN_OPTION_DEVROOT`) so
+> project detection — and therefore the per-project context in your feed entries — works. Projects
+> outside `devRoot` still work; they just won't get project-specific wiki context auto-injected.
+
 ## Turning it off
 
 Three opt-out surfaces, in increasing scope:

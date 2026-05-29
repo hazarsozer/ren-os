@@ -86,12 +86,17 @@ jobs:
           print(f"  OK: plugin.json#version = {pj['version']}; marketplace entry correctly omits version")
           PY
 
-      - name: Run claude plugin validate --strict (if available)
+      # The JSON-schema + structural manifest checks above run UNCONDITIONALLY in CI.
+      # `claude plugin validate --strict` needs the CLI, which isn't on ubuntu-latest, so it
+      # is best-effort here and AUTHORITATIVE LOCALLY (SHIP_CHECKLIST §1.3, run before every
+      # release). When absent we emit a visible ::warning:: rather than a silent SKIP so the
+      # run summary never implies this gate passed in CI when it didn't.
+      - name: Run claude plugin validate --strict (local-authoritative; best-effort in CI)
         run: |
           if command -v claude >/dev/null; then
             claude plugin validate ./ --strict
           else
-            echo "  SKIP: claude CLI not available in this runner (acceptable for v1.0; tighten in v1.1)"
+            echo "::warning title=claude plugin validate not run in CI::The 'claude' CLI is not available on this runner, so 'claude plugin validate ./ --strict' did NOT execute here. This gate is run LOCALLY as SHIP_CHECKLIST §1.3 before every release and is authoritative there. The JSON-schema + structural manifest checks earlier in this job DID run unconditionally."
           fi
 
   # ──────────────────────────────────────────────────────────────────

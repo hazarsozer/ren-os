@@ -282,6 +282,11 @@ SF_WIKI_ROOT=/tmp/test-wiki bash tests/integration/migration-dogfood.sh
 
 Only after every box above is ☑.
 
+> ⚠️ **DATE FOOT-GUN — read before tagging.** `CHANGELOG.md`'s `## [1.0.0]` line is pre-stamped
+> **2026-05-29**. If you are tagging on any **later** day, **edit that date to today first** — otherwise
+> `/sf:doctor`'s update-notification text (and `release.yml`'s CHANGELOG-date assertion) will carry a
+> wrong, past date. One line; easy to forget; checked again in the boxes below.
+
 ### 7.1 — Tag in the PRIVATE dev repo
 
 ```bash
@@ -301,6 +306,7 @@ scripts/publish.sh             # builds + verifies; prints the exact push comman
 #   git -C <snapshot> push --force origin HEAD:main
 ```
 
+- ☐ `CHANGELOG.md`'s `## [1.0.0]` date == today's tag date (it's pre-stamped 2026-05-29 — **update it if the tag slips to a later day** so `/sf:doctor`'s notification text is accurate)
 - ☐ snapshot built + all guards green
 - ☐ orphan commit force-pushed to `sf-marketplace` (single commit, no tags)
 - ☐ `/plugin marketplace update sf-marketplace` on a friend machine surfaces v1.0.0
