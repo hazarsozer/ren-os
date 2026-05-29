@@ -4,18 +4,20 @@
   "description": "Startup Framework — private friend-group distribution. Per-friend hierarchical wiki + curated plugin stack + Activity Feed + self-improving skills.",
   "version": "1.0.0",
   "owner": {
-    "name": "Startup Framework Maintainers"
+    "name": "Hazar Sozer",
+    "email": "hsozer00@gmail.com"
   },
   "plugins": [
     {
       "name": "startup-framework",
-      "source": "./plugins/startup-framework",
+      "source": "./",
       "description": "Per-friend hierarchical wiki + curated plugin stack + Activity Feed + skill self-improvement. See README.md for the full feature surface.",
       "author": {
-        "name": "Startup Framework Maintainers"
+        "name": "Hazar Sozer",
+        "email": "hsozer00@gmail.com"
       },
-      "homepage": "https://github.com/PLACEHOLDER-ORG/sf-marketplace",
-      "repository": "https://github.com/PLACEHOLDER-ORG/sf-marketplace",
+      "homepage": "https://github.com/hazarsozer/sf-marketplace",
+      "repository": "https://github.com/hazarsozer/sf-marketplace",
       "license": "MIT",
       "keywords": [
         "wiki",

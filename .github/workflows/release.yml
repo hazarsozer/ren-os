@@ -40,7 +40,7 @@ jobs:
           TAG_VER: ${{ steps.parse.outputs.tag-version }}
         run: |
           set -euo pipefail
-          PJ_VER=$(python3 -c "import json; print(json.load(open('plugins/startup-framework/.claude-plugin/plugin.json'))['version'])")
+          PJ_VER=$(python3 -c "import json; print(json.load(open('.claude-plugin/plugin.json'))['version'])")
           if [[ "$TAG_VER" != "$PJ_VER" ]]; then
             echo "FAIL: tag is v${TAG_VER} but plugin.json#version is $PJ_VER"
             echo "Either bump plugin.json#version to $TAG_VER, or delete the tag locally + retag with v$PJ_VER."
@@ -70,7 +70,7 @@ jobs:
           python3 -c "
           import json
           for f in ['.claude-plugin/marketplace.json',
-                    'plugins/startup-framework/.claude-plugin/plugin.json',
+                    '.claude-plugin/plugin.json',
                     'skills/wiki-migration/schemas.json']:
               json.load(open(f))
               print(f'  OK: {f}')

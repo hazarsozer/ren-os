@@ -5,10 +5,11 @@
   "version": "1.0.0",
   "description": "Per-friend wiki + curated stack + Activity Feed + self-improving skills. The plugin's source-of-truth version lives in this field; the marketplace entry omits version to avoid drift (per CC docs, plugin.json wins silently when both are set).",
   "author": {
-    "name": "Startup Framework Maintainers"
+    "name": "Hazar Sozer",
+    "email": "hsozer00@gmail.com"
   },
-  "homepage": "https://github.com/PLACEHOLDER-ORG/sf-marketplace",
-  "repository": "https://github.com/PLACEHOLDER-ORG/sf-marketplace",
+  "homepage": "https://github.com/hazarsozer/sf-marketplace",
+  "repository": "https://github.com/hazarsozer/sf-marketplace",
   "license": "MIT",
   "keywords": [
     "wiki",

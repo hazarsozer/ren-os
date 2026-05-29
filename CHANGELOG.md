@@ -27,9 +27,9 @@ The first stable release. Establishes the friend-group distribution surface, the
 ### Added
 
 **Distribution + updates**
-- `sf-marketplace` private Claude Code marketplace (per ADR-019). Friends install via `/plugin marketplace add <org>/sf-marketplace` + `/plugin install startup-framework@sf-marketplace`.
+- `sf-marketplace` private Claude Code marketplace (per ADR-019). Friends install via `/plugin marketplace add hazarsozer/sf-marketplace` + `/plugin install startup-framework@sf-marketplace`.
 - `sf-marketplace-rc` separate marketplace for release-candidate dogfooding (optional channel; opt-in via `userConfig.rcChannel = true`).
-- `.claude-plugin/marketplace.json` + `plugins/startup-framework/.claude-plugin/plugin.json` manifests conforming to the CC plugin marketplace schema (version-resolution via `plugin.json#version`, per CC docs).
+- `.claude-plugin/marketplace.json` + `.claude-plugin/plugin.json` manifests (both at the repo root, Crucible one-repo layout — `source: "./"`) conforming to the CC plugin marketplace schema (version-resolution via `plugin.json#version`, per CC docs).
 - `/sf:doctor` — environment + plugin + schema + framework-update + backup verification (per ADR-025 + ADR-027).
 - `/sf:update` — opt-in framework upgrade with snapshot, migration chain, per-page verify, diff-review, applying, post-update verification (per ADR-019 + ADR-027). Flags: `--rc`, `--to <ver>`, `--dry-run`, `--auto`, `--restore-snapshot`.
 
@@ -89,5 +89,5 @@ The first stable release. Establishes the friend-group distribution surface, the
 ### Schema
 - All 12 page-types start at schema version 1, supported_from 1, no migrations. Future MINOR/MAJOR releases will add migrations here.
 
-[Unreleased]: https://github.com/PLACEHOLDER-ORG/sf-marketplace/compare/v1.0.0...HEAD
-[1.0.0]: https://github.com/PLACEHOLDER-ORG/sf-marketplace/releases/tag/v1.0.0
+[Unreleased]: https://github.com/hazarsozer/sf-marketplace/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/hazarsozer/sf-marketplace/releases/tag/v1.0.0

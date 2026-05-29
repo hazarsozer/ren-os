@@ -35,7 +35,7 @@ State transitions, side effects, and failure paths:
           ▼
    ┌─────────────┐  Read installed plugin.json#version from ${CLAUDE_PLUGIN_ROOT}/.claude-plugin/.
    │  FETCHING   │  Fetch upstream version via:
-   │             │    gh api repos/<org>/sf-marketplace/contents/plugins/startup-framework/.claude-plugin/plugin.json
+   │             │    gh api repos/<org>/sf-marketplace/contents/.claude-plugin/plugin.json
    │             │  Cross-check upstream marketplace.json (info only — plugin.json wins per CC docs).
    └──────┬──────┘  Failure: report network error, exit. Local install unaffected.
           ▼

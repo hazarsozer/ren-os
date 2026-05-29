@@ -16,9 +16,11 @@
 #
 # To activate after first-ship:
 #   1. cp .github/workflows/promote-rc-draft.yml.template .github/workflows/promote-rc-draft.yml
-#   2. Replace PLACEHOLDER-ORG with the actual org name in both repo references
-#   3. Push to sf-marketplace-rc
-#   4. Tag a release candidate with the suffix `-rc.final` to trigger
+#   2. Repo owner is already filled in as `hazarsozer` (change only if you fork to a different owner).
+#   3. Redesign the "Sync rc plugin tree into stable" step for the Crucible one-repo
+#      layout — there is no longer a `plugins/` subdir (see TODO(#7) inside that step).
+#   4. Push to sf-marketplace-rc
+#   5. Tag a release candidate with the suffix `-rc.final` to trigger
 #
 # Optional v1.1 enhancement: emit a Slack/Discord notification when the draft PR opens.
 
@@ -66,7 +68,7 @@ jobs:
             exit 1
           fi
           # Clone the stable repo into ./stable
-          git clone https://x-access-token:${PAT}@github.com/PLACEHOLDER-ORG/sf-marketplace.git stable
+          git clone https://x-access-token:${PAT}@github.com/hazarsozer/sf-marketplace.git stable
           # rc repo is already in the workspace (where actions/checkout deposited it)
 
       - name: Sync rc plugin tree into stable
@@ -79,12 +81,16 @@ jobs:
           BRANCH="promote/v${STABLE_VER}"
           git checkout -b "$BRANCH"
 
-          # Copy the entire plugin tree from rc to stable.
-          # NOTE: this overwrites stable's plugins/ — the human reviewer's job is to confirm this is correct.
-          rsync -av --delete ../plugins/ ./plugins/
+          # TODO(#7): Crucible one-repo redesign. There is no longer a `plugins/` subdir —
+          # the shippable tree IS the repo root (.claude-plugin/, hooks/, skills/, feed/,
+          # wiki-skeleton/, README.md, CHANGELOG.md, LICENSES.md, docs/ACTIVITY_FEED.md,
+          # docs/RECOVERY.md). The promotion must sync that allowlisted shippable set from
+          # the rc checkout into ./stable (NOT the maintainer-only paths). #7 (RELEASING)
+          # owns this rewrite; the line below is a placeholder and will fail until updated.
+          rsync -av --delete ../plugins/ ./plugins/   # <-- BROKEN under one-repo; see TODO(#7)
 
           # Update plugin.json version to drop the -rc suffix (we're promoting THIS rc to stable)
-          PJ=plugins/startup-framework/.claude-plugin/plugin.json
+          PJ=.claude-plugin/plugin.json
           python3 -c "
           import json
           d = json.load(open('$PJ'))
@@ -141,7 +147,7 @@ jobs:
           )
 
           GH_TOKEN="${PAT}" gh pr create \
-            --repo PLACEHOLDER-ORG/sf-marketplace \
+            --repo hazarsozer/sf-marketplace \
             --title "Promote v${STABLE_VER} from RC (draft — human review required)" \
             --body "$BODY" \
             --base main \
@@ -153,7 +159,7 @@ jobs:
           STABLE_VER: ${{ steps.parse.outputs.stable-ver }}
         run: |
           echo ""
-          echo "Draft PR opened at PLACEHOLDER-ORG/sf-marketplace#<...>"
+          echo "Draft PR opened at hazarsozer/sf-marketplace#<...>"
           echo ""
           echo "Maintainer's next steps:"
           echo "  1. Review the PR diff"

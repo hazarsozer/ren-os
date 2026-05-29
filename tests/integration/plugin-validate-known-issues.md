@@ -64,23 +64,23 @@ The validator does NOT apply `metadata.pluginRoot` to `plugins[].source`. So eit
 
 **Workaround applied at 2026-05-28**: removed `metadata.pluginRoot` from `marketplace.json`; changed `source` to the explicit `"./plugins/startup-framework"`. The marketplace now validates ✅.
 
+**Superseded 2026-05-29 (C2+C4 restructure)**: the repo moved to the Crucible one-repo layout — `source` is now `"./"` (the repo root *is* the plugin). `metadata.pluginRoot` remains unused. Still validates ✅.
+
 **Upstream report**: TODO — file an issue against Anthropic's plugin-marketplaces docs to either fix the validator or update the docs. Low priority — explicit source paths are at most ~10 chars longer per entry.
 
 ---
 
-## DISCOVERY 2 — Plugin tree assembly via symlinks (working as documented)
+## DISCOVERY 2 — Plugin tree assembly via symlinks — REMOVED 2026-05-29 (C2+C4 restructure)
 
 **Owner**: sf-distribution
-**Severity**: informational
-**First seen**: 2026-05-28 baseline capture
+**Severity**: informational (historical)
+**Status**: ❌ **OBSOLETE.** The symlink approach was removed entirely in the Crucible one-repo restructure.
 
-**What we do**: `plugins/startup-framework/skills` is a symlink pointing at `../../skills` (the repo-root dev directory where all teammates land code). Same for `hooks` once it exists. This lets the dev tree stay flat while the published tree matches CC's expected layout.
+**What we used to do** (V1.0-pre-fix): `plugins/startup-framework/{skills,hooks}` were symlinks to `../../{skills,hooks}`, so the flat dev tree could present a CC-expected nested layout. The packaged plugin missed `feed -> ../../feed` → the Activity Feed `ImportError`'d on every install (this was blocker **C2**), and copying only `plugins/startup-framework/` left the `../../` symlinks dangling (this was blocker **C4**).
 
-**Validator behavior**: walks the symlinked dir and validates contents as if they lived in the plugin root. ✅ works as documented.
+**Current layout** (V1.0): the repo **root** *is* the plugin (mirrors Hazar's `crucible` plugin). `.claude-plugin/{marketplace.json,plugin.json}` live at root with `source: "./"`; `hooks/`, `skills/`, `feed/`, `wiki-skeleton/` are **real directories** at root — **no symlinks anywhere**. This dissolves C2 (nothing to omit) and C4 (nothing to dangle on copy).
 
-**Caveat at first-ship**: when the marketplace repo is published as a real GitHub repo (not this monorepo), the symlink target paths (`../../skills`) must remain valid. CC's per-CC-docs cache copying dereferences inter-marketplace symlinks correctly. But if Hazar publishes the marketplace by copying only the `plugins/startup-framework/` dir (without `../../skills/`), the symlinks break.
-
-**Mitigation** (already in `RELEASING.md`): the release process explicitly publishes the entire monorepo as the marketplace, so the symlink targets are always reachable. The publish step is `git push` of this repo to `sf-marketplace`, not a cherry-pick.
+**Ship boundary**: maintainer-only content (`wiki/`, `raw/`, `REVIEW*.md`, `docs/superpowers/`, `tour/`, `.claude/`, maintainer docs) is excluded from the shipped repo per ADR-019. See `docs/RELEASING.md` for the publish model (allowlist publish, NOT a denylist over the dev history).
 
 ---
 
@@ -104,8 +104,7 @@ This appeared only when I built minimal test fixtures without a `description` fi
 After fixing any of the above, re-run:
 ```bash
 cd /home/hsozer/Dev/startup-framework
-claude plugin validate ./plugins/startup-framework --strict
-claude plugin validate .
+claude plugin validate ./ --strict
 ```
 
 Update this file to reflect new state. Aim: zero errors, zero warnings at first-ship.

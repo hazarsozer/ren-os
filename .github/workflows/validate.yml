@@ -30,7 +30,7 @@ jobs:
           set -euo pipefail
           FILES=(
             .claude-plugin/marketplace.json
-            plugins/startup-framework/.claude-plugin/plugin.json
+            .claude-plugin/plugin.json
             skills/wiki-migration/schemas.json
             skills/wiki-migration/schemas.schema.json
             skills/wiki-migration/verify.schema.json
@@ -74,7 +74,7 @@ jobs:
         run: |
           python3 <<'PY'
           import json
-          pj = json.load(open("plugins/startup-framework/.claude-plugin/plugin.json"))
+          pj = json.load(open(".claude-plugin/plugin.json"))
           mj = json.load(open(".claude-plugin/marketplace.json"))
           mj_plugin = mj["plugins"][0]
           # Per CC docs: plugin.json wins silently when both are set. We chose to NOT set version in marketplace entry.
@@ -89,7 +89,7 @@ jobs:
       - name: Run claude plugin validate --strict (if available)
         run: |
           if command -v claude >/dev/null; then
-            claude plugin validate ./plugins/startup-framework --strict
+            claude plugin validate ./ --strict
           else
             echo "  SKIP: claude CLI not available in this runner (acceptable for v1.0; tighten in v1.1)"
           fi

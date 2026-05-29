@@ -1,48 +1,46 @@
-# `claude plugin validate` baseline — captured 2026-05-28 (refreshed after lifecycle-2 YAML fix)
+# `claude plugin validate` baseline — captured 2026-05-29 (after C2+C4 Crucible one-repo restructure)
 
-This file is the verbatim output of running the validator against the in-progress plugin tree. CI re-runs the same commands in `.github/workflows/validate.yml`. Any new warnings/errors are flagged for triage.
+This file is the verbatim output of running the validator against the plugin tree. CI re-runs the equivalent command in `.github/workflows/validate.yml`. Any new warnings/errors are flagged for triage in `plugin-validate-known-issues.md`.
 
-CC version at capture time: 2.1.154 (verified via `claude --version`)
+CC version at capture time: 2.1.156 (verified via `claude --version`)
 
-## Command 1: plugin validation (strict mode)
-
-```
-$ claude plugin validate ./plugins/startup-framework --strict
-
-Validating plugin manifest: /home/hsozer/Dev/startup-framework/plugins/startup-framework/.claude-plugin/plugin.json
-
-✔ Validation passed
-```
-
-**Status**: clean. Previous ERROR 1 (sf-improve-skill YAML parse error) resolved by lifecycle-2 via Option B (annotation moved to YAML comment).
-
-## Command 2: marketplace validation
+## Command 1: marketplace validation (strict mode) — primary CI gate
 
 ```
-$ claude plugin validate /home/hsozer/Dev/startup-framework
+$ claude plugin validate ./ --strict
 
 Validating marketplace manifest: /home/hsozer/Dev/startup-framework/.claude-plugin/marketplace.json
 
 ✔ Validation passed
 ```
 
-**Status**: marketplace manifest clean.
+**Status**: clean. With both manifests at the repo root, `claude plugin validate ./` selects the marketplace manifest (identical behavior to Hazar's `crucible` plugin, the locked reference layout). The marketplace's `source: "./"` resolves the plugin at the repo root.
+
+## Command 2: plugin manifest validation (strict mode)
+
+```
+$ claude plugin validate ./.claude-plugin/plugin.json --strict
+
+Validating plugin manifest: /home/hsozer/Dev/startup-framework/.claude-plugin/plugin.json
+
+✔ Validation passed
+```
+
+**Status**: plugin manifest clean.
 
 ## Composite state
 
-Both manifest validations pass with `--strict`. Zero errors, zero warnings, zero notes.
+Both validations pass with `--strict`. Zero errors, zero warnings, zero notes.
 
-## Plugin tree assembly via symlinks
+## Plugin tree assembly — Crucible one-repo layout (no symlinks)
 
-Per CC docs (https://code.claude.com/docs/en/plugins-reference § Share files within a marketplace with symlinks): "Elsewhere within the same marketplace: the symlink is dereferenced. The target's content is copied into the cache in its place."
+The repo **root is the plugin** (mirrors `crucible`). There are **no symlinks** — `hooks/`, `skills/`, `feed/`, and `wiki-skeleton/` are real directories at the root, alongside `.claude-plugin/{marketplace.json,plugin.json}`:
 
-The dev repo's `plugins/startup-framework/` contains:
-- `.claude-plugin/plugin.json` — physical manifest
-- `skills` → symlink to `../../skills` (resolved on publish — dereferenced into the cache)
-- `hooks` → symlink to `../../hooks` (resolved on publish)
-- `commands` → not yet created; will symlink to `../../commands` once peers land slash command markdown
+- `.claude-plugin/marketplace.json` — marketplace manifest; single plugin entry with `source: "./"`.
+- `.claude-plugin/plugin.json` — plugin manifest (source of truth for `version` + `userConfig`).
+- `hooks/`, `skills/`, `feed/`, `wiki-skeleton/` — real directories, shipped verbatim.
 
-This lets every teammate continue developing in flat top-level dirs (the team's converged convention) while the published plugin tree assembles into the CC-expected layout via symlinks. Validator confirms this is supported.
+This dissolves the pre-fix blockers C2 (missing `feed` symlink → Activity Feed `ImportError`) and C4 (dangling `../../` symlinks on copy). See `plugin-validate-known-issues.md` § DISCOVERY 2 for the history.
 
 ## Regenerating this baseline
 
@@ -51,18 +49,18 @@ cd /home/hsozer/Dev/startup-framework
 {
   echo '# `claude plugin validate` baseline — captured '$(date -u +%Y-%m-%d)
   echo
-  echo '## Command 1: plugin validation (strict mode)'
+  echo '## Command 1: marketplace validation (strict mode)'
   echo
   echo '```'
-  claude plugin validate ./plugins/startup-framework --strict
+  claude plugin validate ./ --strict
   echo '```'
   echo
-  echo '## Command 2: marketplace validation'
+  echo '## Command 2: plugin manifest validation (strict mode)'
   echo
   echo '```'
-  claude plugin validate .
+  claude plugin validate ./.claude-plugin/plugin.json --strict
   echo '```'
 } > tests/integration/plugin-validate-baseline.txt 2>&1
 ```
 
-CI workflow `validate.yml` runs the equivalent commands on every push to main and rc, plus every PR. The CI's expectation: ZERO errors. Currently 1 error tracked (sf-improve-skill YAML) — fix lands, CI flips green, this baseline regenerates.
+CI workflow `validate.yml` runs `claude plugin validate ./ --strict` on every push to main and rc, plus every PR. The CI's expectation: ZERO errors.

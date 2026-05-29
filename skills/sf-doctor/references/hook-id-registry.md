@@ -130,7 +130,7 @@ For each file: parse YAML frontmatter, extract `schema_version`, `framework_vers
 ### What we read
 
 - `${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json` — current installed version.
-- `gh api repos/<org>/<repo>/contents/plugins/startup-framework/.claude-plugin/plugin.json` — latest published version. `<org>/<repo>` parsed from `repository` field of the installed `plugin.json`.
+- `gh api repos/<org>/<repo>/contents/.claude-plugin/plugin.json` — latest published version. `<org>/<repo>` parsed from `repository` field of the installed `plugin.json`.
 
 If user has `userConfig.rcChannel = true`: ALSO fetch from `<org>/sf-marketplace-rc`'s repo.
 
