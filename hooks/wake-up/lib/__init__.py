@@ -20,6 +20,7 @@ Per ADR-008: payload target is 3-5K tokens. Hard cap at 5K (~20K chars).
 from __future__ import annotations
 
 import logging
+import os
 from pathlib import Path
 from typing import Callable, Final
 
@@ -28,6 +29,7 @@ logger = logging.getLogger(__name__)
 
 # Locked path convention per team-lead 2026-05-28
 DEFAULT_WIKI_ROOT_REL: Final[str] = ".startup-framework/wiki"
+DEFAULT_DEV_ROOT_REL: Final[str] = "Dev"  # M1: configurable via CLAUDE_PLUGIN_OPTION_DEVROOT
 MASTER_INDEX_FILENAME: Final[str] = "index.md"
 MASTER_LOG_FILENAME: Final[str] = "log.md"
 PROJECT_CONTEXT_FILENAME: Final[str] = "CONTEXT.md"
@@ -82,21 +84,43 @@ def truncate_text_to_tokens(text: str, max_tokens: int) -> str:
     return f"[...truncated; first {len(text) - max_chars} chars elided...]\n" + text[-max_chars:]
 
 
-def detect_project(cwd: Path, wiki_root: Path) -> str | None:
+def resolve_dev_root() -> Path:
+    """
+    Resolve the projects root used for per-project wiki detection (M1).
+
+    Reads CLAUDE_PLUGIN_OPTION_DEVROOT (the env Claude Code derives from the
+    `devRoot` userConfig key), .strip()+expand-guarded so empty/whitespace counts
+    as unset and a literal `${HOME}`/`~` default is safe even if CC forwards it
+    unexpanded — the same defensive pattern as the wake-up hook's wiki-root and
+    plugin-root resolvers. Falls back to ~/Dev.
+
+    M1 fix: this was hardcoded `Path.home() / "Dev"`, so friends who keep projects
+    under ~/code, ~/work, etc. silently got no project-specific wiki context.
+    """
+    val = os.environ.get("CLAUDE_PLUGIN_OPTION_DEVROOT", "").strip()
+    if val:
+        return Path(os.path.expanduser(os.path.expandvars(val)))
+    return Path.home() / DEFAULT_DEV_ROOT_REL
+
+
+def detect_project(cwd: Path, wiki_root: Path, dev_root: Path | None = None) -> str | None:
     """
     Determine the active project from cwd, per ADR-008's CWD-aware loading.
 
-    Heuristic: if cwd matches `~/Dev/<X>/` (or any subpath thereof) AND
+    Heuristic: if cwd matches `<dev_root>/<X>/` (or any subpath thereof) AND
     `wiki_root/projects/<X>/` exists → project = X. Else None.
 
     Args:
         cwd: Working directory the hook is running in.
         wiki_root: Path to the wiki root.
+        dev_root: Projects root. If None, resolved via resolve_dev_root()
+            (CLAUDE_PLUGIN_OPTION_DEVROOT → ~/Dev).
 
     Returns:
         Project name or None.
     """
-    dev_root = Path.home() / "Dev"
+    if dev_root is None:
+        dev_root = resolve_dev_root()
     try:
         rel = cwd.resolve().relative_to(dev_root.resolve())
     except (ValueError, OSError):
@@ -159,6 +183,7 @@ def compose_wake_up_context(
     source: str = "startup",
     max_tokens: int = DEFAULT_MAX_TOKENS,
     fetch_feed_tail: FetchFeedTail | None = None,
+    dev_root: Path | None = None,
 ) -> str:
     """
     Compose the additionalContext payload for the SessionStart hook.
@@ -173,6 +198,8 @@ def compose_wake_up_context(
         source: SessionStart matcher value ("startup", "compact", etc.).
         max_tokens: Hard token cap.
         fetch_feed_tail: Optional callable returning the friends-activity block.
+        dev_root: Projects root for project detection. If None, resolved via
+            resolve_dev_root() (CLAUDE_PLUGIN_OPTION_DEVROOT → ~/Dev).
 
     Returns:
         Composed text suitable for hookSpecificOutput.additionalContext.
@@ -198,7 +225,7 @@ def compose_wake_up_context(
         sections.append(truncate_text_to_tokens(master_log_tail, MASTER_LOG_BUDGET))
 
     # 3. Project context (if in a project directory)
-    project = detect_project(cwd, wiki_root)
+    project = detect_project(cwd, wiki_root, dev_root=dev_root)
     if project is not None:
         project_dir = wiki_root / "projects" / project
 
@@ -241,6 +268,7 @@ def compose_wake_up_context(
 __all__ = [
     "DEFAULT_MAX_TOKENS",
     "CHARS_PER_TOKEN",
+    "DEFAULT_DEV_ROOT_REL",
     "MASTER_INDEX_BUDGET",
     "MASTER_LOG_BUDGET",
     "PROJECT_CONTEXT_BUDGET",
@@ -249,6 +277,7 @@ __all__ = [
     "FetchFeedTail",
     "estimate_tokens",
     "truncate_text_to_tokens",
+    "resolve_dev_root",
     "detect_project",
     "read_log_tail",
     "compose_wake_up_context",

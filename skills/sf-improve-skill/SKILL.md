@@ -107,7 +107,7 @@ Layer-2 skill self-improvement per ADR-012. The mechanical realization of Karpat
 Before the first iteration:
 
 1. **Target skill exists**: `skills/<skill-name>/SKILL.md` is readable. Else refuse.
-2. **Eval file exists + parseable**: `skills/<skill-name>/eval/eval.json` loads as JSON, has `test_cases[]` with at least one binary assertion. Else refuse.
+2. **Eval file exists + parseable**: `skills/<skill-name>/eval/eval.json` loads as JSON, has `tests[]` with at least one binary assertion (`binary_assertions[]`). Else refuse.
 3. **Working tree clean**: `git status --porcelain` is empty. Else refuse with "Commit or stash your changes first." (We don't want to mix improve-loop commits with unrelated WIP.)
 4. **Autonomous-mode safety**: if `--autonomous`, require ALL of `--max-iterations` AND `--max-budget-usd`. Else refuse with "Autonomous mode requires --max-iterations N --max-budget-usd N. Refusing to run unbounded."
 5. **CC is on the supported PATH**: `claude --version` returns a parseable version. Else refuse with installation instructions.

@@ -13,6 +13,7 @@ from ..__init__ import (
     detect_project,
     estimate_tokens,
     read_log_tail,
+    resolve_dev_root,
     truncate_text_to_tokens,
 )
 
@@ -54,6 +55,9 @@ class TestDetectProject:
     def wiki_with_projects(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         # Monkeypatch HOME so detect_project sees ~/Dev under tmp
         monkeypatch.setattr(Path, "home", lambda: tmp_path)
+        # Hermetic: ignore any ambient CLAUDE_PLUGIN_OPTION_DEVROOT so these
+        # tests exercise the ~/Dev default deterministically.
+        monkeypatch.delenv("CLAUDE_PLUGIN_OPTION_DEVROOT", raising=False)
         wiki = tmp_path / "wiki"
         (wiki / "projects" / "sidecar").mkdir(parents=True)
         (wiki / "projects" / "restore").mkdir(parents=True)
@@ -83,6 +87,64 @@ class TestDetectProject:
         cwd = tmp_home / "not-dev"
         cwd.mkdir()
         assert detect_project(cwd, wiki_with_projects) is None
+
+
+# ---------------------------------------------------------------------------
+# resolve_dev_root + CLAUDE_PLUGIN_OPTION_DEVROOT threading (M1)
+# ---------------------------------------------------------------------------
+
+
+class TestResolveDevRoot:
+    """Regression guard for M1 (REVIEW-v1.0-preship.md §M1).
+
+    detect_project's dev_root was hardcoded `Path.home() / "Dev"`, so friends who
+    keep projects under ~/code, ~/work, etc. silently got no project context.
+    resolve_dev_root() reads CLAUDE_PLUGIN_OPTION_DEVROOT (strip+expand-guarded),
+    falling back to ~/Dev.
+    """
+
+    def test_env_honored(self, monkeypatch):
+        monkeypatch.setenv("CLAUDE_PLUGIN_OPTION_DEVROOT", "/work/projects")
+        assert resolve_dev_root() == Path("/work/projects")
+
+    def test_fallback_home_dev_when_unset(self, monkeypatch):
+        monkeypatch.delenv("CLAUDE_PLUGIN_OPTION_DEVROOT", raising=False)
+        assert resolve_dev_root() == Path.home() / "Dev"
+
+    def test_whitespace_treated_as_unset(self, monkeypatch):
+        monkeypatch.setenv("CLAUDE_PLUGIN_OPTION_DEVROOT", "   ")
+        assert resolve_dev_root() == Path.home() / "Dev"
+
+    def test_expands_dollar_home(self, monkeypatch):
+        monkeypatch.setenv("CLAUDE_PLUGIN_OPTION_DEVROOT", "${HOME}/code")
+        resolved = resolve_dev_root()
+        assert resolved == Path.home() / "code"
+        assert "${HOME}" not in str(resolved)
+
+    def test_expands_tilde(self, monkeypatch):
+        monkeypatch.setenv("CLAUDE_PLUGIN_OPTION_DEVROOT", "~/code")
+        resolved = resolve_dev_root()
+        assert resolved == Path.home() / "code"
+        assert "~" not in str(resolved)
+
+    def test_detect_project_honors_custom_devroot(self, tmp_path, monkeypatch):
+        """The integration that M1 is really about: a friend with projects under
+        a non-~/Dev root (here ~/code) gets project context."""
+        code_root = tmp_path / "code"
+        (code_root / "sidecar").mkdir(parents=True)
+        wiki = tmp_path / "wiki"
+        (wiki / "projects" / "sidecar").mkdir(parents=True)
+        monkeypatch.setenv("CLAUDE_PLUGIN_OPTION_DEVROOT", str(code_root))
+        assert detect_project(code_root / "sidecar", wiki) == "sidecar"
+
+    def test_explicit_dev_root_arg_overrides_env(self, tmp_path, monkeypatch):
+        """An explicit dev_root arg wins over the env (keeps compose injectable)."""
+        monkeypatch.setenv("CLAUDE_PLUGIN_OPTION_DEVROOT", "/should/be/ignored")
+        work_root = tmp_path / "work"
+        (work_root / "restore").mkdir(parents=True)
+        wiki = tmp_path / "wiki"
+        (wiki / "projects" / "restore").mkdir(parents=True)
+        assert detect_project(work_root / "restore", wiki, dev_root=work_root) == "restore"
 
 
 # ---------------------------------------------------------------------------
