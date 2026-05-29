@@ -20,7 +20,7 @@ Cadence: monthly stable. Out-of-cycle PATCH releases only for security or broken
 
 ---
 
-## [1.0.0] — 2026-05-28
+## [1.0.0] — 2026-05-29
 
 The first stable release. Establishes the friend-group distribution surface, the per-friend hierarchical wiki, the Activity Feed cross-friend visibility layer, schema-versioned wiki pages, and the curated plugin stack.
 

@@ -27,6 +27,13 @@
       "default": "${HOME}/.startup-framework/wiki",
       "required": false
     },
+    "devRoot": {
+      "type": "directory",
+      "title": "Projects root directory",
+      "description": "Where your code projects live (e.g. ~/Dev, ~/code, ~/work). The wake-up hook uses this to detect which project you're in and inject that project's wiki context. Default: ~/Dev.",
+      "default": "${HOME}/Dev",
+      "required": false
+    },
     "activityFeedUrl": {
       "type": "string",
       "title": "Activity Feed repo URL",
