@@ -11,6 +11,7 @@ to verify the load-bearing invariants:
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import subprocess
 import sys
@@ -20,6 +21,22 @@ import pytest
 
 
 SF_WAKE_UP = Path(__file__).resolve().parents[2] / "sf-wake-up.py"
+
+
+def _load_wake_up_module():
+    """Load the dash-named sf-wake-up.py as an importable module.
+
+    Side-effect-free: the file is only imports + function defs guarded by
+    `if __name__ == "__main__"`, so main() does NOT run on import.
+    """
+    spec = importlib.util.spec_from_file_location("sf_wake_up", SF_WAKE_UP)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+_WAKE_UP = _load_wake_up_module()
 
 
 def _run_hook(stdin_payload: str = "{}", env_overrides: dict[str, str] | None = None) -> tuple[int, str, str]:
@@ -94,3 +111,62 @@ class TestHookEntryPoint:
             payload = json.dumps({"source": source})
             rc, _, _ = _run_hook(stdin_payload=payload)
             assert rc == 0, f"hook crashed on source={source}"
+
+
+class TestWikiRootResolution:
+    """Regression guard for C1 (REVIEW-v1.0-preship.md §C1).
+
+    The old `Path(os.environ.get("SF_WIKI_ROOT","")) or (...)` never fell back
+    because `Path("")` is `PosixPath('.')` (truthy), so in production —
+    SF_WIKI_ROOT unset — wiki_root silently became CWD and CLAUDE_PLUGIN_OPTION_WIKIROOT
+    was ignored entirely. These tests pin the explicit three-way fallback and
+    the defensive ${HOME}/~ expansion.
+    """
+
+    HOME_DEFAULT = Path.home() / ".startup-framework" / "wiki"
+
+    def test_sf_wiki_root_honored(self, monkeypatch):
+        monkeypatch.setenv("SF_WIKI_ROOT", "/custom/wiki")
+        monkeypatch.delenv("CLAUDE_PLUGIN_OPTION_WIKIROOT", raising=False)
+        assert _WAKE_UP._resolve_wiki_root() == Path("/custom/wiki")
+
+    def test_plugin_option_honored_when_sf_unset(self, monkeypatch):
+        """The CLAUDE_PLUGIN_OPTION_WIKIROOT case — the userConfig var every
+        shell script reads, which the buggy Python layer ignored."""
+        monkeypatch.delenv("SF_WIKI_ROOT", raising=False)
+        monkeypatch.setenv("CLAUDE_PLUGIN_OPTION_WIKIROOT", "/plugin/wiki")
+        assert _WAKE_UP._resolve_wiki_root() == Path("/plugin/wiki")
+
+    def test_home_default_when_both_unset(self, monkeypatch):
+        """The core C1 regression: remove SF_WIKI_ROOT → home default fires
+        (NOT CWD)."""
+        monkeypatch.delenv("SF_WIKI_ROOT", raising=False)
+        monkeypatch.delenv("CLAUDE_PLUGIN_OPTION_WIKIROOT", raising=False)
+        assert _WAKE_UP._resolve_wiki_root() == self.HOME_DEFAULT
+
+    def test_empty_and_whitespace_treated_as_unset(self, monkeypatch):
+        monkeypatch.setenv("SF_WIKI_ROOT", "   ")
+        monkeypatch.setenv("CLAUDE_PLUGIN_OPTION_WIKIROOT", "")
+        assert _WAKE_UP._resolve_wiki_root() == self.HOME_DEFAULT
+
+    def test_sf_takes_precedence_over_plugin_option(self, monkeypatch):
+        monkeypatch.setenv("SF_WIKI_ROOT", "/first")
+        monkeypatch.setenv("CLAUDE_PLUGIN_OPTION_WIKIROOT", "/second")
+        assert _WAKE_UP._resolve_wiki_root() == Path("/first")
+
+    def test_expands_dollar_home(self, monkeypatch):
+        """plugin.json's literal `${HOME}/.startup-framework/wiki` default must
+        resolve to the real home path, not a literal `${HOME}` dir — same C1
+        failure class one layer down."""
+        monkeypatch.delenv("SF_WIKI_ROOT", raising=False)
+        monkeypatch.setenv("CLAUDE_PLUGIN_OPTION_WIKIROOT", "${HOME}/.startup-framework/wiki")
+        resolved = _WAKE_UP._resolve_wiki_root()
+        assert resolved == self.HOME_DEFAULT
+        assert "${HOME}" not in str(resolved)
+
+    def test_expands_tilde(self, monkeypatch):
+        monkeypatch.setenv("SF_WIKI_ROOT", "~/wiki")
+        monkeypatch.delenv("CLAUDE_PLUGIN_OPTION_WIKIROOT", raising=False)
+        resolved = _WAKE_UP._resolve_wiki_root()
+        assert resolved == Path.home() / "wiki"
+        assert "~" not in str(resolved)

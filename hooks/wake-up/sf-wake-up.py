@@ -189,6 +189,35 @@ def _render_friends_tail(tail) -> str:
     return "\n".join(lines).rstrip() + "\n"
 
 
+def _resolve_wiki_root() -> Path:
+    """
+    Resolve the wiki root with an explicit three-way fallback matching the
+    shell scripts' `${SF_WIKI_ROOT:-${CLAUDE_PLUGIN_OPTION_WIKIROOT:-$HOME/.startup-framework/wiki}}`
+    (see skills/sf-update/scripts/snapshot.sh:23).
+
+    Order: SF_WIKI_ROOT → CLAUDE_PLUGIN_OPTION_WIKIROOT → $HOME/.startup-framework/wiki.
+
+    Each env var is `.strip()`-guarded so empty/whitespace counts as unset
+    (stricter than bash's `:-`, which only treats truly-empty as unset). This
+    closes the C1 bug: the old `Path(os.environ.get("SF_WIKI_ROOT","")) or (...)`
+    never fell back because `Path("")` is `PosixPath('.')` (truthy), so
+    CLAUDE_PLUGIN_OPTION_WIKIROOT was ignored and wiki_root silently became CWD.
+
+    Each resolved value is also passed through os.path.expandvars + expanduser
+    before becoming a Path. The plugin.json userConfig default is the literal
+    string `${HOME}/.startup-framework/wiki`; if Claude Code forwards it to
+    CLAUDE_PLUGIN_OPTION_WIKIROOT without expanding `${HOME}`, `Path(val)` would
+    otherwise be a broken literal-`${HOME}` path — the same C1 failure class one
+    layer down. expandvars handles `${HOME}`/`$HOME`; expanduser handles `~`.
+    Harmless no-op if CC already expands ("never trust external data").
+    """
+    for var in ("SF_WIKI_ROOT", "CLAUDE_PLUGIN_OPTION_WIKIROOT"):
+        val = os.environ.get(var, "").strip()
+        if val:
+            return Path(os.path.expanduser(os.path.expandvars(val)))
+    return Path.home() / ".startup-framework" / "wiki"
+
+
 def main() -> int:
     """
     Entry point.
@@ -209,10 +238,9 @@ def main() -> int:
     cwd = event.get("cwd") or os.getcwd()
     source = event.get("source", "")
 
-    # Locked path: ~/.startup-framework/wiki/
-    wiki_root = Path(os.environ.get("SF_WIKI_ROOT", "")) or (
-        Path.home() / ".startup-framework" / "wiki"
-    )
+    # Locked path: ~/.startup-framework/wiki/ (resolved via explicit three-way
+    # fallback — see _resolve_wiki_root for the C1 bug this closes).
+    wiki_root = _resolve_wiki_root()
 
     # Feed integration callback per team-lead's locked 8-step sequence (#13):
     # pull → write_session_start → read_friends_tails. All silent-degrade per
