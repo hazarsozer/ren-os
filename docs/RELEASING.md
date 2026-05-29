@@ -6,16 +6,23 @@ Per ADR-019. Cadence: **monthly stable**. Out-of-cycle PATCH releases for securi
 
 ---
 
-## Repos involved (the four-repo distinction per ADR-019)
+## The repos (ADR-019 distinction, orphan-publish model)
 
-| Repo | Purpose | Who has access |
-|---|---|---|
-| `sf-marketplace` (stable) | Distribution + version bumps for the framework | Maintainers write; friends read |
-| `sf-marketplace-rc` (release candidates) | Pre-release dogfood channel | Maintainers write; subscribed friends read |
-| `activity-feed` (separate repo per ADR-018) | Cross-friend session reports | All friends write |
-| Framework dev wiki (this repo) | Design history, ADRs, research | Maintainers only |
+| Repo | Purpose | Contents | Who has access |
+|---|---|---|---|
+| **dev repo** (this one, `~/Dev/startup-framework`) | Design history, ADRs, research, the source of truth | EVERYTHING — full git history, `wiki/`, `raw/`, `REVIEW*.md`, maintainer docs, **release tags** | Maintainers only; **PRIVATE, never pushed to the marketplace** |
+| `sf-marketplace` (stable) | Distribution to friends | ONE orphan commit per release — only the shippable allowlist | Maintainers write (via `publish.sh`); friends read |
+| `sf-marketplace-rc` (RC channel) | Pre-release dogfood | Same, RC versions | Maintainers write; subscribed friends read |
+| `activity-feed` (separate repo, ADR-018) | Cross-friend session reports | Friends' `<handle>.log.md` | All friends write |
 
-The maintainer (Hazar initially) writes to `sf-marketplace`. Friends `gh` clone via the marketplace `/plugin marketplace add` flow.
+**The boundary.** The dev repo holds the product brain (wiki, research, internal reviews). Friends
+must never see it. We do **not** `git push` the dev repo to the marketplace — that would leak the
+whole history. Instead, `scripts/publish.sh` builds a **fresh single-commit orphan snapshot** of
+only the shippable allowlist and force-pushes THAT. Friends get one commit, zero history, zero wiki.
+
+**Tags live only in the dev repo.** The marketplace carries no tags — it's a rolling single orphan
+commit. Friends pick up changes with `/plugin marketplace update sf-marketplace`; `/sf:doctor`
+reads the published `plugin.json#version` to notify them.
 
 ---
 
@@ -25,33 +32,29 @@ Run through this before bumping the version:
 
 - [ ] All ADRs touching this release's changes are filed in the dev wiki.
 - [ ] If schema changed for any page-type: the corresponding `skills/wiki-migration/migrations/<page-type>-<from>-to-<to>/` directory exists with `README.md` + `migrate.sh` and/or `migrate.md` + `verify.json`.
-- [ ] If schema changed: `skills/wiki-migration/schemas.json` was updated. The page-type's `current` was bumped, the migration basename was appended to `migrations`. Where appropriate, `supported_from` was advanced to reflect the N+3 deprecation window (per ADR-027).
+- [ ] If schema changed: `skills/wiki-migration/schemas.json` updated — `current` bumped, migration basename appended to `migrations`, `supported_from` advanced per the N+3 deprecation window (ADR-027).
 - [ ] Version bump classified correctly:
-  - **PATCH** (e.g. `1.2.3 → 1.2.4`): bug fixes only. NO schema changes, NO hook changes, NO new commands.
-  - **MINOR** (e.g. `1.2.x → 1.3.0`): additive changes only. New optional fields with defaults; new commands; new skills; new page-types. NO renames, NO removals.
-  - **MAJOR** (e.g. `1.x.x → 2.0.0`): anything else. Goes through the RC pipeline (below).
-- [ ] CI green: `claude plugin validate ./plugins/startup-framework --strict`
-- [ ] Migrations CI green: synthetic-wiki fixtures pass every new migration's `verify.json`
-- [ ] `CHANGELOG.md` entry written (this drives `/sf:doctor`'s update-notification text)
-- [ ] You dogfooded the migration: run `/sf:update` against your own wiki from the previous version. Approve the diffs. Confirm `/sf:doctor` is green afterward.
+  - **PATCH** (`1.2.3 → 1.2.4`): bug fixes only. NO schema changes, NO hook changes, NO new commands.
+  - **MINOR** (`1.2.x → 1.3.0`): additive only. New optional fields with defaults; new commands/skills/page-types. NO renames, NO removals.
+  - **MAJOR** (`1.x.x → 2.0.0`): anything else. Goes through the RC pipeline (below).
+- [ ] `scripts/publish.sh --dry-run` is green (validates the snapshot would be clean).
+- [ ] Migrations CI green: synthetic-wiki fixtures pass every new migration's `verify.json`.
+- [ ] `CHANGELOG.md` entry written (this drives `/sf:doctor`'s update-notification text).
+- [ ] You dogfooded the migration: ran `/sf:update` against your own wiki from the previous version, approved the diffs, confirmed `/sf:doctor` green afterward.
 
 ---
 
 ## Stable release process
 
-### Step 1 — bump versions
-
-On `main` of `sf-marketplace`:
+### Step 1 — bump the version (dev repo)
 
 ```bash
-# 1. Bump plugin version (THE source of truth — CC docs warn against duplicating in marketplace.json)
-$EDITOR plugins/startup-framework/.claude-plugin/plugin.json
-# → set "version" to the new value
+# plugin.json#version is THE source of truth (CC docs warn against duplicating in marketplace.json)
+$EDITOR .claude-plugin/plugin.json
+# → set "version" to the new value (e.g. 1.3.0)
 
-# 2. Bump marketplace manifest version (independently bumped; tracks marketplace-schema changes, not plugin changes)
-#    For a routine plugin release this stays unchanged. Only bump if the shape of marketplace.json itself changed.
+# marketplace.json#version is independent — bump ONLY if the marketplace's own shape changed.
 $EDITOR .claude-plugin/marketplace.json
-# → set "version" only if the marketplace's own schema/shape changed
 ```
 
 ### Step 2 — write the CHANGELOG entry
@@ -61,46 +64,51 @@ $EDITOR .claude-plugin/marketplace.json
 
 ### Added
 - new optional field `phase` in identity.md frontmatter (default: ideation)
-- new command `/sf:audit-stack` for friends who want a deeper plugin-version report
 
 ### Schema
-- `identity.md` schema 1 → 2: scripted migration adds `phase`, renames `tech-preferences` → `tech_preferences`
+- `identity.md` schema 1 → 2: scripted migration adds `phase`
 
 ### Fixed
-- /sf:doctor's plugin-version check no longer crashes when claude-mem worker is not listening
+- /sf:doctor's plugin-version check no longer crashes when claude-mem worker is offline
 
-### Deprecated
-- (none)
-
-### Removed
-- (none)
-
-### Security
+### Deprecated / Removed / Security
 - (none)
 ```
 
-Use Keep-a-Changelog conventions. The `### Schema` section is custom (specific to this framework) and is what `/sf:doctor` summarises in update notifications.
+Keep-a-Changelog conventions. The `### Schema` section is custom — `/sf:doctor` summarises it in update notifications.
 
-### Step 3 — commit, tag, push
+### Step 3 — commit + tag in the DEV repo
 
 ```bash
 git add -A
 git commit -m "release: v1.3.0"
 git tag v1.3.0
-git push origin main --tags
+# If the dev repo has a private remote: git push origin main --tags
+# (This pushes to the PRIVATE dev remote ONLY — NEVER to sf-marketplace.)
 ```
 
-### Step 4 — CI does its thing
+### Step 4 — publish the orphan snapshot
 
-The `release.yml` GitHub Action runs on tag push:
+```bash
+scripts/publish.sh            # --channel stable is the default
+```
 
-1. Validates the plugin manifest (`claude plugin validate --strict`)
-2. Runs the migrations CI suite against synthetic fixtures
-3. Asserts `CHANGELOG.md` has an entry for the tagged version
-4. Asserts `plugin.json#version` equals the git tag (sans the `v` prefix)
-5. Creates a GitHub Release with the CHANGELOG excerpt as the body
+`publish.sh`:
+1. reads the version from `plugin.json`,
+2. copies only the shippable allowlist into a temp snapshot,
+3. runs the guards (no `PLACEHOLDER-ORG`; assert-absent of all maintainer-only paths; `claude plugin validate --strict`; manifests + `source:"./"`),
+4. makes a single orphan commit `Release v1.3.0`,
+5. **prints** the exact push commands and the snapshot path — it does NOT push.
 
-If any step fails: fix locally, bump to the next PATCH (`v1.3.1`), retry. **Never delete + re-push a tag** — it confuses friends whose `gh` clients cached the old SHA.
+Inspect the snapshot, then run the printed commands:
+
+```bash
+git -C <snapshot> remote add origin git@github.com:hazarsozer/sf-marketplace.git
+git -C <snapshot> push --force origin HEAD:main
+```
+
+The force-push replaces the marketplace's single orphan commit with the new release. **Never push
+tags to the marketplace.**
 
 ### Step 5 — announce in the Activity Feed
 
@@ -110,159 +118,130 @@ In your own `<handle>.log.md` in the activity-feed repo:
 ## [2026-08-15 09:30] release | hazar | framework v1.3.0 shipped — see CHANGELOG
 ```
 
-Friends' next `/sf:wake-up` surfaces this; their `/sf:doctor` confirms an update is available.
-
 ### Step 6 — friends pick it up on their own time
 
-`/sf:doctor` shows `⚠️ Framework update available: v1.3.0`. They run `/sf:update` when convenient. Snapshot, migrate, diff-review, apply. No nagging beyond the doctor message — per ADR-019, opt-in only.
+`/sf:doctor` shows `⚠️ Framework update available: v1.3.0` (it reads the published `plugin.json#version`).
+Friends run `/plugin marketplace update sf-marketplace` then `/sf:update` when convenient — snapshot,
+migrate, diff-review, apply. Opt-in only; no nagging beyond the doctor message (ADR-019).
+
+> **Why not GitHub Releases on `sf-marketplace`?** The marketplace carries no tags, so tag-triggered
+> GitHub Releases don't apply there. `release.yml` is **dev-repo CI** (it validates on dev-repo tag
+> pushes if you've given the dev repo a private remote). Friends get "what changed" from `CHANGELOG.md`
+> (which ships) + `/sf:doctor`, not from a GitHub Release page.
 
 ---
 
-## RC (release-candidate) release process
+## RC (release-candidate) process
 
 For MAJOR releases or anything risky enough to want a dogfood week first.
 
 ### Why two repos, not two branches
 
-CC's marketplace name must be unique per `marketplace.json#name`. Two branches of one repo would collide on that uniqueness constraint. So we use two physical repos with two distinct marketplace names. Both repos are private, both have the same set of friend collaborators (read-only).
+CC requires a unique `marketplace.json#name` per marketplace. Two branches of one repo would collide
+on that. So we use two physical repos with distinct names (`sf-marketplace`, `sf-marketplace-rc`),
+both private, both with the same read-only friend collaborators.
 
-### Step 1 — develop on `sf-marketplace-rc`
-
-The `sf-marketplace-rc` repo mirrors `sf-marketplace`'s structure but its `marketplace.json#name` is `sf-marketplace-rc`.
-
-Work on `main` of `sf-marketplace-rc`. Set the plugin version to a pre-release suffix:
-
-```json
-{
-  "name": "startup-framework",
-  "version": "1.3.0-rc.1",
-  ...
-}
-```
-
-> **Semver note:** CC does NOT parse semver. It treats `version` as an opaque string and checks "did it change?" — that's all. We own the semver semantics ourselves. Our `version-compare.sh` script implements strict semver comparison including pre-release suffix sort order: `1.3.0-rc.1 < 1.3.0-rc.2 < 1.3.0-rc.10 < 1.3.0`. Document any new sort-order edge cases in the script header.
-
-### Step 2 — tag + push
+### Step 1 — set an RC version + publish to the RC channel
 
 ```bash
-git tag v1.3.0-rc.1
-git push origin main --tags
+$EDITOR .claude-plugin/plugin.json     # "version": "1.3.0-rc.1"
+git commit -am "rc: v1.3.0-rc.1" && git tag v1.3.0-rc.1   # dev repo
+scripts/publish.sh --channel rc        # builds + verifies the RC snapshot
+# run the printed push → git@github.com:hazarsozer/sf-marketplace-rc.git
 ```
 
-### Step 3 — dogfood for ~1 week
+> **Semver note:** CC does NOT parse semver — it treats `version` as an opaque string and only checks
+> "did it change?". We own semver ourselves; `skills/sf-update/scripts/version-compare.sh` implements
+> strict comparison incl. pre-release order: `1.3.0-rc.1 < 1.3.0-rc.2 < 1.3.0-rc.10 < 1.3.0`.
+> `publish.sh` enforces that `--channel rc` carries an `-rc.N` suffix and `--channel stable` does not.
 
-Maintainer runs `/sf:update --rc` on their own wiki. Real use, real sessions. Watch for:
+### Step 2 — dogfood ~1 week
 
-- Migration produces unexpected diffs
-- `/sf:doctor` flags new warnings post-update
-- Any peer plugin (Superpowers, claude-mem, Context Mode, context7, claude-md-management) reports incompatibility
+Maintainer runs `/sf:update --rc` on their own wiki. Watch for unexpected migration diffs, new
+`/sf:doctor` warnings, or peer-plugin incompatibilities. Fix on the dev repo, bump `-rc.N`, re-publish.
 
-If issues found: fix on `sf-marketplace-rc`, bump `-rc.N`, repeat. Don't promote until clean.
+### Step 3 — friends opt in to RC
 
-### Step 4 — friends can opt in to RC
-
-Friends who want early access:
-
-```
-/plugin marketplace add <org>/sf-marketplace-rc
+```text
+/plugin marketplace add hazarsozer/sf-marketplace-rc
 /sf:update --rc
 ```
 
-This sets their `userConfig.rcChannel = true`. They get RC versions on `/sf:update`. `/sf:doctor` reports both stable and RC latest.
+This sets `userConfig.rcChannel = true`. They cannot run BOTH stable and RC (same plugin name); the
+`--rc` flow swaps the installed source under the covers.
 
-They cannot have BOTH stable and RC installed at the same time — CC treats them as the same plugin name. The `--rc` flag uninstalls from stable + reinstalls from RC under the covers.
+### Step 4 — promote RC → stable
 
-### Step 5 — promoting RC to stable
-
-After the dogfood week passes cleanly:
+There is **no PR/rsync promotion** under orphan-publish. Promotion is just a stable publish of the
+de-suffixed version:
 
 ```bash
-# In sf-marketplace-rc:
-git tag v1.3.0-rc.final   # optional, marks the candidate that promotes
-
-# In sf-marketplace (stable):
-# 1. Copy the plugin tree from rc/plugins/startup-framework/ to stable/plugins/startup-framework/
-#    (mirroring the rc's state)
-# 2. Edit plugin.json: drop the "-rc.N" suffix
-#    "version": "1.3.0-rc.5"  →  "version": "1.3.0"
-# 3. Verify CHANGELOG.md has the stable v1.3.0 entry (you wrote this when you started the RC cycle)
-git add -A
-git commit -m "release: v1.3.0 (promoted from rc.5)"
-git tag v1.3.0
-git push origin main --tags
+$EDITOR .claude-plugin/plugin.json     # "1.3.0-rc.5" → "1.3.0"
+git commit -am "release: v1.3.0 (promoted from rc.5)" && git tag v1.3.0   # dev repo
+scripts/publish.sh --channel stable    # → sf-marketplace
+# run the printed force-push
 ```
 
-**Activity Feed announcement** in your `<handle>.log.md`:
+**Activity Feed announcement:**
 
 ```markdown
-## [2026-08-22 10:00] release | hazar | framework v1.3.0 stable — see CHANGELOG; RC dogfood from 2026-08-15 to 2026-08-22 found no blockers
+## [2026-08-22 10:00] release | hazar | framework v1.3.0 stable — RC dogfood 08-15→08-22 found no blockers
 ```
 
-Friends on stable pick up the new stable on their next `/sf:update`. Friends on RC are already running it (just under the `1.3.0-rc.N` version string); they can `/sf:update` to switch back to stable channel if they no longer want RC.
-
-### Step 6 — optional: GitHub Action draft-PR-on-tag
-
-The `sf-marketplace-rc` repo can host a GitHub Action that fires when a `-rc.final` tag is pushed. The action opens a **draft PR** against `sf-marketplace` containing the plugin tree diff. This is convenience tooling, NOT auto-merge — the human gate is preserved. Maintainer reviews + merges manually.
-
-This Action is in scope for v1.0 but optional; ship a stub if time is short.
+> `.github/workflows/promote-rc-draft.yml.template` is a **deprecated stub** under this model — the
+> old rsync-PR promotion no longer applies. See the stub's header; promotion is the `publish.sh` step above.
 
 ---
 
 ## Recovery from a bad release
 
-Things that can go wrong:
-
 ### A migration silently corrupted some friends' wikis
 
-1. Triage via friend reports + `/sf:doctor` output they paste.
-2. Identify the broken migration. Read `verify.json` — was an assertion too lax?
-3. Ship a PATCH (`v1.3.1`) that:
-   - Adds a corrective migration `<page-type>-3-to-4` (forward fix; never reverse)
-   - Includes a fixture that reproduces the failure mode
-4. Post Activity Feed announcement: `## [<ts>] release | hazar | framework v1.3.1 PATCH — fixes identity.md migration bug; run /sf:update immediately`
-5. Friends with affected wikis can roll back via snapshot (see `RECOVERY.md` Scenario 3) and re-`/sf:update` once the patch is out.
+1. Triage via friend reports + pasted `/sf:doctor` output.
+2. Identify the broken migration; read its `verify.json` — was an assertion too lax?
+3. Ship a PATCH (`v1.3.1`) with a corrective migration `<page-type>-3-to-4` (forward fix, never reverse) + a reproducing fixture.
+4. Announce: `release | hazar | framework v1.3.1 PATCH — fixes identity.md migration; run /sf:update`.
+5. Affected friends roll back via snapshot (`RECOVERY.md` Scenario 3) and re-`/sf:update` once the patch is out.
+
+### A snapshot was published with the wrong contents
+
+Under orphan-publish this is **easy to correct** — there are no tags on the marketplace to confuse `gh`
+clients:
+
+1. Fix the issue in the dev repo, bump to the next PATCH (e.g. `v1.3.1`), add a CHANGELOG note ("v1.3.0 was faulty; do not stay on it").
+2. Re-run `scripts/publish.sh` → force-push the corrected orphan commit. It cleanly replaces the bad one.
+3. Post a strong Activity Feed warning + ping friends out-of-band so they `/plugin marketplace update` + `/sf:update`.
+
+(Dev-repo **tags** still follow the never-delete-and-re-push rule — but the marketplace has none, so the rolling force-push is the normal mechanism, not a hazard.)
 
 ### A friend reports breakage we can't reproduce
 
-1. Ask them to paste:
-   - `/sf:doctor` output
-   - The `${CLAUDE_PLUGIN_DATA}/wiki-snapshots/` directory listing (`ls -la`)
-   - The first 50 lines of the file claimed to be broken
-2. If it's a one-off corruption, walk them through `RECOVERY.md` Scenario 3.
-3. If it's a pattern emerging across friends, file an ADR amendment under ADR-019's sunset-review trigger list (release process needs revision).
-
-### CI passed but a manual test would have caught the bug
-
-This is a fixtures gap. Expand `tests/fixtures/<page-type>-v<N>/` with the missing edge case + add a test in `verify-migrations.yml` that exercises it. Commit before the next release.
-
-### A tag was pushed with the wrong contents
-
-DO NOT delete + re-push the tag. Friends' `gh` clients may have already cached the old SHA, leading to inconsistent installs across the group. Instead:
-
-1. Bump to the next PATCH and re-release (e.g. tag was `v1.3.0` with bad contents → release `v1.3.1` with correct contents + a CHANGELOG note "v1.3.0 was a faulty release; do not install").
-2. Post a strong Activity Feed warning + ping friends out-of-band (WhatsApp, etc.) so they skip the bad tag.
+1. Ask them to paste `/sf:doctor` output, `${CLAUDE_PLUGIN_DATA}/wiki-snapshots/` listing, and the first 50 lines of the file claimed broken.
+2. One-off corruption → walk them through `RECOVERY.md` Scenario 3.
+3. Pattern across friends → file an ADR amendment under ADR-019's sunset-review triggers.
 
 ---
 
 ## Onboarding a co-maintainer
 
-Per ADR-019 § sunset-review-triggers: "Hazar-bottleneck on releases" is a known risk. When the second maintainer arrives:
+Per ADR-019 § sunset-review-triggers ("Hazar-bottleneck on releases"):
 
-1. Add them as a write collaborator on `sf-marketplace` AND `sf-marketplace-rc`.
-2. Add their GitHub username to the dev wiki's `wiki/maintainers.md`.
-3. Walk them through this document.
-4. Both maintainers must be admins on the GitHub repos (bus factor).
-5. Document the on-call rotation if one emerges.
+1. Add them as a write collaborator on `sf-marketplace` AND `sf-marketplace-rc` (and the private dev remote, if any).
+2. Add their GitHub username to `wiki/maintainers.md`.
+3. Walk them through this document + `publish.sh`.
+4. Both maintainers admin on the GitHub repos (bus factor).
 
-The release process documented here is intentionally manual + auditable. Don't add automation that bypasses the human checklist without a strong reason.
+The process is intentionally manual + auditable. Don't add automation that bypasses the human checklist (or `publish.sh`'s guards) without a strong reason.
 
 ---
 
 ## What to NOT do
 
-- Don't push directly to friends' wikis. The framework's per-friend-wiki principle (ADR-017) is load-bearing; the maintainer never touches a friend's local wiki.
-- Don't auto-update. The opt-in pattern (per ADR-019) is the safety net.
-- Don't skip the CHANGELOG. `/sf:doctor` consumes it. An empty CHANGELOG means friends don't know what changed.
-- Don't combine PATCH + MINOR changes in one tag. Pick one. The semver classification is the contract for what schemas can change.
+- **Don't `git push` the dev repo to `sf-marketplace`.** That leaks the wiki + history. Always publish via `scripts/publish.sh`.
+- **Don't push tags to `sf-marketplace`.** Tags live only in the private dev repo.
+- **Don't bypass `publish.sh`'s guards.** The assert-absent guard is the ADR-019 boundary; if it fails, fix the leak — don't work around it.
+- Don't push directly to friends' wikis — the per-friend-wiki principle (ADR-017) is load-bearing.
+- Don't auto-update. Opt-in (ADR-019) is the safety net.
+- Don't skip the CHANGELOG — `/sf:doctor` consumes it.
+- Don't combine PATCH + MINOR in one release. Pick one; the semver classification is the schema-change contract.
 - Don't ship a MAJOR without RC. The dogfood week is the safety net.
-- Don't skip ADR amendments for sunset-review triggers. The wiki is the framework's memory; let it grow.

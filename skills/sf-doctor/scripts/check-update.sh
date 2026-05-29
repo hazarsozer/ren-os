@@ -61,7 +61,11 @@ if [[ "$REPO_URL" =~ github\.com/([^/]+)/([^/]+) ]]; then
   ORG="${BASH_REMATCH[1]}"
 fi
 
-if [[ -z "$ORG" || "$ORG" == "PLACEHOLDER-ORG" ]]; then
+# Bail if the org is empty or still an unreplaced placeholder. We match the generic
+# `*PLACEHOLDER*` pattern (not the exact placeholder literal) so this defensive sentinel
+# does not itself trip the publish-time leftover-placeholder guard in scripts/publish.sh
+# — that publish guard is the real gate against shipping an unconfigured manifest.
+if [[ -z "$ORG" || "$ORG" == *PLACEHOLDER* ]]; then
   emit "latest-stable" "warn" "cannot determine marketplace repo" "→ Set the repository field in plugin.json or wait for first-ship"
   emit "latest-rc" "skip" "" ""
   emit "channel" "ok" "stable" ""
