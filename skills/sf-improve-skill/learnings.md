@@ -14,6 +14,16 @@ Per ADR-011's optional pattern: this file accumulates lessons learned during the
 
 ## Open log
 
+### 2026-05-29 — sf-improve-skill's own `eval/` is intentionally empty for V1 (eval deferred)
+
+`skills/sf-improve-skill/eval/` ships **empty on purpose**. This skill improves *other* skills via the Karpathy loop, and every framework-shipped skill it operates on has a real, ADR-011-conformant `eval.json` (sf-install, sf-interview, sf-bootstrap-project, sf-wrap, sf-backup, sf-note, sf-recall — all pinned in `lib/tests/test_preflight.py::CANONICAL_EVAL_FIXTURES`). So the **capability works**; only *self-application* (improve-skill improving itself) is deferred.
+
+**Why deferred, not faked (per ADR-012 + team-lead 2026-05-29):** a meta-skill's eval would have to make binary assertions about whether improve-skill *itself* got better — and a trivial/hand-wavy eval.json is **worse than none** for the one skill whose entire job is rigor. False confidence in the rigor tool is a worse failure than an honest, documented gap.
+
+**Candidate assertions considered (and why they don't clear the bar yet):** the genuinely *binary, deterministic* properties of improve-skill — preflight refuses on missing/malformed eval; `--autonomous` requires `--max-iterations` + `--max-budget-usd`; dirty tree refused; non-improving iteration reverts; loop never exceeds `--max-iterations` — are **already covered by unit tests** in `lib/tests/test_preflight.py`. An `eval.json` re-asserting them is redundant scaffolding. The genuinely *new* thing an eval would test is the **end-to-end loop quality** (did the LLM's edit actually improve the body?), which is non-deterministic and not cleanly binary — exactly the thing that's hard to assert WELL. Until there's a deterministic, non-trivial behavioral assertion that the unit tests don't already cover, the eval stays deferred.
+
+**Revisit trigger:** if a future change introduces loop behavior that is (a) binary, (b) deterministic, and (c) not already unit-tested, author `eval/eval.json` then and add it to `CANONICAL_EVAL_FIXTURES`. See `eval/README.md` for the in-tree marker and ADR-012 for the loop design.
+
 ### 2026-05-28 — Validate against real contract instances, not assumed shapes (load-bearing)
 
 **Context.** First ship of `_validate_eval_file` (in `lib/preflight.py`) drifted entirely from ADR-011's canonical eval.json schema:
@@ -30,7 +40,7 @@ Per ADR-011's optional pattern: this file accumulates lessons learned during the
 
 **Root cause (one sentence)**: I wrote the validator against my in-memory model of what ADR-011 should say, instead of opening ADR-011 and reading what it actually says.
 
-**The fix**: rewrote `_validate_eval_file` to use the canonical `tests` / `binary_assertions` / string-items shape. Added `TestCanonicalEvalFixtureConformance` — a parametrized pinning test that loads every framework-shipped eval.json (currently 4: sf-install, sf-interview, sf-bootstrap-project, sf-wrap) and asserts the validator accepts them. If the validator drifts again, ALL fixtures fail simultaneously, fire-alarm style.
+**The fix**: rewrote `_validate_eval_file` to use the canonical `tests` / `binary_assertions` / string-items shape. Added `TestCanonicalEvalFixtureConformance` — a parametrized pinning test that loads every framework-shipped eval.json (originally 4: sf-install, sf-interview, sf-bootstrap-project, sf-wrap; expanded to 7 on 2026-05-29 per review §M3 to add sf-backup, sf-note, sf-recall) and asserts the validator accepts them. If the validator drifts again, ALL fixtures fail simultaneously, fire-alarm style.
 
 **The pattern (for the team)**:
 

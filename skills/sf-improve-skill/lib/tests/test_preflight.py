@@ -121,6 +121,11 @@ CANONICAL_EVAL_FIXTURES = [
     REPO_ROOT / "skills" / "sf-interview" / "eval" / "eval.json",
     REPO_ROOT / "skills" / "sf-bootstrap-project" / "eval" / "eval.json",
     REPO_ROOT / "skills" / "sf-wrap" / "eval" / "eval.json",
+    # M3: these ship real eval.json files but were unpinned, weakening the
+    # ADR-011 conformance guarantee. Now pinned alongside the rest.
+    REPO_ROOT / "skills" / "sf-backup" / "eval" / "eval.json",
+    REPO_ROOT / "skills" / "sf-note" / "eval" / "eval.json",
+    REPO_ROOT / "skills" / "sf-recall" / "eval" / "eval.json",
 ]
 
 
