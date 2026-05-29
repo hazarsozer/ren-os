@@ -1,0 +1,696 @@
+Video: I Turned Claude Opus 4.8 Into My Entire AI Operating System
+Owner: Nate Herk - AI Automation
+
+Transcript:
+Chapter 1: Intro
+0:00
+So Claude Opus 4.8 just dropped. So I turned it into my own AI operating system. It basically is my second brain.
+0:06
+6 seconds
+It's my executive assistant. It's everything. It runs all of my different businesses. And I literally live inside of this operating system. As you can see over here on the right hand side, we
+0:13
+13 seconds
+have a visualization of my actual second brain and all of my skills and other projects and everything that I'm working on in my business being built out in
+0:22
+22 seconds
+real time. So in this video, I'm going to show you guys exactly how I have this set up. I'm going to talk about my four C's framework for building your own AI operating system. context, connections,
+0:30
+30 seconds
+capabilities, and cadence. I'm going to go over the mindset of building one. I'm going to go over how you make it better and better and smarter over time, how you're going to save tokens, and how
+0:38
+38 seconds
+you're able to organize all of this so that you can scale it up as your business evolves. I'm also going to give you guys this free GitHub repo, which you can literally clone into your own
+0:46
+46 seconds
+project and start to just feed in and pump in context and skills and stuff like that, so that you can feel more confident about the way that you're setting up your AI operating system
+0:54
+54 seconds
+based on my two frameworks here, the three M's, mindset, method, and machine.
+0:58
+58 seconds
+and then the four C's like I just mentioned for the actual architecture of how you build this automation system. So if that sounds good to you, let's just get into it. By the end of this video, you're going to know exactly how I
+Chapter 2: What an AIOS Is
+1:07
+1 minute, 7 seconds
+actually use this AI operating system every single day. Okay, so this is my Herk 2 project. If you guys have been following my channel for a while, you've probably heard me talk about this quite
+1:15
+1 minute, 15 seconds
+a bit. It kind of started off as my executive assistant and my second brain, and now I just realized it's my operating system. And the reason I say that is because I try to work out of
+1:24
+1 minute, 24 seconds
+this tab right here in VS Code more than opening up Chrome or opening up other desktop apps. I try to do everything through here. And that's kind of like
+1:32
+1 minute, 32 seconds
+the core default shift where I reach for that first before I reach for anything else. Because a lot of people might think like, okay, what is an operating system anyways? Well, think about it
+1:40
+1 minute, 40 seconds
+like, you know, your Windows operating system or your Mac operating system or, you know, your iPhone, your iOS. It's basically just the way that you're interacting with the different systems and the way that you're getting work
+1:49
+1 minute, 49 seconds
+done. So, I'll show off some of my files and folders in here a little bit, but really what I want you to wrap your head around is that first idea is that this
+1:57
+1 minute, 57 seconds
+thing has all the context that I wanted to have, which is basically everything.
+2:01
+2 minutes, 1 second
+It sees my meeting transcripts. It sees all of my posts in school, all of my YouTube video transcripts, all my LinkedIn posts. It can read through my Slack threads, my ClickUp threads, my
+2:09
+2 minutes, 9 seconds
+email. It knows everything about my business to the point where I have to come in here sometimes and ask it to remind me of things because it can recall it better than I can and faster
+2:17
+2 minutes, 17 seconds
+than I can. And the reason why I wanted to test this out with Opus 4.8, obviously it's a new model and you know the benchmarks compared to Opus 4.7 looked better. But if you think about
+2:26
+2 minutes, 26 seconds
+the actual models, I liked Opus 4.6 more than I liked Opus 4.7. It was just kind of a feel thing. And so far with Opus
+2:34
+2 minutes, 34 seconds
+4.8, it feels more like 4.6 to me, which is great. If you think about some of the things that Opus 4.7 wasn't doing great, sometimes it had a bit of an attitude.
+2:43
+2 minutes, 43 seconds
+Honestly, it sounds funny, but it did.
+2:45
+2 minutes, 45 seconds
+Sometimes it would lie to you. And they have a big improvement here. Opus 4.7 with honesty. Sometimes it was spending too many tokens and it was being way too sort of like out of bounds of what you
+2:53
+2 minutes, 53 seconds
+asked it to do. And that creativity was nice, but sometimes obviously it wasn't.
+2:57
+2 minutes, 57 seconds
+So now that I've worked in Opus 4.8 into my entire operating system, it has already felt a little bit better. And by the way, I did just do a whole deep dive
+3:05
+3 minutes, 5 seconds
+video on the launch of Opus 4.8, which I will tag right up here if you want to check that out. So anyways, let's just start going through this stuff because I've got a lot of things to talk about and I want to get through it quick to
+3:13
+3 minutes, 13 seconds
+not waste your guys' time. So, the first thing I want to talk about is the default shift about an AI operating system because it's not going to be
+3:21
+3 minutes, 21 seconds
+valuable to you and it's not going to feel like you're getting the ROI on it if you don't actually use it. So, this is where I realized that I needed to use
+3:30
+3 minutes, 30 seconds
+an AIOS and where I really started to build it up was when I was opening up, you know, Cloud Chat. I was opening it up on the web all the time. I had a
+3:37
+3 minutes, 37 seconds
+bunch of projects in there for helping me write YouTube outlines or LinkedIn posts or school posts or whatever it is.
+3:42
+3 minutes, 42 seconds
+And even though at that point I was a frequent cloud code user, I realized that I was only using cloud code specifically to write code to do things like building a Python script or
+3:51
+3 minutes, 51 seconds
+building some sort of automation. But when you realize that cloud code has the same underlying model opus 4.8 or whatever it may be as cloud chat, then
+3:59
+3 minutes, 59 seconds
+it's like why would you ever use not cloud code? Even if the use case is just brainstorming or thinking or writing, you know, content, nothing to do with
+4:06
+4 minutes, 6 seconds
+code, use claude code because you start to build up all of that context, right?
+4:11
+4 minutes, 11 seconds
+And what I started to do is as I transitioned everything over to cloud code, my cloud skills, my cloud projects, um other SAS tools that I might have been paying for, I just
+4:20
+4 minutes, 20 seconds
+dwindled down my tech stack because cloud code, my AIOS, just does everything. And it's not only more efficient, but it's also potentially
+4:28
+4 minutes, 28 seconds
+cheaper because you're not paying for the tools and it just removes the amount of context switching. And so this default shift of thinking, I have X, Y,
+4:36
+4 minutes, 36 seconds
+and Z task to do today. let me try to do X Y andZ task without opening up Chrome, without opening up whatever other apps I have. Let me just try to do everything
+4:44
+4 minutes, 44 seconds
+from my cloud code. And once you start having that mindset shift, it's very, very powerful because AI isn't king. Who cares? Opus 4.8 benchmarks. Who cares?
+Chapter 3: Context Is King
+4:53
+4 minutes, 53 seconds
+GBD 5.5, I don't care. The AI isn't the king. Everyone has access to the same AI models. So if the AI is king, then wouldn't everybody be king? Context is
+5:02
+5 minutes, 2 seconds
+king. And the more you use the thing, the better the context gets. So if you take the model which is the engine, right, and you're feeding in your own
+5:09
+5 minutes, 9 seconds
+fuel, your own context, that's how you get actual useful output. That's how you get an AI assistant or executive assistant or OS that doesn't feel like
+5:17
+5 minutes, 17 seconds
+you're getting generic stuff. You know, if everyone has access to 4.8, right?
+5:22
+5 minutes, 22 seconds
+And 4.8 can write really good LinkedIn posts, then wouldn't everyone's LinkedIn posts be going viral? But that's not the reality. So it's your context, right?
+5:30
+5 minutes, 30 seconds
+Context is king, not the AI model. And you want to be thinking about your tokens like money. You know, you want to think about the fact that your that your
+5:38
+5 minutes, 38 seconds
+models, your AI models are stateless. So if you open up a new session in cloud code, what does it have? It it loads in its, you know, global rules. It loads in
+5:47
+5 minutes, 47 seconds
+the cloud.mmd things like that. And then from there, it's going to load in other files or instructions or memories that you've given it. Otherwise, it would be
+5:54
+5 minutes, 54 seconds
+a complete beginner every time. So if you right now open up your cloud code project and said, "Hey, based on what's going on in our business, what should I do next week?" If it gives you an answer
+6:02
+6 minutes, 2 seconds
+that's horrible, you probably need to give it better context and better, you know, hands to pull in the data from the right sources. And if you get a really
+6:09
+6 minutes, 9 seconds
+good answer, then that's a good good starting point. There's always room for improvement, though. And so, one thing I did want to call out real quick is if
+6:16
+6 minutes, 16 seconds
+this concept already seems a little bit out there and you don't kind of, you know, you feel a little bit lost already, then maybe you want to upskill first with cloud code at a basic level before you try to build your whole AIOS.
+6:27
+6 minutes, 27 seconds
+And I think a good place to start would be inside of my free school community. link for this down in the description.
+Chapter 4: The Four C's Framework
+6:31
+6 minutes, 31 seconds
+It's all completely free. I've got a classroom section. And right here, I have a full course about building your own AIOS, the four C's that I talked about. And in here, I basically walk
+6:40
+6 minutes, 40 seconds
+through everything. This is about a three-hour course. So, if you want to start here and then come back to a video like this or watch this video first and then jump into that course, that would
+6:48
+6 minutes, 48 seconds
+be a great way to do it. So, this community is linked in the description and it is completely free. It's also the largest AI automation community on
+6:55
+6 minutes, 55 seconds
+school. So, hop in there. But anyways, the whole idea of those four C's, context, connections, capabilities, and cadence is the way that you want to
+7:03
+7 minutes, 3 seconds
+mentally think about what do you need to give your model access to in order to actually be useful. So, let me hop into the GitHub repo real quick to show you
+7:10
+7 minutes, 10 seconds
+what I mean by this. So, the oneliner of context is that it knows your business, right? You open up a fresh session and you should be able to say, "What does
+7:18
+7 minutes, 18 seconds
+this business do and who works here?" And it should be able to answer that.
+7:21
+7 minutes, 21 seconds
+Connections is what stuff can it actually touch? What's on your calendar tomorrow? What tasks do you have? What messages did John send you yesterday?
+7:28
+7 minutes, 28 seconds
+What is the, you know, what's going on in the general team chat right now? Can it see that kind of stuff or are you copy and pasting stuff into it in order
+7:36
+7 minutes, 36 seconds
+to give it that context? Then we have capabilities, how you actually do work.
+7:41
+7 minutes, 41 seconds
+This is usually basically just like the skills, the instruction files of, hey, whenever Nate wants to write a LinkedIn post, you should do it with in this
+7:48
+7 minutes, 48 seconds
+style. You know, use analogies like this. Here is his writing guide. Here is his framework for writing LinkedIn posts. when it starts to be able to
+7:56
+7 minutes, 56 seconds
+understand how you work, that's when you have true capabilities. And usually those are skills. And then finally, we have cadence. So turning all of this
+8:04
+8 minutes, 4 seconds
+stuff that we just talked about into things that actually happen while your laptop is closed or when you don't explicitly ask for those things to happen. And each of these layers can't
+8:12
+8 minutes, 12 seconds
+happen without the previous one. So context, connections, capabilities, and cadence. And like I said, that's what I go over in that free course. So how do
+Chapter 5: Connections & Building Your List
+8:20
+8 minutes, 20 seconds
+you actually think about the connections? Well, for example, in mine, I'm connected to ClickUp, all of my local files, obviously, my Google Workspace, my QuickBooks, YouTube,
+8:28
+8 minutes, 28 seconds
+Fireflies, and so many more things. And the way that I like to think about what to add as connections, because I know at the beginning, you might be like, "Okay,
+8:36
+8 minutes, 36 seconds
+I have so many things, right? Think about on your week to week, where do you go to look for things? And where do you go to look for these specific seven things as a really good starting point?
+8:45
+8 minutes, 45 seconds
+Where do you go to look for your revenue figures? Where do you go to look at customer data or customer communication?
+8:50
+8 minutes, 50 seconds
+Where do you go for your calendar, your communication internally, your tasks, your project management, your meetings, and your knowledge? And obviously,
+8:58
+8 minutes, 58 seconds
+there's more than this in my business, but this is just when you first sit down and you think about your day-to-day or your week to week and you do a little audit on yourself. What desktop apps do you have? What software do you pay for?
+9:08
+9 minutes, 8 seconds
+What are things that you actually are constantly like clicking on? You know, what what are your bookmarks on your Chrome? What are things that you're using so often that it would be helpful
+9:16
+9 minutes, 16 seconds
+if your AI operating system had access to those things? And that's just like I said a good place to start. Write them down and then just start one by one
+9:23
+9 minutes, 23 seconds
+connecting to like school's API, Stripe API, QuickBooks API. Just start connecting to the different API endpoints or MCP servers one at a time
+9:31
+9 minutes, 31 seconds
+and you'll start to build up a really good bank of connections. And also this GitHub repo will walk you guys through a lot of this. It's it has like a whole
+9:39
+9 minutes, 39 seconds
+onboarding skills. So it'll interview you. It'll have you connect things.
+9:42
+9 minutes, 42 seconds
+It'll audit you. It's going to be really helpful if you're starting from zero right now. Now, another cool thing that you guys can do is you can run /insights right here and it says that it's going
+9:51
+9 minutes, 51 seconds
+to generate a report analyzing your cloud code local sessions. So, that will give you an HTML file and then when you open that up in a browser, it will look
+9:59
+9 minutes, 59 seconds
+like this. So, it'll show you the date range that it looked through. It will do 30 days, but the only reason mine has 12 is because I recently got a new PC, so there's only 12ish days of local data.
+10:10
+10 minutes, 10 seconds
+But, it will show you at a glance what's working, what's hindering you, quick wins to try. So here are you know some skills that you can do ambitious
+10:17
+10 minutes, 17 seconds
+workflows and it'll show you different things that are going on right so what you work on how you use cloud code impressive things you know where things
+10:25
+10 minutes, 25 seconds
+go wrong features to try new usage patterns so looking through this stuff is going to be hopefully very helpful for you to figure out how you can
+10:32
+10 minutes, 32 seconds
+actually streamline the way that you use your AIOS by implementing this feedback but not only implementing it once but checking this every couple weeks
+10:40
+10 minutes, 40 seconds
+checking this every month and seeing how the way that you're using it has changed and seeing if your sessions are increasing and seeing if your, you know,
+10:48
+10 minutes, 48 seconds
+different recommendations are changing and things like that to make sure that you're always getting better the way that you're using your AIOS. And of course, you can have Cloud Code
+10:57
+10 minutes, 57 seconds
+brainstorm with you on the report findings and just keep iterating. So, that's just a pretty cool feature that I wanted to tell you guys about and it's definitely something to utilize,
+Chapter 6: How to Organize Your Files
+11:04
+11 minutes, 4 seconds
+especially as you're getting your AIOS up and running. Anyways, I wanted to now talk about how you organize this stuff because I think this is the most
+11:11
+11 minutes, 11 seconds
+requested topic that I get inside of my communities and comments is how do I organize my AIOS? So, let me start off by just saying this.
+11:22
+11 minutes, 22 seconds
+Don't stress it because there's not a right way. There's not a one and only best way to run your AI operating system. You don't have to do it exactly
+11:30
+11 minutes, 30 seconds
+the way that Nate does it or the way that your other, you know, creators that you watch do it or your friends do it.
+11:36
+11 minutes, 36 seconds
+It all is just folders and files. And when you start to actually realize that, it makes things a lot simpler, right?
+11:43
+11 minutes, 43 seconds
+Because when you realize everything's files and folders, the first thing it does in my mind is it makes me realize, okay, cool. I could open up these files and folders in codeex or openclaw. I'm
+11:52
+11 minutes, 52 seconds
+not locked into cloud code. I'm tool agnostic here, which is great. You might see over here, I've got a agents folder.
+11:58
+11 minutes, 58 seconds
+I've got a cloud. I've got a codeex. So, I can use this entire operating system with multiple different types of coding agents, which is beautiful. And the
+12:06
+12 minutes, 6 seconds
+other thing is it's a bunch of local files and folders, which means AI can look through everything. AI can crawl through it. AI can reorganize it. AI can
+12:14
+12 minutes, 14 seconds
+search through it. So the point I'm trying to make here is don't stress it too much. If it gives you guys more comfort, think about this. I probably
+12:22
+12 minutes, 22 seconds
+change my cloud.MD file or my agents.mmd file almost every day. I'm changing that thing so often because I live in here so
+12:30
+12 minutes, 30 seconds
+much. So anytime I think oh that would be good to know or oh let's you know make this more concise I'm updating that callmd defile and I'm also moving around
+12:39
+12 minutes, 39 seconds
+my projects and my files and my folders definitely on a weekly basis as well because every quarter I have new priorities every week there's something
+12:46
+12 minutes, 46 seconds
+new that comes up um I'm making new files I'm maybe working on new projects I'm scrapping old projects so things move around a lot so the reason why I'm
+12:54
+12 minutes, 54 seconds
+spending so much time there is just so so you feel more comfortable you know don't stress yourself out I'm doing this the wrong way I I truly don't think there's a single wrong way. The only
+13:02
+13 minutes, 2 seconds
+time where you run into issues is if there's so much context and it's so unorganized that you can't find it. You can't find things manually and that your AI can't find things because this is
+13:10
+13 minutes, 10 seconds
+laid out in a way where to me it's very clear. I have decisions. I have audits.
+13:14
+13 minutes, 14 seconds
+I have my archives. I have other worlds which literally means these are entire full cloud code projects that I can open up in their own and I use them on my
+13:23
+13 minutes, 23 seconds
+own. So my scheduled automations, my YouTube OS, I've got the book that I'm working on. All of this stuff is other worlds. And if I wanted to add more cloud code projects in my other worlds
+13:31
+13 minutes, 31 seconds
+folder, I could because it's nice that my main OS can look through this kind of stuff. But here's the thing. Even if I have other cloud code projects, which
+13:39
+13 minutes, 39 seconds
+trust me, I have way more than just these four that live on my desktop or live in my documents, cloud code can still get there and it still knows they live there because I I have like
+13:48
+13 minutes, 48 seconds
+documentation on okay, you know, the cloud code GitHub repo that owns, you know, like my website that lives at desktop blah blah blah. And so Claude Code can go find it if it ever needs it.
+13:59
+13 minutes, 59 seconds
+You can see how many products I've got in here, right? Like for example, this YouTube video. If I can just scroll down here and find it. Oh yeah, right here in my YouTube videos folder. This one was
+14:08
+14 minutes, 8 seconds
+called Opus 4.8 operating system. And all the diagrams you guys just saw right over here, right in Excal. All of these diagrams and the whole outline of this
+14:17
+14 minutes, 17 seconds
+video was built for me in here by my Cloud Code OS. my outline, my visual plan, all of this, all these other YouTube videos, all these ex articles,
+14:24
+14 minutes, 24 seconds
+everything that I'm doing, I'm doing through here. And that's where I've got all the stuff set up because think about it now.
+Chapter 7: One Source of Truth
+14:32
+14 minutes, 32 seconds
+This thing has access to basically everything I've done. So, it can update my skills later. It can make its memory files better and better. And yeah, I
+14:40
+14 minutes, 40 seconds
+think you'll find just how helpful it is if you're constantly context switching and doing a lot of stuff throughout your day, which I'm sure all of you guys are.
+14:47
+14 minutes, 47 seconds
+having just like one source of truth that has everything and you kind of eliminate that scavenger hunt of like, oh, where did I leave that file? Who did
+14:55
+14 minutes, 55 seconds
+I send that to? Did I do that on chat GBT or Claude code or Claude? Like, where did I do all this stuff? No, just
+15:02
+15 minutes, 2 seconds
+do it all here and give your system access to touch everything because then it can find things, right? Like I remember someone on my team sent me
+15:09
+15 minutes, 9 seconds
+something the other day and I couldn't remember if that was in Slack or ClickUp. So, I just came in here and said, "Can you help me find this doc from this person?" and it just found it
+15:16
+15 minutes, 16 seconds
+in like 10 seconds. So those types of use cases where you're not doing the scavenger hunt trying to find something, it's huge. Now, when I start to bring
+Chapter 8: Agent Risk & The Bike Method
+15:24
+15 minutes, 24 seconds
+that concept up, there's probably alarm bells that go off in a lot of your guys' heads, which I think if that happened to you, I'm glad. Like that's a good thing
+15:32
+15 minutes, 32 seconds
+that happened because the more autonomy you have, the more reach you have as you move your way up sort of like the AI systems pyramid that I talk about, you
+15:39
+15 minutes, 39 seconds
+know, like workflows, AI workflows, AI agents, teams of agents. As you move up, typically risk goes up as well as cost.
+15:47
+15 minutes, 47 seconds
+So that's why I like to talk about your keys, right? Like your permission layer around the AI agents. thinking about if
+15:56
+15 minutes, 56 seconds
+you're building an AI operating system that has so much data and it has so many different API keys or MCP servers, you have to be careful. Um, there was an
+16:04
+16 minutes, 4 seconds
+example which you can see this is kind of built around on our team. Like for real, an AI agent basically sent out
+16:12
+16 minutes, 12 seconds
+three promotional emails that weren't supposed to go out to over 150,000 inboxes. Like it was bad. We had to apologize. We had to, you know, take
+16:19
+16 minutes, 19 seconds
+down the page and whatever. But why did that happen? Because it's not like our team said, "Hey, go send out these three
+16:27
+16 minutes, 27 seconds
+emails." What happened was the agent proactively picked up a to-do list, a task, and and it interpreted it as, "Okay, I need to make these emails and
+16:34
+16 minutes, 34 seconds
+send them off." And it just did it. And basically the mindset shift there is you have to think about what can your system
+16:42
+16 minutes, 42 seconds
+actually touch. You know, um you have to assume that if your agent has access to read something or to do something, it
+16:49
+16 minutes, 49 seconds
+will do it. And like that's not always the case, right? Most of the time it won't, but if you assume that it will, you change the way that you give your
+16:56
+16 minutes, 56 seconds
+agent endpoints. You change the way that you give your agent MCP servers, you you start to have things that are scoped.
+17:02
+17 minutes, 2 seconds
+You start to just be more careful about it. And obviously that's the right way to do it. And I also want to clarify like I was not mad at, you know, this person that when this accident happened.
+17:11
+17 minutes, 11 seconds
+Like it happened. It was a really good learning experience for everyone on the team, myself included, and you know, we grow from it. But anyways, as you start
+17:19
+17 minutes, 19 seconds
+to just give your agent more and more connections and more capabilities, you definitely want to be thinking about that because it's exciting. It's
+17:27
+17 minutes, 27 seconds
+exciting to connect to a bunch of different data sources. It's exciting to build all these new skills, but you also have to bring yourself down to earth a little bit and think, okay, what is the
+17:34
+17 minutes, 34 seconds
+worst case that could happen here? And the thing is, instructions are not the same as capabilities. If you think about all the keys that your agent has on the
+17:42
+17 minutes, 42 seconds
+key ring, there's a difference between saying, hey, don't ever use that key, and saying, "Okay, give me that key." like you don't have you don't get to put
+17:49
+17 minutes, 49 seconds
+this key on your key ring. It's a huge difference. So, as much as you could say never send emails, if there's a send email key or send email tool inside of
+17:57
+17 minutes, 57 seconds
+that agent harness, then it could do it, right? Like it it it actually physically could. And so that's why I like to think about it as the bike method. When you're
+18:05
+18 minutes, 5 seconds
+building skills and when you're building automations, think about it like you're teaching a kid to ride a bike.
+18:09
+18 minutes, 9 seconds
+Basically, what I mean by that is you don't just hand the kid a bike, put a helmet on them, and say, "Okay, kid, go ride." You typically will walk with
+18:18
+18 minutes, 18 seconds
+them. You'll hold the handle. You'll put your hand on their back. You'll walk with them. You'll feel that they're adjusting too much to the left or leaning too much left and you'll adjust
+18:25
+18 minutes, 25 seconds
+them back to the middle. You will help them out throughout the way. And every single time you use that skill or every single time you you and the kid like go
+18:33
+18 minutes, 33 seconds
+up and down the driveway, it gets better. Like slowly it gets better and better. And slowly there's more trust. And slowly you can take off your hands. Slowly you take off the training wheels.
+18:42
+18 minutes, 42 seconds
+Slowly you let the kid just ride down the street. And all you do is watch. You know, you probably don't immediately go inside and take a nap while the kid's
+18:49
+18 minutes, 49 seconds
+riding a bike, but you still watch and you make sure that things are feeling good and it's earned its spot.
+18:55
+18 minutes, 55 seconds
+Basically, like it's earned its next phase until the point where you get to autonomy. And I think yes, the barrier to entry is getting lower to build
+19:04
+19 minutes, 4 seconds
+systems. Yes, it's easier to evaluate and easier to push something into production same day. whereas um you know
+19:11
+19 minutes, 11 seconds
+earlier on without all these AI models it was harder to build automations so quickly and so accurately right away.
+19:17
+19 minutes, 17 seconds
+But making it easier shouldn't be giving you that false sense of security. It shouldn't be um actually putting too
+19:25
+19 minutes, 25 seconds
+much trust in your head because too much trust is bad if you are putting something out there too quick and it's not ready. So that's another thing to
+19:32
+19 minutes, 32 seconds
+think about phase trust in the bike method. Every time you run a skill it gets better. It's not a waste of time.
+19:38
+19 minutes, 38 seconds
+So you can see here in myclude if I open up this folder I've got you know agent memory we've got agents we've got some plans some rules and here's my skills
+19:46
+19 minutes, 46 seconds
+where you can see I've got quite a bit in here right there's a lot of different skills that I've built out in here and these have built obviously over time these get changed all the time some of
+19:55
+19 minutes, 55 seconds
+them I've even moved like globally instead because you can have skills that live only in a herk 2 project in this local project or some of the skills I've made I moved globally so that if I'm
+20:04
+20 minutes, 4 seconds
+ever working in any other directory I can still use those skills but anyways lots of skills here. I'm obviously not going to dive into these because like I said, there's just a lot. But let me
+Chapter 9: Building Skills
+20:12
+20 minutes, 12 seconds
+talk about now how do you get to a place where you're building skills. So I think that you should first of all think about it like this. Think about your day.
+20:19
+20 minutes, 19 seconds
+Think about your week. What are things that you do on a cadence, right? What are things that you do every Monday, every single day, multiple times a day, whatever it is. What are things that you know you do often? And then build it
+20:28
+20 minutes, 28 seconds
+forward. So say, "Hey, Cloud Code, I want you to use the skill creator. I want you to help me run this skill.
+20:33
+20 minutes, 33 seconds
+Here's the end goal. Here are typically the different tools and the different things I think about. let's try building it out. And it's going to walk you through. You correct it. You get an
+20:41
+20 minutes, 41 seconds
+output. You give feedback, right? And you just kind of take that iteration loop of building the skill. And sometimes your skills might take like 50 tries until you get to a place where you
+20:49
+20 minutes, 49 seconds
+like it. And then even then, every time you use the skill, you're going to evolve it, right? Like every single time I use my LinkedIn writing skill, I give it feedback. So every single time I
+20:57
+20 minutes, 57 seconds
+write a LinkedIn post, I say, "Hey, this was good, but this wasn't as good." So change that in the skill so that next time that doesn't happen. And I just
+21:04
+21 minutes, 4 seconds
+keep evolving it. Now the other way is when you reverse engineer a skill which honestly is what I do more often. I do something with cloud code from end to
+21:12
+21 minutes, 12 seconds
+end and then I think to myself, okay, that would be a good skill to have just in case I do that again or because I know I'm going to do it again. So I build the thing end to end and then once
+21:20
+21 minutes, 20 seconds
+I have that finished output, I reverse engineer and say, hey, this is a really good output. Look back at our conversation. What did we do to get there? What did you think about? What
+21:28
+21 minutes, 28 seconds
+tools did you need? What questions did you ask me? and build a skill around it that we want to have that skill give us that output. Obviously, it's not going
+21:36
+21 minutes, 36 seconds
+to be perfect once again, but that's the way that I typically build them is I reverse engineer them. So, I was watching this section of the video back and I realized that this isn't
+21:44
+21 minutes, 44 seconds
+completely true. Like, for the most part, yes, this is exactly how I do it, but I don't want to plant in your head the idea that a skill is only like a
+21:52
+21 minutes, 52 seconds
+workflow or something that you do that's like a big process like an SOP, right?
+21:56
+21 minutes, 56 seconds
+Like skills can also be just as simple as have you ever typed in this prompt before and do you not want to type that prompt in again? Then build a skill
+22:05
+22 minutes, 5 seconds
+around it. And I think a really really good example to show you guys is my session handoff skill. So you know this is a you know a cloud code session. I've been chatting with cloud code for a
+22:14
+22 minutes, 14 seconds
+while. I ran a goal and now I want to be able to maybe clear the context or I want to move this over from cloud code
+22:21
+22 minutes, 21 seconds
+to codeex or open up a new terminal whatever it is. And so I built this skill right here called session handoff.
+22:26
+22 minutes, 26 seconds
+And I installed this one globally for cloud code for me. So when I run this, it basically is giving me a full breakdown of, hey, here's what we did.
+22:34
+22 minutes, 34 seconds
+Here's the files that were created. Here are open decisions. Here's what's next.
+22:38
+22 minutes, 38 seconds
+And that's really helpful for me because it's not a super complex skill, right?
+22:41
+22 minutes, 41 seconds
+It's just a prompt. But I was typing that myself every time. I'd say, hey, you know, I'm going to clear my context.
+22:46
+22 minutes, 46 seconds
+Can you give me a summary? Can you tell me what decisions are left to do? Can you tell me where we need to pick off or pick up? And I was just repeating that same prompt so many times a day. And so
+22:56
+22 minutes, 56 seconds
+I realized, okay, why don't I just take that prompt and just put it as a skill, put it as a slash command. And now I have this. I can go ahead and do a /copy
+23:04
+23 minutes, 4 seconds
+slashcle, paste it in. And then I'm basically right back where I was with completely fresh context. So I will also
+23:10
+23 minutes, 10 seconds
+leave this exact skill in my free school community if you guys want to grab that as well. Or you can just build your own.
+23:16
+23 minutes, 16 seconds
+Right. As you can see, it gives me um pick up here, deferred open questions, where it started, decisions locked, key files, all of that. Super super helpful.
+Chapter 10: AIOS as a Mentor
+23:24
+23 minutes, 24 seconds
+So, just wanted to throw that in there as well. And you really want to be thinking about your AI operating system as a mentor rather than just like, you
+23:33
+23 minutes, 33 seconds
+know, a chatbot or an automation. So, what I mean by that is when you start to think about like, I wonder if that's
+23:40
+23 minutes, 40 seconds
+possible or h I don't know how AI could do this. It's it's tough because when you have that idea or that feeling of
+23:47
+23 minutes, 47 seconds
+doubt, your brain wants to default to what's comfortable, which is what you already know how to do. Which means, let's say you want to pull some reports and do a data analysis for the quarter.
+23:56
+23 minutes, 56 seconds
+If you've done that for every quarter me manually by going into the software and pulling the report and then doing your formulas, your brain's going to want to do that because you know exactly how it
+24:05
+24 minutes, 5 seconds
+works. But if you think of your AI operating system as a mentor and you say, "Hey, here's a process that I do, you know, at the end of every month.
+24:13
+24 minutes, 13 seconds
+here's the tool that I need to use. How is this possible? Like how can I actually do this? And it'll walk you through the options and it will start to
+24:21
+24 minutes, 21 seconds
+give you ideas and it will test things out with you. And then you get to a point where you have that done. And it is tough because with AI, with building
+24:29
+24 minutes, 29 seconds
+skills, with anything that you do new in your business or in your day-to-day productivity, there is basically a short-term cost that you have to bear,
+24:37
+24 minutes, 37 seconds
+right? like the idea of learning something and building out a new skill that one day it might be slower than your manual process, but in the long run
+24:46
+24 minutes, 46 seconds
+having an automation around something is obviously way way quicker. So you kind of have like a 20% dip and it's basically is that change is the dip
+24:55
+24 minutes, 55 seconds
+worth it for the long-term climb and the long-term upside that you will have rather than just remaining constant how you would have if you kept that process the same and didn't change anything. But
+25:03
+25 minutes, 3 seconds
+of course, your judgment still needs to stay there. You still need to be the one who's reading everything. You still need to be the one who is putting your own spin on it. You can't just outsource
+25:12
+25 minutes, 12 seconds
+everything. I think a really good quote that I've brought up multiple times is that you can outsource your thinking, but you cannot outsource your understanding. Really powerful quote.
+Chapter 11: Do You Need a Dashboard?
+25:20
+25 minutes, 20 seconds
+And then I know I showed you guys this earlier, right? Like the actual um Obsidian thing where you can see the visualization of all my files. This is
+25:29
+25 minutes, 29 seconds
+cool, right? And to be honest, for my Herk 2 project, I don't really use this too much. I think that when it comes to visualizing your actual operating
+25:36
+25 minutes, 36 seconds
+system, it's basically just personal preference, right? Like you could open up the terminal and run cloud code from Obsidian and you can, you know, do that
+25:44
+25 minutes, 44 seconds
+if you want. I've got a few Obsidian projects where I have all my YouTube transcripts in there and I've got a bunch of tools and I've got different breakdowns and sometimes it is really nice to see that visually, but like for
+25:52
+25 minutes, 52 seconds
+my Herku project, I don't really know what I'm looking at here and I don't really care. And the thing about my OS is it's how I work and it's not very
+26:00
+26 minutes
+visual. And so I know a lot of people might think, oh well to have an AI operating system, you need like a fancy looking dashboard. You need to see all your agents. You need to see all this
+26:07
+26 minutes, 7 seconds
+uptime. You need to see these things. I don't. I don't care. If you do, then that's perfectly fine. There's nothing wrong with that. But I don't need a
+26:15
+26 minutes, 15 seconds
+dashboard for my operating system, right? Like cuz I come in here and I talk to different agents. I have different tabs. That's how I work.
+26:22
+26 minutes, 22 seconds
+That's how I'm really productive. I was thinking about building one, but I thought to myself, okay, if I had a dashboard, what would I want to see? And when I started to think about what I
+26:30
+26 minutes, 30 seconds
+wanted to see, there really wasn't anything that to me was too important that I can't see already or I can't just have Cloud Code pull in the data for me.
+26:37
+26 minutes, 37 seconds
+So, if you want a custom dashboard to build, certainly grab Cloud Code, have it build you a dashboard. But for me personally, I just honestly don't see
+26:45
+26 minutes, 45 seconds
+too much value in that. The way that I like to think about if I add features to my AIOS or if I add a new skill to my brain is I think about my northstar.
+26:55
+26 minutes, 55 seconds
+What is my ultimate goal at the end of each month that I want to say that I made progress on? And if doing something, if spending time on something
+27:02
+27 minutes, 2 seconds
+doesn't actually move me closer to that goal, then I'm not going to do it. And so I think like if you start to think about metrics, right? Like what are what are the metrics that are important to me? Maybe that's my free school members.
+27:13
+27 minutes, 13 seconds
+Maybe that is our monthly recurring revenue. Does having a a dashboard, a pretty visual AIOS dashboard that shows
+27:20
+27 minutes, 20 seconds
+me these metrics going to improve the metrics? Some could argue yes if you're like a visual person and you need that to help with your decision- making and
+27:29
+27 minutes, 29 seconds
+your brainstorming. But the fact that the metrics exist and the fact that I can pull those in immediately, that's what actually matters to me. So just
+27:37
+27 minutes, 37 seconds
+wanted to sort of like throw out there once again, I don't think that there's anything necessarily wrong with that. I don't think that there's a right or wrong answer. I think a lot of people
+27:45
+27 minutes, 45 seconds
+are making up their own AIOS's and however they want to work is perfectly fine. I think that's the beauty of it. But just think about productivity.
+27:53
+27 minutes, 53 seconds
+Productivity isn't how many hours did I work today. Productivity is did I actually move the needle closer to my goal. And that's how you can stop
+28:00
+28 minutes
+getting so overwhelmed with all these AI tools and you know switching between things. That is the beauty of it. So anyways guys, I know this one was a
+Chapter 12: Final Thoughts
+28:08
+28 minutes, 8 seconds
+little bit shorter, but I wanted to keep it short. I wanted to keep it very very like mindset oriented because I think the mindset stuff about the way that you
+28:15
+28 minutes, 15 seconds
+use this, the way you set it up, and the way that you actually feel ROI is really really important. But just remember in my free school community, you can come in here and get that full 3-hour course
+28:24
+28 minutes, 24 seconds
+on how you actually build this out in cloud code. And you also can use this exact free GitHub repo, which I will link in the free school community as
+28:32
+28 minutes, 32 seconds
+well in order to just clone this in onboard into your AISOS and then just start pumping that thing full of those four C's we talked about, which were
+28:40
+28 minutes, 40 seconds
+once again hopefully you guys remember, context, connections, capabilities, and cadence. So anyways, that is going to do it for this one. I hope that you guys enjoyed and I hope that you learned
+28:48
+28 minutes, 48 seconds
+something new. If you did, please give it a like. It helps me out a ton. And as always, I appreciate you guys making it to the end of the video and I will see you all in the next one. Thanks guys.
