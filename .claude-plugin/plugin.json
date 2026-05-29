@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "startup-framework",
+  "displayName": "Startup Framework",
+  "version": "1.0.0",
+  "description": "Per-friend wiki + curated stack + Activity Feed + self-improving skills. The plugin's source-of-truth version lives in this field; the marketplace entry omits version to avoid drift (per CC docs, plugin.json wins silently when both are set).",
+  "author": {
+    "name": "Hazar Sozer",
+    "email": "hsozer00@gmail.com"
+  },
+  "homepage": "https://github.com/hazarsozer/sf-marketplace",
+  "repository": "https://github.com/hazarsozer/sf-marketplace",
+  "license": "MIT",
+  "keywords": [
+    "wiki",
+    "memory",
+    "friend-group",
+    "startup",
+    "ideation",
+    "claude-code"
+  ],
+  "userConfig": {
+    "wikiRoot": {
+      "type": "directory",
+      "title": "Wiki location",
+      "description": "Where your personal wiki lives on disk. Default: ~/.startup-framework/wiki/ (matches ADR-017 + ADR-027). Used by every framework command that reads or writes the wiki.",
+      "default": "${HOME}/.startup-framework/wiki",
+      "required": false
+    },
+    "activityFeedUrl": {
+      "type": "string",
+      "title": "Activity Feed repo URL",
+      "description": "The shared private GitHub repo for cross-friend session reports (e.g. your-group/activity-feed). Set during /sf:install Stage 3. Leave blank to disable Activity Feed integration.",
+      "required": false
+    },
+    "activityFeedLocalClone": {
+      "type": "directory",
+      "title": "Activity Feed local clone path",
+      "description": "Local path where the Activity Feed repo is cloned. Default: ~/.startup-framework/activity-feed/. Read by /sf:wrap to append + push, read by /sf:wake-up to pull + summarize.",
+      "default": "${HOME}/.startup-framework/activity-feed",
+      "required": false
+    },
+    "snapshotRetain": {
+      "type": "number",
+      "title": "Schema snapshot retention",
+      "description": "How many pre-migration wiki snapshots to keep at ${CLAUDE_PLUGIN_DATA}/wiki-snapshots/ before pruning. Default: 3 (per ADR-027). Increase if you want a longer rollback window; decrease to save disk.",
+      "default": 3,
+      "min": 1,
+      "max": 20
+    },
+    "rcChannel": {
+      "type": "boolean",
+      "title": "Subscribe to release candidates",
+      "description": "When true, /sf:update --rc and /sf:doctor will track sf-marketplace-rc in addition to stable. Friends who want early access enable this; everyone else leaves it off and rides the monthly stable cadence (per ADR-019).",
+      "default": false
+    }
+  }
+}

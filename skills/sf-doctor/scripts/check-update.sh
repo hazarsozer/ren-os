@@ -74,7 +74,7 @@ RC_CHANNEL="${CLAUDE_PLUGIN_OPTION_RCCHANNEL:-false}"
 # Fetch stable marketplace plugin.json
 LATEST_STABLE=""
 STABLE_REPO="${ORG}/sf-marketplace"
-if STABLE_PJ="$(timeout 8 gh api "repos/${STABLE_REPO}/contents/plugins/startup-framework/.claude-plugin/plugin.json" --jq '.content' 2>/dev/null)"; then
+if STABLE_PJ="$(timeout 8 gh api "repos/${STABLE_REPO}/contents/.claude-plugin/plugin.json" --jq '.content' 2>/dev/null)"; then
   if [[ -n "$STABLE_PJ" ]]; then
     LATEST_STABLE="$(echo "$STABLE_PJ" | base64 -d 2>/dev/null | grep -oE '"version"\s*:\s*"[^"]+"' | head -1 | sed 's/.*"\([^"]*\)"$/\1/')"
   fi
@@ -98,7 +98,7 @@ fi
 if [[ "$RC_CHANNEL" == "true" ]]; then
   RC_REPO="${ORG}/sf-marketplace-rc"
   LATEST_RC=""
-  if RC_PJ="$(timeout 8 gh api "repos/${RC_REPO}/contents/plugins/startup-framework/.claude-plugin/plugin.json" --jq '.content' 2>/dev/null)"; then
+  if RC_PJ="$(timeout 8 gh api "repos/${RC_REPO}/contents/.claude-plugin/plugin.json" --jq '.content' 2>/dev/null)"; then
     if [[ -n "$RC_PJ" ]]; then
       LATEST_RC="$(echo "$RC_PJ" | base64 -d 2>/dev/null | grep -oE '"version"\s*:\s*"[^"]+"' | head -1 | sed 's/.*"\([^"]*\)"$/\1/')"
     fi
