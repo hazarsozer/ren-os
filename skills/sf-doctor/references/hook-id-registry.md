@@ -10,18 +10,18 @@ This file exists per team-lead's pushback on §3 of the sf-distribution plan: ra
 
 ### What we grep for
 
-Per lifecycle-2's coordination message on 2026-05-28, the hook's registered `command` will be:
+The hook's registered `command` (as shipped in `hooks/hooks.json`) is:
 
 ```jsonc
 {
-  "description": "sf-wake-up: SessionStart context injection (ADR-008)",
+  "description": "sf-wake-up: SessionStart context injection per ADR-008 (fresh sessions)",
   "type": "command",
-  "command": "node \"$CLAUDE_PLUGIN_ROOT/hooks/wake-up/sf-wake-up.js\"",
+  "command": "python3 \"$CLAUDE_PLUGIN_ROOT/hooks/wake-up/sf-wake-up.py\"",
   "timeout": 10
 }
 ```
 
-**Primary grep substring**: `sf-wake-up.js`
+**Primary grep substring**: `sf-wake-up.py` (the hook is a Python script — `hooks.json`'s own `$comment` documents that the doctor greps for `sf-wake-up.py`).
 
 **Secondary detection (defense in depth)**: the substring `sf-wake-up:` in the `description` field of the hook entry. If primary fails but secondary succeeds, report a degraded green: "✅ SessionStart hook found via description sentinel (command did not match — check script path)".
 
@@ -29,16 +29,16 @@ Behavior:
 
 | Detection state | Doctor reports |
 |---|---|
-| `command` contains `sf-wake-up.js` AND matcher in `{startup, "*", omitted}` | `✅ SessionStart (sf-wake-up.js, matcher: <m>, timeout: <s>s)` |
+| `command` contains `sf-wake-up.py` AND matcher in `{startup, "*", omitted}` | `✅ SessionStart (sf-wake-up.py, matcher: <m>, timeout: <s>s)` |
 | `command` matches but matcher is `compact`-only or similar | `⚠️ SessionStart matcher='<m>' — wake-up will not fire on fresh sessions` |
-| `command` missing but description sentinel found | `⚠️ SessionStart description matches but command path is wrong — check ${CLAUDE_PLUGIN_ROOT}/hooks/wake-up/sf-wake-up.js exists` |
+| `command` missing but description sentinel found | `⚠️ SessionStart description matches but command path is wrong — check ${CLAUDE_PLUGIN_ROOT}/hooks/wake-up/sf-wake-up.py exists` |
 | Neither detector fires | `⚠️ SessionStart hook missing — run /sf:update or /reload-plugins` |
 
-### Why `sf-wake-up.js` instead of `hooks/wake-up`
+### Why `sf-wake-up.py` instead of `hooks/wake-up`
 
 - More precise: the script name itself is the sentinel (not the parent directory) — defends against future path refactors that don't touch the script name.
-- Unique enough across the plugin set per ADR-006 curation (no other plugin ships an `sf-wake-up.js`).
-- The `sf-wake-up` prefix is stable; if implementation language switches (e.g. `sf-wake-up.py`), lifecycle-2 will ping me to bump the regex to `sf-wake-up\.(js|py)` or similar.
+- Unique enough across the plugin set per ADR-006 curation (no other plugin ships an `sf-wake-up.py`).
+- The `sf-wake-up` prefix is stable; if the implementation language ever switches (e.g. back to `sf-wake-up.js`), widen the grep to `sf-wake-up\.(js|py)` here and in `check-plugins.sh`. (Historical note: this registry originally specified `.js` based on an early coordination message; the shipped hook has always been `.py` — fixed 2026-05-29, REVIEW H1.)
 
 ### When to update this
 

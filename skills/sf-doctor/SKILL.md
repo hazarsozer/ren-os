@@ -89,8 +89,8 @@ All systems go.
 
 ### With sf-lifecycle (`lifecycle-2`)
 
-- `check-plugins.sh` greps `hooks/hooks.json` for the literal substring documented in `references/hook-id-registry.md`. Current substring: `hooks/wake-up` (the directory containing lifecycle-2's hook script per their CC_API_NOTES.md).
-- lifecycle-2's wake-up hook MUST keep that directory name (or coordinate a substring update via a PR to `hook-id-registry.md`).
+- `check-plugins.sh` greps `hooks/hooks.json` for the literal substring documented in `references/hook-id-registry.md`. Current substring: `sf-wake-up.py` (the script name lifecycle ships per their CC_API_NOTES.md + hooks.json's `$comment`).
+- lifecycle's wake-up hook MUST keep that script name (or coordinate a substring update via a PR to `hook-id-registry.md`).
 
 ### With sf-feed (`feed-2`)
 

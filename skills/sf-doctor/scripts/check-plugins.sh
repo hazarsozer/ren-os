@@ -24,11 +24,13 @@ emit() { printf '%s|%s|%s|%s\n' "$1" "$2" "${3:-}" "${4:-}"; }
 # CC plugin cache lives at ~/.claude/plugins/cache/<marketplace>/<plugin>/<version>/
 # We look for any installed startup-framework version.
 PLUGIN_CACHE_ROOT="${HOME}/.claude/plugins/cache"
-SF_PLUGIN_DIR=""
-SF_VERSION=""
-SF_MARKETPLACE=""
+# Honor a pre-set SF_PLUGIN_DIR (used by tests + power users to point the checks at a
+# specific plugin tree, e.g. the dev repo root). When unset, auto-discover from the cache.
+SF_PLUGIN_DIR="${SF_PLUGIN_DIR:-}"
+SF_VERSION="${SF_VERSION:-}"
+SF_MARKETPLACE="${SF_MARKETPLACE:-}"
 
-if [[ -d "$PLUGIN_CACHE_ROOT" ]]; then
+if [[ -z "$SF_PLUGIN_DIR" && -d "$PLUGIN_CACHE_ROOT" ]]; then
   # Find the newest installed version (sort by version dir mtime, latest wins)
   for mkt_dir in "$PLUGIN_CACHE_ROOT"/*/; do
     [[ -d "$mkt_dir/startup-framework" ]] || continue
@@ -107,13 +109,13 @@ fi
 # Hooks registration
 # ──────────────────────────────────────────────────────────────────────
 # Per references/hook-id-registry.md, two-way detection:
-#   primary  : grep for 'sf-wake-up.js' in the command field (more precise than directory)
+#   primary  : grep for 'sf-wake-up.py' in the command field (more precise than directory)
 #   secondary: grep for 'sf-wake-up:' in description field (defense in depth)
 if [[ -n "$SF_PLUGIN_DIR" && -f "$SF_PLUGIN_DIR/hooks/hooks.json" ]]; then
   HOOKS_JSON="$SF_PLUGIN_DIR/hooks/hooks.json"
   PRIMARY_HIT=0
   SECONDARY_HIT=0
-  grep -q "sf-wake-up\.js" "$HOOKS_JSON" && PRIMARY_HIT=1
+  grep -q "sf-wake-up\.py" "$HOOKS_JSON" && PRIMARY_HIT=1
   # Description sentinel: must include "sf-wake-up:" inside a description field
   grep -qE '"description"\s*:\s*"[^"]*sf-wake-up:' "$HOOKS_JSON" && SECONDARY_HIT=1
 
@@ -122,13 +124,13 @@ if [[ -n "$SF_PLUGIN_DIR" && -f "$SF_PLUGIN_DIR/hooks/hooks.json" ]]; then
     SS_MATCHER="$(grep -A1 '"SessionStart"' "$HOOKS_JSON" | grep -oE '"matcher"\s*:\s*"[^"]+"' | head -1 | sed 's/.*"\([^"]*\)"$/\1/' || echo '*')"
     SS_TIMEOUT="$(grep -oE '"timeout"\s*:\s*[0-9]+' "$HOOKS_JSON" | head -1 | awk -F: '{print $2}' | tr -d ' ' || echo 'default')"
     if [[ "$SS_MATCHER" == "startup" || "$SS_MATCHER" == "*" || -z "$SS_MATCHER" ]]; then
-      emit "hooks-sessionstart" "ok" "SessionStart (sf-wake-up.js, matcher: ${SS_MATCHER:-*}, timeout: ${SS_TIMEOUT}s)" ""
+      emit "hooks-sessionstart" "ok" "SessionStart (sf-wake-up.py, matcher: ${SS_MATCHER:-*}, timeout: ${SS_TIMEOUT}s)" ""
     else
       emit "hooks-sessionstart" "warn" "SessionStart hook registered but matcher='${SS_MATCHER}' — wake-up will not fire on fresh sessions" "→ Update matcher to 'startup' or '*'"
     fi
   elif (( SECONDARY_HIT )); then
     # Description sentinel found but command path didn't match. Degraded green per registry.
-    emit "hooks-sessionstart" "warn" "SessionStart description matches but command path is wrong" "→ Check \${CLAUDE_PLUGIN_ROOT}/hooks/wake-up/sf-wake-up.js exists"
+    emit "hooks-sessionstart" "warn" "SessionStart description matches but command path is wrong" "→ Check \${CLAUDE_PLUGIN_ROOT}/hooks/wake-up/sf-wake-up.py exists"
   else
     emit "hooks-sessionstart" "warn" "SessionStart hook missing (sf-wake-up not active)" "→ Run /sf:update which re-registers hooks, OR /reload-plugins"
   fi
