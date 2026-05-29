@@ -275,6 +275,41 @@ def test_bootstrap_sets_remote(temp_root, monkeypatch):
     assert "friend-group/activity-feed" in result.stdout
 
 
+def test_bootstrap_writes_gitignore_for_local_only_state(temp_root, monkeypatch):
+    """C3: bootstrap must write a .gitignore covering the per-clone local-only files,
+    so they never get committed to the shared repo (joiners inherit it on clone)."""
+    monkeypatch.setattr(
+        bootstrap.io_github, "push",
+        lambda *a, **kw: bootstrap.io_github.PushResult(ok=False),
+    )
+    local = temp_root / "activity-feed"
+    feed_bootstrap_first_friend(local, "hazar", "friend-group/activity-feed")
+
+    gitignore = local / ".gitignore"
+    assert gitignore.exists(), ".gitignore must be written at bootstrap (C3)"
+    body = gitignore.read_text()
+    for name in config.FEED_LOCAL_ONLY_FILES:
+        assert name in body, f"{name} missing from .gitignore"
+    assert "__pycache__/" in body
+
+
+def test_bootstrap_preserves_inherited_gitignore(temp_root, monkeypatch):
+    """A joiner clones a repo that already has a committed .gitignore; bootstrap must
+    NOT clobber it (idempotent write)."""
+    monkeypatch.setattr(
+        bootstrap.io_github, "push",
+        lambda *a, **kw: bootstrap.io_github.PushResult(ok=False),
+    )
+    local = temp_root / "activity-feed"
+    local.mkdir(parents=True, exist_ok=True)
+    sentinel = "# inherited from first friend\n.queue.log\n.state.json\n"
+    (local / ".gitignore").write_text(sentinel, encoding="utf-8")
+
+    bootstrap._write_bootstrap_files(local, "hazar", skip_readme=True)
+
+    assert (local / ".gitignore").read_text() == sentinel
+
+
 # --- clone_existing --------------------------------------------------------
 
 

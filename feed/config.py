@@ -127,11 +127,28 @@ def state_dir() -> Path:
     return framework_root() / "state"
 
 
+FEED_LOCAL_ONLY_FILES = (".queue.log", ".state.json", ".queue.log.lock")
+"""Files that live INSIDE the activity-feed clone but must NEVER be committed to the
+shared repo. They are per-clone local state (offline queue + per-friend push stats) and
+differ from friend to friend. Committing them caused the C3 corruption: each clone's
+`.state.json` diverges → the next cross-friend `git pull --rebase` hits an unresolvable
+JSON conflict → the shared channel locks up for everyone (REVIEW-v1.0-preship §C3).
+
+Single source of truth. Two consumers keep these local (defense-in-depth, ADR-018):
+  1. `feed.bootstrap._write_bootstrap_files` emits a committed `.gitignore` from this
+     tuple, so every clone (including joiners who clone the repo) inherits it.
+  2. `feed.io_github._stage_and_commit` defensively `git reset`s these paths after
+     `git add -A`, so they can never be committed even if a clone's `.gitignore` is
+     missing or hand-deleted."""
+
+
 def queue_log_path() -> Path:
     """Return the offline-queue log path, inside the activity-feed clone.
 
     Per team-lead pushback (2026-05-28): queue files live INSIDE local_path so deleting
-    the clone is self-contained cleanup. The file is .queue.log (gitignored).
+    the clone is self-contained cleanup. `.queue.log` is local-only — see
+    `FEED_LOCAL_ONLY_FILES` for how it is kept out of the shared repo (committed
+    `.gitignore` + a defensive `git reset` backstop).
     """
     return local_path() / ".queue.log"
 
@@ -140,7 +157,9 @@ def state_json_path() -> Path:
     """Return the offline-queue state JSON path, inside the activity-feed clone.
 
     Per team-lead pushback (2026-05-28): also lives inside local_path. Tracks
-    pending_commit_count + last successful pull/push timestamps.
+    pending_commit_count + last successful pull/push timestamps. Local-only and kept
+    out of the shared repo via `FEED_LOCAL_ONLY_FILES` (committed `.gitignore` + a
+    defensive `git reset` backstop) — committing it corrupts cross-friend rebase (§C3).
     """
     return local_path() / ".state.json"
 

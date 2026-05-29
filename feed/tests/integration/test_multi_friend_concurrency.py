@@ -33,6 +33,7 @@ import pytest
 
 from feed.tests.integration._world import (
     World,
+    bare_tracked_files,
     collect_all_handles_in_bare,
     count_log_entries_in_bare,
     setup_world,
@@ -336,6 +337,67 @@ def test_scenario_3_idempotency_marker_prevents_duplicates(world_2, monkeypatch)
     local_log = world_2.friends["hazar"] / "activity-feed" / "hazar.log.md"
     text = local_log.read_text(encoding="utf-8")
     assert text.count("dup test") == 1
+
+
+def test_scenario_3_local_state_never_pushed_to_bare(world_2, monkeypatch):
+    """C3 regression (REVIEW §C3): per-clone .state.json/.queue.log must NEVER reach the
+    shared bare repo, even after a push-failure → recovery cycle.
+
+    Why it matters: each clone's .state.json holds its OWN push stats, so committing it
+    diverges across friends → the next cross-friend `git pull --rebase` hits an
+    unresolvable JSON conflict → REBASE_HEAD lockup → all future feed writes silently
+    queue forever. Before the fix, `git add -A` staged these files and pushed them.
+    """
+    from feed import io_github
+    from feed.bootstrap import _write_bootstrap_files
+
+    framework_root = world_2.friends["hazar"]
+    os.environ["SF_FRAMEWORK_ROOT"] = str(framework_root)
+    clone = framework_root / "activity-feed"
+
+    # Simulate the first-friend bootstrap writing the committed .gitignore into the clone.
+    _write_bootstrap_files(clone, "hazar", skip_readme=True)
+    assert (clone / ".gitignore").exists()
+
+    # Fail the first 3 pushes (each failure writes .queue.log + .state.json), then recover.
+    call_count = {"n": 0}
+    real_try_push = io_github._try_push
+
+    def flaky_try_push(repo, *, timeout_s):
+        call_count["n"] += 1
+        if call_count["n"] <= 3:
+            return "simulated network failure"
+        return real_try_push(repo, timeout_s=timeout_s)
+
+    monkeypatch.setattr(io_github, "_try_push", flaky_try_push)
+
+    for i in range(3):
+        r = _write_as_friend(
+            framework_root, "hazar", "sidecar", f"failed-window {i}",
+            [f"f{i}.ts"], REF_TS + timedelta(minutes=i),
+        )
+        assert r.success and r.queued, f"write {i}: success={r.success} queued={r.queued}"
+
+    # State files exist LOCALLY (expected — they're the offline queue) ...
+    assert (clone / ".state.json").exists()
+    assert (clone / ".queue.log").exists()
+
+    # ... and a recovery push flushes the queued commits.
+    r4 = _write_as_friend(
+        framework_root, "hazar", "sidecar", "recovery",
+        ["r.ts"], REF_TS + timedelta(minutes=4),
+    )
+    assert r4.success and r4.pushed, f"recovery: pushed={r4.pushed} error={r4.error}"
+
+    # The shared bare repo tracks the log + the committed .gitignore, but NEVER the
+    # per-clone local state.
+    tracked = bare_tracked_files(world_2)
+    assert "hazar.log.md" in tracked
+    assert ".gitignore" in tracked
+    assert ".state.json" not in tracked, \
+        f"C3 regression: .state.json leaked into the shared repo (tracked={sorted(tracked)})"
+    assert ".queue.log" not in tracked, \
+        f"C3 regression: .queue.log leaked into the shared repo (tracked={sorted(tracked)})"
 
 
 # === scenario 4: handle collision detection on joiner-clone path =========

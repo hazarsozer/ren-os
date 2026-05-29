@@ -425,8 +425,34 @@ def _scan_existing_handles(local_path: Path) -> tuple[str, ...]:
     )
 
 
+def _gitignore_content() -> str:
+    """Build the `.gitignore` body from the single-source local-only file list.
+
+    Per REVIEW §C3: per-clone state (`.queue.log`, `.state.json`, `.queue.log.lock`)
+    must never reach the shared repo. The first friend commits this `.gitignore` at
+    bootstrap, so every joiner who clones the repo inherits it. `io_github` adds a
+    pathspec backstop for clones whose `.gitignore` is somehow missing.
+    """
+    lines = [
+        "# Activity Feed — per-clone local state; never commit to the shared repo.",
+        "# Single source of truth: feed.config.FEED_LOCAL_ONLY_FILES (see ADR-018, REVIEW §C3).",
+        *config.FEED_LOCAL_ONLY_FILES,
+        "*.pyc",
+        "__pycache__/",
+        "",
+    ]
+    return "\n".join(lines)
+
+
 def _write_bootstrap_files(path: Path, handle: str, *, skip_readme: bool = False) -> None:
-    """Write README.md (optional) + <handle>.log.md frontmatter + identities/<handle>.md placeholder."""
+    """Write .gitignore + README.md (optional) + <handle>.log.md frontmatter + identities/<handle>.md placeholder."""
+    # .gitignore first — keeps per-clone state (.queue.log/.state.json) out of the
+    # shared repo (C3). Idempotent: joiners inherit the committed file on clone, so we
+    # don't clobber it. First friend writes it here and commits it on the bootstrap push.
+    gitignore = path / ".gitignore"
+    if not gitignore.exists():
+        gitignore.write_text(_gitignore_content(), encoding="utf-8")
+
     if not skip_readme:
         readme = path / "README.md"
         if not readme.exists():

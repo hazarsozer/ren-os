@@ -18,6 +18,7 @@ not be blocked by feed I/O problems (ADR-018 Consequences).
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import time
 from dataclasses import dataclass
@@ -65,6 +66,22 @@ CONSECUTIVE_FAILURE_THRESHOLD = 3
 """After this many consecutive whole-session push failures, /sf:doctor surfaces a warning."""
 
 
+def _c_locale_env() -> dict[str, str]:
+    """Environment for git subprocesses, forcing the C locale (REVIEW §H2).
+
+    git localizes its messages via gettext, so on a non-English system (e.g. Hazar's
+    Turkish-locale machine) the "[rejected]"/"non-fast-forward" substrings that
+    `_looks_like_non_fast_forward` matches come back translated → conflict
+    misdetection → pushes silently queue instead of rebase-retrying. Forcing
+    LANG=C/LC_ALL=C makes git emit stable English regardless of the host locale.
+
+    Merges (not replaces) os.environ so PATH, HOME, GIT_* config, credential helpers,
+    and test overrides are preserved. Computed per-call so later env mutations are
+    honored.
+    """
+    return {**os.environ, "LANG": "C", "LC_ALL": "C"}
+
+
 # --- auth check -------------------------------------------------------------
 
 
@@ -89,6 +106,7 @@ def check_auth() -> AuthStatus:
             capture_output=True,
             text=True,
             timeout=PULL_TIMEOUT_S,
+            env=_c_locale_env(),
         )
     except FileNotFoundError:
         return AuthStatus(
@@ -145,6 +163,7 @@ def pull(*, timeout_s: int = PULL_TIMEOUT_S, local_path: Path | None = None) -> 
             capture_output=True,
             text=True,
             timeout=timeout_s,
+            env=_c_locale_env(),
         )
     except FileNotFoundError:
         return PullResult(ok=False, error="git not installed")
@@ -206,18 +225,34 @@ def _stage_and_commit(repo: Path, message: str) -> Optional[str]:
     call us when only metadata changed and git has nothing to add.
     """
     try:
-        # Stage
+        # Stage everything not excluded by the clone's committed .gitignore (the
+        # primary C3 mechanism, written at bootstrap and inherited by joiners).
         add_result = subprocess.run(
             ["git", "-C", str(repo), "add", "-A"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True, text=True, timeout=5, env=_c_locale_env(),
         )
         if add_result.returncode != 0:
             return f"git add failed: {add_result.stderr.strip()}"
 
+        # Defense-in-depth backstop (C3): defensively unstage per-clone local-only state
+        # so it can never reach the shared repo even if this clone's .gitignore is
+        # missing or hand-deleted. `git reset -- <paths>` is a no-op (exit 0) when the
+        # .gitignore already kept them unstaged — the normal case — and works even on a
+        # fresh repo with no HEAD (bootstrap's first push). We can't fold this into the
+        # `git add` pathspec: naming a gitignored file in a :(exclude) pathspec makes
+        # `git add` error out ("paths are ignored ... use -f"), which is the common path.
+        reset_result = subprocess.run(
+            ["git", "-C", str(repo), "reset", "-q", "--", *config.FEED_LOCAL_ONLY_FILES],
+            capture_output=True, text=True, timeout=5, env=_c_locale_env(),
+        )
+        if reset_result.returncode != 0:
+            # Surface rather than risk committing state files in the missing-.gitignore case.
+            return f"git reset (C3 state-file backstop) failed: {reset_result.stderr.strip()}"
+
         # Check if there's anything to commit
         status = subprocess.run(
             ["git", "-C", str(repo), "status", "--porcelain"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True, text=True, timeout=5, env=_c_locale_env(),
         )
         if not status.stdout.strip():
             return None  # nothing to commit, that's fine
@@ -225,7 +260,7 @@ def _stage_and_commit(repo: Path, message: str) -> Optional[str]:
         # Commit
         commit_result = subprocess.run(
             ["git", "-C", str(repo), "commit", "-m", message],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True, text=True, timeout=5, env=_c_locale_env(),
         )
         if commit_result.returncode != 0:
             return f"git commit failed: {commit_result.stderr.strip()}"
@@ -271,7 +306,7 @@ def _try_push(repo: Path, *, timeout_s: int) -> Optional[str]:
     try:
         result = subprocess.run(
             ["git", "-C", str(repo), "push"],
-            capture_output=True, text=True, timeout=timeout_s,
+            capture_output=True, text=True, timeout=timeout_s, env=_c_locale_env(),
         )
     except (FileNotFoundError, subprocess.TimeoutExpired) as e:
         return f"git push error: {e}"
@@ -286,7 +321,7 @@ def _try_rebase(repo: Path, *, timeout_s: int) -> Optional[str]:
     try:
         result = subprocess.run(
             ["git", "-C", str(repo), "pull", "--rebase", "--autostash"],
-            capture_output=True, text=True, timeout=timeout_s,
+            capture_output=True, text=True, timeout=timeout_s, env=_c_locale_env(),
         )
     except (FileNotFoundError, subprocess.TimeoutExpired) as e:
         return f"git rebase error: {e}"

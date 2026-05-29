@@ -117,6 +117,21 @@ def count_log_entries_in_bare(world: World, handle: str) -> int:
     return sum(1 for line in text.splitlines() if line.startswith("## ["))
 
 
+def bare_tracked_files(world: World) -> set[str]:
+    """Return the set of file paths tracked in the bare repo's `main` branch.
+
+    Uses `git ls-tree` directly against the bare repo (no checkout needed), so it
+    faithfully reports exactly what is committed — including dotfiles. Used by the C3
+    regression test to assert per-clone state (.queue.log/.state.json) never lands in
+    the shared repo.
+    """
+    result = subprocess.run(
+        ["git", "-C", str(world.bare_repo), "ls-tree", "-r", "--name-only", "main"],
+        capture_output=True, text=True, check=True,
+    )
+    return {line for line in result.stdout.splitlines() if line}
+
+
 def collect_all_handles_in_bare(world: World) -> set[str]:
     """Return the set of distinct handles with log files in the bare repo."""
     inspect = world.tmp_root / "_inspect-all"
