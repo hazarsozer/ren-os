@@ -1,24 +1,31 @@
 """
-sf-wrap classifier — signal-threshold prompt construction + LLM output parsing.
+sf-wrap classifier — signal-threshold classification + LLM-path primitives.
 
 Per references/signal-threshold.md, the classifier evaluates a session
 transcript against 7 labels (six signal categories + 'none') with a deliberate
 BIAS TOWARD 'none'. The wiki is sacred; most sessions are routine; only
 genuinely high-signal sessions get promoted.
 
-This module isolates the LLM-dependent layer from the rest of /sf:wrap so the
-prompt + parser can be unit-tested deterministically. The actual LLM
-invocation (`classify()`) is stubbed pending integration; the prompt builder
-and parser are real + ship as load-bearing primitives.
+`classify()` is the **default production path (EXPERIMENTAL, ADR-031 bike-method)**:
+a conservative DETERMINISTIC heuristic — it scans the combined transcript
+(session log + `/sf:note` pins) for deliberate, word-boundary signal phrases,
+biases HARD to `none`, and NEVER raises. Pinned notes DOMINATE (lower
+threshold) because an explicit `/sf:note` is a deliberate signal. It only
+proposes `candidate_artifacts` for fired `decision`/`pattern` labels (the page-
+creating ones); the rest contribute their label (→ log append) without a new
+file. Limits: phrase-driven, no semantic understanding — it can miss subtly-
+phrased signal and (rarely) over-fire on a deliberate keyword used casually.
 
-Per dotfiles python/coding-style.md: PEP 8, type annotations, frozen
-dataclasses, no print statements (logging only).
+`build_classifier_prompt()` + `parse_classifier_output()` ship as the FUTURE
+LLM path (unused by the default deterministic classify()). Per dotfiles
+python/coding-style.md: PEP 8, type annotations, frozen dataclasses, no print.
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import re
 from typing import Any, Final, get_args
 
 from .types import CandidateArtifact, ClassifierResult, SignalLabel
@@ -279,8 +286,184 @@ def _extract_json_block(text: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Main entry — STUBBED pending LLM-subprocess integration
+# Default production classifier — conservative deterministic heuristic
+# (EXPERIMENTAL, ADR-031 bike-method). NEVER raises; biases hard to `none`.
 # ---------------------------------------------------------------------------
+
+# Priority order for picking the primary label + capping multi-label output.
+# Mirrors diff_plan._primary_label so the deterministic path and the diff
+# planner agree on which label dominates.
+_PRIORITY_ORDER: Final[tuple[SignalLabel, ...]] = (
+    "purpose_shift", "decision", "stack_change", "milestone", "pattern", "lesson",
+)
+_MAX_LABELS: Final[int] = 2
+_MAX_SUMMARY_CHARS: Final[int] = 300
+
+# Marker the orchestrator (lib/__init__.py:_gather_transcript) uses to join
+# `/sf:note` pins onto the session log. Everything from here on is "pins".
+_PINS_MARKER_RE: Final[re.Pattern[str]] = re.compile(
+    r"^#{1,6}\s+Pinned notes", re.IGNORECASE | re.MULTILINE
+)
+
+# Deliberate, high-signal phrases per label (word-boundary, case-insensitive).
+# These fire in EITHER the session log OR the pinned-notes section. They are
+# intentionally specific so routine coding chatter does not trip them — the
+# whole discipline (ADR-009) is to keep the wiki high-signal, so we under-fire.
+_STRICT_PATTERNS: Final[dict[SignalLabel, tuple[re.Pattern[str], ...]]] = {
+    "decision": tuple(re.compile(p, re.IGNORECASE) for p in (
+        r"\bwe\s+decided\b",
+        r"\bdecided\s+to\s+(?:use|go\s+with|adopt|drop|switch|standardi[sz]e)\b",
+        r"\bwe(?:'re|\s+are)\s+choosing\b",
+        r"\bwe\s+chose\b",
+        r"\bchoosing\b[^.\n]{0,40}\bover\b",
+        r"\bstandardi[sz](?:e|ing|ed)\s+on\b",
+        r"\bsettled\s+on\b",
+        r"\bdecision:\s",
+    )),
+    "pattern": tuple(re.compile(p, re.IGNORECASE) for p in (
+        r"\breusable\s+pattern\b",
+        r"\b(?:let'?s\s+)?codify\b",
+        r"\bis\s+reusable\b",
+        r"\bshould\s+apply\s+across\b",
+        r"\bpattern:\s",
+    )),
+    "lesson": tuple(re.compile(p, re.IGNORECASE) for p in (
+        r"\bgotcha\b",
+        r"\blesson\s+learned\b",
+        r"\blearned\s+the\s+hard\s+way\b",
+        r"\bthe\s+hard\s+way\b",
+        r"\bfootgun\b",
+        r"\blesson:\s",
+        r"\bTIL\b",
+    )),
+    "stack_change": tuple(re.compile(p, re.IGNORECASE) for p in (
+        r"\bswitch(?:ed|ing)?\s+from\b[^.\n]{0,40}\bto\b",
+        r"\bmigrat(?:e|ed|ing)\s+(?:from|to)\b",
+        r"\breplac(?:e|ed|ing)\b[^.\n]{0,40}\bwith\b",
+        r"\b(?:removing|removed)\b[^.\n]{0,40}\bin\s+favor\s+of\b",
+        r"\bstack\s+change\b",
+    )),
+    "milestone": tuple(re.compile(p, re.IGNORECASE) for p in (
+        r"\bmilestone\b",
+        r"\bphase\s+\w+\s+(?:is\s+)?(?:complete|done|finished)\b",
+        r"\bentering\s+phase\b",
+        r"\bshipped\s+to\s+(?:staging|production|prod)\b",
+        r"\bMVP\s+(?:is\s+)?(?:done|complete|shipped)\b",
+        r"\broadmap\s+item\b",
+    )),
+    "purpose_shift": tuple(re.compile(p, re.IGNORECASE) for p in (
+        # STRONG exact phrases only — purpose_shift is VERY RARE (signal-threshold §6).
+        r"\bpivot(?:ing|ed)?\s+from\b[^.\n]{0,40}\bto\b",
+        r"\bpivot(?:ing|ed)?\s+to\b",
+        r"\bscope\s+expanded\s+to\b",
+        r"\btarget\s+users?\s+shifted\b",
+        r"\bpurpose\s+(?:shift|changed)\b",
+    )),
+}
+
+# Looser triggers applied ONLY to the pinned-notes section — pins DOMINATE
+# (lower threshold). A friend who explicitly `/sf:note`-pinned something is
+# signalling intent, so a single deliberate keyword in a pin is enough; the
+# raw session log still needs a full strict phrase. purpose_shift is absent —
+# it requires a strong exact phrase even in a pin.
+_PIN_LOOSE_PATTERNS: Final[dict[SignalLabel, tuple[re.Pattern[str], ...]]] = {
+    "decision": tuple(re.compile(p, re.IGNORECASE) for p in (
+        r"\bdecided\b", r"\bdecision\b",
+    )),
+    "pattern": tuple(re.compile(p, re.IGNORECASE) for p in (
+        r"\bpattern\b", r"\breusable\b",
+    )),
+    "lesson": tuple(re.compile(p, re.IGNORECASE) for p in (
+        r"\blesson\b", r"\bgotcha\b", r"\bTIL\b",
+    )),
+    "stack_change": tuple(re.compile(p, re.IGNORECASE) for p in (
+        r"\bmigrat(?:e|ed|ing)\b", r"\bswitched\s+from\b",
+    )),
+    "milestone": tuple(re.compile(p, re.IGNORECASE) for p in (
+        r"\bmilestone\b", r"\bshipped\b",
+    )),
+}
+
+# Filler/trigger words dropped when deriving a kebab title from a matched line.
+_TITLE_STOPWORDS: Final[frozenset[str]] = frozenset({
+    "we", "the", "a", "an", "to", "of", "on", "in", "for", "and", "or", "is",
+    "are", "our", "i", "it", "this", "that", "with", "go", "use", "using",
+    "decided", "decision", "choosing", "chose", "chose", "codify", "lesson",
+    "gotcha", "pattern", "reusable", "over", "into",
+})
+
+
+def _split_pins(transcript_text: str) -> tuple[str, str]:
+    """Split the combined transcript into (session_log, pinned_notes).
+
+    The orchestrator joins pins under a `## Pinned notes …` header. If absent,
+    everything is session log and pins is empty.
+    """
+    m = _PINS_MARKER_RE.search(transcript_text)
+    if m is None:
+        return transcript_text, ""
+    return transcript_text[: m.start()], transcript_text[m.start():]
+
+
+def _line_around(text: str, idx: int) -> str:
+    """Return the (stripped) single line of `text` containing offset `idx`."""
+    start = text.rfind("\n", 0, idx) + 1
+    end = text.find("\n", idx)
+    if end == -1:
+        end = len(text)
+    return text[start:end].strip()
+
+
+def _first_match_snippet(
+    patterns: tuple[re.Pattern[str], ...], text: str
+) -> str | None:
+    """Return the line containing the first matching pattern, or None."""
+    if not text:
+        return None
+    for pat in patterns:
+        m = pat.search(text)
+        if m:
+            return _line_around(text, m.start())
+    return None
+
+
+def _none_result(reason: str) -> ClassifierResult:
+    """A `none` result with empty artifacts (honors the none⇒empty invariant)."""
+    return ClassifierResult(
+        labels=("none",),
+        reasoning=f"none — {reason}.",
+        candidate_artifacts=(),
+    )
+
+
+def _kebab_title(snippet: str, *, max_words: int = 8) -> str:
+    """Derive a kebab-case title from a matched line, dropping filler words."""
+    words = [w for w in re.findall(r"[a-z0-9]+", snippet.lower()) if w not in _TITLE_STOPWORDS]
+    slug = "-".join(words[:max_words])
+    return slug or "session-signal"
+
+
+def _build_artifact(
+    label: SignalLabel, snippet: str, project_name: str | None
+) -> CandidateArtifact:
+    """Build a CandidateArtifact for a fired `decision`/`pattern` label.
+
+    `target_file` is informational (per signal-threshold.md's wiki targets);
+    the diff planner recomputes the real path from project_name + title.
+    """
+    title = _kebab_title(snippet)
+    summary = snippet[:_MAX_SUMMARY_CHARS].strip() or f"{label} signal from this session"
+    kind_dir = "decisions" if label == "decision" else "patterns"
+    if project_name:
+        target_file = f"wiki/projects/{project_name}/{kind_dir}/{title}.md"
+    else:
+        target_file = f"wiki/{kind_dir}/{title}.md"
+    return CandidateArtifact(
+        label=label,
+        proposed_title=title,
+        proposed_summary=summary,
+        target_file=target_file,
+    )
 
 
 def classify(
@@ -291,31 +474,77 @@ def classify(
     """
     Classify a session transcript against the 7 signal labels.
 
-    V1 STATUS: STUBBED. The LLM invocation layer (subprocess `claude --bare
-    --print --output-format=json ...` or equivalent) is deferred until the
-    /sf:wrap orchestration layer is wired (in `lib/__init__.py`'s `wrap()`).
+    DEFAULT PRODUCTION PATH (EXPERIMENTAL — ADR-031 bike-method): a conservative
+    deterministic heuristic. It scans the combined transcript (session log +
+    `/sf:note` pins) for deliberate, word-boundary signal phrases. It biases
+    HARD to `none` and NEVER raises — every failure mode degrades to `none`.
 
-    The pure-logic primitives in this module — `build_classifier_prompt()`
-    and `parse_classifier_output()` — are real and tested. They compose:
+    Behavior:
+      - Pinned notes DOMINATE: a single deliberate keyword in a pin fires its
+        label (lower threshold); the raw session log needs a full strict phrase.
+      - `candidate_artifacts` are produced ONLY for fired `decision`/`pattern`
+        (the page-creating labels). Other labels contribute their label (→ log
+        append) with no new file. Honors `none ⇒ no artifacts`.
+      - Multi-label is capped at ~2, ordered by priority.
 
-        prompt = build_classifier_prompt(transcript, project_name=project)
-        raw_response = <invoke LLM with prompt>      # the stubbed part
-        result = parse_classifier_output(raw_response)
+    Limits (why EXPERIMENTAL): phrase-driven, no semantic understanding — misses
+    subtly-phrased signal; can rarely over-fire on a deliberate keyword used
+    casually. The LLM path (`build_classifier_prompt` + `parse_classifier_output`)
+    is the future upgrade. Deliberately takes NO file-change-count input (that
+    would conflate wiki-maintenance files with project files — the F3 trap).
 
     Args:
-        transcript_text: Session transcript.
+        transcript_text: Combined session transcript (log + pins). Any non-str
+            or empty value degrades to `none`.
         project_name: Active project, or None for unscoped.
 
     Returns:
-        ClassifierResult.
-
-    Raises:
-        NotImplementedError: until the LLM invocation is wired in.
+        ClassifierResult (never raises).
     """
-    raise NotImplementedError(
-        "classify() LLM invocation layer not yet implemented. The prompt "
-        "builder + output parser ship as composable primitives; the actual "
-        "subprocess call will be wired when lib/__init__.py's wrap() "
-        "orchestration lands. See SKILL.md §pipeline step 2 + "
-        "references/signal-threshold.md for the design."
+    if not isinstance(transcript_text, str) or not transcript_text.strip():
+        return _none_result("empty or non-text transcript")
+
+    log_text, pins_text = _split_pins(transcript_text)
+
+    fired: dict[SignalLabel, str] = {}  # label -> matched-line snippet
+
+    # 1) Strict deliberate phrases — fire in EITHER the log or the pins.
+    for label, patterns in _STRICT_PATTERNS.items():
+        snippet = _first_match_snippet(patterns, log_text)
+        if snippet is None:
+            snippet = _first_match_snippet(patterns, pins_text)
+        if snippet is not None:
+            fired[label] = snippet
+
+    # 2) Looser pin-only triggers — pins dominate (lower threshold).
+    for label, patterns in _PIN_LOOSE_PATTERNS.items():
+        if label in fired:
+            continue
+        snippet = _first_match_snippet(patterns, pins_text)
+        if snippet is not None:
+            fired[label] = snippet
+
+    if not fired:
+        return _none_result("no deliberate high-signal phrase detected; routine session")
+
+    # Multi-label cap (~2), ordered by priority.
+    ordered: list[SignalLabel] = [l for l in _PRIORITY_ORDER if l in fired][:_MAX_LABELS]
+
+    artifacts = tuple(
+        _build_artifact(label, fired[label], project_name)
+        for label in ordered
+        if label in ("decision", "pattern")
+    )
+
+    matched = "; ".join(f'{l}: "{fired[l][:80]}"' for l in ordered)
+    reasoning = (
+        "Deterministic classifier (EXPERIMENTAL) matched "
+        + ", ".join(f"`{l}`" for l in ordered)
+        + f" on a deliberate phrase — {matched}"
+    )
+
+    return ClassifierResult(
+        labels=tuple(ordered),
+        reasoning=reasoning[:500],
+        candidate_artifacts=artifacts,
     )

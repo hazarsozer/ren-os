@@ -116,7 +116,7 @@ When in doubt, return `none`. The bias is conservative. A wiki page never writte
 
 **Default**. The session was routine: coding, debugging, exploring, fixing — but no Architectural Decision, Reusable Pattern, Non-Obvious Lesson, Stack Change, Milestone, or Purpose Shift.
 
-**Outcome**: zero wiki edits except CONTEXT.md (which is always rewritten as the next-session pointer). Feed entry still written.
+**Outcome**: zero wiki edits except CONTEXT.md (which is always rewritten as the next-session pointer). Most sessions land here — that is the discipline, not a bug.
 
 ## Multi-label is allowed but rare
 
@@ -124,9 +124,29 @@ A session can produce e.g. `decision` + `lesson` (the decision was made AND a re
 
 When multi-labeling, treat each label independently in the diff plan. Don't conflate.
 
-## Classifier prompt template (for LLM evaluation)
+## How the classifier runs
 
-When this skill is invoked, the LLM evaluates the session against this prompt:
+The **default** classifier (`lib/classifier.py:classify()`) is a conservative
+DETERMINISTIC heuristic — **EXPERIMENTAL** (ADR-031 bike-method). It scans the
+combined transcript (session log + `/sf:note` pins) for the deliberate signal
+phrases that the criteria above describe, with a hard bias to `none`:
+
+- **Pins dominate** — a friend who explicitly `/sf:note`-pinned something is
+  signalling intent, so a single deliberate keyword in a pin fires its label;
+  the raw session log needs a full deliberate phrase.
+- It **never raises** — every failure mode degrades to `none`.
+- It proposes `candidate_artifacts` only for fired `decision`/`pattern` (the
+  page-creating labels); multi-label is capped at ~2.
+- Limits: phrase-driven, no semantic understanding — it can miss subtly-phrased
+  signal and rarely over-fire on a deliberate keyword used casually. That is the
+  EXPERIMENTAL caveat; the LLM path below is the future upgrade.
+
+## Classifier prompt template (the future LLM path)
+
+`build_classifier_prompt()` + `parse_classifier_output()` ship as composable
+primitives for a future LLM-backed classifier (not wired into the default
+deterministic path). When that path is enabled, the LLM evaluates the session
+against this prompt:
 
 ```
 Given the session transcript below, classify the session's signal level

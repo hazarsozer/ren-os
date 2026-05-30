@@ -194,27 +194,54 @@ class TestApplyFailure:
 
 
 # ---------------------------------------------------------------------------
-# Classifier NotImplementedError degrades to 'none'
+# Default classifier path — the REAL deterministic classify() (F2 closer)
+# + dead-code safety for the future LLM path
 # ---------------------------------------------------------------------------
 
 
-class TestClassifierNotImplemented:
-    def test_default_classifier_stubbed_degrades_to_none(self, wrap_workspace):
-        """When the classifier raises NotImplementedError (V1 default stub),
-        the orchestrator MUST still produce a usable WrapResult by treating
-        the session as 'none' (CONTEXT.md rewrite only)."""
+class TestRealDefaultClassifier:
+    def test_default_classifier_routine_is_none(self, wrap_workspace):
+        """classifier_fn=None uses the REAL deterministic classify(). An empty/
+        routine transcript → 'none' → CONTEXT.md rewrite only (no signal page)."""
+        repo, wiki = wrap_workspace
+        result = wrap(_inputs(), wiki_root=wiki, cwd=repo, classifier_fn=None)
+
+        assert isinstance(result, WrapResult)
+        assert result.apply_error is None
+        assert any("CONTEXT.md" in p for p in result.wiki_pages_changed)
+        assert not any("decisions/" in str(p) for p in result.wiki_pages_changed)
+
+    def test_real_default_classifier_decision_creates_page(self, wrap_workspace):
+        """F2 closer: the DEFAULT path (no injected classifier) produces real
+        signal end-to-end. A /sf:note pin with a decision drives the real
+        deterministic classifier to create a decisions/ page — proving the
+        default user-facing path is equivalent to the injected-fake tests."""
+        repo, wiki = wrap_workspace
+        inputs = WrapInputs(
+            session_transcript_path=None,
+            session_notes=("decision: going with Postgres over Mongo for the store",),
+            cwd="/tmp/test-cwd",
+            active_project="sample",
+        )
+        result = wrap(inputs, wiki_root=wiki, cwd=repo, classifier_fn=None)
+
+        assert result.apply_error is None
+        changed = [str(p) for p in result.wiki_pages_changed]
+        assert any("decisions/" in p for p in changed), changed
+        assert "log.md" in changed  # master log appended on non-none signal
+        assert list((wiki / "projects" / "sample" / "decisions").glob("*.md"))
+
+    def test_classifier_raising_not_implemented_degrades_to_none(self, wrap_workspace):
+        """Dead-code safety: the orchestrator's try/except still catches a
+        NotImplementedError from any future/injected classifier and degrades to
+        a usable 'none' result (the real default classify() never raises)."""
         repo, wiki = wrap_workspace
 
-        result = wrap(
-            _inputs(),
-            wiki_root=wiki,
-            cwd=repo,
-            classifier_fn=None,  # use default (stubbed → raises)
-        )
+        def raising(t, p):
+            raise NotImplementedError("future LLM path not wired")
 
-        # Still produces a usable result (no exception leaked)
+        result = wrap(_inputs(), wiki_root=wiki, cwd=repo, classifier_fn=raising)
         assert isinstance(result, WrapResult)
-        # No catastrophic failure; treated as routine
         assert result.apply_error is None
         assert any("CONTEXT.md" in p for p in result.wiki_pages_changed)
 

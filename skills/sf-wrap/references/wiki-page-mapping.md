@@ -85,7 +85,6 @@ The "active project" is determined by cwd:
 When active = None:
 - Project-scoped writes are skipped
 - Decisions/patterns may still go to master `wiki/decisions/` or `wiki/patterns/` if cross-project
-- The terse-feed entry uses `project=None` (renders as "unscoped" per the format spec)
 
 ## Diff format
 
@@ -107,7 +106,7 @@ All proposed diffs are **unified diff format** (compatible with `git apply --che
 All approved diffs in a wrap are applied as a single atomic batch:
 1. `git restore` checkpoint of `wiki/` before any write
 2. Apply diffs one by one
-3. If ANY application fails → `git restore wiki/` rollback; surface error to user; abort feed write
+3. If ANY application fails → `git restore wiki/` rollback; surface the apply_error to the user
 4. If ALL succeed → commit (if friend has `wiki/` as a git repo per ADR-026) OR leave uncommitted (per friend preference)
 
 The atomicity guarantee means the wiki never ends up in a half-updated state. Important because the wake-up hook reads from the wiki the next session — partial writes would degrade context quality.

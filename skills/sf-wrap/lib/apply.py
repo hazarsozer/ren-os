@@ -8,7 +8,7 @@ Per SKILL.md step 5 and references/wiki-page-mapping.md §Atomicity:
     2. Validate each diff applies cleanly (git apply --check)
     3. Apply diffs one by one
     4. If ANY application fails → `git restore wiki/` rollback;
-       surface error to user; abort feed write
+       surface the apply_error to the user
     5. If ALL succeed → commit (or leave uncommitted per friend preference)
 
 Atomicity guarantee: the wiki never ends up in a half-updated state. This
