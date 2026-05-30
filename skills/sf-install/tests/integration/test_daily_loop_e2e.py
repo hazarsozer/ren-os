@@ -114,15 +114,16 @@ def installed_handle(installed_friend: InstallSimulator) -> str:
 
 
 def _import_compose_wake_up_context():
-    """Load `compose_wake_up_context` from `hooks/wake-up/lib/__init__.py`.
+    """Load `compose_wake_up_context` from `hooks/wake-up/wakeup/__init__.py`.
 
     The `hooks/wake-up/` directory has a dash, so we go through
     `_load_module_from_path` which registers the module in `sys.modules`
-    correctly for dataclass type resolution.
+    correctly for dataclass type resolution. The package is `wakeup` (renamed
+    from `lib` in ADR-031 to avoid colliding with the repo-root `lib` package).
     """
     module = _load_module_from_path(
         "_e2e_sf_wake_up_lib",
-        _REPO_ROOT / "hooks" / "wake-up" / "lib" / "__init__.py",
+        _REPO_ROOT / "hooks" / "wake-up" / "wakeup" / "__init__.py",
     )
     return module.compose_wake_up_context
 

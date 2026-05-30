@@ -289,12 +289,17 @@ def main() -> int:
 
     # Compose the context payload.
     #
-    # Import path: the script lives at hooks/wake-up/sf-wake-up.py with `lib/`
-    # right next to it. Python can't resolve `from hooks.wake_up.lib import ...`
-    # because the parent dir `wake-up` has a dash. We add THIS script's dir
-    # to sys.path and import `lib` directly. Bug caught by the end-to-end
-    # smoke test 2026-05-28 — unit tests passed via relative imports but the
-    # standalone-script invocation path was broken.
+    # Import path: the script lives at hooks/wake-up/sf-wake-up.py with the
+    # `wakeup/` package right next to it. Python can't resolve
+    # `from hooks.wake_up.wakeup import ...` because the parent dir `wake-up` has
+    # a dash. We add THIS script's dir to sys.path and import `wakeup` directly.
+    # Bug caught by the end-to-end smoke test 2026-05-28 — unit tests passed via
+    # relative imports but the standalone-script invocation path was broken.
+    #
+    # The package is named `wakeup` (not `lib`) deliberately (ADR-031): the
+    # repo-root `lib/` package (lib.sf_paths) and a hook-local `lib/` cannot both
+    # be top-level names on one sys.path — once the plugin root is inserted below,
+    # a bare `import lib` would resolve to repo-root lib and shadow this helper.
     try:
         script_dir = Path(__file__).resolve().parent
         if str(script_dir) not in sys.path:
@@ -303,7 +308,7 @@ def main() -> int:
         # (C2). _render_friends_tail (invoked inside compose below) imports feed
         # too, so this must be set before compose runs.
         _ensure_plugin_root_on_path()
-        from lib import compose_wake_up_context  # type: ignore[import-not-found]
+        from wakeup import compose_wake_up_context  # type: ignore[import-not-found]
 
         context_text = compose_wake_up_context(
             cwd=Path(cwd),

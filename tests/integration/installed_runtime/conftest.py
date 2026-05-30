@@ -38,7 +38,7 @@ WAKE_UP_REL = Path("hooks") / "wake-up" / "sf-wake-up.py"
 # path ($HOME/.startup-framework/wiki) — i.e. C1 is closed.
 WIKI_SENTINEL = "INSTALLED-RUNTIME-WIKI-SENTINEL-7f3a91"
 
-# Master-index section header lifecycle's composer emits (hooks/wake-up/lib).
+# Master-index section header lifecycle's composer emits (hooks/wake-up/wakeup).
 MASTER_INDEX_HEADER = "Master wiki index"
 
 # feed.reader._format_header literal (stable substring across fresh/stale forms).
@@ -119,8 +119,10 @@ def _materialize_plugin_root(dest: Path, *, repo_root: Path, include_feed: bool)
 
     Real files only (symlinks dereferenced via copytree's default), mirroring what
     Claude Code places under $CLAUDE_PLUGIN_ROOT. We copy what the hook touches:
-    .claude-plugin/plugin.json, hooks/ (incl. wake-up/lib + hooks.json), feed/.
-    skills/ is a real but empty dir purely for shape parity (the hook never reads it).
+    .claude-plugin/plugin.json, hooks/ (incl. wake-up/wakeup + hooks.json), lib/, feed/.
+    `lib/` (the framework path/handle core, ADR-031) is always materialized because
+    feed.config now re-exports `lib.sf_paths`; a fake root with feed/ but no lib/ would
+    fail to import. skills/ is a real but empty dir purely for shape parity.
     """
     dest.mkdir(parents=True, exist_ok=True)
 
@@ -132,6 +134,13 @@ def _materialize_plugin_root(dest: Path, *, repo_root: Path, include_feed: bool)
         repo_root / "hooks",
         dest / "hooks",
         ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "tests", "verify"),
+        symlinks=False,
+    )
+
+    shutil.copytree(
+        repo_root / "lib",
+        dest / "lib",
+        ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "tests"),
         symlinks=False,
     )
 

@@ -27,7 +27,7 @@ from __future__ import annotations
 from pathlib import Path
 
 # Contract strings asserted below. Declared explicitly here so the test reads as a
-# spec; they mirror hooks/wake-up/lib (master-index header), feed/reader.py
+# spec; they mirror hooks/wake-up/wakeup (master-index header), feed/reader.py
 # (_format_header), and sf-wake-up.py (the graceful-degrade log line). Dash-free
 # substrings are used where the production string contains an em-dash, to avoid
 # any unicode-literal drift in the assertion.
