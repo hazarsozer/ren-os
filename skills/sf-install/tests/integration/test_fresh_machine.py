@@ -40,16 +40,6 @@ def test_fresh_machine_writes_identity_md(simulator, tmp_wiki: Path) -> None:
     assert "schema_version: 1" in body
 
 
-def test_fresh_machine_calls_feed_in_expected_order(simulator, feed_fake) -> None:
-    simulator.run()
-
-    # Stage 3 → detect + bootstrap (first-friend default). Stage 4 → upsert.
-    names = feed_fake.call_names()
-    assert names == ["detect_repo_state", "bootstrap_first_friend", "upsert_identity"], (
-        f"unexpected feed call sequence: {names}"
-    )
-
-
 def test_fresh_machine_stage_2_installs_all_six_plugins(simulator, distribution_fake) -> None:
     simulator.run()
 

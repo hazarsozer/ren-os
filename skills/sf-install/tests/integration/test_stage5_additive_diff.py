@@ -27,7 +27,6 @@ def test_simulated_v1_1_new_template_lands_additively(
         wiki_root=tmp_wiki,
         checkpoint_path=simulator.checkpoint_path,
         skeleton_root=simulator.skeleton_root,
-        feed=type(simulator.feed)(),
         distribution=type(simulator.distribution)(),
         lifecycle=type(simulator.lifecycle)(),
     )

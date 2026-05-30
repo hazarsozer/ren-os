@@ -21,7 +21,6 @@ def test_stage_1_probes_run_again_on_reinstall(
     tmp_wiki: Path,
     tmp_checkpoint: Path,
     skeleton_root: Path,
-    feed_fake,
     distribution_fake,
     lifecycle_fake,
 ) -> None:
@@ -29,7 +28,6 @@ def test_stage_1_probes_run_again_on_reinstall(
         wiki_root=tmp_wiki,
         checkpoint_path=tmp_checkpoint,
         skeleton_root=skeleton_root,
-        feed=feed_fake,
         distribution=distribution_fake,
         lifecycle=lifecycle_fake,
     )
@@ -40,7 +38,6 @@ def test_stage_1_probes_run_again_on_reinstall(
         wiki_root=tmp_wiki,
         checkpoint_path=tmp_checkpoint,
         skeleton_root=skeleton_root,
-        feed=type(feed_fake)(),
         distribution=type(distribution_fake)(),
         lifecycle=type(lifecycle_fake)(),
     )
@@ -53,7 +50,6 @@ def test_stage_1_detects_env_change_between_runs(
     tmp_wiki: Path,
     tmp_checkpoint: Path,
     skeleton_root: Path,
-    feed_fake,
     distribution_fake,
     lifecycle_fake,
 ) -> None:
@@ -63,7 +59,6 @@ def test_stage_1_detects_env_change_between_runs(
         wiki_root=tmp_wiki,
         checkpoint_path=tmp_checkpoint,
         skeleton_root=skeleton_root,
-        feed=feed_fake,
         distribution=distribution_fake,
         lifecycle=lifecycle_fake,
         env=EnvSnapshot(),  # default: all green
@@ -75,7 +70,6 @@ def test_stage_1_detects_env_change_between_runs(
         wiki_root=tmp_wiki,
         checkpoint_path=tmp_checkpoint,
         skeleton_root=skeleton_root,
-        feed=type(feed_fake)(),
         distribution=type(distribution_fake)(),
         lifecycle=type(lifecycle_fake)(),
         env=EnvSnapshot(gh_auth=False),

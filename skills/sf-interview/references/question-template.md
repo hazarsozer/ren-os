@@ -26,8 +26,8 @@ Total target: ~10 minutes for the friend, 70% complete acceptable. Friend may sk
 - strategy: native open-ended
 - field: `name`, `handle`
 - prompt: |
-    What name should I use for you (display name, free-form), and what handle
-    should I use in your Activity Feed? (handle: lowercase, kebab-case,
+    What name should I use for you (display name, free-form), and what short
+    handle do you prefer as a personal label? (handle: lowercase, kebab-case,
     letters/digits/hyphens only)
 - validation: handle matches `^[a-z][a-z0-9-]*$`
 - prepopulation: if `/sf:install` Stage 3 supplied `proposed_handle`, pre-fill
@@ -130,7 +130,7 @@ Total target: ~10 minutes for the friend, 70% complete acceptable. Friend may sk
 - field: `contact.timezone`, `contact.working_hours`
 - prompt: |
     Optional: what's your timezone (IANA format e.g. Europe/Istanbul) and
-    typical working hours? Helps friends interpret your Activity Feed timing.
+    typical working hours? Helps your AI adapt to when you work.
 - default: empty strings
 
 ## Section C — Tech preferences (5 questions)

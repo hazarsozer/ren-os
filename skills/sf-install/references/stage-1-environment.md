@@ -10,7 +10,7 @@ Per ADR-015 Stage 1 + team-lead pushback P1 (always-check). Cheap probes; the co
 | Claude auth | logged in | `claude auth status` |
 | Node.js | ≥ 22.5 (Context Mode requirement) | `node --version` |
 | git | installed | `git --version` |
-| GitHub CLI | installed AND authenticated (per ADR-018) | `gh --version` + `gh auth status` |
+| GitHub CLI | installed AND authenticated (soft requirement; used by `/sf:doctor`'s update check) | `gh --version` + `gh auth status` |
 | `ANTHROPIC_API_KEY` | env var set | shell env lookup |
 | `UPSTASH_CONTEXT7_API_KEY` (or whatever context7 is using) | env var set | shell env lookup |
 
@@ -88,13 +88,6 @@ Append `1` to `state.completed_stages` if not already present.
 - **Upstash key name may shift** — the context7 plugin's required env var name is verified at install time from its readme. If the canonical name changes, this doc's check string needs an update; surface the mismatch as a Stage 2 / Stage 6 issue, not a Stage 1 issue.
 - **`~/.claude/` may be a symlink** to a dotfiles repo (e.g., on a dev's machine pointing at `~/Dev/dotfiles/.claude/`). Any path operation on the Claude Code config directory MUST resolve symlinks first (`realpath` or `Path.resolve()`). Stage 1's probes don't write to `~/.claude/` so this stage is symlink-transparent, but Stage 6's OpenTelemetry sub-step needs to be aware (see `stage-6-doctor-verification.md`). Stage 1 includes a single info-log line if the symlink is detected so the friend sees we've noticed and acknowledged: `Note: ~/.claude/ resolves to <realpath>`. No prompt, no remediation — informational only.
 
-## Sf-feed integration errors that surface here
-
-Stage 1 doesn't itself call into sf-feed, but later stages do. Two feed-side errors can bubble up to Stage 1's later re-runs (post-Stage-4):
-
-- **`feed.config.HandleNotConfiguredError`** — raised by `feed.config.handle()` when `wiki/identity.md` is missing or has no `handle:` field. Surfaces as a Stage 4 issue (interview hasn't run) not Stage 1. Don't try to handle it here.
-- **`feed.config.SchemaVersionMismatchError`** — raised when `wiki/identity.md`'s `schema_version` differs from feed's expected version. Surfaces as a Stage 6 doctor issue (see `stage-6-doctor-verification.md`). Stage 1 just notes that the import is available so Stage 6's downstream probe won't ImportError.
-
 ## What this stage deliberately does NOT do
 
 - Doesn't install missing dependencies. Auto-installing `gh` or `node` is way out of scope and varies wildly by platform.
@@ -105,5 +98,5 @@ Stage 1 doesn't itself call into sf-feed, but later stages do. Two feed-side err
 
 - ADR-015 Stage 1
 - team-lead pushback P1
-- ADR-018 (Activity Feed) — gh CLI requirement
+- ADR-031 (solo-first pivot) — Activity Feed removed; gh is now a soft requirement used by `/sf:doctor`'s update check
 - ADR-006 (curated stack) — context7 + claude-md-management additions; Skill Creator's ANTHROPIC_API_KEY caveat

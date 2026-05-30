@@ -60,7 +60,6 @@ ANTHROPIC_API_KEY:  ❌ not set
   claude-md-management: {status}
   Frontend Design:      {status}  ({reason if not installed})
   Hooks registered:     {status} SessionStart ({hook-name}, matcher: {matcher}, timeout: {s}s)
-  Activity Feed:        {status} {repo}      (last sync {duration} ago | DISABLED — activityFeedUrl not set)
   Wiki:                 {status} {wikiRoot}  ({entry-count} entries, {project-count} projects)
 ```
 
@@ -73,10 +72,6 @@ claude-mem worker:   ❌ not running on :37777
 
 Hooks registered:    ⚠️  SessionStart hook missing
                         → Run /sf:update which re-registers hooks, OR /reload-plugins
-
-Activity Feed:       ❌ push access denied
-                        → Verify gh auth + collaborator status: gh api repos/<org>/activity-feed
-                        → If lost access: contact the friend group admin
 ```
 
 The Context Mode entry ALWAYS surfaces the ELv2 caveat — even when green — because friends sometimes forget licensing applies indefinitely.
@@ -124,7 +119,7 @@ Summary line, by precedence:
 
 For `project-state`, `project-roadmap`, `project-requirements`, `project-context`, `project-main`, `research`, `decision`, `pattern`: the per-line count is `(N files)` — e.g. `project-state: 1  (current: 1)   ✅  (4 files: sidecar, restore, era, idea-generator)`.
 
-For `log-entry` and `feed-entry`: single file, single schema. No file-count annotation.
+For `log-entry`: single file, single schema. No file-count annotation.
 
 For `skill`: per-line annotation `(N friend-authored skills)` — distinct from framework-shipped skills (which don't have schema_version frontmatter; the doctor explicitly skips `${CLAUDE_PLUGIN_ROOT}/skills/`).
 

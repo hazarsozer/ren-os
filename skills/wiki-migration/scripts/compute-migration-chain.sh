@@ -4,8 +4,8 @@
 #
 # Usage:
 #   compute-migration-chain.sh <schemas.json path>
-#     Reads page schema_versions from $SF_WIKI_ROOT (and feed local clone) by walking
-#     the file glob patterns declared in schemas.json#page_types[*].path_pattern.
+#     Reads page schema_versions from $SF_WIKI_ROOT by walking the file glob
+#     patterns declared in schemas.json#page_types[*].path_pattern.
 #     Outputs JSON to stdout:
 #
 #     {
@@ -32,17 +32,16 @@ if [[ -z "$SCHEMAS_JSON" || ! -f "$SCHEMAS_JSON" ]]; then
 fi
 
 WIKI_ROOT="${SF_WIKI_ROOT:-${CLAUDE_PLUGIN_OPTION_WIKIROOT:-$HOME/.startup-framework/wiki}}"
-FEED_LOCAL="${CLAUDE_PLUGIN_OPTION_ACTIVITYFEEDLOCALCLONE:-$HOME/.startup-framework/activity-feed}"
 
 if [[ ! -d "$WIKI_ROOT" ]]; then
   echo "ERROR: wiki root not found: $WIKI_ROOT" >&2
   exit 2
 fi
 
-exec python3 - "$SCHEMAS_JSON" "$WIKI_ROOT" "$FEED_LOCAL" <<'PYEOF'
+exec python3 - "$SCHEMAS_JSON" "$WIKI_ROOT" <<'PYEOF'
 import json, os, sys, re, glob
 
-schemas_path, wiki_root, feed_local = sys.argv[1], sys.argv[2], sys.argv[3]
+schemas_path, wiki_root = sys.argv[1], sys.argv[2]
 
 with open(schemas_path) as f:
     registry = json.load(f)
@@ -91,8 +90,6 @@ def files_for(pt):
         return [p] if os.path.isfile(p) else []
     if pt == "project-log-entry":
         return glob.glob(os.path.join(wiki_root, "projects", "*", "log.md"))
-    if pt == "feed-entry":
-        return glob.glob(os.path.join(feed_local, "*.log.md")) if os.path.isdir(feed_local) else []
     if pt == "skill":
         return glob.glob(os.path.join(wiki_root, "skills", "*", "SKILL.md"))
     if pt == "master-index":

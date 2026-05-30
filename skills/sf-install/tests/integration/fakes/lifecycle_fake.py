@@ -44,7 +44,6 @@ def _all_green_checks(plugin_count: int = 6) -> tuple[DoctorCheck, ...]:
         DoctorCheck("wiki: index.md", "pass"),
         DoctorCheck("wiki: log.md", "pass"),
         DoctorCheck("wiki: identity.md", "pass", "schema_version=1"),
-        DoctorCheck("feed: status.sh", "pass", "push_ok=true"),
     ])
     return tuple(checks)
 

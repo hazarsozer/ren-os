@@ -34,12 +34,10 @@ fail() {
 TMPROOT=$(mktemp -d)
 trap 'rm -rf "$TMPROOT"' EXIT
 
-# Keep every run hermetic + fast: empty wiki + feed-clone paths, no feed URL,
-# so the wiki/feed sections short-circuit without touching $HOME or the network.
+# Keep every run hermetic + fast: empty wiki path so the wiki section
+# short-circuits without touching $HOME or the network.
 HERMETIC_ENV=(
   "CLAUDE_PLUGIN_OPTION_WIKIROOT=$TMPROOT/nowiki"
-  "CLAUDE_PLUGIN_OPTION_ACTIVITYFEEDLOCALCLONE=$TMPROOT/nofeed"
-  "CLAUDE_PLUGIN_OPTION_ACTIVITYFEEDURL="
 )
 
 run_check() {

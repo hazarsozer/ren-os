@@ -1,6 +1,8 @@
-# Stage 3 (b) — Conditional plugins
+# Stage 3 — Conditional plugins
 
-Runs after the Activity Feed half. Per ADR-015 Stage 3 (revised 2026-05-28) + ADR-006.
+Per ADR-015 Stage 3 (revised 2026-05-28) + ADR-006 + ADR-031 (solo-first pivot).
+
+Solo-first (ADR-031): the former Activity Feed setup that opened Stage 3 was removed with the feed module. Stage 3 is now conditional-plugins-only. There is no repo prompt, no repo-state detection, no clone/bootstrap, and no mini-handle prompt — with no shared feed there are no cross-friend handle collisions to guard against. The handle is set in Stage 4 (interview).
 
 ## Two conditionals
 
@@ -9,7 +11,7 @@ Runs after the Activity Feed half. Per ADR-015 Stage 3 (revised 2026-05-28) + AD
 Ask:
 
 ```
-Will your friend group build user-facing UIs (web or mobile apps) in the near term?
+Will you build user-facing UIs (web or mobile apps) in the near term?
   yes      — install Frontend Design now
   later    — skip; you can install later via /plugin install frontend-design
   no       — skip; we'll never auto-prompt again
@@ -44,7 +46,6 @@ After both conditionals run:
 {
   "stage_artifacts": {
     "3": {
-      ...,
       "frontend_design_installed": false,
       "frontend_design_dismissed": false,
       "ralph_loop_documented_only": true
@@ -57,4 +58,4 @@ After both conditionals run:
 
 - ADR-006 (curated stack) — conditional vs required vs documented-only
 - ADR-015 Stage 3 (amendment)
-- `stage-3-activity-feed.md` — runs first
+- ADR-031 (solo-first pivot) — Activity Feed removal; Stage 3 is conditional-plugins-only

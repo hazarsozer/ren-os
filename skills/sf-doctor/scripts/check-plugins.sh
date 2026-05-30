@@ -9,10 +9,9 @@
 #
 # Also:
 #   hooks-sessionstart (per references/hook-id-registry.md)
-#   activity-feed (per references/hook-id-registry.md § Activity Feed)
 #   wiki (counts entries + projects)
 #
-# Side effects: NONE. Reads marketplace cache, hooks.json, calls feed status.sh (with 5s timeout).
+# Side effects: NONE. Reads marketplace cache + hooks.json.
 
 set -uo pipefail
 
@@ -136,74 +135,6 @@ if [[ -n "$SF_PLUGIN_DIR" && -f "$SF_PLUGIN_DIR/hooks/hooks.json" ]]; then
   fi
 else
   emit "hooks-sessionstart" "skip" "" "(plugin not installed; hooks check skipped)"
-fi
-
-# ──────────────────────────────────────────────────────────────────────
-# Activity Feed (status.sh JSON-shape per feed-2's shipped impl, 2026-05-28)
-# Path:        skills/activity-feed/scripts/status.sh (NOT feed/scripts/status.sh as originally specced)
-# Exit codes:  0 always for normal operation; failure encoded in JSON `auth_ok`/`push_ok`/etc.
-#              1 only on catastrophic Python crash.
-# ──────────────────────────────────────────────────────────────────────
-FEED_URL="${CLAUDE_PLUGIN_OPTION_ACTIVITYFEEDURL:-}"
-FEED_LOCAL="${CLAUDE_PLUGIN_OPTION_ACTIVITYFEEDLOCALCLONE:-$HOME/.startup-framework/activity-feed}"
-FEED_STATUS_SH=""
-if [[ -n "$SF_PLUGIN_DIR" ]]; then
-  if [[ -x "$SF_PLUGIN_DIR/skills/activity-feed/scripts/status.sh" ]]; then
-    FEED_STATUS_SH="$SF_PLUGIN_DIR/skills/activity-feed/scripts/status.sh"
-  elif [[ -x "$SF_PLUGIN_DIR/feed/scripts/status.sh" ]]; then
-    # legacy fallback during build phase
-    FEED_STATUS_SH="$SF_PLUGIN_DIR/feed/scripts/status.sh"
-  fi
-fi
-
-if [[ -z "$FEED_URL" && -z "$FEED_STATUS_SH" ]]; then
-  emit "activity-feed" "skip" "" "(activityFeedUrl not set — feed disabled)"
-elif [[ -z "$FEED_STATUS_SH" ]]; then
-  emit "activity-feed" "warn" "status.sh not found at expected path" "→ See references/hook-id-registry.md § Activity Feed for current contract"
-else
-  # 5s timeout on the status call
-  FEED_JSON="$(timeout 5 "$FEED_STATUS_SH" "$FEED_LOCAL" 2>/dev/null)"
-  FEED_RC=$?
-
-  if (( FEED_RC == 1 )); then
-    # Catastrophic per feed-2 contract
-    emit "activity-feed" "error" "status.sh crashed (exit 1)" "→ Installation likely broken; run /sf:update or reinstall"
-  elif (( FEED_RC != 0 )) || [[ -z "$FEED_JSON" ]]; then
-    emit "activity-feed" "warn" "status.sh did not respond cleanly (exit ${FEED_RC})" "→ Try: ${FEED_STATUS_SH} ${FEED_LOCAL}"
-  else
-    # Parse JSON fields. Best-effort string extraction; doctor's JSON output mode uses jq.
-    fv() { echo "$FEED_JSON" | grep -oE "\"$1\"\\s*:\\s*\"[^\"]*\"" | head -1 | sed 's/.*"\([^"]*\)"$/\1/'; }
-    fb() { echo "$FEED_JSON" | grep -oE "\"$1\"\\s*:\\s*(true|false)" | head -1 | awk -F: '{print $2}' | tr -d ' '; }
-    fn() { echo "$FEED_JSON" | grep -oE "\"$1\"\\s*:\\s*[0-9]+" | head -1 | awk -F: '{print $2}' | tr -d ' '; }
-
-    FEED_REMOTE="$(fv remote)"
-    FEED_SYNC="$(fv last_sync_iso)"
-    FEED_AUTH_OK="$(fb auth_ok)"
-    FEED_PUSH_OK="$(fb push_ok)"
-    FEED_AUTH_REASON="$(fv auth_reason)"
-    FEED_PENDING="$(fn pending_commit_count)"
-    FEED_FAILS="$(fn consecutive_push_failures)"
-
-    if [[ -z "$FEED_REMOTE" && -z "$FEED_URL" ]]; then
-      emit "activity-feed" "skip" "" "(activityFeedUrl not set — feed disabled)"
-    elif [[ "$FEED_AUTH_OK" == "false" ]]; then
-      emit "activity-feed" "error" "${FEED_REMOTE:-$FEED_URL} — auth failed" "→ Run: gh auth login${FEED_AUTH_REASON:+  |  reason: $FEED_AUTH_REASON}"
-    elif [[ "$FEED_PUSH_OK" == "false" ]]; then
-      detail="${FEED_REMOTE:-$FEED_URL} — push failing"
-      [[ -n "$FEED_FAILS" && "$FEED_FAILS" != "0" ]] && detail="${detail} (×${FEED_FAILS})"
-      # Strip SSH prefix + .git suffix to form a gh-api-friendly org/repo path
-      api_repo="${FEED_REMOTE#git@github.com:}"
-      api_repo="${api_repo#https://github.com/}"
-      api_repo="${api_repo%.git}"
-      emit "activity-feed" "warn" "$detail" "→ Check 'gh api repos/${api_repo}' or 'git push' manually"
-    else
-      # All green
-      detail="${FEED_REMOTE:-$FEED_URL}"
-      [[ -n "$FEED_SYNC" ]] && detail="${detail} (last sync ${FEED_SYNC})" || detail="${detail} — first sync pending"
-      [[ -n "$FEED_PENDING" && "$FEED_PENDING" != "0" ]] && detail="${detail} (${FEED_PENDING} commit(s) pending push)"
-      emit "activity-feed" "ok" "$detail" ""
-    fi
-  fi
 fi
 
 # ──────────────────────────────────────────────────────────────────────

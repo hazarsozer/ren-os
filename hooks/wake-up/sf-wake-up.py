@@ -95,31 +95,30 @@ def _ensure_plugin_root_on_path() -> None:
 
 def _resolve_wiki_root() -> Path:
     """
-    Resolve the wiki root with an explicit three-way fallback matching the
-    shell scripts' `${SF_WIKI_ROOT:-${CLAUDE_PLUGIN_OPTION_WIKIROOT:-$HOME/.startup-framework/wiki}}`
-    (see skills/sf-update/scripts/snapshot.sh:23).
+    Resolve the wiki root via `lib.sf_paths.wiki_path()` — the single source of
+    truth for the 3-tier resolution (SF_WIKI_ROOT → CLAUDE_PLUGIN_OPTION_WIKIROOT
+    → framework_root()/wiki), per ADR-031's F1 unification. The hook previously
+    inlined this logic; delegating keeps the Python reader and the shell scripts
+    (`${SF_WIKI_ROOT:-${CLAUDE_PLUGIN_OPTION_WIKIROOT:-...}}`) in lockstep with one
+    resolver. Each tier is `.strip()`-guarded (empty/whitespace = unset) and
+    expandvars+expanduser-normalized so a literal `${HOME}`/`~` default is safe —
+    this is what closes the C1 bug (the old `Path("")`-is-truthy fallthrough).
 
-    Order: SF_WIKI_ROOT → CLAUDE_PLUGIN_OPTION_WIKIROOT → $HOME/.startup-framework/wiki.
-
-    Each env var is `.strip()`-guarded so empty/whitespace counts as unset
-    (stricter than bash's `:-`, which only treats truly-empty as unset). This
-    closes the C1 bug: the old `Path(os.environ.get("SF_WIKI_ROOT","")) or (...)`
-    never fell back because `Path("")` is `PosixPath('.')` (truthy), so
-    CLAUDE_PLUGIN_OPTION_WIKIROOT was ignored and wiki_root silently became CWD.
-
-    Each resolved value is also passed through os.path.expandvars + expanduser
-    before becoming a Path. The plugin.json userConfig default is the literal
-    string `${HOME}/.startup-framework/wiki`; if Claude Code forwards it to
-    CLAUDE_PLUGIN_OPTION_WIKIROOT without expanding `${HOME}`, `Path(val)` would
-    otherwise be a broken literal-`${HOME}` path — the same C1 failure class one
-    layer down. expandvars handles `${HOME}`/`$HOME`; expanduser handles `~`.
-    Harmless no-op if CC already expands ("never trust external data").
+    Defensive fallback: if `lib.sf_paths` is somehow not importable in the
+    installed runtime, resolve the same 3 tiers inline so the hook never breaks
+    (graceful failure is load-bearing).
     """
-    for var in ("SF_WIKI_ROOT", "CLAUDE_PLUGIN_OPTION_WIKIROOT"):
-        val = os.environ.get(var, "").strip()
-        if val:
-            return Path(os.path.expanduser(os.path.expandvars(val)))
-    return Path.home() / ".startup-framework" / "wiki"
+    _ensure_plugin_root_on_path()
+    try:
+        from lib.sf_paths import wiki_path
+        return wiki_path()
+    except ImportError:
+        logger.warning("lib.sf_paths unavailable; resolving wiki root inline", exc_info=True)
+        for var in ("SF_WIKI_ROOT", "CLAUDE_PLUGIN_OPTION_WIKIROOT"):
+            val = os.environ.get(var, "").strip()
+            if val:
+                return Path(os.path.expanduser(os.path.expandvars(val)))
+        return Path.home() / ".startup-framework" / "wiki"
 
 
 def main() -> int:

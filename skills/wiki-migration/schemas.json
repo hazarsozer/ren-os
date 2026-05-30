@@ -144,16 +144,6 @@
       "adr_refs": ["ADR-004", "ADR-014"],
       "migrations": []
     },
-    "feed-entry": {
-      "current": 1,
-      "supported_from": 1,
-      "deprecated_below": null,
-      "path_pattern": "<activity-feed>/<handle>.log.md",
-      "description": "Per-friend Activity Feed log. Terse-format entries (per ADR-021). Single schema_version at file top; entries append-only. Migration operates on the whole file.",
-      "owner_module": "sf-feed",
-      "adr_refs": ["ADR-018", "ADR-021"],
-      "migrations": []
-    },
     "skill": {
       "current": 1,
       "supported_from": 1,

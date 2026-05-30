@@ -67,7 +67,6 @@ REQUIRED_FIELDS_BY_TYPE: dict[str, set[str]] = {
     "pattern": set(),
     "log-entry": set(),
     "project-log-entry": set(),
-    "feed-entry": {"handle"},
     "skill": {"name", "description"},  # per ADR-011 SKILL.md frontmatter convention
     "licenses": set(),
 }

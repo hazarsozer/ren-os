@@ -100,20 +100,8 @@ Prompt: `Apply these changes? [y/N]` — default NO.
 
 Mirrors the `/revise-claude-md` approval pattern. The friend always has a chance to bail before any write.
 
-## Step 6: Sync public summary (if relevant fields changed)
-
-Check whether any of the public-subset fields changed. Subset (per `references/public-summary-format.md`):
-
-- `handle`, `name`, `phase`, `strong_skills`, `clouds`, `contact.timezone`
-- Body: intro paragraph (from Q2), "What I contribute" paragraph (from Q18)
-
-If none of those changed, skip the feed push.
-
-If any changed, call `feed.upsert_identity(handle, public_md)`. Same graceful-degradation rules as the fresh interview: best-effort, idempotent, warning-on-fail.
-
 ## Edge cases
 
-- **Handle changed during refresh** → call `feed.rename_handle(old, new)` if sf-feed has shipped that helper (asked in my contract reply); else call `feed.upsert_identity(new_handle, public_md)` and warn the friend that the old `identities/<old>.md` file remains in the feed and they should `git rm` it manually.
 - **schema_version older than current** → step 1 handles migration first; user sees migration diff separately from the refresh diff.
 - **schema_version newer than current** → refuse to overwrite (the current framework version can't safely round-trip a newer schema). Recommend the friend update the framework first (`/sf:update`).
 - **identity.md exists but is empty** → treat as no identity; run fresh interview (skip the refresh branch entirely).
@@ -122,11 +110,9 @@ If any changed, call `feed.upsert_identity(handle, public_md)`. Same graceful-de
 
 - It doesn't ask the friend to confirm every defaulted answer. That's what full-refresh (branch 3a) is for; non-full refresh trusts the friend's intent.
 - It doesn't auto-bump `framework_version` in the YAML. Only `updated` changes. `framework_version` is rewritten by `/sf:install` Stage 5 (it tracks the wiki skeleton's version, not per-file edits).
-- It doesn't sync to the feed unconditionally. Only when relevant public-subset fields changed.
 
 ## Cross-references
 
 - ADR-022 § "Re-running the interview" — source spec
 - `output-format.md` — what gets rendered
-- `public-summary-format.md` — what subset goes to the feed
 - `/sf:install` Stage 4 — first-time invocation path (skips this whole flow)

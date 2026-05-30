@@ -32,7 +32,6 @@ def test_stage_5_does_not_overwrite_hand_edited_index_md(
         wiki_root=tmp_wiki,
         checkpoint_path=simulator.checkpoint_path,
         skeleton_root=simulator.skeleton_root,
-        feed=type(simulator.feed)(),
         distribution=type(simulator.distribution)(),
         lifecycle=type(simulator.lifecycle)(),
     )
@@ -66,7 +65,6 @@ def test_stage_5_writes_only_missing_files_on_reinstall(
         wiki_root=tmp_wiki,
         checkpoint_path=simulator.checkpoint_path,
         skeleton_root=simulator.skeleton_root,
-        feed=type(simulator.feed)(),
         distribution=type(simulator.distribution)(),
         lifecycle=type(simulator.lifecycle)(),
     )
@@ -92,7 +90,6 @@ def test_stage_5_creates_dirs_if_missing_but_idempotent(
         wiki_root=tmp_wiki,
         checkpoint_path=simulator.checkpoint_path,
         skeleton_root=simulator.skeleton_root,
-        feed=type(simulator.feed)(),
         distribution=type(simulator.distribution)(),
         lifecycle=type(simulator.lifecycle)(),
     )

@@ -7,7 +7,6 @@
 # Inputs:
 #   - $1 = path to schemas.json (defaults to ${SF_PLUGIN_DIR}/skills/wiki-migration/schemas.json)
 #   - env: WIKI_ROOT (from CLAUDE_PLUGIN_OPTION_WIKIROOT) — friend's wiki location
-#   - env: ACTIVITY_FEED_LOCAL (from CLAUDE_PLUGIN_OPTION_ACTIVITYFEEDLOCALCLONE)
 #
 # Side effects: NONE. Reads schemas.json + walks wiki frontmatter.
 # Requires: python3 (for YAML frontmatter parsing — bash regex is too brittle).
@@ -18,7 +17,6 @@ emit() { printf '%s|%s|%s|%s|%s|%s|%s|%s\n' "$1" "$2" "${3:-}" "${4:-}" "${5:-}"
 
 SCHEMAS_JSON="${1:-${SF_PLUGIN_DIR:-${CLAUDE_PLUGIN_ROOT:-.}}/skills/wiki-migration/schemas.json}"
 WIKI_ROOT="${CLAUDE_PLUGIN_OPTION_WIKIROOT:-$HOME/.startup-framework/wiki}"
-FEED_LOCAL="${CLAUDE_PLUGIN_OPTION_ACTIVITYFEEDLOCALCLONE:-$HOME/.startup-framework/activity-feed}"
 
 if [[ ! -f "$SCHEMAS_JSON" ]]; then
   emit "_error" "error" "schemas.json not found at $SCHEMAS_JSON" "→ The plugin install is broken. Reinstall via /sf:install."
@@ -31,10 +29,10 @@ if [[ ! -d "$WIKI_ROOT" ]]; then
 fi
 
 # All YAML/JSON parsing in Python — bash regex is unsafe for arbitrary content.
-exec python3 - "$SCHEMAS_JSON" "$WIKI_ROOT" "$FEED_LOCAL" <<'PYEOF'
+exec python3 - "$SCHEMAS_JSON" "$WIKI_ROOT" <<'PYEOF'
 import json, os, sys, re, glob
 
-schemas_path, wiki_root, feed_local = sys.argv[1], sys.argv[2], sys.argv[3]
+schemas_path, wiki_root = sys.argv[1], sys.argv[2]
 
 with open(schemas_path) as f:
     registry = json.load(f)
@@ -66,10 +64,6 @@ def globs_for(pt: str) -> list[str]:
         return [os.path.join(wiki_root, "log.md")]
     if pt == "project-log-entry":
         return glob.glob(os.path.join(wiki_root, "projects", "*", "log.md"))
-    if pt == "feed-entry":
-        if not os.path.isdir(feed_local):
-            return []
-        return glob.glob(os.path.join(feed_local, "*.log.md"))
     if pt == "skill":
         return glob.glob(os.path.join(wiki_root, "skills", "*", "SKILL.md"))
     if pt == "master-index":

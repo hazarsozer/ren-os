@@ -185,7 +185,7 @@ A SessionStart hook is registered in `settings.json` (or per-plugin `hooks.json`
 >
 > **Do not "fix" `timeout: 10` to `timeout: 10000` thinking the unit is milliseconds.** That would create a real ~2.78-hour kill-timer antipattern. Schema is authoritative; this callout exists because the unit was misread once during review (resolved 2026-05-28; see Appendix A.1 for verbatim schema text).
 
-**Implication for wake-up**: our target is <100ms wall-clock (per ADR-008 latency budget). The 10-second timeout per team-lead's locked spec is the hard ceiling, used for `feed.pull()` 10s best-effort + safety margin.
+**Implication for wake-up**: our target is <100ms wall-clock (per ADR-008 latency budget). The 10-second timeout per team-lead's locked spec is the hard ceiling — ample headroom for the wiki read + compose pass.
 
 **Async option exists** (`async: true`) but is unsuitable for the wake-up hook because async hooks cannot inject context that arrives synchronously with session start.
 
@@ -249,27 +249,6 @@ These are nice-to-haves not strictly required before implementing the hook:
 3. **Behavior when hook stdout is malformed JSON** (does CC ignore the hook, throw a user-visible error, or warn silently?).
 
 These can be confirmed during the §2 cache-verification phase by running probe-instrumented hooks and recording the observed CC behavior.
-
-## 13a. Feed integration notes (for the hook implementation phase)
-
-A small running ledger of feed-side behaviors the wake-up hook must respect when its `additionalContext` rendering layer is built. Populated as feed-2 ships features the hook will consume.
-
-### F4: `feed_read_friends_tails` truncation semantics (feed-2 ship 2026-05-28)
-
-When the hook calls `feed_read_friends_tails(own_handle, n_per_friend=5, max_tokens=2500, refresh=False)`, the feed reader respects the budget by this priority order:
-
-1. **Drop oldest entries from friends WITH MULTIPLE entries.** Preserves the "see all active friends" invariant — every friend with at least one entry stays visible.
-2. **If still over budget**, truncate `entry.summary` TEXT per entry, appending `…` suffix.
-
-Signals the hook can check:
-- `FriendsTail.truncated == True` → programmatic flag; trim happened
-- Visible `…` suffix on any summary → human-readable signal in the rendered payload
-
-**Implication for the hook's `additionalContext` composition**: when `truncated=True`, append a one-line note to the friends-activity block (e.g., `*(some entries trimmed to fit token budget)*`). Friends seeing the `…` already have visual context; the note explains it without requiring them to know feed internals.
-
-### F1: `check_auth()` no longer requests tokens (feed-2 ship 2026-05-28)
-
-The wake-up hook does NOT call `check_auth()` directly — auth issues surface as `FeedWriteResult.error` from `feed_write_session_start()`. But if `/sf:doctor` ever wraps a `check_auth()` smoke probe and `lifecycle` owns that surface (TBD with distribution-2), the returned `AuthStatus.reason` is now safe to surface to the user verbatim — gh stderr forwarded, no token leak.
 
 ---
 
