@@ -58,7 +58,12 @@ from .budget import (
     load_pricing_table,
     pre_iteration_check,
 )
-from .eval_runner import EvalSpec, filter_tests_by_ids, load_eval_spec
+from .eval_runner import (
+    EvalBackendNotConfiguredError,
+    EvalSpec,
+    filter_tests_by_ids,
+    load_eval_spec,
+)
 from .git_mechanics import (
     amend_iteration_metadata,
     cleanup_on_cancel,
@@ -87,13 +92,15 @@ ChangeProposer = Callable[
 
 # An eval-runner is a callable that receives (skill_name, eval_subset_ids) and
 # returns EvalResult. Injected for testability; default delegates to
-# lib.eval_runner.run_evals (currently raises NotImplementedError pending
-# Skill Creator integration choice).
+# lib.eval_runner.run_evals (currently raises EvalBackendNotConfiguredError —
+# the eval-backed loop is EXPERIMENTAL pending a configured backend; the
+# orchestrator catches it and exits with REQUIRES_CONFIGURED_BACKEND).
 EvalRunner = Callable[[str, "list[str] | None"], "EvalResult"]
 
 
 def _default_eval_runner(skill_name: str, subset_ids: "list[str] | None") -> "EvalResult":
-    """Default: defer to the run_evals stub (raises NotImplementedError)."""
+    """Default: defer to run_evals (raises EvalBackendNotConfiguredError until a
+    backend is configured; the orchestrator catches it for an honest exit)."""
     from .eval_runner import run_evals
     return run_evals(skill_name, eval_subset_ids=subset_ids)
 
@@ -168,7 +175,28 @@ def improve_skill(
     runner = eval_runner or _default_eval_runner
     proposer = change_proposer or _default_change_proposer
 
-    baseline = runner(args.skill_name, _eval_subset_ids_from_args(args))
+    try:
+        baseline = runner(args.skill_name, _eval_subset_ids_from_args(args))
+    except EvalBackendNotConfiguredError:
+        # Default path: no eval backend is configured (the eval-backed loop is
+        # EXPERIMENTAL). Fail HONESTLY and cleanly — no branch, no exception
+        # escaping — rather than crashing before the proposer's clean exit.
+        elapsed = time.monotonic() - start_time
+        return ImproveSkillResult(
+            skill_name=args.skill_name,
+            branch_name="",  # no branch created — nothing ran
+            exit_reason=ExitReason.REQUIRES_CONFIGURED_BACKEND,
+            final_score=0.0,
+            baseline_score=0.0,
+            iterations_run=0,
+            iterations_kept=0,
+            iterations_reverted=0,
+            total_usd_spent=0.0,
+            total_turns=0,
+            branch_disposition="not-created (eval backend not configured — EXPERIMENTAL)",
+            history=(),
+            elapsed_seconds=elapsed,
+        )
     if baseline.all_pass:
         elapsed = time.monotonic() - start_time
         return ImproveSkillResult(
@@ -242,6 +270,17 @@ def improve_skill(
         try:
             new_result = runner(args.skill_name, _eval_subset_ids_from_args(args))
             new_score = new_result.score
+        except EvalBackendNotConfiguredError:
+            # Defensive: a runner that scored the baseline reports the backend is
+            # gone mid-loop. This is NOT a transient eval failure — continuing
+            # would burn budget on a runner that can never score. Back out the
+            # uneval'd commit and exit honestly; no exception escapes.
+            revert_last_iteration(
+                "eval backend not configured — cannot score iteration",
+                cwd=cwd,
+            )
+            exit_reason = ExitReason.REQUIRES_CONFIGURED_BACKEND
+            break
         except Exception:  # noqa: BLE001 — defensive; treat any eval failure as score=0
             new_score = 0.0
             new_result = None

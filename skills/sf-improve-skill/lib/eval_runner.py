@@ -6,12 +6,15 @@ Pure-logic helpers for the eval primitive:
   - `filter_tests_by_ids(spec, subset_ids)` — apply --eval-subset
   - `compute_total_assertions(spec)` — count assertions including trigger + non-trigger
   - `parse_failing_assertion_id(s)` — decode `<test-id>:<idx>` strings
-  - `run_evals(...)` — main entry; STUBBED pending Skill Creator integration
+  - `run_evals(...)` — main entry; raises EvalBackendNotConfiguredError on the
+    default path (the eval-backed loop is EXPERIMENTAL pending a configured backend)
 
 The pure-logic layers are fully tested. The actual subprocess execution
 (invoking Skill Creator's run_eval or our reimplemented LLM-judge path) is
 deferred until the integration choice settles per
-`references/eval-runner.md` §"Integration with Skill Creator".
+`references/eval-runner.md` §"Integration with Skill Creator". Until then the
+default path fails HONESTLY via the typed `EvalBackendNotConfiguredError` so the
+orchestrator can exit cleanly instead of crashing.
 
 Per dotfiles python/coding-style.md: PEP 8, type annotations, frozen dataclasses.
 """
@@ -26,6 +29,25 @@ from pathlib import Path
 from .types import EvalResult
 
 logger = logging.getLogger(__name__)
+
+
+class EvalBackendNotConfiguredError(RuntimeError):
+    """
+    Raised by `run_evals` on the default path: the eval-execution backend has
+    not been configured yet.
+
+    The eval-backed self-improvement loop is EXPERIMENTAL — it needs a real
+    eval backend (Skill Creator's `run_eval` subprocess wrapper, or our own
+    LLM-judge reimplementation) before it can score a skill. Until that
+    integration choice settles (see `references/eval-runner.md` §"Integration
+    with Skill Creator"), the default `run_evals` raises this TYPED error so the
+    orchestrator can catch it and exit honestly with
+    `ExitReason.REQUIRES_CONFIGURED_BACKEND` rather than crash on a bare
+    `NotImplementedError`.
+
+    Subclasses `RuntimeError` so callers that only guard against the broad
+    "eval failed" case still treat it as a runtime failure.
+    """
 
 
 @dataclass(frozen=True)
@@ -271,7 +293,7 @@ def empty_eval_result(reason: str = "") -> EvalResult:
 
 
 # ---------------------------------------------------------------------------
-# Main entry — STUBBED pending Skill Creator integration
+# Main entry — honest fail-fast pending a configured eval backend (EXPERIMENTAL)
 # ---------------------------------------------------------------------------
 
 
@@ -285,21 +307,25 @@ def run_evals(
     """
     Execute the skill's eval suite and return scored results.
 
-    V1 STATUS: STUBBED. The actual execution requires either:
+    V1 STATUS: the eval-backed self-improvement loop is EXPERIMENTAL — it
+    requires a configured eval backend, which is one of:
       (a) Subprocess wrapper around Skill Creator's `run_eval.py` (default plan
           per `references/eval-runner.md`), OR
       (b) Reimplementation against the same eval.json schema with our own
           LLM-judge invocation.
 
-    Both paths are documented in the design doc; neither is yet implemented
-    here because the integration choice depends on whether Skill Creator's
-    runner output format is stable for our parser.
+    Both paths are documented in the design doc; neither is yet wired here
+    because the integration choice depends on whether Skill Creator's runner
+    output format is stable for our parser. Rather than crash on a bare
+    `NotImplementedError`, this default path raises the TYPED
+    `EvalBackendNotConfiguredError` so the orchestrator can catch it and exit
+    honestly with `ExitReason.REQUIRES_CONFIGURED_BACKEND`.
 
     The pure-logic helpers above (`load_eval_spec`, `filter_tests_by_ids`,
     `compute_total_assertions`, `make_failing_assertion_id`,
     `parse_failing_assertion_id`, `empty_eval_result`) are real and tested
     — they ship as load-bearing primitives the actual run_evals() will
-    compose with.
+    compose with once a backend is configured.
 
     Args:
         skill_name: The target skill.
@@ -311,13 +337,15 @@ def run_evals(
         EvalResult.
 
     Raises:
-        NotImplementedError: until the integration choice is settled.
+        EvalBackendNotConfiguredError: always, on the default path — the
+            eval-backed loop is EXPERIMENTAL and requires a configured backend.
     """
-    raise NotImplementedError(
-        "run_evals() execution layer not yet implemented. See "
-        "references/eval-runner.md §'Integration with Skill Creator' for the "
-        "two design paths; the pure-logic helpers in lib/eval_runner.py "
-        "(load_eval_spec, filter_tests_by_ids, compute_total_assertions, "
-        "make_/parse_failing_assertion_id, empty_eval_result) are real and ship "
-        "as composable primitives."
+    raise EvalBackendNotConfiguredError(
+        "run_evals() requires a configured eval backend — the eval-backed "
+        "self-improvement loop is EXPERIMENTAL. See references/eval-runner.md "
+        "§'Integration with Skill Creator' for the two design paths; the "
+        "pure-logic helpers in lib/eval_runner.py (load_eval_spec, "
+        "filter_tests_by_ids, compute_total_assertions, make_/parse_failing_"
+        "assertion_id, empty_eval_result) are real and ship as composable "
+        "primitives. Inject a working eval_runner to exercise the loop."
     )

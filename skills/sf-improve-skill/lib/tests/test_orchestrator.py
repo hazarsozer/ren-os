@@ -22,7 +22,7 @@ import pytest
 
 from ..__init__ import improve_skill
 from ..budget import load_pricing_table
-from ..eval_runner import EvalSpec, EvalTest
+from ..eval_runner import EvalBackendNotConfiguredError, EvalSpec, EvalTest
 from ..types import (
     ApiUsage,
     EvalResult,
@@ -247,21 +247,88 @@ class TestBudgetExhaustion:
 
 
 # ---------------------------------------------------------------------------
+# Default eval-runner: honest fail-fast (no backend configured)
+# ---------------------------------------------------------------------------
+
+
+class TestDefaultEvalRunnerRequiresBackend:
+    def test_default_eval_runner_exits_requires_configured_backend(self, tmp_skill_repo: Path):
+        """DEFAULT path (no injected eval_runner): the baseline eval raises the
+        typed EvalBackendNotConfiguredError, which the orchestrator catches and
+        converts into a clean REQUIRES_CONFIGURED_BACKEND exit. This is the F2b
+        fix — the default path must fail HONESTLY, not crash. No exception escapes."""
+        proposer = MagicMock()  # must never be reached — baseline fails first
+
+        result = improve_skill(
+            _basic_args(),
+            skills_root=tmp_skill_repo / "skills",
+            eval_runner=None,  # use the DEFAULT (raises EvalBackendNotConfiguredError)
+            change_proposer=proposer,
+            cwd=tmp_skill_repo,
+        )
+
+        assert result.exit_reason == ExitReason.REQUIRES_CONFIGURED_BACKEND
+        assert result.iterations_run == 0
+        assert result.branch_name == ""  # no branch created — nothing ran
+        assert result.final_score == 0.0
+        assert result.baseline_score == 0.0
+        assert "not-created" in result.branch_disposition
+        proposer.assert_not_called()
+
+    def test_in_loop_backend_loss_exits_cleanly(self, tmp_skill_repo: Path):
+        """Defensive: a runner that scores the baseline but then raises
+        EvalBackendNotConfiguredError mid-loop is backed out and the loop exits
+        cleanly with REQUIRES_CONFIGURED_BACKEND — no exception escapes, and the
+        loop does NOT burn budget chasing a runner that can never score."""
+        runner = MagicMock(
+            side_effect=[
+                _make_eval_result(0.5, total=2, failing=("t1:1",)),  # baseline OK
+                EvalBackendNotConfiguredError("backend went away mid-loop"),  # in-loop
+            ]
+        )
+        proposer = MagicMock(
+            return_value=(_make_proposed_change(), ApiUsage(100, 50), 1)
+        )
+
+        result = improve_skill(
+            _basic_args(max_iterations=3),
+            skills_root=tmp_skill_repo / "skills",
+            eval_runner=runner,
+            change_proposer=proposer,
+            cwd=tmp_skill_repo,
+        )
+
+        assert result.exit_reason == ExitReason.REQUIRES_CONFIGURED_BACKEND
+        # The uneval'd iteration was backed out; nothing kept.
+        assert result.iterations_kept == 0
+        # A branch WAS created (we entered the loop); it is kept for inspection.
+        assert result.branch_name != ""
+        assert "kept" in result.branch_disposition.lower()
+
+
+# ---------------------------------------------------------------------------
 # Loop body: NotImplementedError from default proposer
 # ---------------------------------------------------------------------------
 
 
 class TestDefaultProposerNotImplemented:
     def test_no_proposer_exits_no_improvement_possible(self, tmp_skill_repo: Path):
-        """Without an injected proposer, the default raises NotImplementedError →
-        orchestrator catches it and exits cleanly with NO_IMPROVEMENT_POSSIBLE."""
+        """With a WORKING (injected) eval runner but no proposer, the default
+        proposer raises NotImplementedError → orchestrator catches it and exits
+        cleanly with NO_IMPROVEMENT_POSSIBLE.
+
+        The injected runner is load-bearing here: now that the DEFAULT eval
+        runner fail-fasts with EvalBackendNotConfiguredError at baseline, the
+        proposer branch is only reachable when a working runner is supplied. The
+        runner returns a non-perfect score (0.5) so baseline doesn't all-pass and
+        the loop body (hence the default proposer) is actually exercised."""
         runner = MagicMock(return_value=_make_eval_result(0.5, total=2, failing=("t1:1",)))
 
         result = improve_skill(
             _basic_args(),
             skills_root=tmp_skill_repo / "skills",
             eval_runner=runner,
-            change_proposer=None,  # use default (stubbed)
+            change_proposer=None,  # use default (stubbed → NotImplementedError)
             cwd=tmp_skill_repo,
         )
 

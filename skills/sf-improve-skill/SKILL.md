@@ -40,7 +40,7 @@ contract:
       - "claude --bare --print --max-budget-usd <N> ... (inner sub-runs for change proposals)"
       - "uv run pytest skills/<skill-name>/eval/ (or equivalent eval runner)"
   completion_conditions:
-    - "Exit reason in {all_assertions_pass, max_iterations_reached, max_budget_reached, max_turns_shadow_reached, user_cancelled, eval_unrunnable, no_improvement_possible}"
+    - "Exit reason in {all_assertions_pass, max_iterations_reached, max_budget_reached, max_turns_shadow_reached, user_cancelled, eval_unrunnable, no_improvement_possible, requires_configured_backend}"
     - "Branch state (kept or squashed-merged) matches the exit-reason policy"
     - "Run summary printed to user"
   output_paths:
@@ -60,6 +60,17 @@ references_on_demand:
 # sf-improve-skill
 
 Layer-2 skill self-improvement per ADR-012. The mechanical realization of Karpathy's "auto-research" pattern applied to a skill's `SKILL.md` body and references. Layer 1 (description optimization for activation reliability) is the Skill Creator's territory; this skill does not touch the description.
+
+> ⚠️ **EXPERIMENTAL — the eval-backed loop requires a configured eval backend.**
+> The Karpathy loop scores each iteration by running the target skill's
+> `eval/eval.json` through an eval backend (Skill Creator's `run_eval` wrapper,
+> or our own LLM-judge path — see `references/eval-runner.md`). That backend is
+> **not yet wired**. Until it is, the **default path fails honestly**: it exits
+> immediately and cleanly with exit reason `requires_configured_backend` (no
+> crash, no branch created, no exception). The full loop is reachable today only
+> by injecting a working `eval_runner` (as the unit tests do). This is the
+> "bike-method" honest default — a deterministic proposer can't meaningfully
+> self-improve a skill, so we don't pretend the default path works.
 
 ## When to use this skill
 
@@ -179,6 +190,7 @@ See `references/git-mechanics.md` for branch / commit / revert / merge details. 
 
 | Failure | Behavior | User-visible |
 |---|---|---|
+| Eval backend not configured (default path, EXPERIMENTAL) | Exit immediately + cleanly; no branch; no exception | "Requires a configured eval backend (EXPERIMENTAL)." → exit reason `requires_configured_backend` |
 | Skill not found | Refuse to start | "Skill `<name>` not found. Run `/skill-creator` to bootstrap." |
 | `eval/eval.json` missing or malformed | Refuse to start | Pointer to ADR-011 schema |
 | Initial eval run errors (not assertion failure — actual test framework error) | Refuse to start | "Fix your evals first." |
