@@ -59,7 +59,7 @@ class CandidateArtifact:
 
     label: SignalLabel
     proposed_title: str  # kebab-case slug
-    proposed_summary: str  # ≤300 chars (matches feed terse cap for consistency)
+    proposed_summary: str  # ≤300 chars
     target_file: str  # relative wiki path
 
 
@@ -92,7 +92,6 @@ class WrapInputs:
     session_notes: tuple[str, ...]  # contents of /sf:note pin file(s)
     cwd: str
     active_project: str | None
-    skip_feed_flag: bool  # from --skip-feed CLI arg
 
 
 @dataclass(frozen=True)
@@ -100,30 +99,18 @@ class WrapResult:
     """
     Final result returned to the user after /sf:wrap completes. The user-
     facing summary is composed from this.
+
+    Solo-first (ADR-031): /sf:wrap consolidates the local wiki only. The former
+    Activity Feed session-end write was removed with the feed module.
     """
 
     wiki_pages_changed: tuple[str, ...]  # paths actually written
     wiki_pages_skipped: tuple[str, ...]  # proposed but user rejected
-    feed_write_attempted: bool
-    feed_write_success: bool
-    feed_write_queued: bool
-    feed_write_violation: str | None
-    feed_write_error: str | None
     context_md_path: str
     next_session_pointer: str  # first ~100 chars of new CONTEXT.md content
     elapsed_seconds: float
+    apply_error: str | None = None  # set when the atomic wiki apply failed (post-rollback)
 
     @property
     def had_signal(self) -> bool:
         return len(self.wiki_pages_changed) > 0 or len(self.wiki_pages_skipped) > 0
-
-
-@dataclass(frozen=True)
-class FormatViolationReport:
-    """Result of pre-validating a task_brief before calling feed."""
-
-    valid: bool
-    reason: str | None = None  # e.g. "summary contains triple-backtick fence"
-
-    def __bool__(self) -> bool:
-        return self.valid

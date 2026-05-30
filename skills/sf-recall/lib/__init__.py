@@ -1,13 +1,12 @@
 """
 sf-recall library — internal implementation for /sf:recall.
 
-Public entry: `recall(query, *, wiki_root, n_feed_entries) -> RecallResult`.
+Public entry: `recall(query, *, wiki_root, n_hits) -> RecallResult`.
 
 Per references/grep-strategy.md (v1 deterministic grep heuristic).
 
-Feed integration uses feed-2's `feed_read_tail` + `format_entry_one_line`,
-with silent-degrade-on-missing-bootstrap semantics per feed-2's
-read-side asymmetry (reads return empty; only config.handle() can raise).
+Solo-first (ADR-031): recall greps the local wiki only. The former cross-friend
+feed-tail surface was removed with the Activity Feed module.
 """
 
 from __future__ import annotations
@@ -43,7 +42,6 @@ RECENCY_BONUS: Final[float] = 0.5
 RECENCY_DAYS: Final[int] = 30
 
 DEFAULT_N_HITS: Final[int] = 10
-DEFAULT_N_FEED_ENTRIES: Final[int] = 3
 
 
 @dataclass(frozen=True)
@@ -63,12 +61,11 @@ class RecallResult:
 
     query: str
     wiki_hits: tuple[RecallHit, ...]
-    feed_lines: tuple[str, ...]  # pre-formatted via feed.format_entry_one_line; may be empty
     truncated: bool              # True if more wiki hits existed than n_hits cap
 
     @property
     def has_results(self) -> bool:
-        return bool(self.wiki_hits) or bool(self.feed_lines)
+        return bool(self.wiki_hits)
 
 
 def tokenize_query(query: str) -> list[str]:
@@ -251,64 +248,20 @@ def grep_wiki(
     return hits, truncated
 
 
-def fetch_feed_tail(*, n_feed_entries: int) -> tuple[str, ...]:
-    """
-    Attempt to fetch + format recent feed entries from OTHER friends.
-
-    Silent degradation per feed-2's read-side contract:
-      - If feed.config.handle() raises HandleNotConfiguredError or
-        SchemaVersionMismatchError → return ().
-      - If feed_read_tail returns [] (not bootstrapped, no entries) → return ().
-      - Otherwise: format each entry via format_entry_one_line and return tuple.
-
-    Args:
-        n_feed_entries: Cap on entries to fetch.
-
-    Returns:
-        Tuple of formatted line strings (may be empty).
-    """
-    try:
-        # Late import keeps recall() unit-testable without feed installed
-        from feed import feed_read_tail, format_entry_one_line
-        from feed.config import (
-            HandleNotConfiguredError,
-            SchemaVersionMismatchError,
-            handle as get_handle,
-        )
-    except ImportError:
-        logger.debug("feed module unavailable; returning empty feed_lines")
-        return ()
-
-    try:
-        own_handle = get_handle()
-        recent = feed_read_tail(n=n_feed_entries, exclude_handle=own_handle)
-        return tuple(format_entry_one_line(e) for e in recent)
-    except (HandleNotConfiguredError, SchemaVersionMismatchError):
-        return ()
-    except Exception as exc:  # noqa: BLE001 — defensive: never let feed errors break recall
-        logger.warning("Feed read failed silently: %s", exc)
-        return ()
-
-
 def recall(
     query: str,
     *,
     wiki_root: Path,
     n_hits: int = DEFAULT_N_HITS,
-    n_feed_entries: int = DEFAULT_N_FEED_ENTRIES,
-    fetch_feed: bool = True,
     now: datetime | None = None,
 ) -> RecallResult:
     """
-    Top-level entry point. Walks the wiki + optionally surfaces feed tail.
+    Top-level entry point. Walks the wiki and returns ranked hits.
 
     Args:
         query: Free-text query.
         wiki_root: Path to the wiki directory.
         n_hits: Cap on wiki hits returned.
-        n_feed_entries: Cap on feed entries fetched.
-        fetch_feed: If False, skip the feed-tail attempt entirely (used in tests
-            that don't have feed installed and want zero feed side effects).
         now: Override "now" (for tests / determinism).
 
     Returns:
@@ -321,12 +274,10 @@ def recall(
         raise ValueError("Empty query. Usage: /sf:recall <query>")
 
     wiki_hits, truncated = grep_wiki(wiki_root, query, n_hits=n_hits, now=now)
-    feed_lines = fetch_feed_tail(n_feed_entries=n_feed_entries) if fetch_feed else ()
 
     return RecallResult(
         query=query.strip(),
         wiki_hits=wiki_hits,
-        feed_lines=feed_lines,
         truncated=truncated,
     )
 
@@ -335,11 +286,9 @@ __all__ = [
     "STOP_WORDS",
     "KIND_MULTIPLIERS",
     "DEFAULT_N_HITS",
-    "DEFAULT_N_FEED_ENTRIES",
     "RecallHit",
     "RecallResult",
     "tokenize_query",
     "grep_wiki",
-    "fetch_feed_tail",
     "recall",
 ]

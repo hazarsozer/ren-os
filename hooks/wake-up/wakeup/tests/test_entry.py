@@ -173,13 +173,14 @@ class TestWikiRootResolution:
 
 
 class TestPluginRootResolution:
-    """Regression guard for C2 (REVIEW-v1.0-preship.md §C2 / ADR-030).
+    """Regression guard for plugin-root resolution (C2 lineage, ADR-030 / ADR-031).
 
-    The pre-fix hook only added its own dir (hooks/wake-up/, which resolves
-    `wakeup` but NOT `feed`) to sys.path, so `from feed import …` failed in the
-    installed runtime and the feed integration silently degraded. _plugin_root()
-    must resolve the plugin root (where feed/ is a real dir post-Crucible) via
-    $CLAUDE_PLUGIN_ROOT, falling back to Path(__file__).resolve().parents[2].
+    hooks.json invokes the hook by absolute path with cwd set to the session's
+    project and no PYTHONPATH, so a plugin-root-relative top-level package (now
+    `lib.sf_paths`, after the feed module's removal) is importable only if
+    _plugin_root() resolves the plugin root and _ensure_plugin_root_on_path()
+    inserts it. _plugin_root() prefers $CLAUDE_PLUGIN_ROOT, falling back to
+    Path(__file__).resolve().parents[2].
     """
 
     # parents[2] of hooks/wake-up/sf-wake-up.py == plugin root (repo root).
@@ -190,12 +191,12 @@ class TestPluginRootResolution:
         assert _WAKE_UP._plugin_root() == Path("/cache/plugins/startup-framework")
 
     def test_fallback_to_parents2(self, monkeypatch):
-        """Unset env → parents[2] resolves to the real plugin root, where feed/
-        actually lives (proves the fallback finds an importable feed)."""
+        """Unset env → parents[2] resolves to the real plugin root, where lib/
+        actually lives (proves the fallback finds an importable lib.sf_paths)."""
         monkeypatch.delenv("CLAUDE_PLUGIN_ROOT", raising=False)
         resolved = _WAKE_UP._plugin_root()
         assert resolved == self.REAL_PLUGIN_ROOT
-        assert (resolved / "feed" / "__init__.py").is_file()
+        assert (resolved / "lib" / "sf_paths.py").is_file()
 
     def test_whitespace_treated_as_unset(self, monkeypatch):
         monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", "   ")

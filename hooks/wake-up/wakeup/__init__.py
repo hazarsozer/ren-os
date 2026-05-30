@@ -10,10 +10,6 @@ Pure-logic functions for assembling the additionalContext payload:
   - truncate_to_budget(sections, max_tokens) → drop oldest signals to fit
   - compose_wake_up_context(...) → orchestrator
 
-The feed-integration layer (read_friends_tails) is INJECTED via the
-fetch_feed_tail callback so the orchestrator stays pure-testable without
-feed module installed.
-
 Per ADR-008: payload target is 3-5K tokens. Hard cap at 5K (~20K chars).
 """
 
@@ -22,7 +18,7 @@ from __future__ import annotations
 import logging
 import os
 from pathlib import Path
-from typing import Callable, Final
+from typing import Final
 
 logger = logging.getLogger(__name__)
 
@@ -46,12 +42,6 @@ MASTER_LOG_BUDGET: Final[int] = 400
 PROJECT_INDEX_BUDGET: Final[int] = 600
 PROJECT_CONTEXT_BUDGET: Final[int] = 600
 PROJECT_LOG_BUDGET: Final[int] = 800
-FRIENDS_ACTIVITY_BUDGET: Final[int] = 1500
-
-
-# Callback signature: returns rendered friends-activity block text + freshness header
-# Returns "" if feed unavailable / not bootstrapped (silent degradation per feed-2 contract)
-FetchFeedTail = Callable[[], str]
 
 
 def estimate_tokens(text: str) -> int:
@@ -182,22 +172,20 @@ def compose_wake_up_context(
     wiki_root: Path,
     source: str = "startup",
     max_tokens: int = DEFAULT_MAX_TOKENS,
-    fetch_feed_tail: FetchFeedTail | None = None,
     dev_root: Path | None = None,
 ) -> str:
     """
     Compose the additionalContext payload for the SessionStart hook.
 
-    Reads master + project wiki sections, applies per-section truncation,
-    optionally appends friends-activity tail. Returns "" if the wiki is
-    inaccessible (graceful degradation; hook still exits 0).
+    Reads master + project wiki sections and applies per-section truncation.
+    Returns "" if the wiki is inaccessible (graceful degradation; hook still
+    exits 0).
 
     Args:
         cwd: Current working directory of the session.
         wiki_root: Wiki root (defaults inferred from env or convention).
         source: SessionStart matcher value ("startup", "compact", etc.).
         max_tokens: Hard token cap.
-        fetch_feed_tail: Optional callable returning the friends-activity block.
         dev_root: Projects root for project detection. If None, resolved via
             resolve_dev_root() (CLAUDE_PLUGIN_OPTION_DEVROOT → ~/Dev).
 
@@ -244,16 +232,6 @@ def compose_wake_up_context(
             sections.append(f"### Recent {project} log")
             sections.append(truncate_text_to_tokens(project_log_tail, PROJECT_LOG_BUDGET))
 
-    # 4. Friends activity (if feed integration available + bootstrapped)
-    if fetch_feed_tail is not None:
-        try:
-            friends_block = fetch_feed_tail()
-        except Exception:  # noqa: BLE001 — silent degradation
-            logger.warning("fetch_feed_tail raised; skipping friends-activity block", exc_info=True)
-            friends_block = ""
-        if friends_block:
-            sections.append(truncate_text_to_tokens(friends_block, FRIENDS_ACTIVITY_BUDGET))
-
     composed = "\n\n".join(s for s in sections if s.strip())
 
     # Final overall cap as a safety net (per-section budgets should sum below this)
@@ -273,8 +251,6 @@ __all__ = [
     "MASTER_LOG_BUDGET",
     "PROJECT_CONTEXT_BUDGET",
     "PROJECT_LOG_BUDGET",
-    "FRIENDS_ACTIVITY_BUDGET",
-    "FetchFeedTail",
     "estimate_tokens",
     "truncate_text_to_tokens",
     "resolve_dev_root",
