@@ -28,6 +28,7 @@ Per ADR-010 (the original promise) + ADR-015 Stage 6 (the install touchpoint) + 
 | `--post-update` | Skip marketplace fetch; assume version is current (called from `/sf:update`) |
 | `--json` | Emit machine-readable JSON instead of the human-readable report |
 | `--section <name>` | Run only one section: `env` / `plugins` / `schemas` / `update` / `backup` |
+| `--permissions` | Run the standalone read-only **permission audit** ("KEYS ON YOUR RING") instead of the status sections — enumerates MCP servers (name + transport + granted tool-keys), tallies `permissions.{allow,deny,ask}`, flags broad grants (bare `Bash`, `mcp__*`), and lists enabled plugins + hooks. Never prints secret/env values. See § Permission audit. |
 
 ## How it works
 
@@ -42,6 +43,8 @@ Four scripts run in parallel (read-only):
 | `scripts/check-backup.sh` | BACKUP | None — reads `.git/config` of `wikiRoot` for remote, last commit time |
 
 The skill body (`SKILL.md`) is the renderer + parallel-fanout orchestrator. Each script outputs a structured fragment; the skill composes the human-readable report.
+
+**On-demand (NOT in the parallel fan-out):** `scripts/check-permissions.sh` powers `--permissions`. It is a standalone read-only audit that prints its own self-contained "KEYS ON YOUR RING" report (not a `KEY|STATUS|VALUE|HINT` fragment), so it runs only when explicitly requested. See § Permission audit.
 
 ## Output format
 
@@ -77,7 +80,28 @@ $ /sf:doctor
                        → Recommend:  /sf:backup --setup <your-private-repo-url>
 
 All systems go.
+
+💡 Run /sf:doctor --permissions to audit which tool-keys are on your ring (keys ≠ instructions).
 ```
+
+## Permission audit (`--permissions`)
+
+`/sf:doctor --permissions` runs `scripts/check-permissions.sh` — a standalone, read-only **"KEYS ON YOUR RING"** audit. It answers one question: *which tool-keys are on your ring?*
+
+**Framing — keys ≠ instructions.** Granting a tool hands Claude a key; it does NOT tell Claude to use it. The audit lists the keys you've handed out; it never claims Claude is using them.
+
+What it reports (all read-only, no network):
+
+- **MCP servers** by name + transport (`stdio`/`http`/`sse`) — global (`~/.claude.json#mcpServers`) and per-project (`projects.*.mcpServers`) — each with its count of explicitly-granted tool-keys (or a note that grants are wildcard-driven / approval-gated).
+- **Permission rules** — `permissions.{allow,deny,ask}` from `~/.claude/settings.json` (+ a `settings.local.json` overlay if present), tallied by tool prefix.
+- **Broad grants** — flags wide-open keys: bare `Bash` (every shell command), `mcp__*` (every tool on every server), and notes server-scoped `mcp__<server>__*` wildcards.
+- **Enabled plugins** (`enabledPlugins` — a dict keyed `<plugin>@<marketplace>`) and **configured hooks** (by event).
+
+**Security.** These config files are mode `0600` and hold secrets (MCP `env` values, HTTP `headers`, OAuth identifiers). The audit reads *structure only* — server names, transports, rule counts, tool prefixes. It NEVER prints an env value, header, command, arg, or token. (`scripts/tests/test_check_permissions.sh` seeds fake tokens and asserts they are absent from the output.)
+
+**Onboarding touchpoint.** `/sf:install` Stage 7 runs `/sf:doctor --permissions` once, so a new friend sees their ring before first real use.
+
+Tolerates every absence: no `settings.local.json`, empty per-project `mcpServers`, missing keys — it still renders a clean report and exits `0`.
 
 ## Contracts with peers
 
@@ -122,3 +146,5 @@ Binary assertions in `eval.json` validate:
 - `--install-mode` skips FRAMEWORK UPDATE
 - `--json` output is valid JSON conforming to `output-schema.json`
 - Crashing any check-script does NOT cause the skill to crash
+- `--permissions` lists every configured MCP server by name + transport, tallies `allow`/`deny`/`ask`, and flags broad grants (bare `Bash`, `mcp__*`)
+- the permission audit NEVER prints secret/env/token values (backed by the hermetic fake-token-absence test) and tolerates all-absent config while exiting `0`
