@@ -38,8 +38,11 @@ set -euo pipefail
 GITHUB_OWNER="hazarsozer"
 STABLE_REPO="sf-marketplace"
 RC_REPO="sf-marketplace-rc"
-COMMIT_NAME="Hazar Sozer"
-COMMIT_EMAIL="hsozer00@gmail.com"
+# Author identity for the orphan release — derived from the maintainer's git
+# config so it matches a GitHub-verified email and links to their profile.
+# (A hardcoded address that isn't on the GitHub account renders as unlinked text.)
+COMMIT_NAME="$(git config user.name 2>/dev/null || echo 'hazarsozer')"
+COMMIT_EMAIL="$(git config user.email 2>/dev/null || echo 'hsozer00@icloud.com')"
 
 # Shippable allowlist — ONLY tracked files under these pathspecs are copied into the
 # snapshot (via `git ls-files`, so untracked local artifacts never ride along — F5).
