@@ -1,19 +1,18 @@
 {
   "name": "sf-install",
-  "description": "Binary-assertion test suite for /sf:install. Covers fresh-machine flow, partial-Stage-2 resume, joiner detection, and the three team-lead pushbacks (always-check Stage 1, additive-diff Stage 5, manual handoff).",
+  "description": "Binary-assertion test suite for /sf:install. Covers fresh-machine flow, partial-Stage-2 resume, abort-and-resume, and the three team-lead pushbacks (always-check Stage 1, additive-diff Stage 5, manual handoff).",
   "schema_version": 1,
   "tests": [
     {
       "id": "fresh-machine-complete",
       "fixture": "fixtures/fresh-machine.yaml",
       "prompt": "/sf:install",
-      "expected_output_summary": "All 7 stages complete; doctor green; identity + feed populated; walkthrough acknowledged.",
+      "expected_output_summary": "All 7 stages complete; doctor green; identity populated; walkthrough acknowledged.",
       "trigger_test": true,
       "binary_assertions": [
         "After the run, $XDG_STATE_HOME/sf/install-state.json exists and validates against install-state.schema.json",
         "completed_stages contains all of [1, 2, 3, 4, 5, 6, 7]",
         "stage_artifacts.2.plugins_installed has exactly 6 entries matching the pinned-version registry",
-        "stage_artifacts.3.feed_state is either 'first-friend-bootstrap' or 'joiner-clone' (never 'inaccessible' on a passing fixture)",
         "stage_artifacts.4.identity_path points at ~/.startup-framework/wiki/identity.md and that file exists",
         "stage_artifacts.5.wiki_root points at an existing wiki with index.md, log.md, identity.md, LICENSES.md present",
         "stage_artifacts.6.doctor_passed is true",
@@ -34,22 +33,6 @@
         "No /plugin install command is issued for context-mode, claude-mem, or superpowers during the run",
         "After successful run, stage_artifacts.2.plugins_installed has all 6 entries",
         "After successful run, completed_stages contains 2 (and 3..7)"
-      ]
-    },
-    {
-      "id": "joiner-detect-existing-feed",
-      "fixture": "fixtures/joiner.yaml",
-      "prompt": "/sf:install",
-      "expected_output_summary": "Stage 3 detects existing feed; skips bootstrap; clones; surfaces other friends' handles. Stage 5 still creates a fresh wiki (no group history inheritance per ADR-017).",
-      "trigger_test": false,
-      "binary_assertions": [
-        "Stage 3 calls feed.detect_repo_state exactly once",
-        "feed.detect_repo_state returns mode='joiner-clone'",
-        "Stage 3 calls feed.clone_existing (NOT feed.bootstrap_first_friend)",
-        "Stage 3 surfaces existing_handles from the detection result to the friend",
-        "Stage 5 creates a fresh wiki skeleton (the friend's local wiki/ did not pre-exist)",
-        "No file under the friend's wiki contains content copied from any other friend's wiki",
-        "Stage 3's mini-handle prompt rejects any handle that appears in existing_handles"
       ]
     },
     {
@@ -93,18 +76,18 @@
       ]
     },
     {
-      "id": "abort-and-resume-on-feed-fail",
+      "id": "abort-and-resume-on-plugin-fail",
       "fixture": "fixtures/fresh-machine.yaml",
       "prompt": "/sf:install",
-      "expected_output_summary": "Stage 3 feed.clone_existing fails (simulated 403); install aborts cleanly; re-run resumes at Stage 3.",
+      "expected_output_summary": "A Stage 2 plugin install fails (simulated network timeout); install aborts cleanly; re-run resumes at Stage 2 without reinstalling earlier plugins.",
       "trigger_test": false,
       "binary_assertions": [
-        "Mid-run, feed.clone_existing raises a recoverable error (simulated 403)",
-        "Orchestrator appends an entry to state.abort_log with stage=3 and a short error_summary",
-        "completed_stages does NOT include 3",
-        "Skill output to the friend includes 're-run /sf:install to resume from Stage 3'",
+        "Mid-run, a /plugin install raises a recoverable error (simulated network timeout)",
+        "Orchestrator appends an entry to state.abort_log with stage=2 and a short error_summary",
+        "completed_stages does NOT include 2",
+        "Skill output to the friend includes 're-run /sf:install to resume from Stage 2'",
         "Exit code is non-zero",
-        "Re-run after the simulated 403 is cleared: install resumes at Stage 3, does NOT re-execute Stages 1-2's plugin installs",
+        "Re-run after the timeout is cleared: install resumes at Stage 2, does NOT reinstall the already-installed plugins",
         "Re-run completes all 7 stages and final checkpoint shows all stages done"
       ]
     },
@@ -119,14 +102,13 @@
         "If confirmed, $XDG_STATE_HOME/sf/install-state.json is deleted",
         "No file under ~/.startup-framework/wiki/ is modified or deleted",
         "No plugin is uninstalled",
-        "Activity Feed clone at ~/.startup-framework/activity-feed/ is unchanged",
         "Subsequent /sf:install (without --reset) starts from Stage 1 as if fresh"
       ]
     }
   ],
   "notes": [
     "Pushback tests P1/P2/P3 are explicit because team-lead called them out by name. They're load-bearing for the install contract.",
-    "Fixtures simulate environment + filesystem state + feed responses. The eval harness substitutes the simulated feed for real GitHub I/O.",
+    "Fixtures simulate environment + filesystem state. The eval harness runs the install procedure against simulated probes and a stubbed plugin registry — no real network I/O.",
     "Trigger-test true on fresh-machine-complete only — the other tests exercise downstream behavior and shouldn't double-count toward Layer 1 activation."
   ]
 }

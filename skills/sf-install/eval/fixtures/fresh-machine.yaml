@@ -3,7 +3,7 @@
 #
 # Consumed by eval.json tests: fresh-machine-complete, pushback-p1-stage1-always-check,
 # pushback-p2-stage5-additive-diff, pushback-p3-no-auto-invoke,
-# abort-and-resume-on-feed-fail, reset-command.
+# abort-and-resume-on-plugin-fail, reset-command.
 
 fixture_name: fresh-machine
 framework_version: "1.0.0"
@@ -32,13 +32,12 @@ filesystem:
 
 simulated_friend_responses:
   stage_3:
-    repo_url: "eval-friends/activity-feed"
-    handle: "eval-friend"
     frontend_design_choice: "later"
     ralph_acknowledged: true
   stage_4_interview:
     # Delegated to sf-interview; this fixture lets that skill's own fixtures handle the detail.
-    # The orchestrator only cares: did identity.md get written and did upsert_identity get called?
+    # The orchestrator only cares: did identity.md get written (handle in frontmatter)?
+    handle: "eval-friend"
     short: |
       eval-friend, balanced, casual-no-emoji, ideation phase, python+typescript,
       vercel+supabase, postgresql+supabase, ai-ml + backend skills, frontend + design growth,
@@ -59,19 +58,6 @@ simulated_plugin_registry:
     context7:             { version: "0.9.2", marketplace: "claude-plugins-official", id: "context7@claude-plugins-official" }
     claude-md-management: { version: "1.0.1", marketplace: "claude-plugins-official", id: "claude-md-management@claude-plugins-official" }
 
-simulated_feed:
-  detect_repo_state:
-    mode: "first-friend-bootstrap"
-    has_other_friends: false
-    existing_handles: []
-    needs_init: true
-    local_path: "~/.startup-framework/activity-feed"
-  bootstrap_first_friend_result: success
-  upsert_identity_result:
-    committed: true
-    sha: "deadbeef0000111122223333444455556666"
-    message: "add identities/eval-friend.md"
-
 simulated_doctor_report:
   passed: true
   checks:
@@ -87,7 +73,6 @@ simulated_doctor_report:
     - { name: "wiki: index.md", status: pass, detail: "" }
     - { name: "wiki: log.md", status: pass, detail: "" }
     - { name: "wiki: identity.md", status: pass, detail: "schema_version=1" }
-    - { name: "feed: git remote", status: pass, detail: "" }
   warnings: []
   remediation_hints: []
 
@@ -99,5 +84,3 @@ expected_terminal_state:
     - ~/.startup-framework/wiki/log.md
     - ~/.startup-framework/wiki/identity.md
     - ~/.startup-framework/wiki/LICENSES.md
-    - ~/.startup-framework/activity-feed/identities/eval-friend.md
-    - ~/.startup-framework/activity-feed/eval-friend.log.md

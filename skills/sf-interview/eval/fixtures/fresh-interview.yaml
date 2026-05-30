@@ -1,7 +1,7 @@
 # Fixture: fresh /sf:interview — no existing identity.md, no prior install state.
 #
 # Consumed by eval.json tests: fresh-interview-complete, handle-validation,
-# skipped-question-handling, feed-unreachable-graceful-degradation.
+# skipped-question-handling.
 
 fixture_name: fresh-interview
 framework_version: "1.0.0"
@@ -73,23 +73,5 @@ simulated_friend_responses:
   q17-phase: "ideation"
   q18-contribution: "I plan and prototype quickly; bias toward AI/backend in friend-group splits."
 
-simulated_feed:
-  detect_repo_state:
-    mode: "first-friend-bootstrap"
-    existing_handles: []
-    needs_init: true
-  upsert_identity_response:
-    committed: true
-    sha: "deadbeef0123456789"
-    message: "add identities/hazar.md"
-
 expected_writes_after_run:
   - ~/.startup-framework/wiki/identity.md
-
-expected_delegated_calls:
-  - call: feed.upsert_identity
-    args:
-      handle: hazar
-      public_identity_md_summary: |
-        Frontmatter contains handle, name, phase, strong_skills, clouds, contact.timezone.
-        Body contains intro from Q2 and contribution from Q18, in that order.

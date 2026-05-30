@@ -2,8 +2,8 @@
 name: sf-install
 description: |
   Use when the friend invokes /sf:install. Orchestrates the 7-stage
-  onboarding flow per ADR-015: environment check, required plugin install,
-  Activity Feed setup + conditional plugins, identity bootstrap, wiki
+  onboarding flow per ADR-015 (solo-first per ADR-031): environment check,
+  required plugin install, conditional plugins, identity bootstrap, wiki
   skeleton bootstrap, doctor verification, and first-session walkthrough.
   Idempotent — re-running resumes from the last successful checkpoint at
   $XDG_STATE_HOME/sf/install-state.json. Never overwrites the friend's wiki;
@@ -15,15 +15,13 @@ license: MIT
 contract:
   required_outputs:
     - "All 6 required plugins installed at pinned versions"
-    - "Activity Feed local clone present + first push (bootstrap) OR clone + identities entry added (joiner)"
     - "~/.startup-framework/wiki/ skeleton present (or additive-diff'd onto existing wiki)"
     - "~/.startup-framework/wiki/identity.md populated via sf-interview"
-    - "<feed>/identities/<handle>.md upserted via sf-feed"
     - "Green /sf:doctor verification at end"
     - "Idempotent checkpoint file with all 7 stages marked completed"
   budgets:
     turns: 80                       # 7 stages × ~10 turns each; generous slack
-    files_written: 30               # state file + wiki skeleton + LICENSES + identity + feed files
+    files_written: 30               # state file + wiki skeleton + LICENSES + identity
     duration_seconds: 1200          # 20 min target; allow up to 20 min for plugin install network
   permissions:
     read:
@@ -37,11 +35,8 @@ contract:
     execute:
       - "claude auth status"
       - "claude auth login"
-      - "gh auth status"
+      - "gh auth status"          # soft requirement, used by /sf:doctor's update check
       - "gh auth login"
-      - "gh repo view"
-      - "gh repo create"
-      - "gh repo clone"
       - "node --version"
       - "git --version"
       - "/plugin marketplace add"
@@ -53,7 +48,6 @@ contract:
   output_paths:
     - "$XDG_STATE_HOME/sf/install-state.json"
     - "~/.startup-framework/wiki/**"
-    - "~/.startup-framework/activity-feed/**"
 
 tags: [onboarding, install, orchestrator]
 related_skills: [sf-interview, sf-bootstrap-project, sf-doctor, sf-update]
@@ -62,7 +56,6 @@ references_required:
 references_on_demand:
   - "references/stage-1-environment.md"
   - "references/stage-2-required-plugins.md"
-  - "references/stage-3-activity-feed.md"
   - "references/stage-3-conditional-plugins.md"
   - "references/stage-4-identity-bootstrap.md"
   - "references/stage-5-wiki-bootstrap.md"
@@ -123,7 +116,7 @@ Each stage reference doc is self-contained. SKILL.md is the orchestrator; per-st
 |---|---|---|
 | 1 | Environment check | `references/stage-1-environment.md` |
 | 2 | Required plugin install (6 plugins, ordered per ADR-010) | `references/stage-2-required-plugins.md` |
-| 3 | Activity Feed detect + setup + mini-handle prompt | `references/stage-3-activity-feed.md` + `references/stage-3-conditional-plugins.md` |
+| 3 | Conditional plugins (opt-in, e.g. Frontend Design for UI work) | `references/stage-3-conditional-plugins.md` |
 | 4 | Identity bootstrap via `sf-interview` skill | `references/stage-4-identity-bootstrap.md` |
 | 5 | Master wiki skeleton bootstrap (additive-diff) | `references/stage-5-wiki-bootstrap.md` |
 | 6 | `/sf:doctor` verification | `references/stage-6-doctor-verification.md` (lifecycle owns `/sf:doctor` itself) |
@@ -134,14 +127,13 @@ Each stage reference doc is self-contained. SKILL.md is the orchestrator; per-st
 - `/sf:install` — default; resume from checkpoint.
 - `/sf:install --reset` — delete checkpoint; do NOT touch wiki or plugins; next `/sf:install` runs from scratch. Friend must explicitly confirm.
 - `/sf:install --redo-stage <N>` — force re-execution of stage N; checkpoint records `completed_stages` is recomputed by removing N and any stage that depended on N's outputs.
-- `/sf:install --remove-activity-feed` — Stage 3 cleanup path for leavers (per ADR-020); doesn't run other stages.
 
 ### 4. Print a final summary
 
 ```
 ✓ Stage 1 — Environment ready
 ✓ Stage 2 — 6/6 required plugins installed at pinned versions
-✓ Stage 3 — Activity Feed connected (joiner-clone, 3 other friends visible)
+✓ Stage 3 — Conditional plugins resolved (none requested)
 ✓ Stage 4 — Identity bootstrapped (handle: <handle>)
 ✓ Stage 5 — Wiki skeleton at ~/.startup-framework/wiki/
 ✓ Stage 6 — /sf:doctor passed
@@ -155,7 +147,7 @@ Ready. Try /sf:wake-up to start your first session.
 - **Don't run stages out of order.** Even resume runs them sequentially; resume only changes which stage is the entry point.
 - **Don't auto-fix things Stage 1 detected as missing.** Print the remediation; let the friend act; exit if they don't have the dependency. Auto-installing `gh` or `node` is out of scope.
 - **Don't touch the friend's existing wiki content.** Stage 5 is additive-diff with explicit approval. Per ADR-017 + team-lead P2.
-- **Don't pre-install Frontend Design or Ralph.** These are conditional (Stage 3's second half asks); auto-installing them violates ADR-006's curation.
+- **Don't pre-install Frontend Design or Ralph.** These are conditional (Stage 3 asks); auto-installing them violates ADR-006's curation.
 - **Don't write to the wiki from Stages 1, 2, 3, 6, or 7.** Only Stages 4 and 5 write wiki content. Other stages write to the install-state checkpoint only.
 - **Don't bypass the additive-diff approval prompt in Stage 5**, even if the diff is "just one new .gitkeep file". Friend's wiki is sacred per ADR-017.
 
@@ -163,7 +155,6 @@ Ready. Try /sf:wake-up to start your first session.
 
 - Fresh-machine test: 7 stages complete; checkpoint shows all stages done; doctor green
 - Partial-stage-2 resume: re-running after 3-of-6 plugins installed picks up from plugin #4; doesn't reinstall #1–3
-- Joiner test: Stage 3 detects existing feed, skips bootstrap, clones; Stage 5 still runs fresh wiki creation
 - Pushback P1 verification: Stage 1 checks always execute even after a green checkpoint
 - Pushback P2 verification: Stage 5 against an existing wiki shows additive diff and writes nothing unless approved
 - Pushback P3 verification: post-install does NOT auto-invoke any other slash command; friend is the trigger

@@ -54,7 +54,7 @@ Concretely, the rule is encoded as a per-stage `always_recheck` boolean in this 
 stage_recheck:
   1: true    # env-state may have changed since last run
   2: false   # plugin install is durable
-  3: false   # feed clone is durable
+  3: false   # conditional-plugin choices are durable
   4: false   # identity.md is durable
   5: false   # wiki skeleton is durable
   6: true    # cheap, drives Stage 7 decision
@@ -93,7 +93,7 @@ When a stage raises an UNrecoverable error (e.g. orchestrator bug, schema malfor
 **No automatic rollback.** Per plan §2.2:
 
 - A failed Stage 2 plugin install leaves successfully-installed prior plugins in place. Re-run resumes from the failed plugin.
-- A failed Stage 3 feed bootstrap leaves any cloned files on disk. Re-run detects them via `feed.detect_repo_state` returning `mode: already-cloned`.
+- A failed Stage 3 conditional-plugin install leaves any already-installed conditional plugin in place. Re-run skips it and re-offers the remaining conditionals.
 - A failed Stage 5 wiki bootstrap leaves any written skeleton files in place. Re-run sees them via the loader's `copy_if_missing` rule.
 
 The single exception: state file corruption. If the orchestrator can't persist the state file, the run aborts immediately with a clear filesystem-level error; no further stages execute.
@@ -103,9 +103,8 @@ The single exception: state file corruption. If the orchestrator can't persist t
 | Command | Behavior |
 |---|---|
 | `/sf:install` | Default. Resume from checkpoint. |
-| `/sf:install --reset` | Friend confirms; delete checkpoint file; do NOT touch wiki, plugins, feed, or identity. Next `/sf:install` runs from scratch. |
+| `/sf:install --reset` | Friend confirms; delete checkpoint file; do NOT touch wiki, plugins, or identity. Next `/sf:install` runs from scratch. |
 | `/sf:install --redo-stage <N>` | Remove N (and any subsequent completed_stages that depended on N's outputs — table below). Persist. Resume from N. |
-| `/sf:install --remove-activity-feed` | Run Stage 3's cleanup path only; remove local clone, mark stage-3 incomplete. Used by leavers per ADR-020. |
 
 ### --redo-stage dependency table
 
@@ -115,7 +114,7 @@ Removing stage N forces recomputation of these downstream stages:
 |---|---|
 | 1 | 1 (and re-runs all subsequent, since env may have changed) |
 | 2 | 2, 6 (doctor re-checks) |
-| 3 | 3, 4 (identity push depends on feed), 6 |
+| 3 | 3, 6 (doctor re-checks conditional plugins) |
 | 4 | 4, 6 |
 | 5 | 5, 6 |
 | 6 | 6 |

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # framework-version.sh — print the installed framework version to stdout.
 #
-# Resolution chain (same as feed.config.framework_version() per feed-2 coord 2026-05-28):
+# Resolution chain (same as lib.sf_paths.framework_version()):
 #   1. $CLAUDE_PLUGIN_OPTION_FRAMEWORK_VERSION (env)         — explicit override
 #   2. $CLAUDE_PLUGIN_ROOT/.claude-plugin/plugin.json#version — canonical install
 #   3. Fallback "1.0.0"                                       — only if both above fail
@@ -15,7 +15,7 @@
 #   - /sf:update's state machine (current-version source of truth)
 #   - any future bash consumer needing "what version am I?"
 #
-# Python consumers should use feed.config.framework_version() instead — same chain,
+# Python consumers should use lib.sf_paths.framework_version() instead — same chain,
 # zero shell-out cost on hot paths.
 
 set -uo pipefail

@@ -3,11 +3,13 @@
 These tests pin the **contracts** sf-install consumes from peer skills. They're not unit tests of any Python implementation (sf-install is a SKILL.md, not a Python module) — they're executable specifications that:
 
 1. Walk the 7-stage `/sf:install` procedure stage-by-stage via a thin simulator.
-2. Exercise that procedure against fakes for `feed`, `distribution`, and `lifecycle`.
+2. Exercise that procedure against fakes for `distribution` and `lifecycle`.
 3. Assert the procedure makes the right calls in the right order with the right arguments.
 4. **Fail loudly when a peer's real impl drifts from the documented API.**
 
-When a real Claude Code session runs `/sf:install`, the AI follows the steps in `skills/sf-install/SKILL.md` + the per-stage references. The AI's calls into `feed`, `distribution`, `lifecycle` should match what the simulator does. If they don't, this harness is the canary.
+When a real Claude Code session runs `/sf:install`, the AI follows the steps in `skills/sf-install/SKILL.md` + the per-stage references. The AI's calls into `distribution`, `lifecycle` should match what the simulator does. If they don't, this harness is the canary.
+
+> Solo-first (ADR-031): the Activity Feed layer was removed. There is no `feed` fake and no joiner test — Stage 3 is conditional-plugins-only and Stage 4 writes only the local `wiki/identity.md`.
 
 ## Run
 
@@ -28,12 +30,11 @@ integration/
 ├── conftest.py               — pytest fixtures (tmp wiki + checkpoint path, fakes registry)
 ├── fakes/
 │   ├── __init__.py
-│   ├── feed_fake.py          — implements the feed contract surface sf-install uses
 │   ├── distribution_fake.py  — pinned-version registry + LICENSES regen surface
 │   └── lifecycle_fake.py     — doctor.report() shape stub
 ├── simulator.py              — InstallSimulator that walks the 7 stages
 ├── test_fresh_machine.py
-├── test_joiner.py
+├── test_daily_loop_e2e.py
 ├── test_idempotent_reinstall.py
 ├── test_stage5_additive_diff.py
 ├── test_pushback_p1_always_check.py
@@ -47,19 +48,19 @@ integration/
 | Test file | Scenario | Pushback / contract it pins |
 |---|---|---|
 | `test_fresh_machine.py` | Fresh-machine install, all 7 stages run to completion | End-to-end happy path |
-| `test_joiner.py` | Existing Activity Feed; Stage 3 detects + clones; no bootstrap | feed.detect_repo_state + feed.clone_existing |
+| `test_daily_loop_e2e.py` | Install → interview → wake-up → note → wrap against REAL peer impls | First-day journey behavior (solo-first) |
 | `test_idempotent_reinstall.py` | Re-run on a fully completed install — all stages no-op | Resume-protocol idempotency |
 | `test_stage5_additive_diff.py` | Framework v+1 ships a new template; Stage 5 surfaces additive diff | P2 (additive-only, no overwrite) |
 | `test_pushback_p1_always_check.py` | Stage 1 probes run even when checkpoint marks completed | P1 (always-check) |
 | `test_pushback_p2_additive_only.py` | Stage 5 against existing wiki never overwrites | P2 (additive-only) |
 | `test_pushback_p3_no_auto_invoke.py` | Stage 7 acknowledgment doesn't trigger any other slash command | P3 (manual handoff) |
-| `test_contract_drift.py` | Each peer fake's call site uses the documented signature | All cross-team contracts |
+| `test_contract_drift.py` | Each peer fake's call site uses the documented signature | Cross-team contracts (distribution + lifecycle) |
 
 ## Fakes
 
-Each fake re-implements the **contract surface** sf-install consumes. Where peer skills export their own `_fake` variants (e.g. `feed.feed_write_session_start_fake`, `feed.feed_write_session_end_fake`, `feed.feed_read_friends_tails_fake` — the writer split that landed in feed-2's refactor), we use them directly. Where they don't, we hand-roll fakes that match the locked API.
+Each fake re-implements the **contract surface** sf-install consumes. Where peer skills export their own `_fake` variants, we use them directly. Where they don't, we hand-roll fakes that match the locked API.
 
-sf-install itself doesn't call the writer functions (those are lifecycle-2's `/sf:wrap` territory) — sf-install's feed surface is `feed_detect_repo_state` / `feed_bootstrap_first_friend` / `feed_clone_existing` / `feed_upsert_identity` / `rename_handle`, all of which are unchanged across the refactor.
+After the solo-first pivot (ADR-031), sf-install's only peer surfaces are `distribution` (pinned-version registry + LICENSES regen) and `lifecycle` (`doctor.report()`). There is no `feed` surface — the Activity Feed module was removed.
 
 If a peer changes their real API and forgets to update their `_fake`, `test_contract_drift.py` catches it: the test imports the peer's real symbol AND the fake, compares signatures, and fails on mismatch.
 
@@ -67,7 +68,7 @@ If a peer changes their real API and forgets to update their `_fake`, `test_cont
 
 1. Decide which scenario / contract you're pinning.
 2. Use the `InstallSimulator` fixture from `conftest.py` so you don't re-walk the stages by hand.
-3. Configure the fakes' simulated responses via their `inject_*` methods (e.g. `feed_fake.inject_detect_response(...)`).
+3. Configure the fakes' simulated responses via their `inject_*` methods.
 4. Run the simulator; assert on its public `state` + the fakes' `calls` recordings.
 5. If the new test exposes a contract gap (something sf-install needs but no fake models), update both the fake AND `references/stage-<N>-*.md` to document the assumption.
 

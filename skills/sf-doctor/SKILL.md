@@ -63,7 +63,6 @@ $ /sf:doctor
   Superpowers:          ✅ v5.1.0
   ...
   Hooks registered:     ✅ SessionStart (sf-wake-up)
-  Activity Feed:        ✅ <org>/activity-feed (last sync 12 min ago)
 
 ▶ SCHEMA VERSIONS  (per ADR-027)
   identity.md:        1  (current: 1)   ✅
@@ -91,11 +90,6 @@ All systems go.
 
 - `check-plugins.sh` greps `hooks/hooks.json` for the literal substring documented in `references/hook-id-registry.md`. Current substring: `sf-wake-up.py` (the script name lifecycle ships per their CC_API_NOTES.md + hooks.json's `$comment`).
 - lifecycle's wake-up hook MUST keep that script name (or coordinate a substring update via a PR to `hook-id-registry.md`).
-
-### With sf-feed (`feed-2`)
-
-- `check-plugins.sh` shells out to `feed/scripts/status.sh` (or the path feed-2 ultimately publishes) and parses JSON: `{remote, last_sync_iso, push_ok}`. If feed-2's path differs, update via PR to `hook-id-registry.md` § Activity Feed.
-- If `userConfig.activityFeedUrl` is unset, the Activity Feed line in PLUGINS is reported as `⏭️ disabled (activityFeedUrl not set)`.
 
 ### With sf-distribution (self)
 

@@ -71,7 +71,6 @@ simulated_plugin_registry:
 
 # Stages 3-7 continue normally after Stage 2 finishes
 simulated_friend_responses: { inherits: fresh-machine }
-simulated_feed: { inherits: fresh-machine }
 simulated_doctor_report: { inherits: fresh-machine }
 
 expected_resume_behavior:

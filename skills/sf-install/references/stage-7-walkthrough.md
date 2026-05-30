@@ -17,7 +17,7 @@ Per ADR-015 Stage 7. Last stage of `/sf:install`. One-shot per checkpoint.
 
   Per-project:
     /sf:bootstrap-project <kebab-name>   — new project sub-wiki
-    /sf:catch-up [<project>] [--days N]  — see what's happening in the friend group
+    /sf:catch-up [<project>] [--days N]  — digest of recent activity across your wiki
 
   Identity + setup:
     /sf:interview      — re-run identity questions; refresh sections or full
@@ -28,9 +28,8 @@ Per ADR-015 Stage 7. Last stage of `/sf:install`. One-shot per checkpoint.
   Skill authoring:
     /sf:improve-skill <skill-name>  — Karpathy loop on a skill you've written
 
-  Backup + leave:
+  Backup:
     /sf:backup          — push wiki to a private git remote
-    /sf:install --remove-activity-feed   — leaver cleanup
 
   CLAUDE.md hygiene (from claude-md-management plugin):
     /revise-claude-md   — per-project CLAUDE.md cleanup; complements /sf:wrap
@@ -46,8 +45,8 @@ Per ADR-015 amendment + ADR-009 amendment:
   /revise-claude-md → cleans up the current project's CLAUDE.md (project-level config)
   Both are useful; they target different layers.
 
-/sf:catch-up vs reading the Activity Feed by hand:
-  /sf:catch-up      → 30-day digest, by project, by friend; readable summary
+/sf:catch-up vs reading the wiki log by hand:
+  /sf:catch-up      → 30-day digest, by project; readable summary
   hand-read         → fine for spelunking, slower for daily orientation
 
 /sf:improve-skill vs editing SKILL.md by hand:
@@ -113,5 +112,5 @@ Append `7` to `state.completed_stages`. Print the final install summary (see SKI
 
 - ADR-015 Stage 7
 - ADR-009 amendment (/revise-claude-md complements /sf:wrap)
-- ADR-020 (`/sf:catch-up` for joiner orientation)
+- ADR-031 (solo-first pivot) — `/sf:catch-up` digests your own wiki, not a shared feed
 - team-lead pushback P3 (manual handoff, no auto-invoke)

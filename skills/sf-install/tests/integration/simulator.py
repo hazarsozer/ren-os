@@ -25,7 +25,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from .fakes.feed_fake import FeedFake, FeedWriteResult, RepoState
 from .fakes.distribution_fake import DistributionFake
 from .fakes.lifecycle_fake import LifecycleFake
 
@@ -101,12 +100,14 @@ class InstallSimulator:
         wiki_root        — friend's wiki root (typically ~/.startup-framework/wiki/)
         checkpoint_path  — $XDG_STATE_HOME/sf/install-state.json
         skeleton_root    — repo's wiki-skeleton/templates/
-        feed             — FeedFake
         distribution    — DistributionFake
         lifecycle        — LifecycleFake
         env              — EnvSnapshot for Stage 1
-        repo_url         — Activity Feed repo URL the friend would type
         answers          — interview answers for Stage 4
+
+    Solo-first (ADR-031): the Activity Feed was removed, so there is no `feed`
+    fake or `repo_url` — Stage 3 is now conditional-plugins-only and Stage 4
+    writes the local identity only (no feed push/rename).
 
     Public state after run:
         self.state                — the would-be install-state.json dict
@@ -135,21 +136,17 @@ class InstallSimulator:
         wiki_root: Path,
         checkpoint_path: Path,
         skeleton_root: Path,
-        feed: FeedFake,
         distribution: DistributionFake,
         lifecycle: LifecycleFake,
         env: EnvSnapshot | None = None,
-        repo_url: str = "eval-friends/activity-feed",
         answers: InterviewAnswers | None = None,
     ) -> None:
         self.wiki_root = wiki_root
         self.checkpoint_path = checkpoint_path
         self.skeleton_root = skeleton_root
-        self.feed = feed
         self.distribution = distribution
         self.lifecycle = lifecycle
         self.env = env or EnvSnapshot()
-        self.repo_url = repo_url
         self.answers = answers or InterviewAnswers()
 
         self.state: dict[str, Any] = self._load_or_init_state()
@@ -223,75 +220,47 @@ class InstallSimulator:
         self.stage_log.append((2, "ok", f"{len(installed)} plugins"))
 
     def _run_stage_3(self) -> None:
-        """Activity Feed setup + mini-handle prompt + conditional plugins."""
+        """Conditional plugins (opt-in, e.g. frontend-design for UI work).
+
+        Solo-first (ADR-031): the former Activity Feed setup + mini-handle
+        collision prompt were removed with the feed module. The handle is set in
+        Stage 4 (interview); with no shared feed there are no cross-friend handle
+        collisions to guard against.
+        """
         if 3 in self.state["completed_stages"]:
-            self.stage_log.append((3, "skip", "feed already set up"))
+            self.stage_log.append((3, "skip", "conditional plugins already handled"))
             return
 
-        state = self.feed.feed_detect_repo_state(self.repo_url, None)
-
-        if state.auth_error:
-            auth = self.feed.check_auth()
-            if not auth.authed:
-                raise StageAbort(f"feed auth failed: {auth.reason}")
-            state = self.feed.feed_detect_repo_state(self.repo_url, None)
-
-        # 3.3 mini-handle prompt — friend picks; validate against existing handles.
-        proposed_handle = self.answers.handle
-        if proposed_handle in state.existing_handles:
-            # Re-prompt would happen in real install; for the simulator we surface
-            # this as an abort so tests can assert on collision detection.
-            raise StageAbort(
-                f"handle collision: '{proposed_handle}' in existing_handles "
-                f"{list(state.existing_handles)}"
-            )
-
-        if state.mode == "first-friend-bootstrap":
-            self.feed.feed_bootstrap_first_friend(state.local_path, proposed_handle, self.repo_url)
-        elif state.mode == "joiner-clone":
-            self.feed.feed_clone_existing(self.repo_url, state.local_path, proposed_handle)
-        # "already-cloned" → no-op
-
+        # Conditional plugins are opt-in (UI-only); none requested by default.
         self.state["stage_artifacts"]["3"] = {
-            "activity_feed_url": self.repo_url,
-            "feed_state": state.mode,
-            "local_clone_path": str(state.local_path),
-            "proposed_handle": proposed_handle,
+            "conditional_plugins_installed": [],
         }
         self._mark_complete(3)
-        self.stage_log.append((3, "ok", f"feed mode={state.mode}"))
+        self.stage_log.append((3, "ok", "no conditional plugins requested"))
 
     def _run_stage_4(self) -> None:
-        """Identity bootstrap via sf-interview."""
+        """Identity bootstrap via sf-interview.
+
+        Solo-first (ADR-031): writes wiki/identity.md only — no Activity Feed
+        identity push or handle rename.
+        """
         identity_path = self.wiki_root / "identity.md"
         if 4 in self.state["completed_stages"] and identity_path.exists():
             self.stage_log.append((4, "skip", "identity.md already present"))
             return
 
-        proposed = self.state["stage_artifacts"].get("3", {}).get("proposed_handle")
         final_handle = self.answers.handle
-
-        if proposed and proposed != final_handle:
-            renamed = self.feed.rename_handle(proposed, final_handle)
-            if not renamed and proposed != final_handle:
-                self.stage_log.append((4, "warn", "rename_handle returned False"))
 
         # Render local identity.md (mocking sf-interview's output).
         identity_path.parent.mkdir(parents=True, exist_ok=True)
         identity_path.write_text(self._render_identity_md(), encoding="utf-8")
 
-        # Render public summary + delegate push.
-        public_md = self._render_public_summary_md()
-        result: FeedWriteResult = self.feed.feed_upsert_identity(final_handle, public_md)
-
         self.state["stage_artifacts"]["4"] = {
             "identity_path": str(identity_path),
             "handle_written": final_handle,
-            "public_summary_pushed": result.pushed,
-            "feed_push_warning": result.error if not result.success else None,
         }
         self._mark_complete(4)
-        self.stage_log.append((4, "ok", f"handle={final_handle}, pushed={result.pushed}"))
+        self.stage_log.append((4, "ok", f"handle={final_handle}"))
 
     def _run_stage_5(self) -> None:
         """Master wiki skeleton bootstrap. Additive-only (P2).
@@ -462,37 +431,6 @@ class InstallSimulator:
             f"# About {a.name}\n\n{a.intro_paragraph}\n"
             f"\n## What I contribute\n\n{a.contribution_paragraph}\n"
         )
-
-    def _render_public_summary_md(self) -> str:
-        a = self.answers
-        lines = ["---"]
-        lines.append(f"handle: {a.handle}")
-        lines.append(f'name: "{a.name}"')
-        lines.append(f"phase: {a.phase}")
-        if a.strong_skills:
-            lines.append(f"strong_skills: {list(a.strong_skills)!r}")
-        if a.clouds:
-            lines.append(f"clouds: {list(a.clouds)!r}")
-        if a.contact_timezone or a.contact_working_hours:
-            lines.append("contact:")
-            if a.contact_timezone:
-                lines.append(f'  timezone: "{a.contact_timezone}"')
-            if a.contact_working_hours:
-                lines.append(f'  working_hours: "{a.contact_working_hours}"')
-        lines.append("---")
-        lines.append("")
-        lines.append(f"# {a.handle}")
-        lines.append("")
-        if a.phase != "other":
-            lines.append(f"**Phase:** {a.phase}")
-            lines.append("")
-        lines.append(a.intro_paragraph)
-        lines.append("")
-        lines.append("## What I contribute")
-        lines.append("")
-        lines.append(a.contribution_paragraph)
-        lines.append("")
-        return "\n".join(lines)
 
     # ------------------------------------------- P3 enforcement helpers
 

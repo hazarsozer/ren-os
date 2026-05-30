@@ -93,18 +93,8 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "activity_feed_url": { "type": "string" },
-            "feed_state": {
-              "type": "string",
-              "enum": ["first-friend-bootstrap", "joiner-clone", "already-cloned"]
-            },
-            "local_clone_path": { "type": "string" },
-            "proposed_handle": {
-              "type": ["string", "null"],
-              "pattern": "^[a-z][a-z0-9-]*$",
-              "description": "The handle collected in Stage 3's mini-prompt. Surfaced to /sf:interview Q1 in Stage 4."
-            },
             "frontend_design_installed": { "type": "boolean" },
+            "frontend_design_dismissed": { "type": "boolean" },
             "ralph_loop_documented_only": { "type": "boolean" }
           }
         },
@@ -116,9 +106,7 @@
             "handle_written": {
               "type": "string",
               "pattern": "^[a-z][a-z0-9-]*$"
-            },
-            "public_summary_pushed": { "type": "boolean" },
-            "feed_push_warning": { "type": ["string", "null"] }
+            }
           }
         },
         "5": {

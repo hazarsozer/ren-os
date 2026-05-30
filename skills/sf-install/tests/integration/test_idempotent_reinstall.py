@@ -14,7 +14,6 @@ def test_reinstall_after_completion_is_safe(
     tmp_wiki: Path,
     tmp_checkpoint: Path,
     skeleton_root: Path,
-    feed_fake,
     distribution_fake,
     lifecycle_fake,
 ) -> None:
@@ -23,7 +22,6 @@ def test_reinstall_after_completion_is_safe(
         wiki_root=tmp_wiki,
         checkpoint_path=tmp_checkpoint,
         skeleton_root=skeleton_root,
-        feed=feed_fake,
         distribution=distribution_fake,
         lifecycle=lifecycle_fake,
     )
@@ -31,7 +29,6 @@ def test_reinstall_after_completion_is_safe(
     assert first.state["completed_stages"] == [1, 2, 3, 4, 5, 6, 7]
 
     # Reset call recorders; fresh fakes for the second run with same checkpoint.
-    second_feed = type(feed_fake)()
     second_distribution = type(distribution_fake)()
     second_lifecycle = type(lifecycle_fake)()
 
@@ -39,7 +36,6 @@ def test_reinstall_after_completion_is_safe(
         wiki_root=tmp_wiki,
         checkpoint_path=tmp_checkpoint,
         skeleton_root=skeleton_root,
-        feed=second_feed,
         distribution=second_distribution,
         lifecycle=second_lifecycle,
     )
@@ -55,46 +51,41 @@ def test_reinstall_after_completion_is_safe(
     )
 
 
-def test_reinstall_does_not_call_feed_bootstrap_again(
+def test_reinstall_skips_completed_stage_3(
     tmp_wiki: Path,
     tmp_checkpoint: Path,
     skeleton_root: Path,
     distribution_fake,
     lifecycle_fake,
 ) -> None:
-    from integration.fakes.feed_fake import FeedFake
-
-    first_feed = FeedFake()
+    """Stage 3 (conditional plugins) is idempotent — a re-run marks it skipped,
+    not re-executed."""
     first = InstallSimulator(
         wiki_root=tmp_wiki,
         checkpoint_path=tmp_checkpoint,
         skeleton_root=skeleton_root,
-        feed=first_feed,
         distribution=distribution_fake,
         lifecycle=lifecycle_fake,
     )
     first.run()
-    assert "bootstrap_first_friend" in first_feed.call_names()
+    assert 3 in first.state["completed_stages"]
 
-    second_feed = FeedFake()
     second = InstallSimulator(
         wiki_root=tmp_wiki,
         checkpoint_path=tmp_checkpoint,
         skeleton_root=skeleton_root,
-        feed=second_feed,
-        distribution=distribution_fake,
-        lifecycle=lifecycle_fake,
+        distribution=type(distribution_fake)(),
+        lifecycle=type(lifecycle_fake)(),
     )
     second.run()
-    # Stage 3 should skip — bootstrap_first_friend MUST NOT be called again.
-    assert "bootstrap_first_friend" not in second_feed.call_names()
+    # Stage 3 re-run is a skip (already complete), not a re-execute.
+    assert any(n == 3 and status == "skip" for (n, status, _detail) in second.stage_log)
 
 
 def test_reinstall_preserves_checkpoint_completion_set(
     tmp_wiki: Path,
     tmp_checkpoint: Path,
     skeleton_root: Path,
-    feed_fake,
     distribution_fake,
     lifecycle_fake,
 ) -> None:
@@ -102,7 +93,6 @@ def test_reinstall_preserves_checkpoint_completion_set(
         wiki_root=tmp_wiki,
         checkpoint_path=tmp_checkpoint,
         skeleton_root=skeleton_root,
-        feed=feed_fake,
         distribution=distribution_fake,
         lifecycle=lifecycle_fake,
     )
@@ -114,7 +104,6 @@ def test_reinstall_preserves_checkpoint_completion_set(
         wiki_root=tmp_wiki,
         checkpoint_path=tmp_checkpoint,
         skeleton_root=skeleton_root,
-        feed=type(feed_fake)(),
         distribution=type(distribution_fake)(),
         lifecycle=type(lifecycle_fake)(),
     )

@@ -22,7 +22,7 @@ Call the loader with:
 - **Manifest**: `wiki-skeleton/manifest.yaml` profile `master`
 - **Target root**: `~/.startup-framework/wiki/`
 - **Placeholder bindings**:
-  - `{{handle}}` ← `state.stage_artifacts.4.handle_written` (or `state.stage_artifacts.3.proposed_handle` if Stage 4 hasn't run yet; resume cases)
+  - `{{handle}}` ← `state.stage_artifacts.4.handle_written` (Stage 4 runs before Stage 5; the handle is set in the interview and lives in identity.md frontmatter)
   - `{{name}}` ← friend's display name from `identity.md` (if present); else "friend" with a warning
   - `{{today}}` ← ISO YYYY-MM-DD
   - `{{framework_version}}` ← `state.framework_version`
@@ -91,7 +91,6 @@ Stage 5 — Wiki at ~/.startup-framework/wiki/ already exists.
 
 - **Never overwrites an existing file.** No flag, no force mode, no implicit upgrade. (Team-lead P2 / load-bearing.)
 - Doesn't rewrite `identity.md`. Stage 4 owns the identity write; Stage 5 only acknowledges its presence.
-- Doesn't push to the Activity Feed. That's Stage 4's domain.
 - Doesn't seed the wiki with framework-developer content. Per ADR-017.
 
 ## Edge cases

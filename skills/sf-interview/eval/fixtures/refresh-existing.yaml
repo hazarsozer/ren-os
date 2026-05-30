@@ -45,10 +45,6 @@ filesystem:
     body_summary: |
       Five sections populated from prior interview on 2026-05-29.
 
-  - path: ~/.startup-framework/activity-feed/identities/hazar.md
-    kind: file
-    note: "Public summary from prior interview; will only re-upsert if public-subset fields change."
-
 install_state:
   proposed_handle: "hazar"   # carries forward from last install
 
@@ -58,24 +54,11 @@ simulated_friend_responses:
     name: "Hazar"
     handle: "hazar"          # unchanged
   # Friend defaults through most questions; changes only:
-  q6-response-length: "terse"   # was balanced; now terse — PRIVATE field, no feed sync
-  q17-phase: "building"         # was ideation; PUBLIC subset member — triggers feed sync
+  q6-response-length: "terse"   # was balanced; now terse
+  q17-phase: "building"         # was ideation; now building
   # All other questions accept default (current value).
 
   approval: "yes"
 
-simulated_feed:
-  upsert_identity_response:
-    committed: true
-    sha: "feedface0987654321"
-    message: "update identities/hazar.md"
-
 expected_writes_after_run:
   - ~/.startup-framework/wiki/identity.md   # updated date + working_style + phase
-
-expected_delegated_calls:
-  - call: feed.upsert_identity
-    args:
-      handle: hazar
-      public_identity_md_summary: |
-        Reflects new phase 'building'. Other public-subset fields unchanged.

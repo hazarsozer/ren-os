@@ -11,5 +11,4 @@ _No learnings yet — skill is freshly authored. As friends run `/sf:interview` 
 - _Question wording that confused friends_
 - _AskUserQuestion cap mitigations that felt awkward in practice (cascade depth, pagination breaks)_
 - _Re-run defaults that ended up wrong (e.g. "I wish current values weren't auto-defaulted, I wanted to reaffirm")_
-- _Public-subset choices friends edited manually after every interview (signal that the subset is wrong)_
 - _Emoji-respect bugs (the eval covers the common case; surprises live here)_

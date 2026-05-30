@@ -37,7 +37,6 @@ Stage 6 expects sf-doctor to verify at minimum:
 - Hooks registered in expected order per ADR-010 (Context Mode → claude-mem → wake-up)
 - `ANTHROPIC_API_KEY` + Upstash key accessible (re-check Stage 1)
 - Wiki at `~/.startup-framework/wiki/` exists with frontmatter-valid `index.md`, `log.md`, `identity.md`
-- Activity Feed at `~/.startup-framework/activity-feed/` exists with valid git remote
 - `identity.md` schema_version matches current framework
 - `LICENSES.md` is up-to-date (regenerated this run; see 6.3)
 
@@ -95,38 +94,6 @@ This is informational only — the friend already chose to symlink their config 
 
 If `~/.claude/` is a real directory (not a symlink), the info-log line is suppressed.
 
-### 6.5 Sf-feed integration via status.sh
-
-Sf-feed ships `skills/activity-feed/scripts/status.sh` that emits a JSON payload:
-
-```json
-{
-  "remote": "<repo-url>",
-  "last_sync_iso": "<ISO>",
-  "push_ok": true,
-  "pending_commit_count": 0,
-  "consecutive_push_failures": 0,
-  "local_path": "<path>",
-  "auth_ok": true,
-  "auth_reason": "",
-  "schema_version_expected": 1
-}
-```
-
-Stage 6 invokes it during doctor verification; the result feeds into sf-doctor's `DoctorResult.checks` (sf-distribution owns the assembly). The friend-facing summary line includes feed status only if the JSON parses successfully; otherwise the line is suppressed and a warning logged in the orchestrator's abort_log.
-
-If `consecutive_push_failures > 3`, surface a warning even if everything else is green:
-
-```
-⚠ Activity Feed push has failed 4 consecutive times. Consider running
-  `cd ~/.startup-framework/activity-feed/ && git push` manually to see
-  the underlying error.
-```
-
-This prevents silent "feed is broken but install passed" scenarios.
-
-`SchemaVersionMismatchError` from `feed.config.handle()` (raised when `wiki/identity.md` schema_version doesn't match feed's expected) surfaces here as a Stage 6 check failure with the standardized remediation text feed-2 has already wired: "run /sf:update to migrate your wiki to the current schema."
-
 ### 6.5 Capture outcomes
 
 ```json
@@ -149,7 +116,7 @@ Stage 6 — /sf:doctor verification:
   ✓ 6/6 plugins at pinned versions
   ✓ hooks registered in expected order
   ✓ env vars set
-  ✓ wiki + activity-feed paths valid
+  ✓ wiki path valid
   ✓ identity.md schema current
   ✓ LICENSES.md regenerated (2 plugins under ELv2 — see file for SaaS caveats)
 
@@ -162,7 +129,6 @@ If `doctor_passed: false`, surface the failing checks + remediation hints; abort
 
 - Doesn't run the same checks Stage 1 ran (auth, gh, node). Sf-doctor handles re-checks at its own discretion; Stage 6 trusts sf-doctor's coverage.
 - Doesn't try to fix what sf-doctor flagged. Remediation is the friend's call.
-- Doesn't push anything to the Activity Feed.
 
 ## Edge cases
 

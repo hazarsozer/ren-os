@@ -1,6 +1,6 @@
 # Fixture: friend chooses emoji-free communication style. Skill must respect
-# that choice consistently — in identity.md body, public summary, AND progress
-# messages to the friend during the interview.
+# that choice consistently — in identity.md body AND progress messages to the
+# friend during the interview.
 #
 # Consumed by eval.json test "emoji-free-respect".
 
@@ -55,23 +55,12 @@ simulated_friend_responses:
   q17-phase: "building"
   q18-contribution: "Skeptical reviewer; surfaces over-engineering early."
 
-simulated_feed:
-  detect_repo_state:
-    mode: "first-friend-bootstrap"
-    existing_handles: []
-    needs_init: true
-  upsert_identity_response:
-    committed: true
-    sha: "0000111122223333"
-    message: "add identities/test-friend.md"
-
 expected_writes_after_run:
   - ~/.startup-framework/wiki/identity.md
 
 assertion_emphasis:
   - "communication_style frontmatter value contains 'no-emoji' substring"
   - "Markdown body has zero emoji codepoints"
-  - "Public summary rendered for feed has zero emoji codepoints"
   - "Skill's own user-facing prompts during the interview avoided emoji once Q7 was answered (or earlier, if SKILL.md sets a no-emoji default for the interview itself)"
 
 note: |

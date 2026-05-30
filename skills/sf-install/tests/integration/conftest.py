@@ -5,7 +5,6 @@ Provides:
     skeleton_root      — Path to wiki-skeleton/templates/
     tmp_wiki           — a clean temporary wiki root per test
     tmp_checkpoint     — the install-state.json path per test
-    feed_fake          — FeedFake instance per test
     distribution_fake  — DistributionFake instance per test
     lifecycle_fake     — LifecycleFake instance per test
     simulator          — InstallSimulator wired up with the fakes
@@ -31,7 +30,6 @@ if str(_TESTS_DIR) not in sys.path:
     sys.path.insert(0, str(_TESTS_DIR))
 
 
-from integration.fakes.feed_fake import FeedFake  # noqa: E402
 from integration.fakes.distribution_fake import DistributionFake  # noqa: E402
 from integration.fakes.lifecycle_fake import LifecycleFake  # noqa: E402
 from integration.simulator import InstallSimulator  # noqa: E402
@@ -67,11 +65,6 @@ def tmp_checkpoint(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
-def feed_fake() -> FeedFake:
-    return FeedFake()
-
-
-@pytest.fixture
 def distribution_fake() -> DistributionFake:
     return DistributionFake()
 
@@ -86,7 +79,6 @@ def simulator(
     tmp_wiki: Path,
     tmp_checkpoint: Path,
     skeleton_root: Path,
-    feed_fake: FeedFake,
     distribution_fake: DistributionFake,
     lifecycle_fake: LifecycleFake,
 ) -> InstallSimulator:
@@ -94,7 +86,6 @@ def simulator(
         wiki_root=tmp_wiki,
         checkpoint_path=tmp_checkpoint,
         skeleton_root=skeleton_root,
-        feed=feed_fake,
         distribution=distribution_fake,
         lifecycle=lifecycle_fake,
     )

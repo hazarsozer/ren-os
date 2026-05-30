@@ -1,13 +1,13 @@
 {
   "name": "sf-interview",
-  "description": "Binary-assertion test suite for /sf:interview. Covers fresh-bootstrap, refresh on existing identity, emoji-free style respect, handle validation, and public-summary subset correctness.",
+  "description": "Binary-assertion test suite for /sf:interview. Covers fresh-bootstrap, refresh on existing identity, emoji-free style respect, and handle validation.",
   "schema_version": 1,
   "tests": [
     {
       "id": "fresh-interview-complete",
       "fixture": "fixtures/fresh-interview.yaml",
       "prompt": "/sf:interview",
-      "expected_output_summary": "All 18 questions asked; identity.md written with full frontmatter; public summary pushed.",
+      "expected_output_summary": "All 18 questions asked; identity.md written with full frontmatter.",
       "trigger_test": true,
       "binary_assertions": [
         "identity.md exists at ~/.startup-framework/wiki/identity.md after the run",
@@ -16,9 +16,7 @@
         "phase value is one of: ideation, building, shipping, other",
         "All 18 question IDs are accounted for: either values are present OR the ID appears in skipped_questions",
         "identity.md file size is less than 5120 bytes",
-        "The markdown body has the 5 required H2 sections (Background, Working style, Tech preferences, Strong opinions, What I contribute)",
-        "feed.upsert_identity was called exactly once with handle and a rendered public_md",
-        "The public_md sent to feed is a strict frontmatter subset of local identity.md (no fields in public that aren't in local)"
+        "The markdown body has the 5 required H2 sections (Background, Working style, Tech preferences, Strong opinions, What I contribute)"
       ]
     },
     {
@@ -32,9 +30,7 @@
         "Skill offers at least 4 branch options matching: full, sections, fields, cancel",
         "If branch=cancel, identity.md modification time is NOT updated",
         "If branch=full and friend approves the diff, updated date is rewritten to today and other fields reflect new answers",
-        "If branch=full and friend declines the diff, NO file changes happen (no write, no feed push)",
-        "If only working_style changes during refresh, feed.upsert_identity is NOT called (working_style is not in the public subset)",
-        "If handle changes during refresh, the skill EITHER calls feed.rename_handle(old, new) OR warns about orphaned identities/<old>.md"
+        "If branch=full and friend declines the diff, NO file changes happen (no write)"
       ]
     },
     {
@@ -46,7 +42,6 @@
       "binary_assertions": [
         "Frontmatter communication_style value contains the substring 'no-emoji'",
         "Markdown body contains zero Unicode characters in the Emoticon, Pictographs, Transport, or Misc-Symbols code blocks",
-        "Public summary rendered for feed also contains zero emoji characters",
         "Skill output / progress messages to the friend during the interview also contain zero emoji characters"
       ]
     },
@@ -76,24 +71,10 @@
         "Markdown body's 'Strong opinions + non-goals' section is present but only contains the TDD framing from Q15 (no Q16 content)",
         "Re-running /sf:interview detects skipped questions and offers to ask them again as part of a refresh"
       ]
-    },
-    {
-      "id": "feed-unreachable-graceful-degradation",
-      "fixture": "fixtures/fresh-interview.yaml",
-      "prompt": "/sf:interview",
-      "expected_output_summary": "Feed push fails (simulated network error); local identity write still succeeds.",
-      "trigger_test": false,
-      "binary_assertions": [
-        "identity.md is written at ~/.startup-framework/wiki/identity.md even though feed push failed",
-        "Skill output contains a warning mentioning 'feed unreachable' OR equivalent friendly message",
-        "Skill output mentions retry guidance (e.g. 'will retry on next /sf:wrap or /sf:interview')",
-        "Exit status is 0 (interview is the source of truth; feed sync is best-effort)"
-      ]
     }
   ],
   "notes": [
     "Tests with trigger_test=true also verify the SKILL.md description correctly activates on the prompt (per ADR-012 Layer 1).",
-    "All assertions are binary. Subjective quality (e.g. 'is the interview pleasant?') is out of scope for eval.json per ADR-011.",
-    "Fixtures include simulated feed responses (success / collision / network failure) so the test harness can exercise the upsert flow without hitting real GitHub."
+    "All assertions are binary. Subjective quality (e.g. 'is the interview pleasant?') is out of scope for eval.json per ADR-011."
   ]
 }
