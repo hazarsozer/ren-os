@@ -3,7 +3,7 @@
   "name": "startup-framework",
   "displayName": "Startup Framework",
   "version": "1.0.0",
-  "description": "Per-friend wiki + curated stack + Activity Feed + self-improving skills. The plugin's source-of-truth version lives in this field; the marketplace entry omits version to avoid drift (per CC docs, plugin.json wins silently when both are set).",
+  "description": "Per-friend wiki + curated stack + self-improving skills. The plugin's source-of-truth version lives in this field; the marketplace entry omits version to avoid drift (per CC docs, plugin.json wins silently when both are set).",
   "author": {
     "name": "Hazar Sozer",
     "email": "hsozer00@gmail.com"
@@ -32,19 +32,6 @@
       "title": "Projects root directory",
       "description": "Where your code projects live (e.g. ~/Dev, ~/code, ~/work). The wake-up hook uses this to detect which project you're in and inject that project's wiki context. Default: ~/Dev.",
       "default": "${HOME}/Dev",
-      "required": false
-    },
-    "activityFeedUrl": {
-      "type": "string",
-      "title": "Activity Feed repo URL",
-      "description": "The shared private GitHub repo for cross-friend session reports (e.g. your-group/activity-feed). Set during /sf:install Stage 3. Leave blank to disable Activity Feed integration.",
-      "required": false
-    },
-    "activityFeedLocalClone": {
-      "type": "directory",
-      "title": "Activity Feed local clone path",
-      "description": "Local path where the Activity Feed repo is cloned. Default: ~/.startup-framework/activity-feed/. Read by /sf:wrap to append + push, read by /sf:wake-up to pull + summarize.",
-      "default": "${HOME}/.startup-framework/activity-feed",
       "required": false
     },
     "snapshotRetain": {

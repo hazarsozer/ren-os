@@ -211,27 +211,6 @@ class TestGrepWiki:
 
 
 # ---------------------------------------------------------------------------
-# fetch_feed_tail — silent degradation
-# ---------------------------------------------------------------------------
-
-
-class TestFetchFeedTail:
-    """Tests run without setting up a feed bootstrap → must degrade silently."""
-
-    def test_no_identity_returns_empty(self, monkeypatch):
-        """If get_handle() raises HandleNotConfiguredError, we return ()."""
-        # Don't actually exercise feed; just verify the signature works under no setup.
-        # Since our real /sf:wrap dev environment hasn't bootstrapped identity, the
-        # actual import path raises HandleNotConfiguredError which we silently swallow.
-        from ..__init__ import fetch_feed_tail
-        # No-bootstrap state → empty tuple, no exception leak
-        result = fetch_feed_tail(n_feed_entries=3)
-        assert result == () or isinstance(result, tuple)
-        # The key invariant: no exception bubbles up
-        # (whether the tuple is empty or populated depends on the test env's feed state)
-
-
-# ---------------------------------------------------------------------------
 # recall — top-level orchestration
 # ---------------------------------------------------------------------------
 
@@ -239,26 +218,25 @@ class TestFetchFeedTail:
 class TestRecall:
     def test_empty_query_raises(self, tmp_path: Path):
         with pytest.raises(ValueError, match="Empty query"):
-            recall("", wiki_root=tmp_path, fetch_feed=False)
+            recall("", wiki_root=tmp_path)
         with pytest.raises(ValueError, match="Empty query"):
-            recall("   ", wiki_root=tmp_path, fetch_feed=False)
+            recall("   ", wiki_root=tmp_path)
 
     def test_returns_result_object(self, sample_wiki: Path):
-        result = recall("postgres", wiki_root=sample_wiki, fetch_feed=False)
+        result = recall("postgres", wiki_root=sample_wiki)
         assert isinstance(result, RecallResult)
         assert result.query == "postgres"
         assert len(result.wiki_hits) >= 1
-        assert result.feed_lines == ()  # fetch_feed=False
 
     def test_has_results_property(self, sample_wiki: Path):
-        result = recall("postgres", wiki_root=sample_wiki, fetch_feed=False)
+        result = recall("postgres", wiki_root=sample_wiki)
         assert result.has_results
 
         # Use tokens that don't appear anywhere in the fixture (the previous
         # "totally-not-there" had "totally" which legitimately matches
         # `unrelated.md` containing "totally different" — word-boundary
         # matching still finds it, correctly).
-        result = recall("xyzzy quux frobnitz", wiki_root=sample_wiki, fetch_feed=False)
+        result = recall("xyzzy quux frobnitz", wiki_root=sample_wiki)
         assert not result.has_results
 
     def test_read_only_no_modifications(self, sample_wiki: Path, tmp_path: Path):
@@ -268,7 +246,7 @@ class TestRecall:
             p: hashlib.sha256(p.read_bytes()).hexdigest()
             for p in sample_wiki.rglob("*.md")
         }
-        recall("postgres", wiki_root=sample_wiki, fetch_feed=False)
+        recall("postgres", wiki_root=sample_wiki)
         after = {
             p: hashlib.sha256(p.read_bytes()).hexdigest()
             for p in sample_wiki.rglob("*.md")
@@ -276,11 +254,11 @@ class TestRecall:
         assert before == after, "recall() modified wiki files"
 
     def test_query_is_stripped(self, sample_wiki: Path):
-        result = recall("  postgres  ", wiki_root=sample_wiki, fetch_feed=False)
+        result = recall("  postgres  ", wiki_root=sample_wiki)
         assert result.query == "postgres"  # whitespace stripped
 
     def test_immutable_result(self, sample_wiki: Path):
-        result = recall("postgres", wiki_root=sample_wiki, fetch_feed=False)
+        result = recall("postgres", wiki_root=sample_wiki)
         with pytest.raises(Exception):
             result.query = "modified"  # type: ignore[misc]
 

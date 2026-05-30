@@ -23,6 +23,7 @@
 #               Reusable as a pre-tag gate (see docs/SHIP_CHECKLIST.md §5).
 #
 # Guards (any failure = non-zero exit, loud message):
+#   0. no local build artifacts (__pycache__/.pytest_cache/*.pyc) or wiki/ in snapshot (F5)
 #   1. no PLACEHOLDER-ORG anywhere in the snapshot
 #   2. assert-absent: NONE of the maintainer-only paths leak into the snapshot
 #      (this guard is the actual ADR-019 enforcement — it must never silently pass)
@@ -40,19 +41,20 @@ RC_REPO="sf-marketplace-rc"
 COMMIT_NAME="Hazar Sozer"
 COMMIT_EMAIL="hsozer00@gmail.com"
 
-# Shippable allowlist — ONLY these are copied into the snapshot.
-# Dirs are copied whole (their per-module tests/ ride along — harmless); the docs/
-# entries are individual files so the rest of docs/ (maintainer-only) never ships.
+# Shippable allowlist — ONLY tracked files under these pathspecs are copied into the
+# snapshot (via `git ls-files`, so untracked local artifacts never ride along — F5).
+# Dir pathspecs match all tracked files beneath them (their per-module tests/ ride
+# along — harmless); the docs/ entries are individual files so the rest of docs/
+# (maintainer-only) never ships.
 ALLOWLIST=(
   ".claude-plugin"
   "hooks"
   "skills"
-  "feed"
+  "lib"
   "wiki-skeleton"
   "README.md"
   "CHANGELOG.md"
   "LICENSES.md"
-  "docs/ACTIVITY_FEED.md"
   "docs/RECOVERY.md"
 )
 
@@ -148,11 +150,36 @@ cleanup() { [[ -n "${SNAP:-}" && -d "$SNAP" ]] && rm -rf "$SNAP"; }
 # Keep the snapshot on a real (non-dry) build so the maintainer can inspect + push it.
 if (( DRY_RUN )); then trap cleanup EXIT; fi
 
+# Build the snapshot from TRACKED files only (git ls-files), filtered through the
+# allowlist (F5). Untracked/ignored local artifacts (__pycache__, .pytest_cache,
+# *.pyc) are never tracked, so they CANNOT ride along the way `cp -r` did.
 for entry in "${ALLOWLIST[@]}"; do
-  [[ -e "$entry" ]] || die "allowlist entry missing from repo: $entry"
-  cp -r --parents "$entry" "$SNAP/"
+  git ls-files --error-unmatch -- "$entry" >/dev/null 2>&1 \
+    || die "allowlist entry has no tracked files in the repo: $entry"
 done
-ok "copied ${#ALLOWLIST[@]} allowlist entries"
+mapfile -t TRACKED < <(git ls-files -- "${ALLOWLIST[@]}")
+(( ${#TRACKED[@]} > 0 )) || die "git ls-files returned no tracked files under the allowlist"
+for f in "${TRACKED[@]}"; do
+  dest_dir="$SNAP/$(dirname "$f")"
+  mkdir -p "$dest_dir"
+  cp "$f" "$dest_dir/"
+done
+ok "copied ${#TRACKED[@]} tracked files from ${#ALLOWLIST[@]} allowlist entries"
+
+# ──────────────────────────────────────────────────────────────────────
+# Guard 0 — no local build artifacts or wiki/ leakage (F5). Defense-in-depth:
+# git ls-files already excludes untracked files, but assert it loudly anyway.
+# ──────────────────────────────────────────────────────────────────────
+ARTIFACTS="$(find "$SNAP" \( -name '__pycache__' -o -name '.pytest_cache' -o -name '*.pyc' \) 2>/dev/null || true)"
+if [[ -n "$ARTIFACTS" ]]; then
+  err "local build artifacts leaked into the snapshot (F5):"
+  while IFS= read -r a; do printf '       ✗ %s\n' "${a#"$SNAP"/}" >&2; done <<< "$ARTIFACTS"
+  die "aborting: __pycache__/.pytest_cache/*.pyc must never ship"
+fi
+if [[ -e "$SNAP/wiki" ]]; then
+  die "wiki/ leaked into the snapshot (F5) — the dev wiki must never ship"
+fi
+ok "no local artifacts (__pycache__/.pytest_cache/*.pyc) or wiki/ in snapshot"
 
 # ──────────────────────────────────────────────────────────────────────
 # Guard 1 — no PLACEHOLDER-ORG

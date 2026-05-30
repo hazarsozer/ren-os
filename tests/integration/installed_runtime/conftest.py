@@ -5,8 +5,8 @@ callables + result objects, so the test module needs no cross-module imports
 (``tests/`` is not a package — pytest collects it via rootdir).
 
 The three factories:
-    make_plugin_root(include_feed=True)  -> Path   (a fake $CLAUDE_PLUGIN_ROOT)
-    make_home(with_wiki=True, with_feed_clone=True) -> SeededHome
+    make_plugin_root()  -> Path   (a fake $CLAUDE_PLUGIN_ROOT)
+    make_home(with_wiki=True) -> SeededHome
     run_wake_up(plugin_root, home, cwd, set_plugin_root_env=True, ...) -> HookRun
 
 A HookRun carries the parsed additionalContext, the concatenated hook log, the
@@ -41,16 +41,8 @@ WIKI_SENTINEL = "INSTALLED-RUNTIME-WIKI-SENTINEL-7f3a91"
 # Master-index section header lifecycle's composer emits (hooks/wake-up/wakeup).
 MASTER_INDEX_HEADER = "Master wiki index"
 
-# feed.reader._format_header literal (stable substring across fresh/stale forms).
-FEED_BLOCK_HEADER = "Activity Feed — recent friend activity"
-
-# The hook's graceful-degrade log line on ImportError (the C2 silent path).
-FEED_UNAVAILABLE_LOG = "feed module unavailable; skipping feed integration"
-
-# Friend handles seeded into the activity-feed clone. The own handle must match
-# identity.md's `handle:` field so feed.config.handle() resolves.
+# The own handle written into the seeded identity.md (part of a realistic wiki).
 OWN_HANDLE = "testfriend"
-FRIEND_HANDLES = (OWN_HANDLE, "friend-b", "friend-c")
 
 
 # --- result objects ---------------------------------------------------------
@@ -63,9 +55,7 @@ class SeededHome:
     path: Path
     sentinel: str
     own_handle: str
-    friend_handles: tuple[str, ...]
     has_wiki: bool
-    has_feed_clone: bool
 
 
 @dataclass(frozen=True)
@@ -98,31 +88,14 @@ def _identity_md(handle: str) -> str:
     )
 
 
-def _feed_log_md(handle: str, ts: str) -> str:
-    """A <handle>.log.md mirroring the proven _populate_feed_fixture shape."""
-    return (
-        "---\n"
-        "schema_version: 1\n"
-        'framework_version: "1.0.0"\n'
-        "type: feed-entry\n"
-        f"handle: {handle}\n"
-        "---\n\n"
-        f"## [{ts}] start | {handle} | working in ~/Dev/sidecar/\n\n"
-        f"## [{ts}] end | {handle} | session complete\n\n"
-        "Worked on sidecar — set up JWT middleware.\n"
-        "Touched: src/auth/jwt.ts, src/api/login.ts.\n"
-    )
-
-
-def _materialize_plugin_root(dest: Path, *, repo_root: Path, include_feed: bool) -> Path:
+def _materialize_plugin_root(dest: Path, *, repo_root: Path) -> Path:
     """Copy the real plugin files into `dest` in the post-Crucible layout.
 
     Real files only (symlinks dereferenced via copytree's default), mirroring what
     Claude Code places under $CLAUDE_PLUGIN_ROOT. We copy what the hook touches:
-    .claude-plugin/plugin.json, hooks/ (incl. wake-up/wakeup + hooks.json), lib/, feed/.
-    `lib/` (the framework path/handle core, ADR-031) is always materialized because
-    feed.config now re-exports `lib.sf_paths`; a fake root with feed/ but no lib/ would
-    fail to import. skills/ is a real but empty dir purely for shape parity.
+    .claude-plugin/plugin.json, hooks/ (incl. wake-up/wakeup + hooks.json), and lib/
+    (the framework path/handle core, ADR-031, used by the wiki-root resolution).
+    skills/ is a real but empty dir purely for shape parity.
     """
     dest.mkdir(parents=True, exist_ok=True)
 
@@ -144,14 +117,6 @@ def _materialize_plugin_root(dest: Path, *, repo_root: Path, include_feed: bool)
         symlinks=False,
     )
 
-    if include_feed:
-        shutil.copytree(
-            repo_root / "feed",
-            dest / "feed",
-            ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "tests"),
-            symlinks=False,
-        )
-
     skills = dest / "skills"
     skills.mkdir(parents=True, exist_ok=True)
     (skills / ".gitkeep").write_text("", encoding="utf-8")
@@ -159,8 +124,8 @@ def _materialize_plugin_root(dest: Path, *, repo_root: Path, include_feed: bool)
     return dest
 
 
-def _seed_home(home: Path, *, with_wiki: bool, with_feed_clone: bool) -> SeededHome:
-    """Seed <home>/.startup-framework/ with a wiki and/or an activity-feed clone."""
+def _seed_home(home: Path, *, with_wiki: bool) -> SeededHome:
+    """Seed <home>/.startup-framework/ with a wiki."""
     sf = home / ".startup-framework"
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
 
@@ -178,19 +143,11 @@ def _seed_home(home: Path, *, with_wiki: bool, with_feed_clone: bool) -> SeededH
         )
         (wiki / "identity.md").write_text(_identity_md(OWN_HANDLE), encoding="utf-8")
 
-    if with_feed_clone:
-        feed_dir = sf / "activity-feed"
-        feed_dir.mkdir(parents=True, exist_ok=True)
-        for handle in FRIEND_HANDLES:
-            (feed_dir / f"{handle}.log.md").write_text(_feed_log_md(handle, ts), encoding="utf-8")
-
     return SeededHome(
         path=home,
         sentinel=WIKI_SENTINEL,
         own_handle=OWN_HANDLE,
-        friend_handles=FRIEND_HANDLES,
         has_wiki=with_wiki,
-        has_feed_clone=with_feed_clone,
     )
 
 
@@ -218,9 +175,8 @@ def _run_wake_up(
     The environment is built FROM SCRATCH — this is the load-bearing part. We set
     only PATH, HOME, LANG/LC_ALL, and (optionally) CLAUDE_PLUGIN_ROOT. We pass
     NEITHER SF_WIKI_ROOT NOR CLAUDE_PLUGIN_OPTION_WIKIROOT NOR SF_FRAMEWORK_ROOT
-    NOR PYTHONPATH — so the home-default wiki tier (C1) and the hook's own
-    plugin-root sys.path insertion (C2) are the paths actually under test, with no
-    dev-tree crutch leaking in via the parent process.
+    NOR PYTHONPATH — so the home-default wiki tier (C1) is the path actually under
+    test, with no dev-tree crutch leaking in via the parent process.
     """
     script = plugin_root / WAKE_UP_REL
     env: dict[str, str] = {
@@ -290,24 +246,24 @@ def make_plugin_root(tmp_path: Path, repo_root: Path):
     """Factory: materialize a fake $CLAUDE_PLUGIN_ROOT (real files, Crucible shape)."""
     counter = {"n": 0}
 
-    def _factory(*, include_feed: bool = True) -> Path:
+    def _factory() -> Path:
         counter["n"] += 1
         dest = tmp_path / f"plugin-root-{counter['n']}"
-        return _materialize_plugin_root(dest, repo_root=repo_root, include_feed=include_feed)
+        return _materialize_plugin_root(dest, repo_root=repo_root)
 
     return _factory
 
 
 @pytest.fixture
 def make_home(tmp_path: Path):
-    """Factory: seed a fake $HOME with a wiki and/or activity-feed clone."""
+    """Factory: seed a fake $HOME with a wiki."""
     counter = {"n": 0}
 
-    def _factory(*, with_wiki: bool = True, with_feed_clone: bool = True) -> SeededHome:
+    def _factory(*, with_wiki: bool = True) -> SeededHome:
         counter["n"] += 1
         home = tmp_path / f"home-{counter['n']}"
         home.mkdir()
-        return _seed_home(home, with_wiki=with_wiki, with_feed_clone=with_feed_clone)
+        return _seed_home(home, with_wiki=with_wiki)
 
     return _factory
 

@@ -54,7 +54,6 @@ def _inputs(active_project: str | None = "sample") -> WrapInputs:
         session_notes=(),
         cwd="/tmp/test-cwd",
         active_project=active_project,
-        skip_feed_flag=False,
     )
 
 

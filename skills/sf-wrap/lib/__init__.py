@@ -3,22 +3,23 @@ sf-wrap library — internal implementation for the /sf:wrap slash command.
 
 Public entry point: `wrap(inputs: WrapInputs) -> WrapResult`.
 
-The pipeline follows the 7 steps documented in skills/sf-wrap/SKILL.md:
+The pipeline follows the steps documented in skills/sf-wrap/SKILL.md:
 
     1. gather inputs (read-only)
     2. classifier — apply signal-threshold (LLM call)
     3. compose diff plan (signal → ADR-014 page mapping)
     4. user approval (TTY UX)
     5. atomic apply with git-restore rollback
-    6. compose terse session-end summary + pre-validate
-    7. feed.feed_write_entry(kind="end", ...) + handle result
 
 Step 4-5 are interactive; this module exposes the pure logic and delegates
 the UX surface to the host (Claude Code's normal user-facing rendering).
 
-V1 status: types + format pre-validator are real; classifier / diff planner /
-apply / approval are stubs to be filled in. The structure here is the contract
-the rest of the skill develops against.
+Solo-first (ADR-031): the former step 6/7 Activity Feed session-end write was
+removed with the feed module. /sf:wrap now consolidates the local wiki only.
+
+V1 status: types + diff planner / apply / approval are real; the classifier is
+stubbed (degrades to 'none' — the real deterministic classifier lands in a
+follow-up commit). The structure here is the contract the rest develops against.
 """
 
 from __future__ import annotations
@@ -32,19 +33,9 @@ from .types import (
     DiffEntry,
     DiffKind,
     DiffPlan,
-    FormatViolationReport,
     SignalLabel,
     WrapInputs,
     WrapResult,
-)
-
-# Validators — used by the pipeline + by host pre-feed-call
-from .validate import (
-    MAX_FILES_DISPLAYED,
-    MAX_SUMMARY_CHARS,
-    format_files_touched_for_summary,
-    truncate_files_touched,
-    validate_summary,
 )
 
 __all__ = [
@@ -54,16 +45,9 @@ __all__ = [
     "DiffEntry",
     "DiffKind",
     "DiffPlan",
-    "FormatViolationReport",
     "SignalLabel",
     "WrapInputs",
     "WrapResult",
-    # validators
-    "MAX_FILES_DISPLAYED",
-    "MAX_SUMMARY_CHARS",
-    "format_files_touched_for_summary",
-    "truncate_files_touched",
-    "validate_summary",
     # pipeline entry (stubbed below; filled in subsequent turns)
     "wrap",
 ]
@@ -76,7 +60,6 @@ from typing import Callable
 from .apply import ApplyResult, apply_diff_plan
 from .classifier import classify as default_classify
 from .diff_plan import compose_diff_plan
-from .feed_call import FeedCallOutcome, do_feed_write
 from .types import ClassifierResult, DiffEntry, DiffPlan
 
 
@@ -140,19 +123,16 @@ def wrap(
     approve_fn: ApprovalCallable | None = None,
     pointer_composer: NextPointerComposer | None = None,
     summary_composer: SummaryComposer | None = None,
-    feed_write_fn: Callable[..., FeedCallOutcome] | None = None,
 ) -> WrapResult:
     """
-    Execute the /sf:wrap pipeline per SKILL.md §"The 7-step pipeline".
+    Execute the /sf:wrap pipeline per SKILL.md §"The pipeline".
 
     Composes:
       1. gather session transcript + /sf:note pins
       2. classifier (LLM-dependent, injected — default raises NotImplementedError)
       3. compose_diff_plan (signal label → wiki page edits per ADR-014)
       4. user approval per diff (injected; default approves all — V1)
-      5. apply_diff_plan (atomic; rolls back on any failure)
-      6. compose summary + do_feed_write (skip-chain + format violation re-prompt)
-      7. compose user-facing WrapResult
+      5. apply_diff_plan (atomic; rolls back on any failure) → compose WrapResult
 
     Args:
         inputs: Gathered session context.
@@ -162,7 +142,6 @@ def wrap(
         approve_fn: Inject a per-diff approval callback (default: approve all).
         pointer_composer: Inject a next-session-pointer composer (default: derive from classifier).
         summary_composer: Inject a one-line summary composer (default: derive from classifier).
-        feed_write_fn: Inject a feed writer (default: lib.feed_call.do_feed_write).
 
     Returns:
         WrapResult.
@@ -172,7 +151,6 @@ def wrap(
     approve_fn = approve_fn or _default_approve_all
     pointer_composer = pointer_composer or _default_next_pointer
     summary_composer = summary_composer or _default_summary
-    feed_write_fn = feed_write_fn or do_feed_write
 
     # --- Step 1: gather ---
     transcript = _gather_transcript(inputs)
@@ -182,7 +160,7 @@ def wrap(
         classifier_result = classifier_fn(transcript, inputs.active_project)
     except NotImplementedError:
         # Default classifier stubbed; degrade to 'none' so the rest of the
-        # pipeline still runs (CONTEXT.md rewrite + feed entry).
+        # pipeline still runs (CONTEXT.md rewrite).
         classifier_result = ClassifierResult(
             labels=("none",),
             reasoning="(classifier not yet wired)",
@@ -210,42 +188,25 @@ def wrap(
     # --- Step 5: apply approved diffs ---
     apply_result = apply_diff_plan(approved_plan, wiki_root=wiki_root, cwd=cwd)
 
-    # If apply failed, abort feed write (consistency: wiki failed → no feed entry)
+    elapsed = time.monotonic() - start
+
+    # If apply failed, the atomic plan rolled back — report no pages changed.
     if not apply_result.success:
-        elapsed = time.monotonic() - start
         return WrapResult(
             wiki_pages_changed=(),
             wiki_pages_skipped=rejected_paths,
-            feed_write_attempted=False,
-            feed_write_success=False,
-            feed_write_queued=False,
-            feed_write_violation=None,
-            feed_write_error=(
-                f"wiki apply failed at entry {apply_result.failed_diff_index}: "
-                f"{apply_result.failed_diff_reason}; feed deferred"
-            ),
             context_md_path=str(wiki_root / "projects" / (inputs.active_project or "") / "CONTEXT.md"),
             next_session_pointer=next_pointer[:100],
             elapsed_seconds=elapsed,
+            apply_error=(
+                f"wiki apply failed at entry {apply_result.failed_diff_index}: "
+                f"{apply_result.failed_diff_reason}"
+            ),
         )
 
-    # --- Step 6: feed write ---
-    feed_outcome = feed_write_fn(
-        task_brief=summary_line,
-        project=inputs.active_project,
-        files_touched=list(apply_result.files_changed),
-        skip_feed_flag=inputs.skip_feed_flag,
-    )
-
-    elapsed = time.monotonic() - start
     return WrapResult(
         wiki_pages_changed=apply_result.files_changed,
         wiki_pages_skipped=rejected_paths,
-        feed_write_attempted=not feed_outcome.skipped,
-        feed_write_success=feed_outcome.written,
-        feed_write_queued=feed_outcome.queued,
-        feed_write_violation=feed_outcome.raw_violation,
-        feed_write_error=None if feed_outcome.written or feed_outcome.skipped else feed_outcome.user_message,
         context_md_path=str(wiki_root / "projects" / (inputs.active_project or "") / "CONTEXT.md"),
         next_session_pointer=next_pointer[:100],
         elapsed_seconds=elapsed,

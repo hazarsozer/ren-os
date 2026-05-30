@@ -1,21 +1,20 @@
 """End-to-end daily-loop integration test.
 
-Covers the full friend's first-day journey end-to-end against REAL peer
-implementations (lifecycle's `compose_wake_up_context`, `wrap`, `pin_note`;
-feed's `feed_read_friends_tails`, `feed_upsert_identity`-rendered subset).
+Covers the friend's first-day journey end-to-end against REAL peer
+implementations (lifecycle's `compose_wake_up_context`, `wrap`, `pin_note`).
 Install + Stage 4 interview still go through the InstallSimulator from #38
 (no real `/sf:install` orchestrator — that lives in SKILL.md prose, not Python).
 
-The journey:
+Solo-first (ADR-031): the former step 6 (/sf:catch-up against a multi-friend
+Activity Feed) was removed with the feed module. The journey is now:
 
     1. /sf:install         — fresh-machine fixture, 7 stages, checkpoint complete
-    2. /sf:interview       — Stage 4; identity.md written, public summary pushed
+    2. /sf:interview       — Stage 4; identity.md written
     3. /sf:wake-up         — REAL compose_wake_up_context against the installed wiki
     4. /sf:note            — REAL pin_note captures a mid-session thought
-    5. /sf:wrap            — REAL wrap() with injected classifier + feed-write stubs
-    6. /sf:catch-up        — REAL feed_read_friends_tails against a multi-friend fixture
+    5. /sf:wrap            — REAL wrap() with an injected classifier
 
-End-assertion: wiki + identity + feed are in steady-state shape.
+End-assertion: wiki + identity are in steady-state shape.
 
 The signature-drift tests live in `test_contract_drift.py` (peers' real symbols
 imported and `inspect.signature`'d). This file exercises BEHAVIOR.
@@ -23,15 +22,11 @@ imported and `inspect.signature`'d). This file exercises BEHAVIOR.
 
 from __future__ import annotations
 
-import json
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
-from unittest.mock import MagicMock
 
 import pytest
 
-from integration.fakes.feed_fake import FeedFake, FeedWriteResult
 from integration.simulator import InstallSimulator, InterviewAnswers
 
 
@@ -40,26 +35,6 @@ from integration.simulator import InstallSimulator, InterviewAnswers
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
-
-
-def _make_feed_call_outcome(FeedCallOutcome, *, skipped: bool):
-    """Construct a FeedCallOutcome with the full 8-field shape.
-
-    Shape per skills/sf-wrap/lib/feed_call.py — written/pushed/queued/skipped/
-    skip_reason/reprompt_attempted/user_message/raw_violation. We default to
-    "no feed activity" semantics so tests can rely on a stable fixture even
-    when sf-wrap's internal lib evolves.
-    """
-    return FeedCallOutcome(
-        written=False,
-        pushed=False,
-        queued=False,
-        skipped=skipped,
-        skip_reason="wrap-flag" if skipped else "",
-        reprompt_attempted=False,
-        user_message="(e2e stub)",
-        raw_violation=None,
-    )
 
 
 def _load_module_from_path(name: str, path: Path):
@@ -162,51 +137,6 @@ def test_wake_up_returns_empty_when_wiki_absent(tmp_path: Path) -> None:
     )
 
 
-def test_wake_up_includes_friends_activity_when_callback_provided(
-    installed_wiki: Path,
-) -> None:
-    """When fetch_feed_tail is supplied + non-empty, friends block appears."""
-    compose_wake_up_context = _import_compose_wake_up_context()
-
-    fake_friends_block = (
-        "## Activity Feed — recent friend activity (synced just now)\n\n"
-        "**friend-b** working in ~/Dev/sidecar/"
-    )
-
-    context = compose_wake_up_context(
-        cwd=installed_wiki,
-        wiki_root=installed_wiki,
-        source="startup",
-        fetch_feed_tail=lambda: fake_friends_block,
-    )
-
-    assert "Activity Feed" in context
-    assert "friend-b" in context
-
-
-def test_wake_up_silently_swallows_fetch_feed_tail_exceptions(
-    installed_wiki: Path,
-) -> None:
-    """Per feed-2's silent-degradation contract: a feed exception → no friends
-    section, but the rest of the payload still composes successfully."""
-    compose_wake_up_context = _import_compose_wake_up_context()
-
-    def explode() -> str:
-        raise RuntimeError("simulated feed failure")
-
-    context = compose_wake_up_context(
-        cwd=installed_wiki,
-        wiki_root=installed_wiki,
-        source="startup",
-        fetch_feed_tail=explode,
-    )
-
-    # Other sections still present
-    assert "Master wiki index" in context
-    # Friends section absent
-    assert "Activity Feed" not in context
-
-
 # ---- Step 4: /sf:note pins a mid-session note ------------------------------
 
 
@@ -238,17 +168,16 @@ def test_note_pin_writes_bullet_to_session_notes_file(
     assert "remember to check the rate-limit" in body
 
 
-# ---- Step 5: /sf:wrap end-to-end (real wrap + injected stubs) --------------
+# ---- Step 5: /sf:wrap end-to-end (real wrap + injected classifier) ---------
 
 
 def _import_wrap():
     """Load sf-wrap's lib module. Returns the module so callers can pull
-    out `wrap`, `WrapInputs`, `ClassifierResult`, and `feed_call.FeedCallOutcome`
-    from a single load."""
-    # sf-wrap's __init__.py imports `.feed_call`; that relative import needs the
-    # parent package registered. We register the lib package + its sub-module
-    # via explicit name so the dataclass machinery + relative imports both work.
-    sub_modules = ["types", "validate", "classifier", "apply", "diff_plan", "feed_call"]
+    out `wrap`, `WrapInputs`, and `ClassifierResult` from a single load."""
+    # Register the lib package + its sub-modules via explicit name so the
+    # dataclass machinery + relative imports both work. (The feed-write
+    # submodules `validate`/`feed_call` were removed with the feed module.)
+    sub_modules = ["types", "classifier", "apply", "diff_plan"]
     parent_name = "_e2e_sf_wrap_lib"
     parent_path = _REPO_ROOT / "skills" / "sf-wrap" / "lib"
     for sub in sub_modules:
@@ -269,25 +198,11 @@ def test_wrap_no_signal_does_not_write_wiki_pages(
     def stub_classifier(transcript, project_name):
         return ClassifierResult(labels=("none",), reasoning="routine debugging")
 
-    feed_calls: list[dict] = []
-
-    def stub_feed_write(*, task_brief, project, files_touched, skip_feed_flag):
-        feed_calls.append({
-            "task_brief": task_brief,
-            "project": project,
-            "files_touched": files_touched,
-            "skip_feed_flag": skip_feed_flag,
-        })
-        # Match do_feed_write's return shape: FeedCallOutcome (from sf-wrap's feed_call sub-module)
-        FeedCallOutcome = sys.modules["_e2e_sf_wrap_lib.feed_call"].FeedCallOutcome
-        return _make_feed_call_outcome(FeedCallOutcome, skipped=skip_feed_flag)
-
     inputs = sf_wrap.WrapInputs(
         session_transcript_path=None,
         session_notes=(),
         cwd=str(installed_wiki),
         active_project=None,
-        skip_feed_flag=True,  # skip feed so the test doesn't touch git
     )
 
     result = sf_wrap.wrap(
@@ -295,13 +210,10 @@ def test_wrap_no_signal_does_not_write_wiki_pages(
         wiki_root=installed_wiki,
         cwd=installed_wiki,
         classifier_fn=stub_classifier,
-        feed_write_fn=stub_feed_write,
     )
 
     # No signal → no wiki page changes.
     assert result.wiki_pages_changed == ()
-    # Feed was skipped (no actual call made), per skip_feed_flag.
-    assert result.feed_write_attempted is False
 
 
 def test_wrap_returns_steady_state_result(installed_wiki: Path) -> None:
@@ -313,16 +225,11 @@ def test_wrap_returns_steady_state_result(installed_wiki: Path) -> None:
     def stub_classifier(transcript, project_name):
         return ClassifierResult(labels=("none",), reasoning="")
 
-    def stub_feed_write(**kwargs):
-        FeedCallOutcome = sys.modules["_e2e_sf_wrap_lib.feed_call"].FeedCallOutcome
-        return _make_feed_call_outcome(FeedCallOutcome, skipped=kwargs.get("skip_feed_flag", False))
-
     inputs = sf_wrap.WrapInputs(
         session_transcript_path=None,
         session_notes=(),
         cwd=str(installed_wiki),
         active_project=None,
-        skip_feed_flag=True,
     )
 
     result = sf_wrap.wrap(
@@ -330,100 +237,14 @@ def test_wrap_returns_steady_state_result(installed_wiki: Path) -> None:
         wiki_root=installed_wiki,
         cwd=installed_wiki,
         classifier_fn=stub_classifier,
-        feed_write_fn=stub_feed_write,
     )
 
     # WrapResult shape contract
     assert hasattr(result, "wiki_pages_changed")
-    assert hasattr(result, "feed_write_success")
     assert hasattr(result, "next_session_pointer")
     assert hasattr(result, "elapsed_seconds")
     assert result.elapsed_seconds >= 0
     assert isinstance(result.next_session_pointer, str)
-
-
-# ---- Step 6: /sf:catch-up against a real multi-friend feed -----------------
-
-
-def _import_feed_reader():
-    """Import feed.feed_read_friends_tails."""
-    try:
-        from feed import feed_read_friends_tails  # type: ignore
-        return feed_read_friends_tails
-    except ImportError:
-        pytest.skip("feed module not importable")
-
-
-def _populate_feed_fixture(feed_dir: Path, handles: list[str]) -> None:
-    """Create a minimal Activity Feed clone with one log.md per friend."""
-    feed_dir.mkdir(parents=True, exist_ok=True)
-    ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
-    for handle in handles:
-        log_path = feed_dir / f"{handle}.log.md"
-        log_path.write_text(
-            "---\n"
-            "schema_version: 1\n"
-            "framework_version: \"1.0.0\"\n"
-            "type: feed-entry\n"
-            f"handle: {handle}\n"
-            "---\n\n"
-            f"## [{ts}] start | {handle} | working in ~/Dev/sidecar/\n\n"
-            f"## [{ts}] end | {handle} | session complete\n\n"
-            f"Worked on sidecar — set up JWT middleware.\n"
-            f"Touched: src/auth/jwt.ts, src/api/login.ts.\n",
-            encoding="utf-8",
-        )
-
-
-def test_catch_up_buckets_per_friend(
-    installed_friend: InstallSimulator,
-    tmp_path: Path,
-) -> None:
-    """feed_read_friends_tails returns per-friend buckets after a multi-friend
-    fixture is populated."""
-    feed_read_friends_tails = _import_feed_reader()
-
-    feed_dir = tmp_path / "activity-feed"
-    handles = [installed_friend.answers.handle, "friend-b", "friend-c"]
-    _populate_feed_fixture(feed_dir, handles)
-
-    result = feed_read_friends_tails(
-        own_handle=installed_friend.answers.handle,
-        n_per_friend=5,
-        include_self=True,
-        refresh=False,  # don't hit git
-        local_path=feed_dir,
-    )
-
-    # All three handles should be bucketed.
-    assert set(result.friends.keys()) >= set(handles), (
-        f"expected friends {handles}; got {list(result.friends.keys())}"
-    )
-    # Each friend has at least one entry from the fixture.
-    for handle in handles:
-        assert len(result.friends[handle]) >= 1
-
-
-def test_catch_up_excludes_own_handle_when_include_self_false(
-    installed_friend: InstallSimulator,
-    tmp_path: Path,
-) -> None:
-    feed_read_friends_tails = _import_feed_reader()
-
-    feed_dir = tmp_path / "activity-feed"
-    handles = [installed_friend.answers.handle, "friend-b"]
-    _populate_feed_fixture(feed_dir, handles)
-
-    result = feed_read_friends_tails(
-        own_handle=installed_friend.answers.handle,
-        n_per_friend=5,
-        include_self=False,
-        refresh=False,
-        local_path=feed_dir,
-    )
-
-    assert installed_friend.answers.handle not in result.friends
-    assert "friend-b" in result.friends
 
 
 # ---- Steady-state assertion ------------------------------------------------
@@ -433,8 +254,8 @@ def test_full_daily_loop_lands_in_steady_state(
     installed_friend: InstallSimulator,
     tmp_path: Path,
 ) -> None:
-    """Single end-to-end scenario: install → wake-up → note → wrap → catch-up,
-    end-asserting the friend's wiki + identity + feed are in expected shape.
+    """Single end-to-end scenario: install → wake-up → note → wrap,
+    end-asserting the friend's wiki + identity are in expected shape.
     """
     wiki = installed_friend.wiki_root
     handle = installed_friend.answers.handle
@@ -463,51 +284,28 @@ def test_full_daily_loop_lands_in_steady_state(
     )
     assert pin_result.path is not None and pin_result.path.exists()
 
-    # 5. Wrap (no-signal — most sessions). Skip feed to keep tests hermetic.
+    # 5. Wrap (no-signal — most sessions).
     sf_wrap = _import_wrap()
     ClassifierResult = sf_wrap.ClassifierResult
 
     def stub_classifier(transcript, project_name):
         return ClassifierResult(labels=("none",), reasoning="routine")
 
-    def stub_feed_write(**kwargs):
-        FeedCallOutcome = sys.modules["_e2e_sf_wrap_lib.feed_call"].FeedCallOutcome
-        return _make_feed_call_outcome(FeedCallOutcome, skipped=kwargs.get("skip_feed_flag", False))
-
     inputs = sf_wrap.WrapInputs(
         session_transcript_path=None,
         session_notes=(pin_result.path.read_text(encoding="utf-8"),),
         cwd=str(wiki),
         active_project=None,
-        skip_feed_flag=True,
     )
     wrap_result = sf_wrap.wrap(
         inputs,
         wiki_root=wiki,
         cwd=wiki,
         classifier_fn=stub_classifier,
-        feed_write_fn=stub_feed_write,
     )
     # No-signal → no wiki pages changed.
     assert wrap_result.wiki_pages_changed == ()
 
-    # 6. Catch-up — surface activity from other friends.
-    feed_read_friends_tails = _import_feed_reader()
-    feed_dir = tmp_path / "activity-feed-steady-state"
-    _populate_feed_fixture(feed_dir, [handle, "friend-b", "friend-c"])
-
-    catch_up = feed_read_friends_tails(
-        own_handle=handle,
-        n_per_friend=3,
-        include_self=False,
-        refresh=False,
-        local_path=feed_dir,
-    )
-    assert "friend-b" in catch_up.friends
-    assert "friend-c" in catch_up.friends
-    assert handle not in catch_up.friends  # include_self=False
-
     # Steady-state shape: install checkpoint complete + identity written +
     # skeleton intact + wake-up payload non-empty + note pinned + wrap returned
-    # a structurally-valid result + catch-up surfaces 2 other friends.
-    # If any of those broke, the daily loop is broken.
+    # a structurally-valid result. If any of those broke, the daily loop is broken.

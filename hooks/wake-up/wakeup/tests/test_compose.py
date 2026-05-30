@@ -271,29 +271,6 @@ class TestComposeWakeUpContext:
         )
         assert "source=compact" in result
 
-    def test_feed_callback_appended_when_provided(self, populated_wiki: Path):
-        result = compose_wake_up_context(
-            cwd=populated_wiki.parent,
-            wiki_root=populated_wiki,
-            fetch_feed_tail=lambda: "## Activity Feed — recent friend activity\n- friend-b · 2h ago · …",
-        )
-        assert "Activity Feed" in result
-        assert "friend-b" in result
-
-    def test_feed_callback_failure_degrades_silently(self, populated_wiki: Path):
-        def boom():
-            raise RuntimeError("feed unavailable")
-
-        result = compose_wake_up_context(
-            cwd=populated_wiki.parent,
-            wiki_root=populated_wiki,
-            fetch_feed_tail=boom,
-        )
-        # Should NOT contain the activity block; should NOT have raised
-        assert "Activity Feed" not in result
-        # Other sections still produced
-        assert "Master wiki index" in result
-
     def test_overall_budget_cap_enforced(self, populated_wiki: Path):
         # Compose with a tiny cap; verify final output is bounded
         result = compose_wake_up_context(
