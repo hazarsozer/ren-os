@@ -1,6 +1,7 @@
 ---
 title: "ADR-017: Per-Friend Wiki Scope — Local, Not Shared (Framework Provides Skeleton, Not Content)"
-status: accepted
+status: superseded
+superseded-by: "ADR-031 (2026-05-30): solo-first pivot — Activity Feed / multi-user layer removed from the shipped framework"
 date: 2026-05-28
 sunset-review: 2026-11-28
 references-pages: [llm-wiki-pattern, simon-scrapes-agentic-os, team-coordination-survey]
@@ -9,6 +10,8 @@ relates-to: [002-token-efficiency-stack, 004-wiki-design-hierarchical, 014-proje
 ---
 
 # ADR-017: Per-Friend Wiki Scope — Local, Not Shared
+
+> ⚠️ **SUPERSEDED by [ADR-031](031-solo-first-pivot.md) (2026-05-30).** The solo-first pivot removed the Activity Feed / multi-user sharing layer from the shipped framework. This ADR describes the pre-pivot per-friend *sharing* posture; the local-wiki principle survives, but the cross-friend framing no longer reflects the shipped framework. Preserved for history (and in the `baseline-v1.0-full-wiki` tag).
 
 ## Context
 

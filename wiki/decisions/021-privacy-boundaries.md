@@ -1,6 +1,7 @@
 ---
 title: "ADR-021: Privacy Boundaries — Terse Format Constraint + Local Default + --skip-feed Override"
-status: accepted
+status: superseded
+superseded-by: "ADR-031 (2026-05-30): solo-first pivot — the Activity Feed (whose privacy this ADR governed) is removed"
 date: 2026-05-28
 sunset-review: 2026-11-28
 references-pages: [claude-mem, ecc-everything-claude-code, team-coordination-survey]
@@ -11,6 +12,8 @@ amends:
 ---
 
 # ADR-021: Privacy Boundaries
+
+> ⚠️ **SUPERSEDED by [ADR-031](031-solo-first-pivot.md) (2026-05-30).** These privacy boundaries governed the Activity Feed (the terse-format constraint, `--skip-feed`, local default). The feed is removed in the solo-first pivot, so there is no cross-user surface to govern — the wiki is local-only by construction. Preserved for history (and in the `baseline-v1.0-full-wiki` tag). Nate Herk's "keys ≠ instructions" framing (cited in ADR-031) carries the spirit forward as the read-only permission audit.
 
 ## Context
 

@@ -1,6 +1,8 @@
 ---
 title: "ADR-022: Identity-Interview Skill — `/sf:interview` Spec"
 status: accepted
+amended-by:
+  - "ADR-031 (2026-05-30, solo-first pivot): the interview keeps the `handle:` field (reframed as a personal short-name) but no longer pushes a public summary to a shared feed. No feed identity sync. AMENDED, not superseded."
 date: 2026-05-28
 sunset-review: 2026-11-28
 references-pages: [simon-scrapes-agentic-os, skill-creator, ecc-everything-claude-code]
@@ -9,6 +11,8 @@ relates-to: [011-skill-schema, 015-onboarding, 017-per-friend-wiki-scope, 018-ac
 ---
 
 # ADR-022: Identity-Interview Skill — `/sf:interview` Spec
+
+> 📝 **Amended by [ADR-031](031-solo-first-pivot.md) (2026-05-30).** Solo-first: the interview keeps the `handle:` field (a personal short-name) but no longer pushes a public summary to a shared feed. The interview itself stands.
 
 ## Context
 

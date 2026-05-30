@@ -13,7 +13,6 @@ Per ADR-019. Cadence: **monthly stable**. Out-of-cycle PATCH releases for securi
 | **dev repo** (this one, `~/Dev/startup-framework`) | Design history, ADRs, research, the source of truth | EVERYTHING — full git history, `wiki/`, `raw/`, `REVIEW*.md`, maintainer docs, **release tags** | Maintainers only; **PRIVATE, never pushed to the marketplace** |
 | `sf-marketplace` (stable) | Distribution to friends | ONE orphan commit per release — only the shippable allowlist | Maintainers write (via `publish.sh`); friends read |
 | `sf-marketplace-rc` (RC channel) | Pre-release dogfood | Same, RC versions | Maintainers write; subscribed friends read |
-| `activity-feed` (separate repo, ADR-018) | Cross-friend session reports | Friends' `<handle>.log.md` | All friends write |
 
 **The boundary.** The dev repo holds the product brain (wiki, research, internal reviews). Friends
 must never see it. We do **not** `git push` the dev repo to the marketplace — that would leak the
@@ -110,15 +109,7 @@ git -C <snapshot> push --force origin HEAD:main
 The force-push replaces the marketplace's single orphan commit with the new release. **Never push
 tags to the marketplace.**
 
-### Step 5 — announce in the Activity Feed
-
-In your own `<handle>.log.md` in the activity-feed repo:
-
-```markdown
-## [2026-08-15 09:30] release | hazar | framework v1.3.0 shipped — see CHANGELOG
-```
-
-### Step 6 — friends pick it up on their own time
+### Step 5 — friends pick it up on their own time
 
 `/sf:doctor` shows `⚠️ Framework update available: v1.3.0` (it reads the published `plugin.json#version`).
 Friends run `/plugin marketplace update sf-marketplace` then `/sf:update` when convenient — snapshot,
@@ -182,12 +173,6 @@ scripts/publish.sh --channel stable    # → sf-marketplace
 # run the printed force-push
 ```
 
-**Activity Feed announcement:**
-
-```markdown
-## [2026-08-22 10:00] release | hazar | framework v1.3.0 stable — RC dogfood 08-15→08-22 found no blockers
-```
-
 > `.github/workflows/promote-rc-draft.yml.template` is a **deprecated stub** under this model — the
 > old rsync-PR promotion no longer applies. See the stub's header; promotion is the `publish.sh` step above.
 
@@ -200,7 +185,7 @@ scripts/publish.sh --channel stable    # → sf-marketplace
 1. Triage via friend reports + pasted `/sf:doctor` output.
 2. Identify the broken migration; read its `verify.json` — was an assertion too lax?
 3. Ship a PATCH (`v1.3.1`) with a corrective migration `<page-type>-3-to-4` (forward fix, never reverse) + a reproducing fixture.
-4. Announce: `release | hazar | framework v1.3.1 PATCH — fixes identity.md migration; run /sf:update`.
+4. Announce out-of-band + via the `CHANGELOG.md` entry ("v1.3.0's identity.md migration was faulty; run /sf:update to v1.3.1"). `/sf:doctor` surfaces the new version from the published `plugin.json#version`.
 5. Affected friends roll back via snapshot (`RECOVERY.md` Scenario 3) and re-`/sf:update` once the patch is out.
 
 ### A snapshot was published with the wrong contents
@@ -210,7 +195,7 @@ clients:
 
 1. Fix the issue in the dev repo, bump to the next PATCH (e.g. `v1.3.1`), add a CHANGELOG note ("v1.3.0 was faulty; do not stay on it").
 2. Re-run `scripts/publish.sh` → force-push the corrected orphan commit. It cleanly replaces the bad one.
-3. Post a strong Activity Feed warning + ping friends out-of-band so they `/plugin marketplace update` + `/sf:update`.
+3. Ping friends out-of-band so they `/plugin marketplace update` + `/sf:update`.
 
 (Dev-repo **tags** still follow the never-delete-and-re-push rule — but the marketplace has none, so the rolling force-push is the normal mechanism, not a hazard.)
 

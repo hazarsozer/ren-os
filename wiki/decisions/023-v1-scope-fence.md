@@ -1,6 +1,8 @@
 ---
 title: "ADR-023: V1 Scope Fence — What's IN, What's OUT, What's V2+"
 status: accepted
+amended-by:
+  - "ADR-031 (2026-05-30, solo-first pivot): the Activity Feed is no longer a built-in v1 feature — it is a deferred layer (preserved in git history + the baseline-v1.0-full-wiki tag). AMENDED, not superseded — the rest of the v1 fence stands."
 date: 2026-05-28
 sunset-review: 2026-08-28
 references-pages: all
@@ -10,6 +12,8 @@ note: This is a consolidation ADR. It re-states (with cross-references) the boun
 ---
 
 # ADR-023: V1 Scope Fence — What's IN, What's OUT, What's V2+
+
+> 📝 **Amended by [ADR-031](031-solo-first-pivot.md) (2026-05-30).** Solo-first: the Activity Feed moves from "IN for v1" to a deferred layer. The rest of the fence stands.
 
 ## Context
 

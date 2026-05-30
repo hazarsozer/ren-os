@@ -9,11 +9,15 @@ amendments:
   - "2026-05-28: scope correction — identity bootstrap writes to `wiki/identity.md` (single file, per-friend wiki), NOT to `wiki/people/<friend-handle>.md` (the previous wording implied a shared people-directory which doesn't exist in our actual per-friend wiki model). Added MCP Agent Mail as optional Stage 3 install for friends who want inter-Claude messaging."
   - "2026-05-28: replaced Stage 3 MCP Agent Mail conditional install with REQUIRED Activity Feed setup (per ADR-018) — shared private GitHub repo URL, gh CLI auth verification, local clone, first-friend bootstrap pattern. Added `gh` CLI dependency to Stage 1 environment check."
   - "2026-05-28: added `claude auth status` check to Stage 1 (per official-docs-validation pass against Claude Code CLI reference). Claude Code itself must be logged into the friend's Anthropic account, distinct from the API key check."
+amended-by:
+  - "ADR-031 (2026-05-30, solo-first pivot): Stage 3 is no longer Activity-Feed setup — it is conditional-plugins-only; Stage 4 writes only wiki/identity.md (no feed identity push/rename). `gh` stays a soft requirement, reframed as /sf:doctor's update check. AMENDED, not superseded."
 affects-components: [install, onboarding, friend-group-rollout, docs]
 relates-to: [006-curated-stack, 010-hook-ordering, 013-slash-command-namespacing, 014-project-sub-wiki-taxonomy, 016-framework-license]
 ---
 
 # ADR-015: Onboarding — Identity Bootstrap + Version Pinning + /sf:doctor + /sf:bootstrap-project
+
+> 📝 **Amended by [ADR-031](031-solo-first-pivot.md) (2026-05-30).** Solo-first: Stage 3 is conditional-plugins-only (no Activity-Feed setup) and Stage 4 writes only `wiki/identity.md`. The rest of onboarding stands.
 
 ## Context
 

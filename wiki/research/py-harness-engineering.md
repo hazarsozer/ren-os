@@ -5,7 +5,7 @@ source: raw/transcripts/py-harness-engineering
 ingested: 2026-05-28
 tags: [harness-engineering, agents, orchestration, ablation, research-papers, dspy, meta-harness, nlh]
 status: ingested
-attribution: PY (YouTube), video "Rethinking AI Agents: The Rise of Harness Engineering"
+attribution: 'PY (YouTube), video "Rethinking AI Agents: The Rise of Harness Engineering"'
 duration: ~11 min
 ---
 

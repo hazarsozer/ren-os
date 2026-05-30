@@ -39,7 +39,7 @@ In order, before writing any plan:
 - **N+3 deprecation window** for schemas. Pages stuck at deprecated schema become read-only; don't auto-drop. (ADR-027)
 - **Snapshot BEFORE every migration**; retain latest 3. Migrations must be reversible, idempotent, logged. (ADR-027)
 - **Hybrid migrations**: scripted (`migrate.sh`) for mechanical, LLM (`migrate.md`) for semantic, plus `verify.json` binary assertions to confirm migration validity. Always show diff for user approval (mirrors `/revise-claude-md` pattern). (ADR-027)
-- **The 4-repo distinction** (marketplace ≠ activity-feed ≠ dev-wiki ≠ friend-wiki) must be preserved. Your marketplace repo is read-only-collaborators for friends; not write. (ADR-019)
+- **The repo distinction** (marketplace ≠ dev-wiki ≠ friend-wiki) must be preserved. Your marketplace repo is read-only-collaborators for friends; not write. (ADR-019)
 - **Framework's own license = MIT.** `LICENSES.md` must surface the stack mix (MIT + Apache-2.0 + ELv2). Friends explicitly see Context Mode's ELv2 SaaS restriction. (ADR-016 + ADR-015 Stage 6)
 
 ## Coordination contracts to lock BEFORE writing code

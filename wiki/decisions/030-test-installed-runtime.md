@@ -1,6 +1,8 @@
 ---
 title: "ADR-030: Test the Installed-Plugin Runtime — The Real Contract Instance Prior Tests Never Reproduced"
 status: accepted
+amended-by:
+  - "ADR-031 (2026-05-30, solo-first pivot): the installed-runtime test is now C1-only (wiki injection). The C2 feed-load assertion is removed with the feed module; the CLAUDE_PLUGIN_OPTION_WIKIROOT tier is promoted to the headline F1 test. AMENDED, not superseded — the installed-runtime doctrine stands."
 date: 2026-05-29
 sunset-review: 2027-05-29
 references-pages: []
@@ -9,6 +11,8 @@ relates-to: [008-wake-up-hook, 015-onboarding, 019-framework-distribution, 028-l
 ---
 
 # ADR-030: Test the Installed-Plugin Runtime — The Real Contract Instance Prior Tests Never Reproduced
+
+> 📝 **Amended by [ADR-031](031-solo-first-pivot.md) (2026-05-30).** Solo-first: the installed-runtime test is C1-only (the C2 feed-load assertion is gone with the feed module); the `CLAUDE_PLUGIN_OPTION_WIKIROOT` tier is promoted to the headline F1 test. The doctrine — exercise the real installed runtime — stands.
 
 ## Context
 

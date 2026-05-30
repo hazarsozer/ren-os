@@ -1,12 +1,13 @@
 # Release v1.0.0 — artifacts
 
-Scaffold for Hazar to fill in at first-ship. Three pieces:
+Scaffold for Hazar to fill in at first-ship. Two pieces:
 
 1. **GitHub Release body** — what `gh release create` posts
-2. **Activity Feed announcement** — what Hazar drops in his `<handle>.log.md`
-3. **One-line elevator pitch** — for friend-group out-of-band sharing
+2. **One-line elevator pitch** — for friend-group out-of-band sharing
 
 Replace `<…>` placeholders before publishing.
+
+(Activity Feed removed — ADR-031, solo-first pivot. There is no feed announcement; out-of-band notification + `CHANGELOG.md` + `/sf:doctor` carry "what shipped".)
 
 ---
 
@@ -30,8 +31,7 @@ The Startup Framework's first ship. A private Claude Code framework for a friend
 ## What it ships
 
 - **6 curated plugins** — Superpowers, Skill Creator, claude-mem, Context Mode, context7, claude-md-management. One conditional plugin (Frontend Design). One documented-not-bundled (Ralph).
-- **Per-friend hierarchical wiki** — your design history, lives on your machine, optional self-sync via your own git remote.
-- **Activity Feed** — cross-friend session reports via a shared private GitHub repo. Terse-format-as-privacy. Per-session opt-out (`/sf:wrap --skip-feed`).
+- **Solo hierarchical wiki** — your design history, lives on your machine, optional self-sync via your own git remote.
 - **Schema-versioned wiki pages** — 16 page-types registered at schema v1. Future versions ship migrations; your wiki stays readable.
 - **Self-improving skills** — `/sf:improve-skill` runs the Karpathy auto-research loop with four safety primitives (per ADR-012).
 - **One-command install** — `/sf:install` walks 7 stages in ~10 minutes.
@@ -74,8 +74,8 @@ Curated stack mix: MIT (Superpowers, framework code), Apache-2.0 (Skill Creator,
 
 ## What's deliberately NOT in v1
 
-Per ADR-023:
-- Shared wiki across friends (wikis are per-friend-local; cross-friend visibility is the Activity Feed only)
+Per ADR-023 + ADR-031:
+- Any cross-user / multi-user layer — the framework is solo-first (the Activity Feed was removed; wikis are local-only)
 - Auto-update on session start
 - Daily release cadence
 - Cross-LLM portability (Claude-Code-only at v1; content is portable markdown)
@@ -83,7 +83,7 @@ Per ADR-023:
 
 ## Acknowledgements
 
-To the four sub-teams who built this: sf-onboarding, sf-lifecycle, sf-feed, sf-distribution. Cross-team review caught real bugs; the integration validation pass caught a few more. Shipping > shipping perfectly.
+To the sub-teams who built this: sf-onboarding, sf-lifecycle, sf-distribution. Cross-team review caught real bugs; the integration validation pass caught a few more. Shipping > shipping perfectly.
 
 To the friend group who'll use it: feedback shapes v1.1.
 
@@ -93,42 +93,22 @@ To the friend group who'll use it: feedback shapes v1.1.
 /sf:install
 ```
 
-See you in the Activity Feed.
+Run a session and tell me what felt different.
 ```
 
 ---
 
-## 2. Activity Feed announcement template
-
-> Paste into your `<handle>.log.md` in the activity-feed repo after the tag is pushed.
-
-```markdown
-## [<YYYY-MM-DD HH:MM>] release | <your-handle> | framework v1.0.0 stable shipped — see CHANGELOG
-```
-
-That's the line. The Activity Feed terse-format constraint (per ADR-021) means we don't write more. Friends pulling the feed on their next `/sf:wake-up` will see the entry; `/sf:doctor` will detect the update.
-
-If you want to add nuance (a one-liner about what to try first), append a second short entry within the same minute:
-
-```markdown
-## [<YYYY-MM-DD HH:MM>] note | <your-handle> | first stable. /sf:doctor expects N=0 warnings on a fresh install. If you hit any, paste output in our group thread.
-```
-
-Two lines max. Detailed announcements go in the GitHub Release body, not the feed.
-
----
-
-## 3. Friend-facing one-line elevator pitch
+## 2. Friend-facing one-line elevator pitch
 
 For WhatsApp / Discord / wherever the friend group hangs out. Use one of these — your call which:
 
 ### Option A (lean / functional)
 
-> A private Claude Code framework for our friend group. Installs in 10 minutes via `/plugin marketplace add <org>/sf-marketplace`. Per-friend wiki + cross-friend visibility + opt-in updates. Try `/sf:install` when you have a quiet hour.
+> A private Claude Code framework for our friend group. Installs in 10 minutes via `/plugin marketplace add <org>/sf-marketplace`. Per-person local wiki + opt-in updates. Try `/sf:install` when you have a quiet hour.
 
 ### Option B (memory-pain-led)
 
-> If you're tired of re-explaining your context to Claude every session, this framework fixes it. 10-minute install. Your wiki stays on your machine. We see each other's high-level activity via a shared feed. Try it: `/plugin marketplace add <org>/sf-marketplace` → `/sf:install`.
+> If you're tired of re-explaining your context to Claude every session, this framework fixes it. 10-minute install. Your wiki stays on your machine — yours alone. Try it: `/plugin marketplace add <org>/sf-marketplace` → `/sf:install`.
 
 ### Option C (cinematic)
 
@@ -144,7 +124,7 @@ Whatever you write — keep it ≤2 sentences for the pitch + the two install co
 
 - The `release.yml` workflow will auto-create a GitHub Release on tag push. The body it auto-populates comes from `CHANGELOG.md`'s v1.0.0 entry. If you want THIS file's body content used instead, paste it manually after the release is created.
 - The auto-`--prerelease` flag fires on `-rc.*` tags. v1.0.0 (no `-rc.` suffix) ships as a full release.
-- After tagging: post the Activity Feed announcement BEFORE notifying friends out-of-band. The feed is the canonical "where it shipped" timestamp.
+- After tagging: notify friends out-of-band. The `CHANGELOG.md` entry + `/sf:doctor`'s update notice are the canonical "what shipped" record (Activity Feed removed — ADR-031).
 - Friends with `userConfig.rcChannel = true` will continue tracking sf-marketplace-rc. They're already running RC-equivalent content; the stable tag is their cue to switch back to the stable marketplace if they want.
 
 If anything goes wrong post-tag: `docs/RELEASING.md` § Recovery from a bad release. The PATCH escape hatch (v1.0.1) is always available.

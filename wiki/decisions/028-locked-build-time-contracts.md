@@ -1,6 +1,8 @@
 ---
 title: "ADR-028: Locked Build-Time Contracts — Framework Path + Marketplace Name + Schema Placement + Feed API Shape + RC Channel + Snapshot Location"
 status: accepted
+amended-by:
+  - "ADR-031 (2026-05-30, solo-first pivot): the split feed-write API and FEED_LOCAL_ONLY_FILES contract are retired with the feed module. The framework-root / wiki-path / handle / schema contracts move to lib.sf_paths (semantics unchanged). AMENDED, not superseded — the non-feed locked contracts stand."
 date: 2026-05-28
 sunset-review: 2026-11-28
 references-pages: [anthropic-marketplace-catalog]
@@ -9,6 +11,8 @@ relates-to: [006-curated-stack, 017-per-friend-wiki-scope, 018-activity-feed, 01
 ---
 
 # ADR-028: Locked Build-Time Contracts
+
+> 📝 **Amended by [ADR-031](031-solo-first-pivot.md) (2026-05-30).** Solo-first: the feed-write API + `FEED_LOCAL_ONLY_FILES` are retired with the feed module; the framework-root / wiki-path / handle / schema contracts move verbatim to `lib.sf_paths`. The non-feed locked contracts stand.
 
 ## Context
 

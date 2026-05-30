@@ -21,12 +21,15 @@ Run each module's pytest suite **from its own directory** — root-level `pytest
 collides on duplicate test-module import names, so always run per-module:
 
 ```bash
-for m in feed hooks/wake-up scripts \
-         skills/sf-backup skills/sf-catch-up skills/sf-improve-skill \
+for m in hooks/wake-up scripts \
+         skills/sf-backup skills/sf-improve-skill \
          skills/sf-install skills/sf-note skills/sf-recall skills/sf-wrap; do
   ( cd "$m" && python3 -m pytest -q ) || echo "FAIL: $m"
 done
 ```
+
+> `feed/` and `skills/sf-catch-up` were removed with the Activity Feed (ADR-031, solo-first pivot) —
+> drop them from the loop. The per-module loop is otherwise unchanged.
 
 Then the distribution shell suites + the version-compare self-test:
 
@@ -94,14 +97,15 @@ Expected: `END-TO-END MIGRATION DOGFOOD: 17/17 PASS`.
 ### 1.6 — Installed-runtime acceptance (ADR-030)
 
 The one gate that proves the *installed-plugin* runtime actually works — materializes a fake
-`$CLAUDE_PLUGIN_ROOT` (no env vars set, friend's own layout) and asserts wiki-context + feed both
-load. This is the test that would have caught C1 + C2 together.
+`$CLAUDE_PLUGIN_ROOT` (no env vars set, friend's own layout) and asserts the wiki context loads
+from the home-default path and the advertised `wikiRoot` option. This is the test that would have
+caught C1. (The former feed-render assertion, C2, is gone — Activity Feed removed, ADR-031.)
 
 ```bash
 python3 -m pytest tests/integration/installed_runtime/ -q
 ```
 
-Expected: `5 passed`.
+Expected: `4 passed`.
 
 - ☐ installed-runtime acceptance green
 
@@ -112,7 +116,7 @@ Expected: `5 passed`.
 These are the **friend-facing** docs that ship in the snapshot:
 
 ```bash
-for f in README.md CHANGELOG.md LICENSES.md docs/ACTIVITY_FEED.md docs/RECOVERY.md; do
+for f in README.md CHANGELOG.md LICENSES.md docs/RECOVERY.md; do
   if [[ -f "$f" ]]; then
     printf "  ✅ %s — last mod: %s\n" "$f" "$(stat -c %y "$f" | cut -d. -f1)"
   else
@@ -121,11 +125,10 @@ for f in README.md CHANGELOG.md LICENSES.md docs/ACTIVITY_FEED.md docs/RECOVERY.
 done
 ```
 
-- ☐ `README.md` exists (friend entry point: install walkthrough + per-friend-wiki principle)
+- ☐ `README.md` exists (entry point: install walkthrough + local-wiki principle)
 - ☐ `CHANGELOG.md` has a `[1.0.0] — <ship-date>` entry
 - ☐ `LICENSES.md` lists every plugin's SPDX license + Context Mode's ELv2 SaaS caveat surfaced
-- ☐ `docs/RECOVERY.md` covers the 8 scenarios per ADR-026 + ADR-027
-- ☐ `docs/ACTIVITY_FEED.md` present
+- ☐ `docs/RECOVERY.md` covers the recovery scenarios per ADR-026 + ADR-027 (Activity Feed scenarios removed — ADR-031)
 
 Maintainer-only docs (`SHIP_CHECKLIST.md`, `RELEASING.md`, `RELEASE_v1.0.0.md`) stay in the dev
 repo and are **excluded from the snapshot by `publish.sh`'s allowlist** — verified in §5.
@@ -197,15 +200,19 @@ The orphan snapshot is the ONLY thing friends receive. Build + verify it BEFORE 
 scripts/publish.sh --dry-run
 ```
 
-This builds the allowlisted snapshot and runs all four guards:
+This builds the allowlisted snapshot (now via `git ls-files`) and runs all four guards:
 1. no `PLACEHOLDER-ORG` anywhere in the snapshot,
-2. **assert-absent** — NO maintainer-only content (`wiki/`, `raw/`, `REVIEW*.md`, maintainer docs, `.github/`, `tests/`, etc.) leaked in (this is the load-bearing ADR-019 boundary),
+2. **F5 artifact guard** — the snapshot must NOT contain `wiki/`, `.pytest_cache`, `__pycache__`,
+   `*.pyc`, `PLACEHOLDER-ORG`, or `feed/`; and MUST contain `lib/sf_paths.py`. In short:
+   **assert `lib/` present, `feed/` absent.** This is the load-bearing ADR-019 boundary (no
+   maintainer-only content or build artifacts leak; the removed Activity Feed layer stays out per ADR-031).
 3. `claude plugin validate <snapshot> --strict` green,
 4. both manifests present at root `.claude-plugin/` with marketplace `source: "./"`.
 
 Expected: `✅ DRY-RUN PASSED`.
 
 - ☐ `publish.sh --dry-run` passes all guards
+- ☐ F5 guard: snapshot has `lib/` (incl. `lib/sf_paths.py`) present, `feed/` absent — and no `wiki/`, `.pytest_cache`, `__pycache__`, `*.pyc`, or `PLACEHOLDER-ORG`
 
 ### 5.2 — Marketplace repo exists + friends are read collaborators
 
@@ -263,10 +270,8 @@ If a literal `${HOME}` shows up: CC is passing the unexpanded default → confir
 ### 6.3 — Real session: the daily loop
 
 - ☐ wake-up hook injects sensible context at session start
-- ☐ `/sf:wrap` writes an Activity Feed entry that pushes to the friend-group repo
-- ☐ Hazar's `<handle>.log.md` shows the entry on GitHub
+- ☐ `/sf:wrap` writes the session-end summary to the local wiki (Activity Feed removed — ADR-031; no push to any shared repo)
 - ☐ `/sf:bootstrap-project test-project` creates the project sub-wiki
-- ☐ `/sf:catch-up <project>` returns useful summaries
 
 ### 6.4 — Recovery dry-run (in a tmpdir, NOT your real wiki)
 
@@ -310,8 +315,7 @@ scripts/publish.sh             # builds + verifies; prints the exact push comman
 - ☐ snapshot built + all guards green
 - ☐ orphan commit force-pushed to `sf-marketplace` (single commit, no tags)
 - ☐ `/plugin marketplace update sf-marketplace` on a friend machine surfaces v1.0.0
-- ☐ Activity Feed announcement posted (template in `docs/RELEASE_v1.0.0.md`)
-- ☐ Friends notified out-of-band
+- ☐ Friends notified out-of-band (Activity Feed removed — ADR-031; the `CHANGELOG.md` entry + `/sf:doctor` carry "what shipped")
 
 > **Never** `git push --tags` to `sf-marketplace`. Tags carry no value to friends and the
 > marketplace is meant to hold exactly one orphan commit per release.
@@ -324,7 +328,6 @@ Within 24h:
 
 - ☐ One friend other than Hazar runs `/plugin marketplace add` + `/plugin install` + `/reload-plugins` + `/sf:install` end-to-end
 - ☐ That friend reports a green `/sf:doctor`
-- ☐ Their `<handle>.log.md` appears in the Activity Feed
 - ☐ Their `/sf:bootstrap-project` works
 
 ---

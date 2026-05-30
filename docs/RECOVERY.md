@@ -12,11 +12,10 @@ Per ADR-026 + ADR-027.
 |---|---|---|
 | Your wiki (`~/.startup-framework/wiki/`) | `/sf:backup` → configured git remote (or tarball fallback) | Yes, IF you set up a remote |
 | Pre-migration wiki snapshots | Automatic at `${CLAUDE_PLUGIN_DATA}/wiki-snapshots/` | Yes, latest 3 retained |
-| Activity Feed local clone | The Activity Feed GitHub repo IS the backup (multi-friend redundancy) | Yes |
-| Framework plugin code | The marketplace repo IS the source; friends have local installs | Yes — `/sf:install` or `/sf:update` |
+| Framework plugin code | The marketplace repo IS the source; you have a local install | Yes — `/sf:install` or `/sf:update` |
 | Identity (`wiki/identity.md`) | In wiki; covered by wiki backup | Yes (or re-run `/sf:interview`) |
 | Project sub-wikis | In wiki; covered by wiki backup | Yes |
-| Friend-authored skills (`wiki/skills/<name>/`) | In wiki; covered by wiki backup | Yes |
+| Authored skills (`wiki/skills/<name>/`) | In wiki; covered by wiki backup | Yes |
 | claude-mem SQLite | **Your own backup tooling** — framework does NOT manage | Rebuilds naturally from new sessions; old observations lost if no friend-managed backup |
 | Context Mode per-project SQLite | **Your own backup tooling** — framework does NOT manage | Rebuilds naturally; old session_resume snapshots lost |
 
@@ -40,11 +39,11 @@ You have a new machine. Your old wiki is gone.
 /sf:install --restore <your-wiki-remote-url>
 ```
 
-`/sf:install --restore` clones the remote into the configured `wikiRoot` instead of Stage 5 creating a fresh wiki. Identity, project sub-wikis, friend-authored skills — all restored. Wake up next session with the right context.
+`/sf:install --restore` clones the remote into the configured `wikiRoot` instead of Stage 5 creating a fresh wiki. Identity, project sub-wikis, authored skills — all restored. Wake up next session with the right context.
 
 **If you did NOT configure a remote:**
 
-Your wiki is gone. Partial reconstruction is possible from the Activity Feed (the terse entries you wrote with `/sf:wrap` are still on GitHub, accessible to you as a collaborator). Run `/sf:catch-up <project-name>` for each project you remember, get rough summaries of recent work. This is LOSSY — most reasoning, decisions, and architecture notes will be missing.
+Your wiki is gone, and there's no recovery path. (Activity Feed removed — ADR-031; there's no cross-machine copy of your terse session entries to reconstruct from.) Without a remote or tarball backup, the wiki is unrecoverable.
 
 claude-mem + Context Mode observation history is also gone unless YOU backed up `~/.claude-mem/` and the Context Mode SQLites yourself. They will rebuild from new sessions.
 
@@ -133,7 +132,6 @@ After restoring, decide:
 GitHub is having an incident. Your local session works fine, but some commands fail.
 
 What's affected:
-- `/sf:wrap` Activity Feed push fails (your session-end entry queues locally; pushes on next successful `git push`). **Sessions still work locally.**
 - `/sf:backup` push fails (use `--tarball` as a temporary fallback).
 - `/sf:update` marketplace fetch fails. **Your installed framework keeps running fine** — the failure only blocks the version check.
 - `/sf:doctor` "FRAMEWORK UPDATE" section reports network failure but otherwise green.
@@ -206,46 +204,7 @@ The framework will keep working. `/sf:wake-up` reads the wiki, not claude-mem di
 
 ---
 
-## Scenario 7: "I want to delete a session report from the Activity Feed"
-
-Per ADR-021, this is hard.
-
-- The Activity Feed is a shared git repo. Deleting an entry requires a coordinated git history rewrite + force push + EVERY FRIEND re-cloning their local copy.
-- This is not a `/sf:` command. It's a deliberate, out-of-band operation. Document the procedure in writing in your friend group's comms.
-
-**The terse format is the primary privacy mechanism** (per ADR-021). Couple-sentence summaries of project + task + files. If you find yourself wanting to delete entries often, the format constraint isn't tight enough — escalate to a framework discussion.
-
-If you must:
-
-```bash
-# In the Activity Feed clone (NOT in your wiki):
-cd ~/.startup-framework/activity-feed
-# Use git filter-repo (better than filter-branch) to remove the offending entries
-git filter-repo --invert-paths --path <handle>.log.md   # nuclear option: removes ALL your entries
-# Or surgically: edit history with rebase + force push
-git rebase -i <commit-before-offending-entry>
-git push --force origin main
-
-# Now every friend must:
-cd ~/.startup-framework/activity-feed
-git fetch
-git reset --hard origin/main
-```
-
-Prefer prevention: `/sf:wrap --skip-feed` for sensitive sessions, `SF_SKIP_FEED=1` env var for whole-session skip.
-
----
-
-## Scenario 8: "A friend left the group; we need to remove their access"
-
-Per ADR-020:
-
-1. GitHub admin removes them as collaborator on BOTH the marketplace repo AND the Activity Feed repo.
-2. Their existing log entries in the Activity Feed stay as historical record (NOT deleted — that's Scenario 7's destructive scrub if you want it).
-3. Their `identities/<handle>.md` in the Activity Feed can be moved to `identities/archived/<handle>.md` as a soft archive.
-4. Their local install still works on their machine (they own the software); `/sf:wrap`'s push fails (no access); they can optionally `/sf:install --remove-activity-feed` to clean up locally.
-
-**Bus-factor reminder:** both private GitHub repos should have ≥2 admins. Removing one admin should never leave the friend group unable to onboard new joiners.
+> **Note:** the old Activity Feed recovery scenarios (deleting a shared session report; removing a departed friend's access) are gone — the Activity Feed / multi-user layer was removed (ADR-031, solo-first pivot). The framework is now single-user: there is no shared repo to scrub and no collaborators to revoke.
 
 ---
 

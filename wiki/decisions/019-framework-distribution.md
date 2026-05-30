@@ -1,6 +1,8 @@
 ---
 title: "ADR-019: Framework Distribution & Updates — Private Marketplace + Stable Releases + Update Notifications"
 status: accepted
+amended-by:
+  - "ADR-031 (2026-05-30, solo-first pivot): the 4-repo distinction (marketplace / activity-feed / dev-wiki / friend-wiki) collapses to 2 (marketplace / per-friend wiki). No activity-feed repo. AMENDED, not superseded — the marketplace/semver/update model stands."
 date: 2026-05-28
 sunset-review: 2026-11-28
 references-pages: [anthropic-marketplace-catalog, ecc-everything-claude-code, superpowers]
@@ -9,6 +11,8 @@ relates-to: [006-curated-stack, 015-onboarding, 017-per-friend-wiki-scope, 018-a
 ---
 
 # ADR-019: Framework Distribution & Updates
+
+> 📝 **Amended by [ADR-031](031-solo-first-pivot.md) (2026-05-30).** Solo-first: the 4-repo distinction collapses to 2 (marketplace + per-friend wiki); there is no activity-feed repo. The marketplace / semver / update model stands.
 
 ## Context
 

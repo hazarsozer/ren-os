@@ -1,6 +1,7 @@
 ---
 title: "ADR-018: Activity Feed — Friend Group Session Reports via Shared GitHub Repo"
-status: accepted
+status: superseded
+superseded-by: "ADR-031 (2026-05-30): solo-first pivot — the Activity Feed is removed from the shipped framework (preserved in git history + the baseline-v1.0-full-wiki tag)"
 date: 2026-05-28
 sunset-review: 2026-11-28
 references-pages: [team-coordination-survey, simon-scrapes-agentic-os]
@@ -14,6 +15,8 @@ amended-by:
 ---
 
 # ADR-018: Activity Feed — Friend Group Session Reports via Shared GitHub Repo
+
+> ⚠️ **SUPERSEDED by [ADR-031](031-solo-first-pivot.md) (2026-05-30).** The solo-first pivot removed the Activity Feed entirely (the builder is solo; the feed was speculative multi-user complexity, and the source of four of the seven Codex findings). The whole implementation is preserved in git history + the `baseline-v1.0-full-wiki` tag as a deferred layer. This ADR no longer describes the shipped framework.
 
 ## Context
 

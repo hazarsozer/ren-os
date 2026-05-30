@@ -1,6 +1,7 @@
 ---
 title: "ADR-020: Joiner & Leaver Experience"
-status: accepted
+status: superseded
+superseded-by: "ADR-031 (2026-05-30): solo-first pivot — no friend group, so no joiner/leaver experience"
 date: 2026-05-28
 sunset-review: 2026-11-28
 references-pages: [simon-scrapes-agentic-os]
@@ -9,6 +10,8 @@ relates-to: [015-onboarding, 017-per-friend-wiki-scope, 018-activity-feed, 019-f
 ---
 
 # ADR-020: Joiner & Leaver Experience
+
+> ⚠️ **SUPERSEDED by [ADR-031](031-solo-first-pivot.md) (2026-05-30).** Solo-first: there is no friend group, so there is no joiner or leaver experience. A "joiner" with no feed is just a fresh `/sf:install`. Preserved for history (and in the `baseline-v1.0-full-wiki` tag).
 
 ## Context
 

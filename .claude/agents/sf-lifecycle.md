@@ -41,7 +41,6 @@ In order, before writing any plan:
 
 ## Coordination contracts to lock BEFORE writing code
 
-- With sf-feed: function signatures for (a) `/sf:wrap` → feed end-of-session writer, (b) wake-up hook → feed tail reader. Format of the injected friends'-activity block. Lock these together; don't draft alone.
 - With sf-onboarding: friend-profile schema you'll read at session start (handle, name, etc.)
 - With sf-distribution: where `schema_version` fields live in pages your hooks read/write
 
@@ -50,7 +49,7 @@ In order, before writing any plan:
 A plan (no code yet) covering:
 1. Wake-up hook implementation strategy (the conversation-layer injection mechanism in Claude Code — verify the hook event API; Claude Code's SessionStart hook semantics are the ground truth)
 2. Cache-preservation verification plan: how you'll prove ADR-008's claim empirically
-3. `/sf:wrap` contract with sf-feed (proposed function signature + format)
+3. `/sf:wrap` consolidate contract — wiki-only write semantics (what gets promoted, high-signal threshold)
 4. `/sf:improve-skill` flag set + branch/commit/revert mechanics (per ADR-012)
 5. Failure-degradation modes for each hook + each skill
 
