@@ -16,103 +16,62 @@ Cadence: monthly stable. Out-of-cycle PATCH releases only for security or broken
 
 ## [Unreleased]
 
-### Solo-First Pivot (ADR-031)
-
-The framework is now **solo-first**: the Activity Feed / multi-user layer is removed from the shipped product (preserved in git history + the `baseline-v1.0-full-wiki` tag as a deferred layer, not rebuilt). Reorganized under Nate Herk's **Four C's** (Context → Connections → Capabilities → Cadence), with the **keys ≠ instructions** (permission audit) and **bike-method** (experimental labels) framings. Resolves the four remaining Codex pre-ship findings — **F1, F2, F5, F7** (F3/F4/F6 mooted by the feed removal).
-
-#### Removed
-- **The Activity Feed**, entirely: the `feed/` module; the `sf-catch-up` / `sf-disable-feed` / `activity-feed` skills; `/sf:wrap`'s feed-write; the wake-up hook's friends-activity tail; and the `activityFeedUrl` / `activityFeedLocalClone` plugin options. There is no longer any cross-user channel.
-
-#### Added
-- **`lib/sf_paths.py`** — the framework's path/handle/schema single source of truth, extracted from the former `feed.config` so it outlives the feed (the **F1** fix: 3-tier `wiki_path()` resolves `SF_WIKI_ROOT` → `CLAUDE_PLUGIN_OPTION_WIKIROOT` → `framework_root()/wiki`, so the advertised `wikiRoot` option is honored on its own).
-- **`/sf:doctor --permissions`** — a read-only permission audit ("keys on your ring"): MCP servers (name + transport + tool-keys), `allow`/`deny`/`ask` rules, broad-grant flags, enabled plugins + hooks. Never prints secrets.
-- **`/sf:insights`** — a read-only skill that mines your local Claude Code session history for what's working / what's slowing you down (`--days N`, `--project <name>`).
-- **ADR-031** (`wiki/decisions/031-solo-first-pivot.md`) — the durable record of the pivot.
-
-#### Changed
-- **`/sf:wrap`** is now **wiki-only** and ships a conservative **deterministic** signal classifier (the **F2** fix; EXPERIMENTAL, bike-method): biases hard to `none`, never raises, pins dominate, artifacts only for `decision`/`pattern`. The LLM classifier path ships as future-upgrade primitives.
-- **`/sf:improve-skill`** default path now **fails fast honestly** with exit reason `requires_configured_backend` (EXPERIMENTAL) instead of crashing on a stub (the other half of **F2**).
-- **The wake-up hook** is pure wiki injection; `_resolve_wiki_root()` delegates to `lib.sf_paths.wiki_path()`. Its compose package was renamed `hooks/wake-up/lib` → `hooks/wake-up/wakeup` (avoids a `sys.path` collision with the new repo-root `lib/`).
-- **Install** Stage 3 is conditional-plugins-only (no feed setup); Stage 4 writes only `wiki/identity.md` (no feed identity push). `/sf:interview` keeps the `handle:` field (a personal short-name). `gh` is now a soft requirement, used by `/sf:doctor`'s update check.
-- **`scripts/publish.sh`** snapshots tracked files via `git ls-files` + a guard that fails on `__pycache__` / `.pytest_cache` / `*.pyc` / `wiki/` (the **F5** fix); ships `lib/` (incl. `lib/sf_paths.py`), never `feed/`.
-- **Installed-runtime test** is now C1-only (wiki injection); the `CLAUDE_PLUGIN_OPTION_WIKIROOT` tier is the headline F1 test.
-
-#### Fixed
-- **F7** — quoted the `attribution:` YAML value in `wiki/research/py-harness-engineering.md` so `scripts/lint-yaml-frontmatter.py` exits 0.
-
-### Schema
-- **Removed** the `feed-entry` page-type from `schemas.json` — **RETIRED, not migrated** (a solo install has no feed files to migrate). Registered page-types: 12 → 11. Per ADR-031 + ADR-027, no migration chain entry is added.
+Nothing yet.
 
 ---
 
-## [1.0.0] — 2026-05-29
+## [1.0.0] — 2026-05-30
 
-The first stable release. Establishes the friend-group distribution surface, the per-friend hierarchical wiki, the Activity Feed cross-friend visibility layer, schema-versioned wiki pages, and the curated plugin stack.
+The first stable release — a **solo-first** framework organized under Nate Herk's **Four C's** (Context → Connections → Capabilities → Cadence): a per-builder hierarchical wiki, cache-preserving wake-up context injection, schema-versioned wiki pages, a deterministic session-consolidation loop, read-only insight + permission-audit surfaces, and a curated plugin stack.
+
+The multi-user **Activity Feed was cut pre-ship** (ADR-031): the builder is solo, the feed was speculative complexity, and it was the source of four of seven pre-ship review findings. It is preserved in git history + the `baseline-v1.0-full-wiki` tag as a deferred layer — not rebuilt — so the framework ships with no cross-user channel. The remaining findings — **F1, F2, F5, F7** — are resolved in this release (F3/F4/F6 are moot without the feed).
 
 ### Added
 
-**Distribution + updates**
-- `sf-marketplace` private Claude Code marketplace (per ADR-019). Friends install via `/plugin marketplace add hazarsozer/sf-marketplace` + `/plugin install startup-framework@sf-marketplace`.
-- `sf-marketplace-rc` separate marketplace for release-candidate dogfooding (optional channel; opt-in via `userConfig.rcChannel = true`).
-- `.claude-plugin/marketplace.json` + `.claude-plugin/plugin.json` manifests (both at the repo root, Crucible one-repo layout — `source: "./"`) conforming to the CC plugin marketplace schema (version-resolution via `plugin.json#version`, per CC docs).
-- `/sf:doctor` — environment + plugin + schema + framework-update + backup verification (per ADR-025 + ADR-027).
-- `/sf:update` — opt-in framework upgrade with snapshot, migration chain, per-page verify, diff-review, applying, post-update verification (per ADR-019 + ADR-027). Flags: `--rc`, `--to <ver>`, `--dry-run`, `--auto`, `--restore-snapshot`.
+**Context — wiki + wake-up**
+- `lib/sf_paths.py` — the framework's path/handle/schema single source of truth (extracted so it outlives the cut feed; the **F1** fix). 3-tier `wiki_path()` resolves `SF_WIKI_ROOT` → `CLAUDE_PLUGIN_OPTION_WIKIROOT` → `framework_root()/wiki`, so the advertised `wikiRoot` plugin option is honored on its own.
+- `/sf:wake-up` — SessionStart hook (ADR-008) composing the wake-up context (master wiki index + current project + last `/sf:wrap` pointer + recent master log). Pure, cache-preserving wiki injection.
+- Per-builder hierarchical wiki + `wiki-skeleton/` templates (`identity.md`, master `index.md` + `log.md`, project sub-wiki taxonomy).
 
-**Schema-versioning machinery**
-- `skills/wiki-migration/` module (per ADR-027). `schemas.json` registers 12 page-types (identity, project-main, project-state, project-roadmap, project-requirements, project-context, research, decision, pattern, log-entry, feed-entry, skill).
-- `schemas.schema.json` + `verify.schema.json` validators (enforced by CI).
-- `MIGRATION_PATTERN.md` contributor guide + `migrations/_template/` scaffold.
-- Snapshot retention: latest 3 (configurable via `userConfig.snapshotRetain`), stored at `${CLAUDE_PLUGIN_DATA}/wiki-snapshots/` (CC-blessed persistent location; overrides ADR-027's original `~/.startup-framework/wiki-snapshots/` suggestion — see amendment in ADR-027).
-- Predicate vocabulary v1: `yaml.valid`, `yaml.equals`, `yaml.in`, `yaml.absent`, `yaml.present`, `regex.matches`, `snapshot.value-preserved`, `snapshot.body-identical`, `file.exists`.
+**Connections — distribution, updates, permissions**
+- `sf-marketplace` private Claude Code marketplace (ADR-019): friends install via `/plugin marketplace add hazarsozer/sf-marketplace` + `/plugin install startup-framework@sf-marketplace`. `sf-marketplace-rc` RC channel (opt-in via `userConfig.rcChannel`).
+- `.claude-plugin/{marketplace,plugin}.json` manifests at the repo root (one-repo layout, `source: "./"`).
+- `/sf:doctor` — environment + plugin + schema + framework-update + backup verification (ADR-025 + ADR-027).
+- `/sf:doctor --permissions` — read-only permission audit ("keys on your ring"): MCP servers (name + transport + tool-key counts), `allow`/`deny`/`ask` tally, broad-grant flags, enabled plugins + hooks. Framing: **keys ≠ instructions**. Never prints secret/env/token values.
+- `/sf:update` — opt-in framework upgrade with snapshot, migration chain, per-page verify, diff-review, post-update verification (ADR-019 + ADR-027). Flags: `--rc`, `--to <ver>`, `--dry-run`, `--auto`, `--restore-snapshot`. `gh` is a soft requirement, used by `/sf:doctor`'s update check.
 
-**Onboarding (sf-onboarding)**
-- `/sf:install` — 7-stage flow: env check → required plugins → Activity Feed setup + conditional plugins → identity bootstrap (`/sf:interview`) → wiki bootstrap → `/sf:doctor` verification → first-session walkthrough.
-- `/sf:interview` — AI-driven identity-bootstrap interview (~17–18 questions across 5 sections).
-- `/sf:bootstrap-project <name>` — instantiates a project sub-wiki from the per-friend skeleton.
-- `wiki-skeleton/` templates for `identity.md`, master `index.md` + `log.md`, project sub-wiki taxonomy.
-
-**Daily loop (sf-lifecycle)**
-- `/sf:wake-up` — SessionStart hook that composes the wake-up context (master wiki index + current project + last `/sf:wrap` session pointer + recent friend activity + recent master log).
-- `/sf:wrap` — session-end consolidation. Reads session log + `/sf:note` pins; high-signal threshold gating; wiki diffs shown for approval; Activity Feed terse-entry write.
-- `/sf:improve-skill` — Karpathy auto-research loop with eval.json scoring + four safety primitives.
+**Capabilities — onboarding + the `/sf:*` skills**
+- `/sf:install` — 7-stage onboarding: env check → required plugins → conditional plugins → identity bootstrap (`/sf:interview`) → wiki bootstrap → `/sf:doctor` verification → first-session walkthrough.
+- `/sf:interview` — AI-driven identity-bootstrap interview (~17–18 questions across 5 sections); keeps a `handle:` field (a personal short-name).
+- `/sf:bootstrap-project <name>` — instantiates a project sub-wiki from the per-builder skeleton.
 - Companions: `/sf:note "..."` (pin for `/sf:wrap`), `/sf:recall "..."` (wiki query without page loads).
-- `/sf:backup` (per ADR-026) — git-remote primary + tarball fallback. Flags: `--setup <remote>`, `--tarball`, `--status`.
+- `/sf:backup` (ADR-026) — git-remote primary + tarball fallback. Flags: `--setup <remote>`, `--tarball`, `--status`.
+- **Schema-versioning machinery** (`skills/wiki-migration/`, ADR-027): `schemas.json` registers **11 page-types** (identity, project-main, project-state, project-roadmap, project-requirements, project-context, research, decision, pattern, log-entry, skill); `schemas.schema.json` + `verify.schema.json` validators; `MIGRATION_PATTERN.md` + `migrations/_template/`; snapshot retention (latest 3, `userConfig.snapshotRetain`, at `${CLAUDE_PLUGIN_DATA}/wiki-snapshots/`); predicate vocabulary v1.
 
-**Cross-friend visibility (sf-feed)**
-- Activity Feed module — shared private GitHub repo with per-friend `<handle>.log.md` files. Terse format constraint as primary privacy mechanism (per ADR-021).
-- `/sf:catch-up <project>` — summarises recent cross-friend activity for a project from the feed.
-- `/sf:disable-feed` — per-session opt-out (also: `SF_SKIP_FEED=1` env var, `/sf:wrap --skip-feed` per-invocation).
+**Cadence — consolidation, improvement, insight**
+- `/sf:wrap` — session-end consolidation: reads the session log + `/sf:note` pins, gates on a conservative **deterministic** signal classifier (the **F2** fix; EXPERIMENTAL, bike-method) that biases hard to `none`, never raises, lets pins dominate, and creates artifacts only for `decision`/`pattern`. **Wiki-only** (no cross-user write). The LLM classifier path ships as future-upgrade primitives.
+- `/sf:improve-skill` — Karpathy auto-research loop with `eval.json` scoring + safety primitives. Its default path **fails fast honestly** with exit reason `requires_configured_backend` (EXPERIMENTAL) instead of crashing on an unconfigured eval backend (the other half of **F2**).
+- `/sf:insights` — read-only skill that mines your local Claude Code session history (`~/.claude/projects/*.jsonl` + `~/.claude/session-data/*.tmp`) for what's working / what's slowing you down (`--days N`, `--project <name>`). No writes, no network.
 
-**Curated stack** (per ADR-006)
+**Curated stack** (ADR-006)
 - Required: Superpowers (MIT), Skill Creator (Apache-2.0), claude-mem (Apache-2.0), Context Mode (ELv2), context7 (TBD permissive), claude-md-management (TBD permissive).
-- Conditional: Frontend Design (asked at onboarding).
-- Documented-not-bundled: Ralph.
-- License surface: `LICENSES.md` explicitly surfaces Context Mode's ELv2 SaaS-distribution restriction.
+- Conditional: Frontend Design (asked at onboarding). Documented-not-bundled: Ralph.
+- `LICENSES.md` explicitly surfaces Context Mode's ELv2 SaaS-distribution restriction.
 
 **Documentation**
-- `README.md` friend-facing install + usage.
-- `docs/RECOVERY.md` — 8 disaster scenarios with concrete recovery steps (per ADR-026 + ADR-027).
-- `docs/RELEASING.md` — maintainer release process + RC pipeline + recovery from bad releases (per ADR-019).
-- `LICENSES.md` — stack license summary (per ADR-015 Stage 6 + ADR-016).
-
-### Changed
-- Nothing — first release.
-
-### Deprecated
-- Nothing — first release.
-
-### Removed
-- Nothing — first release.
-
-### Fixed
-- Nothing — first release.
+- `README.md` — friend-facing install + usage, framed around the Four C's.
+- `docs/RECOVERY.md` — 8 disaster scenarios with concrete recovery steps (ADR-026 + ADR-027).
+- `docs/RELEASING.md` — maintainer release process + RC pipeline + recovery from bad releases (ADR-019).
+- `LICENSES.md` — stack license summary (ADR-015 Stage 6 + ADR-016).
+- `wiki/decisions/031-solo-first-pivot.md` — ADR-031, the durable record of the solo-first pivot.
 
 ### Security
-- Activity Feed entries enforce terse format (per ADR-021) preventing most accidental secret leakage.
-- License mix surfaced in `LICENSES.md`; friends explicitly informed Context Mode's ELv2 restricts SaaS use.
+- `/sf:doctor --permissions` and `/sf:insights` are strictly read-only (no writes, no network) and **never print secret / env / token / header values** — verified by hermetic tests (a seeded fake token is asserted absent from output).
+- `scripts/publish.sh` snapshots only tracked files via `git ls-files` and a guard that fails on `__pycache__` / `.pytest_cache` / `*.pyc` / `wiki/` (the **F5** fix), so caches and the private wiki never reach the published snapshot.
+- License mix surfaced in `LICENSES.md`; friends explicitly informed of Context Mode's ELv2 SaaS restriction.
 
 ### Schema
-- All 12 page-types start at schema version 1, supported_from 1, no migrations. Future MINOR/MAJOR releases will add migrations here.
+- All **11 page-types** start at schema version 1, supported_from 1, no migrations. Future MINOR/MAJOR releases will add migrations here. (The `feed-entry` page-type was removed pre-ship with the Activity Feed — RETIRED, not migrated, per ADR-031 + ADR-027.)
 
 [Unreleased]: https://github.com/hazarsozer/sf-marketplace/compare/v1.0.0...HEAD
 [1.0.0]: https://github.com/hazarsozer/sf-marketplace/releases/tag/v1.0.0
