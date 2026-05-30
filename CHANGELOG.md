@@ -16,7 +16,32 @@ Cadence: monthly stable. Out-of-cycle PATCH releases only for security or broken
 
 ## [Unreleased]
 
-(work in progress on `main`; promoted to a versioned section on release)
+### Solo-First Pivot (ADR-031)
+
+The framework is now **solo-first**: the Activity Feed / multi-user layer is removed from the shipped product (preserved in git history + the `baseline-v1.0-full-wiki` tag as a deferred layer, not rebuilt). Reorganized under Nate Herk's **Four C's** (Context → Connections → Capabilities → Cadence), with the **keys ≠ instructions** (permission audit) and **bike-method** (experimental labels) framings. Resolves the four remaining Codex pre-ship findings — **F1, F2, F5, F7** (F3/F4/F6 mooted by the feed removal).
+
+#### Removed
+- **The Activity Feed**, entirely: the `feed/` module; the `sf-catch-up` / `sf-disable-feed` / `activity-feed` skills; `/sf:wrap`'s feed-write; the wake-up hook's friends-activity tail; and the `activityFeedUrl` / `activityFeedLocalClone` plugin options. There is no longer any cross-user channel.
+
+#### Added
+- **`lib/sf_paths.py`** — the framework's path/handle/schema single source of truth, extracted from the former `feed.config` so it outlives the feed (the **F1** fix: 3-tier `wiki_path()` resolves `SF_WIKI_ROOT` → `CLAUDE_PLUGIN_OPTION_WIKIROOT` → `framework_root()/wiki`, so the advertised `wikiRoot` option is honored on its own).
+- **`/sf:doctor --permissions`** — a read-only permission audit ("keys on your ring"): MCP servers (name + transport + tool-keys), `allow`/`deny`/`ask` rules, broad-grant flags, enabled plugins + hooks. Never prints secrets.
+- **`/sf:insights`** — a read-only skill that mines your local Claude Code session history for what's working / what's slowing you down (`--days N`, `--project <name>`).
+- **ADR-031** (`wiki/decisions/031-solo-first-pivot.md`) — the durable record of the pivot.
+
+#### Changed
+- **`/sf:wrap`** is now **wiki-only** and ships a conservative **deterministic** signal classifier (the **F2** fix; EXPERIMENTAL, bike-method): biases hard to `none`, never raises, pins dominate, artifacts only for `decision`/`pattern`. The LLM classifier path ships as future-upgrade primitives.
+- **`/sf:improve-skill`** default path now **fails fast honestly** with exit reason `requires_configured_backend` (EXPERIMENTAL) instead of crashing on a stub (the other half of **F2**).
+- **The wake-up hook** is pure wiki injection; `_resolve_wiki_root()` delegates to `lib.sf_paths.wiki_path()`. Its compose package was renamed `hooks/wake-up/lib` → `hooks/wake-up/wakeup` (avoids a `sys.path` collision with the new repo-root `lib/`).
+- **Install** Stage 3 is conditional-plugins-only (no feed setup); Stage 4 writes only `wiki/identity.md` (no feed identity push). `/sf:interview` keeps the `handle:` field (a personal short-name). `gh` is now a soft requirement, used by `/sf:doctor`'s update check.
+- **`scripts/publish.sh`** snapshots tracked files via `git ls-files` + a guard that fails on `__pycache__` / `.pytest_cache` / `*.pyc` / `wiki/` (the **F5** fix); ships `lib/` (incl. `lib/sf_paths.py`), never `feed/`.
+- **Installed-runtime test** is now C1-only (wiki injection); the `CLAUDE_PLUGIN_OPTION_WIKIROOT` tier is the headline F1 test.
+
+#### Fixed
+- **F7** — quoted the `attribution:` YAML value in `wiki/research/py-harness-engineering.md` so `scripts/lint-yaml-frontmatter.py` exits 0.
+
+### Schema
+- **Removed** the `feed-entry` page-type from `schemas.json` — **RETIRED, not migrated** (a solo install has no feed files to migrate). Registered page-types: 12 → 11. Per ADR-031 + ADR-027, no migration chain entry is added.
 
 ---
 
