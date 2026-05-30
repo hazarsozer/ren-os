@@ -7,29 +7,29 @@ Per ADR-015 Stage 7. Last stage of `/sf:install`. One-shot per checkpoint.
 ### 7.1 Print the daily-command tour
 
 ```
-✓ Install complete. Here's what you have at your disposal:
+✓ Install complete. Your framework, organized by the Four C's
+  (Context → Connections → Capabilities → Cadence — each built on the last):
 
-  Daily loop:
-    /sf:wake-up        — start a session; loads relevant wiki context
-    /sf:wrap           — end a session; promote signal to the wiki
+  Context — a wiki that remembers:
+    /sf:wake-up        — start a session; loads relevant wiki context (automatic on SessionStart)
+    /sf:recall <query> — search your wiki for past context
     /sf:note <text>    — quick capture without ending the session
-    /sf:recall <query> — search past sessions / wiki for context
 
-  Per-project:
-    /sf:bootstrap-project <kebab-name>   — new project sub-wiki
-    /sf:catch-up [<project>] [--days N]  — digest of recent activity across your wiki
+  Connections — your stack + its keys:
+    /sf:doctor               — verify environment, plugins, schema versions, updates, backups
+    /sf:doctor --permissions — read-only audit of the tool-keys on your ring (keys ≠ instructions)
 
-  Identity + setup:
-    /sf:interview      — re-run identity questions; refresh sections or full
-    /sf:doctor         — verify everything still works
+  Capabilities — skills (some EXPERIMENTAL — bike-method: training wheels until earned):
+    /sf:bootstrap-project <kebab-name>  — new project sub-wiki
+    /sf:improve-skill <skill-name>      — Karpathy loop on a skill you've written (EXPERIMENTAL)
+    /sf:interview                       — re-run identity questions; refresh sections or full
+
+  Cadence — the daily loop:
+    /sf:wrap           — end a session; promote real signal to the wiki (classifier is EXPERIMENTAL)
+    /sf:insights       — read-only: what's working / what's slowing you down, from your session history
     /sf:update         — pull a newer framework version + migrate wiki schema
+    /sf:backup         — push wiki to a private git remote
     /sf:install --reset  — wipe install state and restart (does NOT touch wiki/plugins)
-
-  Skill authoring:
-    /sf:improve-skill <skill-name>  — Karpathy loop on a skill you've written
-
-  Backup:
-    /sf:backup          — push wiki to a private git remote
 
   CLAUDE.md hygiene (from claude-md-management plugin):
     /revise-claude-md   — per-project CLAUDE.md cleanup; complements /sf:wrap
@@ -45,8 +45,8 @@ Per ADR-015 amendment + ADR-009 amendment:
   /revise-claude-md → cleans up the current project's CLAUDE.md (project-level config)
   Both are useful; they target different layers.
 
-/sf:catch-up vs reading the wiki log by hand:
-  /sf:catch-up      → 30-day digest, by project; readable summary
+/sf:insights vs reading the wiki log by hand:
+  /sf:insights      → mines your local session history; "what's working / what's hindering"
   hand-read         → fine for spelunking, slower for daily orientation
 
 /sf:improve-skill vs editing SKILL.md by hand:
@@ -112,5 +112,5 @@ Append `7` to `state.completed_stages`. Print the final install summary (see SKI
 
 - ADR-015 Stage 7
 - ADR-009 amendment (/revise-claude-md complements /sf:wrap)
-- ADR-031 (solo-first pivot) — `/sf:catch-up` digests your own wiki, not a shared feed
+- ADR-031 (solo-first pivot) — Four C's framing; no Activity Feed; `/sf:insights` + `/sf:doctor --permissions` are the new read-only surfaces
 - team-lead pushback P3 (manual handoff, no auto-invoke)
