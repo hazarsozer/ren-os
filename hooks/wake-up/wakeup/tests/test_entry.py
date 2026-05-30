@@ -176,7 +176,7 @@ class TestPluginRootResolution:
     """Regression guard for C2 (REVIEW-v1.0-preship.md §C2 / ADR-030).
 
     The pre-fix hook only added its own dir (hooks/wake-up/, which resolves
-    `lib` but NOT `feed`) to sys.path, so `from feed import …` failed in the
+    `wakeup` but NOT `feed`) to sys.path, so `from feed import …` failed in the
     installed runtime and the feed integration silently degraded. _plugin_root()
     must resolve the plugin root (where feed/ is a real dir post-Crucible) via
     $CLAUDE_PLUGIN_ROOT, falling back to Path(__file__).resolve().parents[2].

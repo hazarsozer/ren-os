@@ -180,11 +180,11 @@ def _load_lifecycle_module(rel_path: str, name: str):
 
 
 def test_compose_wake_up_context_signature_drift() -> None:
-    """Pin per `hooks/wake-up/lib/__init__.py`. The wake-up hook's public
+    """Pin per `hooks/wake-up/wakeup/__init__.py`. The wake-up hook's public
     composition entry. Expected: keyword-only cwd / wiki_root / source /
     max_tokens / fetch_feed_tail."""
     module = _load_lifecycle_module(
-        "hooks/wake-up/lib/__init__.py", "_drift_sf_wake_up_lib",
+        "hooks/wake-up/wakeup/__init__.py", "_drift_sf_wake_up_lib",
     )
     sig = inspect.signature(module.compose_wake_up_context)
     params = list(sig.parameters.keys())

@@ -1,4 +1,4 @@
-"""Tests for hooks/wake-up/lib (the wake-up compose layer)."""
+"""Tests for hooks/wake-up/wakeup (the wake-up compose layer)."""
 
 from __future__ import annotations
 
