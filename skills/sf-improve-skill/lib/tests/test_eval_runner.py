@@ -7,7 +7,7 @@ Covers the pure-logic helpers:
   - compute_total_assertions (counts including trigger + non-trigger contributions)
   - make/parse_failing_assertion_id (round-trip)
   - empty_eval_result (degenerate state)
-  - run_evals (stub raises NotImplementedError)
+  - run_evals (default path raises the typed EvalBackendNotConfiguredError)
 
 Per the load-bearing pattern from learnings.md (#1 in the test-against-real-
 instances tradition): includes the same parametrized canonical fixtures as
@@ -26,6 +26,7 @@ from pathlib import Path
 import pytest
 
 from ..eval_runner import (
+    EvalBackendNotConfiguredError,
     EvalSpec,
     EvalTest,
     NonTrigger,
@@ -368,17 +369,28 @@ class TestEmptyEvalResult:
 
 
 # ---------------------------------------------------------------------------
-# run_evals — stub
+# run_evals — honest fail-fast (EXPERIMENTAL: requires a configured backend)
 # ---------------------------------------------------------------------------
 
 
-class TestRunEvalsStub:
-    def test_raises_not_implemented(self):
-        with pytest.raises(NotImplementedError, match="execution layer"):
+class TestRunEvalsRequiresBackend:
+    def test_raises_eval_backend_not_configured(self):
+        with pytest.raises(EvalBackendNotConfiguredError, match="configured eval backend"):
             run_evals("sf-wrap")
 
-    def test_stub_message_references_design_doc(self):
+    def test_error_is_runtimeerror_subclass(self):
+        """The typed error subclasses RuntimeError so broad 'eval failed' guards
+        still treat it as a runtime failure."""
+        assert issubclass(EvalBackendNotConfiguredError, RuntimeError)
+
+    def test_message_flags_experimental(self):
         try:
             run_evals("sf-wrap")
-        except NotImplementedError as exc:
+        except EvalBackendNotConfiguredError as exc:
+            assert "EXPERIMENTAL" in str(exc)
+
+    def test_message_references_design_doc(self):
+        try:
+            run_evals("sf-wrap")
+        except EvalBackendNotConfiguredError as exc:
             assert "references/eval-runner.md" in str(exc)

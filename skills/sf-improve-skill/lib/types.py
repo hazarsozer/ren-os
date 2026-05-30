@@ -30,6 +30,7 @@ class ExitReason(str, Enum):
     USER_CANCELLED = "user_cancelled"
     EVAL_UNRUNNABLE = "eval_unrunnable"
     NO_IMPROVEMENT_POSSIBLE = "no_improvement_possible"  # all iterations regressed
+    REQUIRES_CONFIGURED_BACKEND = "requires_configured_backend"  # default eval backend not configured (EXPERIMENTAL)
 
 
 @dataclass(frozen=True)
