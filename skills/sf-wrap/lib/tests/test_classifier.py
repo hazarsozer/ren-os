@@ -6,7 +6,8 @@ Pure-logic coverage:
     type validation
   - parse_classifier_output: schema validation, label whitelisting,
     candidate_artifacts shape, JSON recovery from fenced/prefixed LLM output
-  - classify(): stub raises NotImplementedError with helpful message
+  - classify(): the default deterministic heuristic (EXPERIMENTAL) — biases to
+    `none`, never raises, pins dominate, artifacts only for decision/pattern
 
 Per dotfiles python/testing.md (pytest). Run with:
     python3 -m pytest skills/sf-wrap/lib/tests/test_classifier.py -v
@@ -337,20 +338,107 @@ class TestParseRecovery:
 
 
 # ---------------------------------------------------------------------------
-# classify() stub
+# classify() — default deterministic heuristic (EXPERIMENTAL)
 # ---------------------------------------------------------------------------
 
 
-class TestClassifyStub:
-    def test_raises_not_implemented(self):
-        with pytest.raises(NotImplementedError, match="LLM invocation"):
-            classify("transcript", project_name=None)
+class TestClassifyDeterministic:
+    """The default production classify() — conservative deterministic heuristic.
+    Never raises; biases hard to `none`; pins dominate; artifacts only for the
+    page-creating labels (decision/pattern)."""
 
-    def test_stub_message_references_design(self):
-        try:
-            classify("transcript", project_name="x")
-        except NotImplementedError as exc:
-            assert "signal-threshold" in str(exc) or "SKILL.md" in str(exc)
+    def test_routine_session_is_none_no_artifacts(self):
+        transcript = (
+            "Fixed a typo in the login button. Ran the tests, they pass. "
+            "Refactored a helper and added a unit test. Checked the logs."
+        )
+        result = classify(transcript, project_name="sidecar")
+        assert result.labels == ("none",)
+        assert result.candidate_artifacts == ()
+        assert not result.has_signal
+
+    def test_decision_phrase_fires_decision_with_one_artifact(self):
+        transcript = (
+            "After comparing options, we decided to use Postgres over Mongo "
+            "for the session store."
+        )
+        result = classify(transcript, project_name="sidecar")
+        assert "decision" in result.labels
+        assert result.has_signal
+        arts = [a for a in result.candidate_artifacts if a.label == "decision"]
+        assert len(arts) == 1
+        a = arts[0]
+        assert a.proposed_title and a.proposed_title == a.proposed_title.lower()
+        assert " " not in a.proposed_title  # kebab
+        assert 0 < len(a.proposed_summary) <= 300
+        assert a.target_file.startswith("wiki/projects/sidecar/decisions/")
+
+    def test_gotcha_fires_lesson_with_no_artifact(self):
+        transcript = (
+            "gotcha: Stripe webhook metadata.email has trailing whitespace — "
+            "strip before lookup."
+        )
+        result = classify(transcript, project_name="sidecar")
+        assert "lesson" in result.labels
+        # lesson is not a page-creating label → no candidate artifact
+        assert result.candidate_artifacts == ()
+
+    def test_routine_decided_phrase_in_log_does_not_fire(self):
+        """A casual 'decided to' that isn't a deliberate project choice stays
+        `none` (bias-to-none discipline)."""
+        result = classify("I decided to grab a coffee; the build is green.", project_name="x")
+        assert result.labels == ("none",)
+
+    def test_pin_escalation_fires_when_log_is_routine(self):
+        """A routine log + a deliberate /sf:note pin escalates (pins dominate)."""
+        transcript = (
+            "Spent the session fixing flaky tests and bumping a dependency.\n\n"
+            "## Pinned notes from /sf:note\n\n"
+            "decision: going with Tailwind for the design system"
+        )
+        result = classify(transcript, project_name="sidecar")
+        assert "decision" in result.labels
+
+    def test_pin_loose_keyword_fires_only_from_pins(self):
+        """A bare keyword (lower threshold) fires in a pin but NOT in the raw log."""
+        log_only = "I decided to grab a coffee and the build is green."
+        assert classify(log_only, project_name=None).labels == ("none",)
+        with_pin = log_only + "\n\n## Pinned notes\n\nremember the postgres decision"
+        assert "decision" in classify(with_pin, project_name=None).labels
+
+    def test_multi_label_capped_at_two(self):
+        transcript = (
+            "we decided to use Redis for caching. gotcha: TTLs are in seconds not ms. "
+            "Also migrating from Pages Router to App Router. milestone: Phase 1 is done."
+        )
+        result = classify(transcript, project_name="sidecar")
+        assert 1 <= len(result.labels) <= 2
+        assert "none" not in result.labels
+
+    def test_none_implies_empty_artifacts(self):
+        result = classify("just routine coding today", project_name="x")
+        assert result.labels == ("none",)
+        assert result.candidate_artifacts == ()
+
+    def test_never_raises_on_empty_or_non_string(self):
+        assert classify("", project_name=None).labels == ("none",)
+        assert classify("   \n  ", project_name=None).labels == ("none",)
+        assert classify(None, project_name=None).labels == ("none",)  # type: ignore[arg-type]
+
+    def test_unscoped_decision_targets_master_wiki(self):
+        result = classify(
+            "we decided to standardize on uv for all python projects",
+            project_name=None,
+        )
+        arts = [a for a in result.candidate_artifacts if a.label == "decision"]
+        assert arts and arts[0].target_file.startswith("wiki/decisions/")
+
+    def test_result_is_valid_classifier_result(self):
+        """Whatever fires, the output is a well-formed ClassifierResult."""
+        result = classify("we decided to use Redis", project_name="x")
+        assert isinstance(result, ClassifierResult)
+        assert all(isinstance(l, str) for l in result.labels)
+        assert isinstance(result.reasoning, str) and result.reasoning
 
 
 # ---------------------------------------------------------------------------

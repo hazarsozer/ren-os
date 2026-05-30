@@ -16,7 +16,7 @@ Per ADR-011's optional pattern: this file accumulates lessons learned during the
 
 ## Initial design notes (2026-05-28, lifecycle-2)
 
-- The signal-threshold classifier is the load-bearing intelligence. It's a structured prompt the LLM evaluates against the session transcript. **Bias toward `none`** is the core discipline.
+- The signal-threshold classifier is the load-bearing intelligence. The DEFAULT (ADR-031) is a conservative DETERMINISTIC heuristic — EXPERIMENTAL (bike-method): it scans the transcript + `/sf:note` pins for deliberate signal phrases, biases hard to `none`, and never raises. The LLM-prompt path (`build_classifier_prompt`/`parse_classifier_output`) ships as primitives for a future upgrade. **Bias toward `none`** is the core discipline.
 - CONTEXT.md is **always** rewritten — even on routine sessions. This is the next session's wake-up pointer and must reflect the latest state regardless of signal level.
-- Feed entry is written on routine sessions too (just timestamp + project + files), but classifier may decide `none` for wiki updates. Two-channel design: feed = "what happened" (cross-friend visibility), wiki = "what we learned" (deliberate knowledge curation).
+- Solo-first (ADR-031): there is no Activity Feed write. `/sf:wrap` is a single channel — the local wiki ("what we learned", deliberate knowledge curation). Routine sessions land at `none` and touch only CONTEXT.md.
 - The 7-label set may evolve. Watch for clusters that consistently miscarry (e.g., if "lesson" is being conflated with "pattern" by the classifier). Add labels via amendment to `references/signal-threshold.md`.

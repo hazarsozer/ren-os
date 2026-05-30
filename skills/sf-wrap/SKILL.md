@@ -1,15 +1,15 @@
 ---
 name: sf-wrap
 description: |
-  Use at session end when the friend wants to consolidate what they learned and
-  emit a terse Activity Feed entry. Triggers on the /sf:wrap slash command.
-  Applies a high-signal-threshold: most sessions produce ZERO wiki edits (that
-  is the discipline per ADR-009 — routine work doesn't pollute the wiki). When
-  signal exists (decision, pattern, lesson, gotcha, stack change), updates the
+  Use at session end when the friend wants to consolidate what they learned.
+  Triggers on the /sf:wrap slash command. Applies a high-signal-threshold:
+  most sessions produce ZERO wiki edits (that is the discipline per ADR-009 —
+  routine work doesn't pollute the wiki). When signal exists (decision,
+  pattern, lesson, stack change, milestone, purpose shift), updates the
   relevant ADR-014 pages with diffs shown for approval. Always rewrites the
-  active project's CONTEXT.md (the next session's wake-up pointer). Always
-  writes a terse session-end entry to the Activity Feed via feed.feed_write_session_end()
-  unless --skip-feed or SF_SKIP_FEED=1.
+  active project's CONTEXT.md (the next session's wake-up pointer).
+  EXPERIMENTAL: the default classifier is a conservative deterministic
+  heuristic (ADR-031 bike-method); the LLM path is a future upgrade.
 version: 0.1.0
 license: MIT
 
@@ -20,11 +20,10 @@ type: skill
 contract:
   required_outputs:
     - "An updated wiki/projects/<active-project>/CONTEXT.md with the new session pointer"
-    - "Zero or more diffs to wiki/projects/<active-project>/{STATE.md,ROADMAP.md,REQUIREMENTS.md,PROJECT.md} when signal threshold is met"
-    - "Zero or more new pages under wiki/projects/<active-project>/{decisions,patterns,research}/ when signal is decision/pattern/research grade"
-    - "One appended entry in wiki/projects/<active-project>/log.md and/or master wiki/log.md"
-    - "One Activity Feed entry via feed.feed_write_session_end() (unless skip-active)"
-    - "A brief summary printed to the user covering: pages touched, feed-write status, next-session pointer"
+    - "Zero or more diffs to wiki/projects/<active-project>/{STATE.md,ROADMAP.md,REQUIREMENTS.md,PROJECT.md} when the signal threshold is met"
+    - "Zero or more new pages under wiki/projects/<active-project>/{decisions,patterns}/ when signal is decision/pattern grade"
+    - "One appended entry in wiki/projects/<active-project>/log.md (always) and master wiki/log.md (only on a non-none signal)"
+    - "A brief summary printed to the user covering: pages touched, next-session pointer"
   budgets:
     turns: 10
     files_written: 15
@@ -33,29 +32,22 @@ contract:
     read:
       - "~/.startup-framework/wiki/**"
       - "~/.startup-framework/wiki/.session-notes/**"
-      - "~/.startup-framework/activity-feed/**"
       - "skills/sf-wrap/references/**"
     write:
       - "~/.startup-framework/wiki/**"
-      - "~/.startup-framework/activity-feed/**"
-    execute:
-      - "feed.feed_write_session_end"
-      - "feed.is_skip_active"
-      - "feed.config.handle"
+    execute: []
   completion_conditions:
-    - "Either: signal-threshold returned 'no signal' → zero wiki edits + (if not skipped) feed entry written + CONTEXT.md still rewritten"
-    - "Or: signal threshold returned 'has signal' → all proposed wiki diffs applied or explicitly rejected by user + (if not skipped) feed entry written + CONTEXT.md rewritten"
+    - "Either: the classifier returned 'none' → zero wiki edits + CONTEXT.md still rewritten"
+    - "Or: the classifier returned a signal → all proposed wiki diffs applied or explicitly rejected by the user + CONTEXT.md rewritten"
     - "User has been shown the summary line"
   output_paths:
     - "~/.startup-framework/wiki/projects/<active-project>/"
-    - "~/.startup-framework/activity-feed/<handle>.log.md"
 
-tags: [session-end, consolidate, wiki, feed, lifecycle]
+tags: [session-end, consolidate, wiki, lifecycle]
 related_skills: [sf-note, sf-recall, sf-bootstrap-project]
 references_required:
   - "references/signal-threshold.md"
   - "references/wiki-page-mapping.md"
-  - "references/feed-call.md"
 references_on_demand:
   - "references/diff-approval-ui.md"
   - "references/notes-discovery.md"
@@ -65,19 +57,21 @@ references_on_demand:
 
 End-of-session consolidate. The partner to the wake-up hook (ADR-008): wake-up reads what `/sf:wrap` writes. Per ADR-009 this is a **user-invoked slash command**, NEVER a Stop hook (Ralph collision + claude-mem SessionEnd ordering + the discipline that most sessions are routine and shouldn't pollute the wiki).
 
+Solo-first (ADR-031): `/sf:wrap` consolidates the **local wiki only**. The former Activity Feed session-end entry was removed with the feed module.
+
+> **EXPERIMENTAL (bike-method, ADR-031):** the default signal classifier is a conservative DETERMINISTIC heuristic — it scans the transcript + `/sf:note` pins for deliberate signal phrases, biases HARD to `none`, and never raises. It has no semantic understanding (phrase-driven), so it can miss subtly-phrased signal and rarely over-fire on a keyword used casually. The LLM classifier path (`build_classifier_prompt` + `parse_classifier_output`) ships as primitives for a future upgrade.
+
 ## When to use this skill
 
 - Friend invokes `/sf:wrap` (the canonical trigger)
-- Friend invokes `/sf:wrap --skip-feed` to consolidate locally without pushing to the Activity Feed (sensitive session per ADR-021)
 - Friend says any of: "wrap up", "consolidate this", "let's save the learnings", "I'm done for the day" — confirm intent with them once, then run
 
 ## When NOT to use this skill
 
 - Mid-session "save my progress" — the friend wants `/sf:note <text>` for that, not a full wrap
-- Routine debugging session with no genuine signal — STILL invoke /sf:wrap if the friend asked, but expect ZERO wiki edits and only the feed entry to be written. **Do not invent signal to justify wiki writes.** Per ADR-009: "would I want this loaded next session by default? If no, it doesn't go in."
-- Throwaway exploration sessions — invoke with `--skip-feed` if the friend prefers no Activity Feed trace
+- Routine debugging session with no genuine signal — STILL invoke /sf:wrap if the friend asked, but expect ZERO wiki edits beyond the CONTEXT.md refresh. **Do not invent signal to justify wiki writes.** Per ADR-009: "would I want this loaded next session by default? If no, it doesn't go in."
 
-## The 7-step pipeline
+## The pipeline
 
 ### Step 1. Gather inputs (read-only)
 
@@ -89,19 +83,26 @@ Sources:
 
 **Token discipline**: don't load PROJECT.md / REQUIREMENTS.md / ROADMAP.md unless the signal classifier (Step 2) signals they may need updates. Lazy-load on demand. Always load CONTEXT.md (you must rewrite it).
 
-### Step 2. Apply the signal threshold classifier
+### Step 2. Apply the signal-threshold classifier
 
-See `references/signal-threshold.md` for the full criteria. The classifier returns ONE of:
+See `references/signal-threshold.md` for the full criteria. The **default** classifier (`lib/classifier.py:classify()`) is a conservative DETERMINISTIC heuristic (EXPERIMENTAL):
+
+- It scans the combined transcript (session log + `/sf:note` pins) for deliberate, word-boundary signal phrases. **Pins dominate** — a single deliberate keyword in a pin is enough; the raw session log needs a full phrase.
+- It biases HARD to `none` and **never raises** (every failure degrades to `none`).
+- It proposes `candidate_artifacts` ONLY for fired `decision`/`pattern` (the page-creating labels); other labels (`lesson`/`stack_change`/`milestone`/`purpose_shift`) contribute their label (→ a log append) without a new file.
+- It takes **no file-change-count input** by design (that would conflate wiki-maintenance files with project files).
+
+The classifier returns ONE or more of:
 
 - `none` → no signal; no wiki updates
-- `decision` → a real architectural/scope decision was made; needs a new file in `decisions/` and a STATE.md update
-- `pattern` → a reusable pattern was discovered; needs a new file in `patterns/`
-- `lesson` → a non-obvious learning ("gotcha"); usually goes to STATE.md notes or learnings.md per the related skill
-- `stack_change` → tech-stack shift; needs STATE.md + maybe REQUIREMENTS.md update
-- `milestone` → roadmap milestone completed; needs ROADMAP.md update
-- `purpose_shift` → very rare; project's purpose/scope changed; needs PROJECT.md update
+- `decision` → a real architectural/scope decision; new file in `decisions/` + STATE.md update
+- `pattern` → a reusable pattern; new file in `patterns/`
+- `lesson` → a non-obvious learning ("gotcha"); STATE.md notes or learnings.md
+- `stack_change` → tech-stack shift; STATE.md + maybe REQUIREMENTS.md
+- `milestone` → roadmap milestone completed; ROADMAP.md
+- `purpose_shift` → very rare; project's purpose/scope changed; PROJECT.md
 
-Multi-label is allowed (e.g., a session can have `decision` + `lesson`). When in doubt, prefer `none`. The wiki is sacred; the default is to not touch it.
+Multi-label is allowed but capped (~2). When in doubt, prefer `none`. The wiki is sacred; the default is to not touch it.
 
 ### Step 3. Compose the diff plan
 
@@ -118,57 +119,19 @@ For each proposed diff, show the user:
 
 `--autonomous` flag (rare; not in V1) would skip this and apply all. **V1 default: ALWAYS prompt.**
 
-### Step 5. Apply approved diffs atomically
+### Step 5. Apply approved diffs atomically + close out
 
 Use `git restore` checkpoint before any wiki write. If any single approved diff fails to apply cleanly:
 1. Roll back ALL wiki writes from this wrap (`git restore wiki/`)
 2. Surface the would-have-been diffs to the user with the failure cause
-3. Skip Step 6 + Step 7 (don't write the feed if the wiki write failed; consistency matters)
-4. Tell the user how to retry
+3. Tell the user how to retry
 
-Append the one-line entry to `wiki/projects/<active>/log.md` AND to the master `wiki/log.md`. The chronological-invariant per ADR-004 must be preserved.
+On success, append the one-line entry to `wiki/projects/<active>/log.md` (always) AND to the master `wiki/log.md` (only on a non-none signal). The chronological-invariant per ADR-004 must be preserved.
 
-### Step 6. Compose the terse Activity Feed payload
-
-Validate ourselves before calling the feed (defense in depth per the lifecycle ↔ feed-2 contract):
-- `summary` ≤ 300 chars (locked by team-lead spec)
-- `files_touched` list ≤ 8 displayed
-- No triple-backtick fences in `summary`
-- No multi-line `summary` (no `\n` chars allowed)
-- No `Error:` / `Traceback` / `<` / `>` outside the header
-- NO secret-pattern scanning (ADR-021: format constraint IS the privacy mechanism; we don't reinvent AgentShield)
-
-Compute `skip` flag:
-```python
-skip, reason = feed.is_skip_active(wrap_flag=args.skip_feed)
-```
-
-Then call:
-```python
-result = feed.feed_write_session_end(
-    handle=feed.config.handle(),
-    project=active_project_or_None,
-    task_brief=composed_summary,  # ≤300 chars
-    files_touched=touched_files_list,
-    schema_version=1,
-    skip=skip,
-)
-```
-
-### Step 7. Handle the feed result + close out
-
-Possible outcomes from `feed.feed_write_session_end()`:
-- `success=True, pushed=True` → "✓ feed entry pushed"
-- `success=True, pushed=False, queued=True` → "⚠ feed entry queued locally; next session-start will push"
-- `success=True, pushed=False, queued=False, error=None` → skip was active → "(feed skipped: \<reason\>)"
-- `success=False, violation=<reason>` → format violation; re-prompt the LLM ONCE to recompose `summary`; on second failure abandon feed write but keep wiki updates intact (per team-lead's locked spec)
-- `success=False, error=<other>` → log error, keep wiki updates, surface a retry hint
-
-Print the final summary to user:
+Print the final summary to the user:
 ```
 /sf:wrap complete.
   Wiki: <N> pages updated (or "no signal; CONTEXT.md refreshed only")
-  Feed: <status>
   Next-session pointer (CONTEXT.md): "<first 100 chars>..."
 ```
 
@@ -185,19 +148,15 @@ Print the final summary to user:
 
 | Failure | Behavior | User-visible |
 |---|---|---|
-| Session transcript unreadable | Abort cleanly | "No session log found; nothing to wrap" |
-| High-signal classifier returns nothing | Zero wiki edits; STILL write feed entry (timestamp + project + files) | "No wiki changes; feed entry written" |
-| Wiki write mid-batch fails | `git restore wiki/` rollback; show would-have-been diff; defer feed | Retry instructions |
-| Feed push conflict | Feed retries; on N=3 failures returns `queued=True`; wrap surfaces it | "feed push deferred; will retry next session" |
-| Feed auth/network failure | Same as conflict | Same |
-| `--skip-feed` or `SF_SKIP_FEED=1` | Wiki writes only; no feed call | "feed skipped: \<reason\>" |
-| Format violation in summary | One LLM re-prompt; on second failure abandon feed, keep wiki | "feed entry rejected (format); wiki saved" |
+| Session transcript unreadable | Treat as empty transcript → classifier returns `none` | "No session log found; CONTEXT.md refreshed only" |
+| Classifier returns nothing (`none`) | Zero wiki edits beyond CONTEXT.md | "No wiki changes; CONTEXT.md refreshed" |
+| Wiki write mid-batch fails | `git restore wiki/` rollback; show would-have-been diff | Retry instructions |
 
 ## Implementation note
 
-V1 implementation lives in `skills/sf-wrap/lib/`. Imports `feed.*` from the `feed/` module. During development, `feed.feed_write_session_end_fake` + `feed.is_skip_active` (real impl) from feed-2's stub branch are used; the imports swap to real impls when feed/ Task #19 lands.
+V1 implementation lives in `skills/sf-wrap/lib/`. The default classifier (`lib/classifier.py:classify()`) is a conservative DETERMINISTIC heuristic — **EXPERIMENTAL** (ADR-031 bike-method): phrase-driven with a hard bias to `none`, never raises. `build_classifier_prompt()` + `parse_classifier_output()` ship as composable primitives for the future LLM classifier path; they are unit-tested but not wired into the default path.
 
-The signal-threshold classifier is implemented in `references/signal-threshold.md` as a structured prompt the LLM evaluates against the session transcript. See that doc for the exact criteria.
+The criteria the classifier encodes live in `references/signal-threshold.md`.
 
 ## References
 
@@ -205,8 +164,6 @@ The signal-threshold classifier is implemented in `references/signal-threshold.m
 - ADR-008 (Wake-Up Hook) — the partner; CONTEXT.md is the handoff artifact
 - ADR-009 (Consolidate via /wrap) — this skill's design rationale + non-Stop-hook decision
 - ADR-014 (Project Sub-Wiki Taxonomy) — page mapping for diff plans
-- ADR-018 (Activity Feed) — feed entry format
-- ADR-021 (Privacy Boundaries) — terse-format constraint IS the privacy mechanism
+- ADR-031 (Solo-First Pivot) — Activity Feed removal; deterministic classifier as the EXPERIMENTAL default
 - `references/signal-threshold.md` — the classifier criteria
 - `references/wiki-page-mapping.md` — signal-label → diff-plan mapping
-- `references/feed-call.md` — feed contract usage details
