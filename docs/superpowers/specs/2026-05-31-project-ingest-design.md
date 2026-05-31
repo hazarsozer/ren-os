@@ -32,7 +32,7 @@ A user-invoked skill that turns an **existing** project directory into a first-c
 
 ## 3. Non-goals (v1)
 
-- **Wake-up discovery nudge** (`detect_project()` → "this project isn't in your wiki; run `/sf:ingest-project`"). Natural follow-on; flagged, not built.
+- **Wake-up discovery nudge** (`detect_project()` → "this project isn't in your wiki; run `/sf:ingest-project`"). The **immediate fast-follow** (its own small plan), not part of this engine plan — it touches the wake-up hook (the highest-risk V1 artifact: SessionStart cache-preserving injection) and runs on every session start, so its "un-ingested project?" check MUST use a **cheap presence signal** (`.git` or a manifest file in cwd under `dev_root`), **NOT** the full scanner. This spec deliberately keeps the scanner out of the hook's hot path so that interface stays open for the nudge plan.
 - **Bulk scan** of all `~/Dev` projects (`--scan` to list + multi-select). Follow-on.
 - **Re-ingest / refresh-on-drift** (detecting the project changed since last ingest and updating STATE/log). Follow-on; v1 re-run is additive-fill only.
 - **Global pattern extraction** into master `patterns/` and **identity enrichment**. Deliberately excluded — see §6 (Registration-only footprint).
@@ -122,6 +122,10 @@ Thin evidence → honest placeholder, never invented.
 | `index.md` | catalog of written pages |
 | `log.md` | git **timeline** clustered into terse one-line entries (capped ~20) + init entry |
 
+**Timeline clustering (decided):** a single bucketing algorithm — **monthly buckets**, with git tags annotated into their month's entry (e.g. `2025-03: 52 commits — shipped v1.0 (tag)`). No separate tag-anchored pass; degrades cleanly for the many side-projects that never tag. Tags also feed `ROADMAP.md` separately, so nothing is lost by keeping `log.md` on one rule. The scanner emits monthly `git.timeline` + `git.tags` (§6); the INTERPRET step merges them.
+
+**`--depth deep` docs (decided):** existing ADRs / design docs found in the project are **summarized with a backlink** to the in-project source path — never copied verbatim into `decisions/`/`research/`. This mirrors how `research/` already digests sources, and upholds ADR-002/004 (the wiki is a navigational memory layer, not a doc warehouse): copying full docs would bloat the sub-wiki and **drift** as the project's real docs evolve.
+
 **Global footprint (registration only):** master `wiki/index.md` gets one line under `## Projects`; master `wiki/log.md` gets one init line. Identical footprint to `sf-bootstrap-project`. No master `patterns/` writes, no `identity.md` edits.
 
 ## 8. Read-safety & bounds (load-bearing per the privacy stance)
@@ -169,7 +173,7 @@ Per-module: `( cd skills/sf-ingest-project && python3 -m pytest tests/ -q )` (ro
 
 ## 12. Open items for the implementation plan
 
-- Exact stack-detection rules table (manifest → language/PM/framework mapping) lives in `references/extraction-spec.md`.
-- Exact git-timeline clustering algorithm (monthly buckets vs. tag-anchored) — decide in plan; default monthly with tag annotations.
-- Whether `--depth deep` ingests existing ADRs/design docs into `decisions/` + `research/` as copies or as summaries — default summaries (avoid duplicating large files into the wiki).
-- Subagent fan-out threshold tuning (`recommend_subagents` heuristic) — start at file_count > 800 or loc_estimate > 50k.
+- Exact stack-detection rules table (manifest → language/PM/framework mapping) — to be specified in `references/extraction-spec.md` during implementation.
+- Subagent fan-out threshold tuning (`recommend_subagents` heuristic) — start at file_count > 800 or loc_estimate > 50k; tune against fixtures.
+
+_Resolved during brainstorming and folded into the spec (no longer open): wake-up nudge sequencing → §3; git-timeline clustering → §7; `--depth deep` doc handling → §7._
