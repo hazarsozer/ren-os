@@ -9,7 +9,7 @@
   },
   "plugins": [
     {
-      "name": "startup-framework",
+      "name": "sf",
       "source": "./",
       "description": "Per-builder hierarchical wiki + curated plugin stack + skill self-improvement. See README.md for the full feature surface.",
       "author": {
