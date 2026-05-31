@@ -34,7 +34,7 @@ The multi-user **Activity Feed was cut pre-ship** (ADR-031): the builder is solo
 - Per-builder hierarchical wiki + `wiki-skeleton/` templates (`identity.md`, master `index.md` + `log.md`, project sub-wiki taxonomy).
 
 **Connections — distribution, updates, permissions**
-- `sf-marketplace` private Claude Code marketplace (ADR-019): friends install via `/plugin marketplace add hazarsozer/sf-marketplace` + `/plugin install startup-framework@sf-marketplace`. `sf-marketplace-rc` RC channel (opt-in via `userConfig.rcChannel`).
+- `sf-marketplace` private Claude Code marketplace (ADR-019): friends install via `/plugin marketplace add hazarsozer/sf-marketplace` + `/plugin install sf@sf-marketplace`. `sf-marketplace-rc` RC channel (opt-in via `userConfig.rcChannel`).
 - `.claude-plugin/{marketplace,plugin}.json` manifests at the repo root (one-repo layout, `source: "./"`).
 - `/sf:doctor` — environment + plugin + schema + framework-update + backup verification (ADR-025 + ADR-027).
 - `/sf:doctor --permissions` — read-only permission audit ("keys on your ring"): MCP servers (name + transport + tool-key counts), `allow`/`deny`/`ask` tally, broad-grant flags, enabled plugins + hooks. Framing: **keys ≠ instructions**. Never prints secret/env/token values.
