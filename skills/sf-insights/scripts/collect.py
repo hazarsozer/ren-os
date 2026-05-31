@@ -85,6 +85,28 @@ _WORD_RE = re.compile(r"[a-zA-Z][a-zA-Z0-9_\-]{2,}")
 # Encoded project dir like "-home-hsozer-Dev-startup-framework"
 _PROJECT_DIR_PREFIX = "-"
 
+# Credential-shaped token guard. Topics are short natural-language keywords or
+# tool names, so a token that looks like a secret must NOT become a topic —
+# otherwise a pasted key reaches the LLM-fed fact-block (same rationale as the
+# dropped kickoff field). Matched case-insensitively on the lowercased token.
+_SECRET_TOKEN_MAX_LEN = 30  # sk-ant-…, ghp_…, base64/hex blobs exceed this
+# Known credential prefixes (lowercased): API keys, GitHub tokens, Slack tokens.
+_SECRET_PREFIXES = (
+    "sk-", "sk_", "ghp_", "gho_", "ghs_", "github_pat_", "xoxb-", "xoxp-",
+)
+# AWS access key IDs: AKIA/ASIA + 16 alphanumerics (20 chars, no hyphens — a
+# length cap alone misses these, so match the shape explicitly).
+_AWS_KEY_RE = re.compile(r"^(akia|asia)[a-z0-9]{16}$")
+
+
+def _looks_like_secret(token: str) -> bool:
+    """True if a lowercased token resembles a credential and must be dropped."""
+    return (
+        len(token) > _SECRET_TOKEN_MAX_LEN
+        or token.startswith(_SECRET_PREFIXES)
+        or bool(_AWS_KEY_RE.match(token))
+    )
+
 
 # --------------------------------------------------------------------------
 # Data shapes
@@ -286,6 +308,8 @@ def _scan_topics(text: str, counter: Counter) -> None:
     for m in _WORD_RE.finditer(chunk.lower()):
         w = m.group(0)
         if w in STOPWORDS:
+            continue
+        if _looks_like_secret(w):  # never let a credential become a topic
             continue
         counter[w] += 1
 

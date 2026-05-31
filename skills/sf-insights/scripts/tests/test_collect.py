@@ -463,6 +463,9 @@ class TestProjectFallbackNoCwd:
 
 class TestKickoffSecretSafety:
     SECRET = "sk-ant-api03-FAKESECRET-DO-NOT-EMIT-0123456789"
+    # Structurally different sentinel: a 20-char AWS-style key with NO hyphens,
+    # so a length cap alone won't catch it — must be caught by shape/prefix.
+    AWS_SECRET = "AKIAIOSFODNN7EXAMPLE"
 
     def _seed_secret_first_message(self, tmp_path: Path) -> Path:
         claude = tmp_path / ".claude"
@@ -474,7 +477,10 @@ class TestKickoffSecretSafety:
                 cwd="/home/hsozer/Dev/app",
                 message={
                     "role": "user",
-                    "content": f"Use my key {self.SECRET} to call the API and debug this",
+                    "content": (
+                        f"Use my key {self.SECRET} and {self.AWS_SECRET} "
+                        f"to call the API and debug this"
+                    ),
                 },
             ),
             _assistant([{"type": "tool_use", "name": "Bash", "input": {}}], sid="s"),
@@ -487,8 +493,11 @@ class TestKickoffSecretSafety:
         out = collect.render(
             collect.collect(days=3650, claude_dir=str(claude), now=REF_NOW)
         )
-        assert self.SECRET not in out          # credential must not reach the LLM-fed block
-        assert "kickoff" not in out            # the verbatim-echo line is gone entirely
+        # Case-insensitive: _scan_topics lowercases tokens, so the leaked secret
+        # would appear lowercased — a case-sensitive check is a false green.
+        assert self.SECRET.lower() not in out      # long sk- key must not reach the LLM-fed block
+        assert self.AWS_SECRET.lower() not in out  # AWS-shaped key (no length cap can catch it)
+        assert "kickoff" not in out                # the verbatim-echo line is gone entirely
 
     def test_session_facts_has_no_kickoff_field(self, tmp_path):
         assert not hasattr(collect.SessionFacts(), "kickoff")
