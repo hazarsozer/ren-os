@@ -85,7 +85,7 @@ def _wiki_files_snapshot(wiki_root: Path) -> dict[str, str]:
     return snapshot
 
 
-def _count_differing(pre: dict, post: dict) -> int:
+def _count_differing(pre: dict[str, str], post: dict[str, str]) -> int:
     """Count files that differ between two wiki snapshots, counting files present
     in only one side (symmetric — a surviving NEW file in post must be counted)."""
     return sum(1 for k in (pre.keys() | post.keys()) if pre.get(k) != post.get(k))
