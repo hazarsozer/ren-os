@@ -236,3 +236,22 @@ def test_wiki_path_strips_surrounding_whitespace(clean_path_env):
     with tempfile.TemporaryDirectory() as tmp:
         clean_path_env.setenv("SF_WIKI_ROOT", f"  {tmp}  ")
         assert wiki_path() == Path(tmp)
+
+
+def test_unterminated_frontmatter_handle_in_body_rejected():
+    """A `handle:` line in a truncated body with NO closing --- must not be accepted."""
+    assert sf_paths._parse_handle_from_frontmatter(
+        "---\ntitle: x\nhandle: evil\nmore body\n"
+    ) is None
+
+def test_terminated_frontmatter_still_parses():
+    assert sf_paths._parse_handle_from_frontmatter(
+        "---\nhandle: good\n---\nbody\n"
+    ) == "good"
+
+def test_validate_handle_rejects_overlong():
+    with pytest.raises(InvalidHandleError):
+        validate_handle("a" * 50_000)
+
+def test_validate_handle_accepts_50_char_boundary():
+    validate_handle("a" + "b" * 49)  # exactly 50 chars
