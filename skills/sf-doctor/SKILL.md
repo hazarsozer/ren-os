@@ -179,7 +179,7 @@ If `gh api` is rate-limited or offline:
 Binary assertions in `eval.json` validate:
 - Output contains all five section headers (ENVIRONMENT, PLUGINS, SCHEMA VERSIONS, FRAMEWORK UPDATE, BACKUP)
 - `--install-mode` skips FRAMEWORK UPDATE
-- `--json` output is valid JSON conforming to `output-schema.json`
+- `--json` output is valid JSON conforming to the `--json` output schema sketched in `reference.md` § "`--json` output schema"
 - Crashing any check-script does NOT cause the skill to crash
 - `--permissions` lists every configured MCP server by name + transport, tallies `allow`/`deny`/`ask`, and flags broad grants (bare `Bash`, `mcp__*`)
 - the permission audit NEVER prints secret/env/token values (backed by the hermetic fake-token-absence test) and tolerates all-absent config while exiting `0`
