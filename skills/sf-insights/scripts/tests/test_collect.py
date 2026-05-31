@@ -445,17 +445,13 @@ class TestProjectFallbackNoCwd:
         """When a record has neither project nor cwd, the fallback must NOT use the
         lossy decode (which collapses '-' to '/', turning 'my-app' into 'app').
         It should surface the unambiguous encoded dir name instead."""
-        import sys
-        if str(SCRIPTS_DIR) not in sys.path:
-            sys.path.insert(0, str(SCRIPTS_DIR))
-        import collect as _collect
         claude = tmp_path / ".claude"
         proj = claude / "projects" / "-home-h-Dev-my-app"
         write_jsonl(proj / "s.jsonl", [
             _rec("user", sid="s", message={"role": "user", "content": "hi build"}),
             _assistant([{"type": "text", "text": "ok"}], sid="s"),
         ])
-        data = _collect.collect(days=3650, claude_dir=str(claude), now=REF_NOW)
+        data = collect.collect(days=3650, claude_dir=str(claude), now=REF_NOW)
         assert len(data.sessions) == 1
         assert data.sessions[0].project != "app", "still using lossy decode → wrong basename"
         assert data.sessions[0].project == "-home-h-Dev-my-app"
