@@ -141,7 +141,7 @@ fi
 # OpenTelemetry (optional per ADR-015 Stage 6)
 # ──────────────────────────────────────────────────────────────────────
 if [[ -n "${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ]]; then
-  emit "otel" "ok" "${OTEL_EXPORTER_OTLP_ENDPOINT}" ""
+  emit "otel" "ok" "configured" ""
 else
   emit "otel" "skip" "" "no OTLP endpoint configured (optional)"
 fi
