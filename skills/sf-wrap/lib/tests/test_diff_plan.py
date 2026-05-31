@@ -355,9 +355,23 @@ class TestFrameworkVersionResolution:
         fm = _frontmatter_for("decision", "Title", "2026-05-31")
         assert 'framework_version: "9.9.9"' in fm, fm
 
-    def test_frontmatter_falls_back_when_unresolvable(self, monkeypatch):
+    def test_frontmatter_uses_default_when_no_env_override(self, monkeypatch):
+        """No env override → the resolver loads sf_paths, whose own lowest tier
+        returns its default ('1.0.0'). This exercises the success path's default,
+        NOT the resolver's except-branch fallback (see the test below for that)."""
         from ..diff_plan import _frontmatter_for
         monkeypatch.delenv("CLAUDE_PLUGIN_OPTION_FRAMEWORK_VERSION", raising=False)
         monkeypatch.delenv("CLAUDE_PLUGIN_ROOT", raising=False)
         fm = _frontmatter_for("decision", "Title", "2026-05-31")
         assert 'framework_version: "1.0.0"' in fm
+
+    def test_framework_version_falls_back_on_load_failure(self, monkeypatch):
+        """Force the except branch: if sf_paths.py can't be loaded, the resolver
+        returns its hardcoded '1.0.0' fallback so frontmatter is never broken."""
+        import importlib.util
+        from .. import diff_plan
+        monkeypatch.setattr(
+            importlib.util, "spec_from_file_location",
+            lambda *a, **k: (_ for _ in ()).throw(OSError("forced")),
+        )
+        assert diff_plan._framework_version() == "1.0.0"

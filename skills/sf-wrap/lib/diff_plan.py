@@ -70,7 +70,7 @@ def _framework_version() -> str:
         spec.loader.exec_module(mod)
         return mod.framework_version()
     except Exception:
-        return "1.0.0"
+        return "1.0.0"  # mirrors lib/sf_paths.py FALLBACK_FRAMEWORK_VERSION — keep in sync
 
 
 def _today_iso() -> str:
@@ -81,7 +81,6 @@ def _today_iso() -> str:
 def _now_log_prefix() -> str:
     """Return the log-entry prefix `## [YYYY-MM-DD HH:MM]` in UTC."""
     return datetime.now(timezone.utc).strftime("## [%Y-%m-%d %H:%M]")
-
 
 
 def _read_or_empty(path: Path) -> str:
