@@ -333,8 +333,6 @@ class TestComputeUsageCostMissingCacheKeys:
     def test_missing_cache_rates_no_keyerror(self, tmp_path):
         """A pricing entry that omits cache_read/cache_creation must not crash;
         the missing cache rates contribute $0 rather than raising KeyError."""
-        import json
-        from ..budget import load_pricing_table
         data = {
             "valid_as_of": "2026-01-01",
             "pricing_usd_per_million_tokens": {"m": {"input": 1.0, "output": 2.0}},
@@ -345,7 +343,12 @@ class TestComputeUsageCostMissingCacheKeys:
         path.write_text(json.dumps(data), encoding="utf-8")
         table = load_pricing_table(path)
         usage = ApiUsage(
-            input_tokens=1_000_000, output_tokens=0, cache_read_input_tokens=500_000
+            input_tokens=1_000_000,
+            output_tokens=0,
+            cache_read_input_tokens=500_000,
+            cache_creation_input_tokens=500_000,
         )
         cost = compute_usage_cost_usd(usage, "m", table)
-        assert cost == pytest.approx(1.0)  # 1M input × $1; cache_read counts as $0
+        # 1M input × $1 = $1; both missing cache rates default to $0, so the
+        # 500k cache_read + 500k cache_creation tokens contribute nothing.
+        assert cost == pytest.approx(1.0)
