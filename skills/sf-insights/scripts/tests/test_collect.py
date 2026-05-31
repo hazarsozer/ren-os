@@ -229,7 +229,6 @@ class TestSummarize:
         # metadata captured
         assert sf.branch == "fix/v1.0-preship-blockers"
         assert "2.1.150" in sf.versions
-        assert sf.kickoff
 
     def test_render_block_has_markers(self, tmp_path):
         claude = seed_claude_home(tmp_path)
@@ -455,3 +454,41 @@ class TestProjectFallbackNoCwd:
         assert len(data.sessions) == 1
         assert data.sessions[0].project != "app", "still using lossy decode → wrong basename"
         assert data.sessions[0].project == "-home-h-Dev-my-app"
+
+
+# ---------------------------------------------------------------------------
+# Privacy: kickoff field dropped — verbatim first message must not reach LLM
+# ---------------------------------------------------------------------------
+
+
+class TestKickoffSecretSafety:
+    SECRET = "sk-ant-api03-FAKESECRET-DO-NOT-EMIT-0123456789"
+
+    def _seed_secret_first_message(self, tmp_path: Path) -> Path:
+        claude = tmp_path / ".claude"
+        proj = claude / "projects" / "-home-hsozer-Dev-app"
+        lines = [
+            _rec(
+                "user",
+                sid="s",
+                cwd="/home/hsozer/Dev/app",
+                message={
+                    "role": "user",
+                    "content": f"Use my key {self.SECRET} to call the API and debug this",
+                },
+            ),
+            _assistant([{"type": "tool_use", "name": "Bash", "input": {}}], sid="s"),
+        ]
+        write_jsonl(proj / "s.jsonl", lines)
+        return claude
+
+    def test_secret_in_first_message_absent_from_output(self, tmp_path):
+        claude = self._seed_secret_first_message(tmp_path)
+        out = collect.render(
+            collect.collect(days=3650, claude_dir=str(claude), now=REF_NOW)
+        )
+        assert self.SECRET not in out          # credential must not reach the LLM-fed block
+        assert "kickoff" not in out            # the verbatim-echo line is gone entirely
+
+    def test_session_facts_has_no_kickoff_field(self, tmp_path):
+        assert not hasattr(collect.SessionFacts(), "kickoff")

@@ -109,7 +109,6 @@ class SessionFacts:
     error_phrase_hits: int = 0
     tools_with_errors: set = field(default_factory=set)
     topic_counts: Counter = field(default_factory=Counter)
-    kickoff: str = ""  # first user-text snippet (bounded)
     # tool_use id → tool name, so an errored tool_result can be tied back to
     # the tool that produced it (precise retry signal when ids are present).
     tool_use_ids: dict = field(default_factory=dict)
@@ -363,10 +362,6 @@ def _ingest_record(rec: dict, facts: SessionFacts) -> None:
             for text in _extract_text_blocks(msg.get("content")):
                 _scan_topics(text, facts.topic_counts)
                 facts.error_phrase_hits += _count_error_phrases(text)
-                if not facts.kickoff:
-                    cleaned = _TAG_RE.sub(" ", text).strip()
-                    if cleaned:
-                        facts.kickoff = cleaned[:160]
             _ingest_tool_results(msg.get("content"), facts)
 
     elif rtype == "assistant":
@@ -589,8 +584,6 @@ def render(data: CollectedData) -> str:
             f"retry_suspected={'yes' if s.retry_suspected else 'no'}"
         )
         lines.append(f"- topics: {topics}")
-        if s.kickoff:
-            lines.append(f"- kickoff: {s.kickoff}")
     if len(data.sessions) > MAX_SESSIONS_LISTED:
         lines.append(
             f"... ({len(data.sessions) - MAX_SESSIONS_LISTED} more sessions "
