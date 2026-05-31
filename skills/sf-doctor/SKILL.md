@@ -1,10 +1,45 @@
 ---
 name: sf-doctor
 description: Use when the user runs /sf:doctor (or when /sf:install Stage 6 invokes it) to verify the framework is correctly installed and operating. Composes a four-section report (ENVIRONMENT, PLUGINS, SCHEMA VERSIONS, FRAMEWORK UPDATE) plus a BACKUP section, runs read-only checks in parallel, and surfaces remediation paths for any failures. Never writes to the wiki.
+version: 0.1.0
+license: MIT
 type: skill
 schema_version: 1
 framework_version: 1.0.0
 owner_module: sf-distribution
+
+contract:
+  required_outputs:
+    - "A human-readable report with five sections (ENVIRONMENT, PLUGINS, SCHEMA VERSIONS, FRAMEWORK UPDATE, BACKUP) plus a final summary line"
+    - "With --permissions: a standalone read-only 'KEYS ON YOUR RING' audit (MCP servers by name+transport, allow/deny/ask tallies, broad-grant flags, plugins + hooks) that NEVER prints a secret/env/token/header value"
+    - "With --json: machine-readable JSON of the same status sections + summary"
+    - "Exit code 0 when no blocker (❌) is present; exit 1 only on a blocker"
+  budgets:
+    turns: 4
+    files_written: 0
+    duration_seconds: 60
+  permissions:
+    read:
+      - "skills/wiki-migration/schemas.json"
+      - "~/.startup-framework/wiki/**"
+      - "~/.claude.json"
+      - "~/.claude/settings.json"
+      - "~/.claude/settings.local.json"
+      - "hooks/hooks.json"
+    write: []
+    execute:
+      - "scripts/check-env.sh"
+      - "scripts/check-plugins.sh"
+      - "scripts/check-schemas.sh"
+      - "scripts/check-update.sh"
+      - "scripts/check-backup.sh"
+      - "scripts/check-permissions.sh"
+      - "gh (read-only: gh api repos/<org>/sf-marketplace/contents/.claude-plugin/marketplace.json)"
+  completion_conditions:
+    - "All five status sections rendered (or a crashed check-script degraded to a per-section failure note without crashing the report)"
+    - "Run is side-effect-free: nothing under the wiki or settings is created, modified, or deleted"
+    - "With --permissions: no secret/env/token/header value appears anywhere in the output"
+  output_paths: []
 ---
 
 # sf-doctor

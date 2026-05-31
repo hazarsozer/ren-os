@@ -1,10 +1,56 @@
 ---
 name: sf-update
 description: Use when the user runs /sf:update to upgrade the framework. Drives the migration state machine — fetches latest version, classifies the bump, snapshots the wiki, runs migrations, verifies via verify.json, shows diffs for approval, applies, and re-verifies. Snapshot/rollback is built in. Never silent on MAJOR bumps.
+version: 0.1.0
+license: MIT
 type: skill
 schema_version: 1
 framework_version: 1.0.0
 owner_module: sf-distribution
+
+contract:
+  required_outputs:
+    - "A printed migration plan (per-page-type ordered migration chain) before any write"
+    - "A pre-migration wiki snapshot under ${CLAUDE_PLUGIN_DATA}/wiki-snapshots/v<from>-pre-update-<ISO8601>/"
+    - "Migrated wiki pages written to disk only after per-page verify.json PASS + diff approval, with frontmatter schema_version/framework_version bumped"
+    - "An appended migration entry in wiki/log.md (snapshot path + update record)"
+    - "A post-update /sf:doctor --post-update report; on new issues, an explicit no-auto-rollback message naming the snapshot path"
+    - "On --dry-run: the plan only, with zero writes to wiki, snapshot dir, or marketplace"
+  budgets:
+    turns: 30
+    files_written: 200
+    duration_seconds: 600
+  permissions:
+    read:
+      - "${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json"
+      - "skills/wiki-migration/schemas.json"
+      - "skills/wiki-migration/migrations/**"
+      - "~/.startup-framework/wiki/**"
+      - "${CLAUDE_PLUGIN_DATA}/wiki-snapshots/**"
+    write:
+      - "~/.startup-framework/wiki/**"
+      - "~/.startup-framework/wiki/.git/**"
+      - "${CLAUDE_PLUGIN_DATA}/wiki-snapshots/**"
+    execute:
+      - "scripts/version-compare.sh"
+      - "scripts/snapshot.sh"
+      - "scripts/restore.sh"
+      - "scripts/prune-snapshots.sh"
+      - "skills/wiki-migration/scripts/compute-migration-chain.sh"
+      - "skills/wiki-migration/scripts/apply-migration.sh"
+      - "skills/wiki-migration/scripts/verify-page.sh"
+      - "git (in ~/.startup-framework/wiki/, only if a remote is configured)"
+      - "gh (read-only: gh api repos/<org>/sf-marketplace/contents/.claude-plugin/plugin.json)"
+  completion_conditions:
+    - "Equal version → exits without snapshotting"
+    - "A snapshot exists before any page is migrated"
+    - "Every applied page passed verify.json and was approved (or --auto for MINOR additive only; MAJOR always prompts)"
+    - "Failed/crashed pages were reverted from snapshot (ROLLBACK_PAGE) while other pages continued; snapshot retained"
+    - "wiki/log.md has the appended migration entry and the post-update doctor report was printed"
+    - "On --dry-run: no writes occurred anywhere"
+  output_paths:
+    - "~/.startup-framework/wiki/"
+    - "${CLAUDE_PLUGIN_DATA}/wiki-snapshots/"
 ---
 
 # sf-update
