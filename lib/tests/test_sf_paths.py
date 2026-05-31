@@ -244,14 +244,21 @@ def test_unterminated_frontmatter_handle_in_body_rejected():
         "---\ntitle: x\nhandle: evil\nmore body\n"
     ) is None
 
+
 def test_terminated_frontmatter_still_parses():
     assert sf_paths._parse_handle_from_frontmatter(
         "---\nhandle: good\n---\nbody\n"
     ) == "good"
 
+
+def test_only_opening_fence_returns_none():
+    assert sf_paths._parse_handle_from_frontmatter("---\nhandle: x\n") is None
+
+
 def test_validate_handle_rejects_overlong():
     with pytest.raises(InvalidHandleError):
         validate_handle("a" * 50_000)
+
 
 def test_validate_handle_accepts_50_char_boundary():
     validate_handle("a" + "b" * 49)  # exactly 50 chars
