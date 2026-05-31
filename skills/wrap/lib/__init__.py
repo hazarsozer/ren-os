@@ -3,7 +3,7 @@ sf-wrap library — internal implementation for the /sf:wrap slash command.
 
 Public entry point: `wrap(inputs: WrapInputs) -> WrapResult`.
 
-The pipeline follows the steps documented in skills/sf-wrap/SKILL.md:
+The pipeline follows the steps documented in skills/wrap/SKILL.md:
 
     1. gather inputs (read-only)
     2. classifier — apply signal-threshold (LLM call)

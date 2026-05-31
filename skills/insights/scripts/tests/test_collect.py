@@ -1,4 +1,4 @@
-"""Hermetic tests for skills/sf-insights/scripts/collect.py.
+"""Hermetic tests for skills/insights/scripts/collect.py.
 
 Every test seeds a throwaway temp ~/.claude tree (crafted *.jsonl + *.tmp),
 runs the read-only collector against it, and asserts:

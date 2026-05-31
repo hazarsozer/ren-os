@@ -5,7 +5,7 @@ Pure-math coverage. Real model-pricing.json loaded as the default fixture;
 custom tables built ad-hoc for edge-case tests.
 
 Per dotfiles python/testing.md (pytest framework). Run with:
-    python3 -m pytest skills/sf-improve-skill/lib/tests/ -v
+    python3 -m pytest skills/improve-skill/lib/tests/ -v
 """
 
 from __future__ import annotations

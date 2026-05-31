@@ -1,6 +1,6 @@
 """InstallSimulator — walks the documented 7-stage /sf:install procedure.
 
-Each stage method maps 1:1 to a step in skills/sf-install/references/stage-N-*.md.
+Each stage method maps 1:1 to a step in skills/install/references/stage-N-*.md.
 Keep this thin: any time you're tempted to add "business logic" here, add it to
 the stage ref doc first and then mirror in code.
 

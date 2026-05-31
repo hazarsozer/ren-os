@@ -101,7 +101,7 @@ def load_eval_spec(skill_path: Path) -> EvalSpec:
     pre-flight.
 
     Args:
-        skill_path: The skill directory (e.g., `skills/sf-wrap/`).
+        skill_path: The skill directory (e.g., `skills/wrap/`).
 
     Returns:
         EvalSpec.
