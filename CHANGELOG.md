@@ -20,7 +20,7 @@ Nothing yet.
 
 ---
 
-## [1.0.0] — 2026-05-30
+## [1.0.0] — 2026-05-31
 
 The first stable release — a **solo-first** framework organized under Nate Herk's **Four C's** (Context → Connections → Capabilities → Cadence): a per-builder hierarchical wiki, cache-preserving wake-up context injection, schema-versioned wiki pages, a deterministic session-consolidation loop, read-only insight + permission-audit surfaces, and a curated plugin stack.
 
