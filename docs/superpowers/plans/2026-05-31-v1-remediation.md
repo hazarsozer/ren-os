@@ -37,7 +37,7 @@ Net: **1 HIGH, 2 MED, 4 LOW/dead-code** in Phase 1. Lead with the HIGH.
 6. **schemas.schema.json `owner_module` enum** still lists dead `"sf-feed"` — a **live CI validator** (bonus Phase 2 fix the findings missed).
 
 ### Namespace landmines (Phase 4 — do not skip)
-- **Plugin data dir changes** `startup-framework-sf-marketplace` → **`sf-sf-marketplace`** (CC derives it as `<plugin-name>-<marketplace-name>`). Three hardcoded fallbacks must change, AND any **local** pre-existing data dir must be moved once (migration note in Task 4.3).
+- **Plugin data dir changes** `sf-sf-marketplace` → **`sf-sf-marketplace`** (CC derives it as `<plugin-name>-<marketplace-name>`). Three hardcoded fallbacks must change, AND any **local** pre-existing data dir must be moved once (migration note in Task 4.3).
 - **Re-publish changes every command's surface.** Version bump is **at least MINOR**; target **1.1.0** (the old `/startup-framework:*` invocations change — but they never worked as documented, so MAJOR is arguable; maintainer's call in Phase 5).
 - **The empirical `/sf` confirmation** (CC docs rule + 4 live corroborations make it ~99%) is done at **Phase 5 pre-publish** (install-time), before the irreversible publish — NOT as an upfront blocker. It is confirmation before shipping, not discovery before the reversible worktree edits.
 
@@ -1192,16 +1192,16 @@ git commit -m "refactor(ns): set plugin name to sf in both manifests"
 - Modify: `skills/update/scripts/snapshot.sh:24`, `skills/update/scripts/restore.sh:23`, `skills/update/scripts/prune-snapshots.sh:17`
 - Modify: `docs/RECOVERY.md` (lines ~80,81,95,102,115,170 — doc mirrors; RECOVERY.md ships)
 
-- [ ] **Step 1: Update the three script fallbacks** — `.../data/startup-framework-sf-marketplace}` → `.../data/sf-sf-marketplace}` in each.
+- [ ] **Step 1: Update the three script fallbacks** — `.../data/sf-sf-marketplace}` → `.../data/sf-sf-marketplace}` in each.
 
 - [ ] **Step 2: Update the RECOVERY.md mirrors**
 ```bash
-grep -n 'startup-framework-sf-marketplace' docs/RECOVERY.md   # replace each with sf-sf-marketplace
+grep -n 'sf-sf-marketplace' docs/RECOVERY.md   # replace each with sf-sf-marketplace
 ```
 
 - [ ] **Step 3: Local data-migration note (one-time, maintainer)**
 ```bash
-OLD="$HOME/.claude/data/startup-framework-sf-marketplace"
+OLD="$HOME/.claude/data/sf-sf-marketplace"
 NEW="$HOME/.claude/data/sf-sf-marketplace"
 [ -d "$OLD" ] && [ ! -e "$NEW" ] && mv "$OLD" "$NEW" && echo "migrated plugin data dir" || echo "nothing to migrate"
 ```
@@ -1209,7 +1209,7 @@ NEW="$HOME/.claude/data/sf-sf-marketplace"
 
 - [ ] **Step 4: Verify + commit**
 ```bash
-grep -rn 'startup-framework-sf-marketplace' skills/ docs/   # expect: NO output
+grep -rn 'sf-sf-marketplace' skills/ docs/   # expect: NO output
 git add -A && git commit -m "refactor(ns): update plugin-data-dir literals to sf-sf-marketplace"
 ```
 
@@ -1355,7 +1355,7 @@ git add -A && git commit -m "docs(ns): update install id to sf@sf-marketplace; f
 cd "$(git rev-parse --show-toplevel)"
 grep -rEn 'skills/sf-(backup|bootstrap-project|doctor|improve-skill|insights|install|interview|note|recall|update|wrap)' \
   --include='*.py' --include='*.sh' --include='*.json' --include='*.yaml' --include='*.yml' .   # expect: NO output
-grep -rn 'startup-framework-sf-marketplace' skills/ docs/        # expect: NO output
+grep -rn 'sf-sf-marketplace' skills/ docs/        # expect: NO output
 grep -rn 'install startup-framework@sf-marketplace' .            # expect: NO output
 ```
 (Doc `/sf:` strings and `skills/wiki-migration/...` refs are intentionally retained.)
