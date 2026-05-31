@@ -483,7 +483,7 @@ def collect(
         if not _matches_project(facts.project, facts.cwd, dir_name, project):
             continue
         if not facts.project:
-            facts.project = _project_basename(decode_project_dir(dir_name)) or dir_name
+            facts.project = _project_basename(facts.cwd) or dir_name
         data.sessions.append(facts)
 
     for tmp_path in iter_summary_files(base, cutoff_ts):
