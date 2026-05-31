@@ -15,7 +15,7 @@ test_preflight.py, asserting the loader cleanly consumes every framework-
 shipped eval.json.
 
 Run with:
-    python3 -m pytest skills/sf-improve-skill/lib/tests/test_eval_runner.py -v
+    python3 -m pytest skills/improve-skill/lib/tests/test_eval_runner.py -v
 """
 
 from __future__ import annotations
@@ -44,10 +44,10 @@ from ..types import EvalResult
 REPO_ROOT = Path(__file__).resolve().parents[4]
 
 CANONICAL_SKILL_DIRS = [
-    REPO_ROOT / "skills" / "sf-install",
-    REPO_ROOT / "skills" / "sf-interview",
-    REPO_ROOT / "skills" / "sf-bootstrap-project",
-    REPO_ROOT / "skills" / "sf-wrap",
+    REPO_ROOT / "skills" / "install",
+    REPO_ROOT / "skills" / "interview",
+    REPO_ROOT / "skills" / "bootstrap-project",
+    REPO_ROOT / "skills" / "wrap",
 ]
 
 

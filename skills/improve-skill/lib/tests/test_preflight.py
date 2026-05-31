@@ -6,7 +6,7 @@ JSON/path validators (use tmpdir fixtures). validate_working_tree_clean
 needs a git repo and is exercised through tmpdir + `git init`.
 
 Per dotfiles python/testing.md: pytest framework. Run with:
-    python3 -m pytest skills/sf-improve-skill/lib/tests/ -v
+    python3 -m pytest skills/improve-skill/lib/tests/ -v
 """
 
 from __future__ import annotations
@@ -117,15 +117,15 @@ REPO_ROOT = Path(__file__).resolve().parents[4]  # /home/hsozer/Dev/startup-fram
 # Real framework-shipped eval.json files — used as CANONICAL pinning fixtures.
 # If preflight rejects ANY of these, the validator has drifted from ADR-011.
 CANONICAL_EVAL_FIXTURES = [
-    REPO_ROOT / "skills" / "sf-install" / "eval" / "eval.json",
-    REPO_ROOT / "skills" / "sf-interview" / "eval" / "eval.json",
-    REPO_ROOT / "skills" / "sf-bootstrap-project" / "eval" / "eval.json",
-    REPO_ROOT / "skills" / "sf-wrap" / "eval" / "eval.json",
+    REPO_ROOT / "skills" / "install" / "eval" / "eval.json",
+    REPO_ROOT / "skills" / "interview" / "eval" / "eval.json",
+    REPO_ROOT / "skills" / "bootstrap-project" / "eval" / "eval.json",
+    REPO_ROOT / "skills" / "wrap" / "eval" / "eval.json",
     # M3: these ship real eval.json files but were unpinned, weakening the
     # ADR-011 conformance guarantee. Now pinned alongside the rest.
-    REPO_ROOT / "skills" / "sf-backup" / "eval" / "eval.json",
-    REPO_ROOT / "skills" / "sf-note" / "eval" / "eval.json",
-    REPO_ROOT / "skills" / "sf-recall" / "eval" / "eval.json",
+    REPO_ROOT / "skills" / "backup" / "eval" / "eval.json",
+    REPO_ROOT / "skills" / "note" / "eval" / "eval.json",
+    REPO_ROOT / "skills" / "recall" / "eval" / "eval.json",
 ]
 
 
@@ -280,7 +280,7 @@ class TestCanonicalEvalFixtureConformance:
 
     Lesson: always validate against a real instance of the contract, not
     against an in-memory model of what the contract should be. See
-    skills/sf-improve-skill/learnings.md "validate against real contract
+    skills/improve-skill/learnings.md "validate against real contract
     instances" entry.
 
     If a new framework skill ships a real eval.json, ADD IT to
