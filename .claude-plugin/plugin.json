@@ -3,7 +3,7 @@
   "name": "startup-framework",
   "displayName": "Startup Framework",
   "version": "1.0.0",
-  "description": "Per-friend wiki + curated stack + self-improving skills. The plugin's source-of-truth version lives in this field; the marketplace entry omits version to avoid drift (per CC docs, plugin.json wins silently when both are set).",
+  "description": "Per-builder wiki + curated stack + self-improving skills. The plugin's source-of-truth version lives in this field; the marketplace entry omits version to avoid drift (per CC docs, plugin.json wins silently when both are set).",
   "author": {
     "name": "Hazar Sozer",
     "email": "hsozer00@gmail.com"
@@ -14,7 +14,7 @@
   "keywords": [
     "wiki",
     "memory",
-    "friend-group",
+    "solo-builder",
     "startup",
     "ideation",
     "claude-code"
@@ -45,7 +45,7 @@
     "rcChannel": {
       "type": "boolean",
       "title": "Subscribe to release candidates",
-      "description": "When true, /sf:update --rc and /sf:doctor will track sf-marketplace-rc in addition to stable. Friends who want early access enable this; everyone else leaves it off and rides the monthly stable cadence (per ADR-019).",
+      "description": "When true, /sf:update --rc and /sf:doctor will track sf-marketplace-rc in addition to stable. Builders who want early access enable this; everyone else leaves it off and rides the monthly stable cadence (per ADR-019).",
       "default": false
     }
   }
