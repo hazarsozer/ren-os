@@ -54,7 +54,7 @@ snapshot-before-migrate and are always opt-in.
 
 ## Requirements
 
-- **Claude Code** ≥ 2.1.154 (run `claude --version`; update with `npm i -g @anthropic-ai/claude-code@latest` or `brew upgrade claude-code`).
+- **Claude Code** ≥ 1.0.33 (run `claude --version`; update with `npm i -g @anthropic-ai/claude-code@latest` or `brew upgrade claude-code`).
 - **`gh`** (GitHub CLI), authenticated (`gh auth status`) — used by `/sf:doctor`'s update check and `/sf:update` to read the marketplace. Optional unless you want update notifications.
 - **`python3`** (3.10+) — the wake-up hook and several skills are Python (standard library only).
 
