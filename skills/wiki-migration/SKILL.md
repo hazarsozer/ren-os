@@ -1,10 +1,41 @@
 ---
 name: wiki-migration
 description: Use when /sf:update is upgrading the framework and detected one or more schema-version bumps. Composes the migration chain per page-type, applies migrate.sh/migrate.md, runs verify.json assertions, and reports per-page PASS/FAIL to the update driver. Also invoked by /sf:doctor (read-only) to compute schema-drift status against the canonical registry.
+version: 0.1.0
+license: MIT
 type: skill
 schema_version: 1
 framework_version: 1.0.0
 owner_module: sf-distribution
+
+contract:
+  required_outputs:
+    - "For /sf:update PLANNING: a JSON migration plan of shape {page_type: [migration_id, ...]} computed from schemas.json"
+    - "For /sf:update MIGRATING: each affected page transformed via its migrate.sh (scripted), migrate.md (LLM-driven), or both (hybrid)"
+    - "For /sf:update VERIFYING: per-page PASS/FAIL from verify.json assertions (exit 0 all pass, 1 any fail, 2 missing inputs)"
+    - "For /sf:doctor: read-only per-page drift status (up-to-date / migration-available / read-only-beyond-N+3) with zero writes"
+  budgets:
+    turns: 20
+    files_written: 200
+    duration_seconds: 300
+  permissions:
+    read:
+      - "schemas.json"
+      - "migrations/**"
+      - "~/.startup-framework/wiki/**"
+      - "${CLAUDE_PLUGIN_DATA}/wiki-snapshots/**"
+    write:
+      - "~/.startup-framework/wiki/**"
+    execute:
+      - "scripts/compute-migration-chain.sh"
+      - "scripts/apply-migration.sh"
+      - "scripts/verify-page.sh"
+  completion_conditions:
+    - "Under /sf:doctor: no file is created, modified, or deleted (read-only scan only)"
+    - "Under /sf:update: page writes occur only when the /sf:update-owned snapshot already exists at ${CLAUDE_PLUGIN_DATA}/wiki-snapshots/<latest>/"
+    - "verify-page.sh returned a clean exit code (0/1/2) for every migrated page"
+  output_paths:
+    - "~/.startup-framework/wiki/"
 ---
 
 # wiki-migration
