@@ -24,10 +24,13 @@ echo "$OUT_A" | grep -q '^otel|ok|configured|' \
   || fail "expected line 'otel|ok|configured|'"
 if echo "$OUT_A" | grep -Fq "$OTEL_SECRET_URL"; then
   fail "SECRET LEAK — raw OTLP endpoint URL appeared in output"
-elif echo "$OUT_A" | grep -Fq "FAKE-OTEL-TOKEN-9999"; then
+else
+  pass "raw OTLP endpoint URL absent from output"
+fi
+if echo "$OUT_A" | grep -Fq "FAKE-OTEL-TOKEN-9999"; then
   fail "SECRET LEAK — embedded OTLP token appeared in output"
 else
-  pass "raw OTLP endpoint URL + embedded token both absent from output"
+  pass "embedded OTLP token absent from output"
 fi
 
 echo

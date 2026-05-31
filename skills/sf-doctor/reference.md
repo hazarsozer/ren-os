@@ -19,7 +19,7 @@ The exact shape of every section the doctor renders. Used by:
   OS:                 {status} {os-info}
   ANTHROPIC_API_KEY:  {status}
   Upstash key:        {status}
-  OpenTelemetry:      {status} ({otlp-endpoint} | skipped — no OTLP endpoint configured)
+  OpenTelemetry:      {status} (configured | skipped — no OTLP endpoint configured)
   Snapshot retain:    {N}  (configurable via userConfig.snapshotRetain)
 ```
 
