@@ -209,6 +209,24 @@ class TestGrepWiki:
         hits, _ = grep_wiki(sample_wiki, "postgres")
         assert len(hits) >= 1  # other pages still matched
 
+    def test_concurrent_delete_during_sort_not_fatal(self, tmp_path, monkeypatch):
+        """A file deleted between the scan and the mtime-sort must not crash grep_wiki
+        (the sort key's stat() is the unguarded call in grep_wiki)."""
+        from ..__init__ import grep_wiki
+        wiki = tmp_path / "wiki"
+        decisions = wiki / "decisions"
+        decisions.mkdir(parents=True)
+        (decisions / "a.md").write_text("---\ntitle: A\n---\n# A\n\nfoo here\n", encoding="utf-8")
+        (decisions / "b.md").write_text("---\ntitle: B\n---\n# B\n\nfoo here\n", encoding="utf-8")
+        real_stat = Path.stat
+        def flaky_stat(self, *a, **k):
+            if self.name == "a.md":
+                raise OSError("simulated concurrent delete")
+            return real_stat(self, *a, **k)
+        monkeypatch.setattr(Path, "stat", flaky_stat)
+        hits, _ = grep_wiki(wiki, "foo")  # must not raise
+        assert len(hits) >= 1
+
 
 # ---------------------------------------------------------------------------
 # recall — top-level orchestration
