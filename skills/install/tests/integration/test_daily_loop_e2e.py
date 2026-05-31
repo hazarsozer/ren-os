@@ -31,7 +31,7 @@ from integration.simulator import InstallSimulator, InterviewAnswers
 
 
 # Add repo root to path so we can import lifecycle libs that live at
-# unconventional paths (skills/sf-wrap/lib/ etc — package name contains a dash).
+# unconventional paths (skills/wrap/lib/ etc — package name contains a dash).
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
@@ -41,7 +41,7 @@ def _load_module_from_path(name: str, path: Path):
     """Load a Python module from a file path, registering it in sys.modules.
 
     Required because lifecycle's skill directories have dashes in their names
-    (`sf-wrap`, `sf-note`, etc) which aren't valid Python identifiers, so the
+    (`wrap`, `note`, etc) which aren't valid Python identifiers, so the
     normal `from X.Y.Z import ...` machinery can't reach them. We bypass with
     `importlib.util.spec_from_file_location`.
 
@@ -143,7 +143,7 @@ def test_wake_up_returns_empty_when_wiki_absent(tmp_path: Path) -> None:
 def _import_pin_note():
     module = _load_module_from_path(
         "_e2e_sf_note_lib",
-        _REPO_ROOT / "skills" / "sf-note" / "lib" / "__init__.py",
+        _REPO_ROOT / "skills" / "note" / "lib" / "__init__.py",
     )
     return module.pin_note, module.resolve_notes_path
 
@@ -179,7 +179,7 @@ def _import_wrap():
     # submodules `validate`/`feed_call` were removed with the feed module.)
     sub_modules = ["types", "classifier", "apply", "diff_plan"]
     parent_name = "_e2e_sf_wrap_lib"
-    parent_path = _REPO_ROOT / "skills" / "sf-wrap" / "lib"
+    parent_path = _REPO_ROOT / "skills" / "wrap" / "lib"
     for sub in sub_modules:
         _load_module_from_path(f"{parent_name}.{sub}", parent_path / f"{sub}.py")
     module = _load_module_from_path(parent_name, parent_path / "__init__.py")

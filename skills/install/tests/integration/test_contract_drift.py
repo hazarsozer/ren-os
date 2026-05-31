@@ -97,10 +97,10 @@ def test_compose_wake_up_context_signature_drift() -> None:
 
 
 def test_pin_note_signature_drift() -> None:
-    """Pin per `skills/sf-note/lib/__init__.py`. Expected:
+    """Pin per `skills/note/lib/__init__.py`. Expected:
     (text, *, session_id, notes_root, now=None) -> PinResult."""
     module = _load_lifecycle_module(
-        "skills/sf-note/lib/__init__.py", "_drift_sf_note_lib",
+        "skills/note/lib/__init__.py", "_drift_sf_note_lib",
     )
     sig = inspect.signature(module.pin_note)
     params = list(sig.parameters.keys())
@@ -112,11 +112,11 @@ def test_pin_note_signature_drift() -> None:
 
 
 def test_wrap_signature_drift() -> None:
-    """Pin per `skills/sf-wrap/lib/__init__.py`'s `wrap()` entry. The feed-write
+    """Pin per `skills/wrap/lib/__init__.py`'s `wrap()` entry. The feed-write
     glue (`feed_write_fn` + the `validate`/`feed_call` submodules) was removed
     with the feed module (ADR-031)."""
     base = "_drift_sf_wrap_lib"
-    parent_path = "skills/sf-wrap/lib"
+    parent_path = "skills/wrap/lib"
     for sub in ("types", "classifier", "apply", "diff_plan"):
         _load_lifecycle_module(f"{parent_path}/{sub}.py", f"{base}.{sub}")
     module = _load_lifecycle_module(f"{parent_path}/__init__.py", base)
