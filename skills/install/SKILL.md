@@ -1,5 +1,5 @@
 ---
-name: sf-install
+name: install
 description: |
   Use when the friend invokes /sf:install. Orchestrates the 7-stage
   onboarding flow per ADR-015 (solo-first per ADR-031): environment check,

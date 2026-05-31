@@ -1,5 +1,5 @@
 ---
-name: sf-note
+name: note
 description: |
   Use when the friend wants to pin something mid-session for the eventual
   /sf:wrap to consider promoting to the wiki. Triggers on the /sf:note

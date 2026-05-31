@@ -1,5 +1,5 @@
 ---
-name: sf-update
+name: update
 description: Use when the user runs /sf:update to upgrade the framework. Drives the migration state machine — fetches latest version, classifies the bump, snapshots the wiki, runs migrations, verifies via verify.json, shows diffs for approval, applies, and re-verifies. Snapshot/rollback is built in. Never silent on MAJOR bumps.
 version: 0.1.0
 license: MIT

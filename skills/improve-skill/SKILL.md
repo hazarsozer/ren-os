@@ -1,5 +1,5 @@
 ---
-name: sf-improve-skill
+name: improve-skill
 description: |
   Use when the friend wants to improve an existing skill's body (SKILL.md
   instructions, references/, examples) against its own eval/eval.json

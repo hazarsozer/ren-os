@@ -1,5 +1,5 @@
 ---
-name: sf-backup
+name: backup
 description: |
   Use when the friend wants to back up their local wiki — either to a
   configured git remote (preferred) or to a local tarball (fallback). Triggers
