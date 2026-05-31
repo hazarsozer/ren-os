@@ -130,7 +130,6 @@ Print the four paths the friend will most likely want first: `PROJECT.md`, `REQU
 - **Don't ask the friend to confirm every file write.** The skill is a stamp, not an interview. One confirm at the end is enough. The interview is `/sf:interview` (a different skill).
 - **Don't seed templates with framework-development examples.** Per ADR-017 the friend's wiki starts EMPTY. PROJECT.md gets a placeholder paragraph, not a citation of a real project we (the framework devs) shipped.
 - **Don't extend the taxonomy.** ADR-014 fixed the 5 + 2 + 3 taxonomy (5 top-level pages, 2 log/index, 3 subdirs). Adding more here drifts from the standard. If a new page is genuinely needed, file an ADR amendment first.
-- **Don't write to `~/.startup-framework/activity-feed/`.** That's sf-feed's territory. This skill only touches the friend's local wiki.
 
 ## Eval expectations (see `eval/eval.json`)
 

@@ -217,9 +217,6 @@ Behavior with `--rc` flag:
 ### With sf-lifecycle (`lifecycle-2`)
 - Wake-up hook must be **safe to re-register across `/reload-plugins`** — `/sf:update` calls `/reload-plugins` programmatically when commands/skills/hooks change.
 
-### With sf-feed (`feed-2`)
-- COMMITTING optionally pushes wiki changes (if remote configured); this is the same pattern `/sf:backup` uses. Activity Feed entries are NOT auto-pushed on update — only on user-initiated `/sf:wrap`.
-
 ## What this skill does NOT do
 
 - Update sibling plugins (Superpowers, claude-mem, etc.). Use `/plugin update` for those (CC built-in).
