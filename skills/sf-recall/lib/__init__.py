@@ -180,6 +180,14 @@ def _recency_bonus(path: Path, *, now: datetime | None = None) -> float:
     return RECENCY_BONUS if delta_days <= RECENCY_DAYS else 0.0
 
 
+def _safe_mtime(path: Path) -> float:
+    """Return file mtime, or 0.0 if stat() fails. Mirrors _recency_bonus's guard."""
+    try:
+        return path.stat().st_mtime
+    except OSError:
+        return 0.0
+
+
 def grep_wiki(
     wiki_root: Path,
     query: str,
@@ -240,13 +248,8 @@ def grep_wiki(
             )
         )
 
-    # Sort by score desc, then by mtime desc (newer wins ties). Guard stat()
-    # so a file deleted between rglob and sort can't crash the call.
-    def _safe_mtime(p: Path) -> float:
-        try:
-            return p.stat().st_mtime
-        except OSError:
-            return 0.0
+    # Sort by score desc, then by mtime desc (newer wins ties). _safe_mtime
+    # guards stat() so a file deleted between rglob and sort can't crash the call.
     raw_hits.sort(key=lambda t: (t[0], _safe_mtime(t[1].path)), reverse=True)
 
     truncated = len(raw_hits) > n_hits
