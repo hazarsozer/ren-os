@@ -312,3 +312,12 @@ class TestResultDataclass:
         assert r.failed_diff_index == 1
         assert r.rollback_performed
         assert r.files_changed == ()  # rollback succeeded → no net changes
+
+
+def test_count_differing_includes_post_only_files():
+    """A file present only in post (a surviving NEW file) must be counted —
+    the rollback-incomplete diagnostic was previously asymmetric (pre-only)."""
+    from ..apply import _count_differing
+    assert _count_differing({"a.md": "h1"}, {"a.md": "h1", "leaked.md": "h2"}) == 1
+    assert _count_differing({"a.md": "h1"}, {"a.md": "h1"}) == 0
+    assert _count_differing({"a.md": "h1"}, {"a.md": "CHANGED"}) == 1

@@ -85,6 +85,12 @@ def _wiki_files_snapshot(wiki_root: Path) -> dict[str, str]:
     return snapshot
 
 
+def _count_differing(pre: dict, post: dict) -> int:
+    """Count files that differ between two wiki snapshots, counting files present
+    in only one side (symmetric — a surviving NEW file in post must be counted)."""
+    return sum(1 for k in (pre.keys() | post.keys()) if pre.get(k) != post.get(k))
+
+
 def _git_check_apply(diff_text: str, *, cwd: Path) -> tuple[bool, str]:
     """
     Dry-run a diff via `git apply --check`. Returns (ok, error_message).
@@ -120,7 +126,7 @@ def _rollback_wiki(wiki_root: Path, *, cwd: Path) -> bool:
     Returns:
         True if rollback succeeded; False on git failure (caller should surface).
     """
-    rel = str(wiki_root) if not wiki_root.is_absolute() else str(wiki_root)
+    rel = str(wiki_root)
     # `git restore` for tracked files
     restore = _run_git(["restore", "--source=HEAD", "--", rel], cwd=cwd)
     # `git clean -fd` for untracked files/dirs created during partial apply
@@ -204,7 +210,7 @@ def apply_diff_plan(
             if pre_snapshot != post_snapshot:
                 logger.error(
                     "Rollback incomplete: %d files still differ from pre-apply state",
-                    sum(1 for k in pre_snapshot if pre_snapshot.get(k) != post_snapshot.get(k)),
+                    _count_differing(pre_snapshot, post_snapshot),
                 )
 
             return ApplyResult(
