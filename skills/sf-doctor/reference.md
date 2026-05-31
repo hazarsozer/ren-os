@@ -199,7 +199,7 @@ Exit code:
 
 ## `--json` output schema
 
-The `--json` mode emits this shape (canonical schema; there is no separate schema file in v1):
+The `--json` mode emits this shape (canonical schema; no separate schema file ships):
 
 ```json
 {
