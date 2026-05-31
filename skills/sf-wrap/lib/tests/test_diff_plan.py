@@ -339,3 +339,25 @@ class TestAtomicityInvariant:
         )
         with pytest.raises(Exception):
             plan.entries = ()  # type: ignore[misc]
+
+
+# ---------------------------------------------------------------------------
+# Framework version resolution
+# ---------------------------------------------------------------------------
+
+
+class TestFrameworkVersionResolution:
+    def test_frontmatter_uses_resolver_not_hardcoded(self, monkeypatch):
+        """New-page frontmatter must reflect the resolved framework version,
+        not a hardcoded '1.0.0'. Override via the highest-precedence env tier."""
+        from ..diff_plan import _frontmatter_for
+        monkeypatch.setenv("CLAUDE_PLUGIN_OPTION_FRAMEWORK_VERSION", "9.9.9")
+        fm = _frontmatter_for("decision", "Title", "2026-05-31")
+        assert 'framework_version: "9.9.9"' in fm, fm
+
+    def test_frontmatter_falls_back_when_unresolvable(self, monkeypatch):
+        from ..diff_plan import _frontmatter_for
+        monkeypatch.delenv("CLAUDE_PLUGIN_OPTION_FRAMEWORK_VERSION", raising=False)
+        monkeypatch.delenv("CLAUDE_PLUGIN_ROOT", raising=False)
+        fm = _frontmatter_for("decision", "Title", "2026-05-31")
+        assert 'framework_version: "1.0.0"' in fm

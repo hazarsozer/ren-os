@@ -54,6 +54,25 @@ _LABEL_TARGETS: Final[dict[SignalLabel, frozenset[str]]] = {
 }
 
 
+def _framework_version() -> str:
+    """Resolve framework version from the repo-root lib/sf_paths.py.
+
+    Loaded by file path (not `import lib.sf_paths`) to avoid the name collision
+    with this skill's own `lib/` package under the per-module test harness.
+    Falls back to "1.0.0" if unreachable so frontmatter is never broken.
+    """
+    import importlib.util
+    from pathlib import Path as _P
+    try:
+        root = _P(__file__).resolve().parents[3]
+        spec = importlib.util.spec_from_file_location("_sf_paths_repo", root / "lib" / "sf_paths.py")
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod.framework_version()
+    except Exception:
+        return "1.0.0"
+
+
 def _today_iso() -> str:
     """Return today's date in ISO-8601 YYYY-MM-DD UTC."""
     return datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -63,65 +82,6 @@ def _now_log_prefix() -> str:
     """Return the log-entry prefix `## [YYYY-MM-DD HH:MM]` in UTC."""
     return datetime.now(timezone.utc).strftime("## [%Y-%m-%d %H:%M]")
 
-
-def _unified_diff_for_new_file(target_path: Path, new_content: str) -> str:
-    """
-    Build a unified diff that creates target_path with new_content.
-
-    The diff format is `git apply`-compatible: uses /dev/null as the source
-    so git treats it as a new-file creation.
-    """
-    new_lines = new_content.splitlines(keepends=True)
-    # Ensure trailing newline for clean diff
-    if new_lines and not new_lines[-1].endswith("\n"):
-        new_lines[-1] = new_lines[-1] + "\n"
-
-    diff_lines = list(
-        difflib.unified_diff(
-            [],  # empty source
-            new_lines,
-            fromfile="/dev/null",
-            tofile=f"b/{target_path}",
-            n=0,
-        )
-    )
-    # Patch up the header to make it git-apply-friendly for new files
-    # Standard git new-file header looks like:
-    #   diff --git a/path b/path
-    #   new file mode 100644
-    #   --- /dev/null
-    #   +++ b/path
-    if diff_lines and diff_lines[0].startswith("--- "):
-        prefix = [
-            f"diff --git a/{target_path} b/{target_path}\n",
-            "new file mode 100644\n",
-        ]
-        return "".join(prefix + diff_lines)
-    return "".join(diff_lines)
-
-
-def _unified_diff_for_append(target_path: Path, existing_content: str, appended: str) -> str:
-    """Build a unified diff that appends `appended` to existing_content."""
-    existing_lines = existing_content.splitlines(keepends=True)
-    new_lines = existing_lines.copy()
-    if new_lines and not new_lines[-1].endswith("\n"):
-        new_lines[-1] = new_lines[-1] + "\n"
-
-    appended_lines = appended.splitlines(keepends=True)
-    if appended_lines and not appended_lines[-1].endswith("\n"):
-        appended_lines[-1] = appended_lines[-1] + "\n"
-
-    full_new = new_lines + appended_lines
-    diff_lines = list(
-        difflib.unified_diff(
-            new_lines,
-            full_new,
-            fromfile=f"a/{target_path}",
-            tofile=f"b/{target_path}",
-            n=3,
-        )
-    )
-    return "".join(diff_lines)
 
 
 def _read_or_empty(path: Path) -> str:
@@ -148,7 +108,7 @@ def _frontmatter_for(page_type: str, title: str, today: str) -> str:
         f'title: "{title}"\n'
         f"type: {page_type}\n"
         f"schema_version: 1\n"
-        f'framework_version: "1.0.0"\n'
+        f'framework_version: "{_framework_version()}"\n'
         f"date: {today}\n"
         f"status: accepted\n"
         "---\n\n"
