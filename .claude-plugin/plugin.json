@@ -1,6 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
-  "name": "startup-framework",
+  "name": "sf",
   "displayName": "Startup Framework",
   "version": "1.0.0",
   "description": "Per-builder wiki + curated stack + self-improving skills. The plugin's source-of-truth version lives in this field; the marketplace entry omits version to avoid drift (per CC docs, plugin.json wins silently when both are set).",
