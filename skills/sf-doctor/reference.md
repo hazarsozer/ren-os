@@ -2,7 +2,7 @@
 
 The exact shape of every section the doctor renders. Used by:
 - The SKILL.md renderer at runtime
-- The `--json` mode's `output-schema.json`
+- The `--json` mode's output schema (defined inline below in § "`--json` output schema")
 - The CI snapshot tests in `tests/golden/`
 
 ---
@@ -199,7 +199,7 @@ Exit code:
 
 ## `--json` output schema
 
-See `output-schema.json` in this same skill directory. Roughly:
+The `--json` mode emits this shape (canonical schema; there is no separate schema file in v1):
 
 ```json
 {
