@@ -16,7 +16,7 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
-CHECK_SCRIPT="$REPO_ROOT/skills/sf-doctor/scripts/check-plugins.sh"
+CHECK_SCRIPT="$REPO_ROOT/skills/doctor/scripts/check-plugins.sh"
 
 PASS_COUNT=0
 FAIL_COUNT=0

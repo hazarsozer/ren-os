@@ -15,7 +15,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
-SNAPSHOT_SH="$REPO_ROOT/skills/sf-update/scripts/snapshot.sh"
+SNAPSHOT_SH="$REPO_ROOT/skills/update/scripts/snapshot.sh"
 
 PASS_COUNT=0
 FAIL_COUNT=0
