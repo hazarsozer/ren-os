@@ -1,5 +1,5 @@
 ---
-name: sf-bootstrap-project
+name: bootstrap-project
 description: |
   Use when the friend wants to start a new project sub-wiki under
   ~/.startup-framework/wiki/projects/<project-name>/. Triggers on the

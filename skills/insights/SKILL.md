@@ -1,5 +1,5 @@
 ---
-name: sf-insights
+name: insights
 description: |
   Use when the solo builder wants a read-only retrospective on how their
   recent Claude Code sessions actually went — what's working, what keeps

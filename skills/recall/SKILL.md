@@ -1,5 +1,5 @@
 ---
-name: sf-recall
+name: recall
 description: |
   Use when the friend wants to look up something the wiki should know — a
   past decision, pattern, or lesson — WITHOUT loading more wiki context

@@ -1,5 +1,5 @@
 ---
-name: sf-interview
+name: interview
 description: |
   Use when the friend invokes /sf:interview, or when /sf:install Stage 4
   needs to run the identity bootstrap. Conducts an AI-driven, ~17-18

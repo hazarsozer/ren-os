@@ -1,5 +1,5 @@
 ---
-name: sf-doctor
+name: doctor
 description: Use when the user runs /sf:doctor (or when /sf:install Stage 6 invokes it) to verify the framework is correctly installed and operating. Composes a four-section report (ENVIRONMENT, PLUGINS, SCHEMA VERSIONS, FRAMEWORK UPDATE) plus a BACKUP section, runs read-only checks in parallel, and surfaces remediation paths for any failures. Never writes to the wiki.
 version: 0.1.0
 license: MIT

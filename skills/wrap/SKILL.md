@@ -1,5 +1,5 @@
 ---
-name: sf-wrap
+name: wrap
 description: |
   Use at session end when the friend wants to consolidate what they learned.
   Triggers on the /sf:wrap slash command. Applies a high-signal-threshold:
