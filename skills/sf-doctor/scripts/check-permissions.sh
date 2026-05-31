@@ -216,7 +216,7 @@ if not proj_with_mcp:
     W(f"    (no project-scoped MCP servers in {len(projects)} project(s))")
 else:
     for path, servers in proj_with_mcp:
-        label = os.path.basename(path.rstrip("/")) or os.path.basename(os.path.dirname(path.rstrip("/"))) or "(root)"
+        label = os.path.basename(path.rstrip("/")) or "(root)"
         for name in sorted(servers):
             tr = transport_of(servers[name])
             W(f"    {label}: {name} ({tr}) {grant_note(name)}")
