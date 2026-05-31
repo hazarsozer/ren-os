@@ -12,6 +12,89 @@
 
 **Spec:** `docs/superpowers/specs/2026-05-31-project-ingest-design.md` — read it first.
 
+> **Implement in a separate git worktree** (per `superpowers:using-git-worktrees`): create one off `feat/project-ingest` so the build is isolated from the main checkout. The skill writes only under `skills/sf-ingest-project/**`, `commands/` (none), and the wiki — never the user's project.
+
+---
+
+## ⚠️ Review Corrections (authoritative — apply these; they win over conflicting task text below)
+
+A multi-agent review (2026-05-31) found issues in the task bodies below. **Four were fixed inline** in their code blocks (Task 2 `_git_tracked_files` zero-commit `None` fallback; Task 3 `detect_stack` dedup; Task 5 `collect_git_facts` zero-commit guard; Task 6 `scan()` non-dir complete dict). The rest are corrections to apply as you reach each task. Where this section conflicts with a task body, **this section is authoritative.**
+
+### C1 — `framework_version` comes from `scan.py`, NOT a "markdown import" (HIGH)
+The instruction to "import `lib/sf_paths.py` from the SKILL.md procedure" is ambiguous (a SKILL.md is markdown, not a module) and no sibling does it. Resolve mechanically: **`scan.py` emits `framework_version` into the facts JSON; the LLM reads it from there.**
+- Add to `scan.py` (top-level imports include `import sys`) and call it in the `scan()` assembly + the non-dir guard:
+```python
+def _framework_version() -> str:
+    """Best-effort framework version for page frontmatter. Imports lib.sf_paths
+    from the plugin root; falls back to '1.0.0' in a bare checkout. Read-only."""
+    try:
+        plugin_root = Path(__file__).resolve().parents[3]  # scripts→skill→skills→<plugin>
+        if str(plugin_root) not in sys.path:
+            sys.path.insert(0, str(plugin_root))
+        from lib.sf_paths import framework_version
+        return framework_version()
+    except Exception:
+        return "1.0.0"
+```
+- In `scan()` assembly add `facts["framework_version"] = _framework_version()`.
+- Add `"framework_version": "1.0.0"` to the facts-JSON contract block (top of plan) and to `extraction-spec.md` (Task 8).
+- Task 9 `page-mapping.md`: bind frontmatter `framework_version` ← `facts.framework_version` (delete the "import sf_paths" phrasing). (This is the same root cause as the shipped `sf-wrap/lib/diff_plan.py:150` hardcoded-version bug — fixing it here keeps the new skill correct.)
+
+### C2 — page frontmatter must match the templates EXACTLY (HIGH, Task 9)
+Replace Task 9's "Frontmatter (every page)" list with this per-page table (mirrors `skills/sf-bootstrap-project/templates/*.tmpl`):
+
+| Page | `type:` | extra |
+|---|---|---|
+| PROJECT.md | `project-main` | `status: ingested` |
+| REQUIREMENTS.md | `project-requirements` | — |
+| ROADMAP.md | `project-roadmap` | — |
+| STATE.md | `project-state` | — |
+| CONTEXT.md | `project-context` | — |
+| index.md | `project-index` | — |
+| log.md | `project-log-entry` | — |
+
+Every page also binds: `title: "<project_title> — <Page>"`, `schema_version: 1`, `framework_version` (from facts), `project_name` (kebab), `created`/`updated` (today); H1 = `# <project_title> — <Page>`. PROJECT.md uses `status: ingested` (records provenance vs bootstrap's `bootstrapped`).
+
+### C3 — real `index.md` headers (MEDIUM, Task 9)
+`taxonomy-templates.md` mis-states them. The REAL `index.md` headers (from `templates/index.md.tmpl`) are **Core taxonomy / Research / Decisions / Patterns / See also** — there is NO "States" section. Enumerate these in `page-mapping.md`; do not trust the sibling doc.
+
+### C4 — eval assertions idempotent-safe + write accounting (HIGH, Task 11)
+The two master-registration assertions say "exactly one NEW line" — false on re-run, contradicts the additive/idempotent contract. Replace with:
+- "After the run, `wiki/index.md` contains exactly ONE bullet under '## Projects' linking to `projects/demo-api/index.md` (re-running adds no second — idempotent)."
+- "After the run, `wiki/log.md` contains exactly ONE `## [2026-05-31] init | Project sub-wiki ingested for demo-api` entry (idempotent)."
+Add a write-accounting assertion mirroring bootstrap: "Files written = 7 pages + 3 `.gitkeep` = 10; master `index.md`/`log.md` are edits, not new files." Set SKILL.md `budgets.files_written: 10` (standard/light); note `--depth deep` may add ≤N `decisions/`/`research/` summary files, out of the v1 binary-eval scope.
+
+### C5 — ADR-032 cites the LIVE principle, ADR-031 (MEDIUM, Task 12)
+ADR-017 is `status: superseded` (by ADR-031). Anchor the "wiki ships no framework content / starts empty" reconciliation to **ADR-031** (live home), mention ADR-017 only as historical origin (keep it in `relates-to`). Attribute "no silent writes / show-diffs-require-approval" to ADR-027 (+ ADR-017 backwards-compat clause) precisely.
+
+### C6 — add zero-commit-repo tests (CRITICAL coverage; Tasks 2 & 5)
+Every existing git fixture commits first, so the two inline CRITICAL fixes are untested. Add (TDD: add test → run → the inline fix makes it pass):
+```python
+def test_zero_commit_repo_falls_back_to_walk(tmp_path):
+    (tmp_path / "a.py").write_text("print(1)\n")
+    _git_init(tmp_path)                 # init, do NOT commit
+    rels = {str(p.relative_to(tmp_path)) for p in scan.enumerate_files(tmp_path)}
+    assert "a.py" in rels              # uncommitted file still found via walk fallback
+
+def test_git_facts_zero_commit_repo(tmp_path):
+    (tmp_path / "a.py").write_text("1\n")
+    _git_init(tmp_path)                 # no commit
+    g = scan.collect_git_facts(tmp_path)
+    assert g["is_repo"] is True
+    assert g["commit_count"] == 0
+    assert g["no_commits"] is True
+    assert g["dirty"] is False         # untracked-only is NOT "dirty" here
+```
+
+### C7 — smaller fixes (MEDIUM/LOW)
+- **Task 5 tag dates:** lightweight tags report tag-*creation* date, not commit date. Use annotated tags in the fixture (`git tag -a v1.0 -m v1.0`) for determinism, or document `tags[].date` as best-effort in `extraction-spec.md`; don't assert exact tag dates.
+- **Task 7 `_snapshot`:** exclude `.git/` to avoid cross-git-version flakiness — iterate `p for p in root.rglob("*") if ".git" not in p.parts`. (Read-only invariant covers the project's own files; git internals are git's.)
+- **Task 6 Step 2 wording:** the "expected FAIL reason" holds only for `test_recommend_subagents_for_large_repo` (KeyError on `size_signals`); `test_name_falls_back_*` fails with AssertionError on `looks_like_project`. Reword to allow either.
+- **Imports (Tasks 2/5/6):** put every new import (`fnmatch`, `subprocess`, `sys`, `from collections import Counter`, `import re`) in `scan.py`'s top-level import block, not mid-file (PEP 8 E402).
+- **Task 9 `_TBD`:** thin-evidence sections retain the template's EXISTING markers verbatim (bare `- _TBD_` bullets + italic `_..._` prose). No-invention = "no concrete claim absent from facts JSON," not a literal grep. Keep the eval's `'_TBD'` substring check.
+- **SKILL.md contract paths:** note that the `~/.startup-framework/...` paths in the `contract:` block are illustrative; the real path is `wiki_path()` (mirrors bootstrap).
+- **Log wording:** use the eval-pinned `## [<today>] init | Project sub-wiki ingested for <name>` consistently in `page-mapping.md` (fix the one example reading "ingested from existing project").
+
 ---
 
 ## Conventions for the implementer (read once)
@@ -391,6 +474,11 @@ def _git_tracked_files(root: Path) -> list[Path] | None:
         return None
     out = proc.stdout.decode("utf-8", errors="replace")
     rels = [r for r in out.split("\0") if r]
+    # A git repo with ZERO commits returns rc=0 + EMPTY stdout here. Return None
+    # (→ enumerate_files falls back to _walk_files), NOT [] ("no files") — else a
+    # freshly `git init`-ed, uncommitted project scans as empty. (Review: CRITICAL)
+    if not rels:
+        return None
     return [root / r for r in rels]
 
 
@@ -580,7 +668,9 @@ def detect_stack(root: Path, files: list[Path]) -> dict:
 
     # Framework hints: read manifest texts (bounded by MAX_READ_BYTES already).
     blob = ""
-    for m in manifests + ["package.json", "pyproject.toml"]:
+    # dict.fromkeys dedups: a manifest already in `manifests` (e.g. pyproject.toml
+    # on a Python project) must not be read twice. (Review: HIGH)
+    for m in dict.fromkeys(manifests + ["package.json", "pyproject.toml"]):
         fp = root / m
         if fp.is_file() and _safe_size(fp):
             try:
@@ -830,6 +920,22 @@ def collect_git_facts(root: Path) -> dict:
 
     facts: dict = {"is_repo": True}
 
+    # Zero-commit repo: `rev-parse --is-inside-work-tree` is "true" but there is no
+    # HEAD yet, so rev-list/status would emit misleading facts (dirty=True from
+    # untracked-only). Report it honestly and return early. (Review: CRITICAL)
+    head = _git(root, ["rev-parse", "--verify", "-q", "HEAD"])
+    if head is None or not head.strip():
+        facts["commit_count"] = 0
+        facts["branch"] = (_git(root, ["symbolic-ref", "--short", "-q", "HEAD"]) or "").strip()
+        facts["dirty"] = False
+        facts["first_commit"] = ""
+        facts["last_commit"] = ""
+        facts["timeline"] = []
+        facts["tags"] = []
+        facts["recent"] = []
+        facts["no_commits"] = True
+        return facts
+
     count = _git(root, ["rev-list", "--count", "HEAD"])
     facts["commit_count"] = int(count.strip()) if count and count.strip().isdigit() else 0
 
@@ -1047,7 +1153,18 @@ def scan(path: str, *, depth: str = "standard") -> dict:
         "warnings": [],
     }
     if not root.is_dir():
+        # Return a COMPLETE facts dict (all contract keys present) so the LLM
+        # consumer never KeyErrors on a bad path. (Review: HIGH)
         facts["warnings"].append(f"path is not a directory: {root}")
+        facts["framework_version"] = _framework_version()
+        facts["name_candidates"] = {"dir": "", "manifest": None, "chosen": "project"}
+        facts["stack"] = {"languages": [], "package_managers": [],
+                          "frameworks": [], "manifests": []}
+        facts["tree_digest"] = {"depth_cap": TREE_DEPTH_CAP, "entry_count": 0,
+                                "truncated": False, "top_dirs": [], "notable_files": []}
+        facts["entry_points"] = []
+        facts["doc_inventory"] = []
+        facts["git"] = {"is_repo": False}
         facts["size_signals"] = {"file_count": 0, "loc_estimate": 0,
                                  "recommend_subagents": False}
         return facts
