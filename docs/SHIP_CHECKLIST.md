@@ -22,8 +22,8 @@ collides on duplicate test-module import names, so always run per-module:
 
 ```bash
 for m in hooks/wake-up scripts \
-         skills/sf-backup skills/sf-improve-skill \
-         skills/sf-install skills/sf-note skills/sf-recall skills/sf-wrap; do
+         skills/backup skills/improve-skill \
+         skills/install skills/note skills/recall skills/wrap; do
   ( cd "$m" && python3 -m pytest -q ) || echo "FAIL: $m"
 done
 ```
@@ -34,16 +34,16 @@ done
 Then the distribution shell suites + the version-compare self-test:
 
 ```bash
-bash skills/sf-doctor/scripts/tests/test_check_schemas.sh
-bash skills/sf-doctor/scripts/tests/test_check_plugins.sh
-bash skills/sf-update/scripts/tests/test_snapshot_inode_safety.sh
-bash skills/sf-update/scripts/version-compare.sh --self-test
+bash skills/doctor/scripts/tests/test_check_schemas.sh
+bash skills/doctor/scripts/tests/test_check_plugins.sh
+bash skills/update/scripts/tests/test_snapshot_inode_safety.sh
+bash skills/update/scripts/version-compare.sh --self-test
 ```
 
 Expected: every command exits 0; final lines report `N passed` or `N/N PASS`.
 
 > **Not pytest modules** (don't run `pytest` on these — it exits 4 "no tests collected"):
-> `skills/sf-bootstrap-project` and `skills/sf-interview` are validated by their
+> `skills/bootstrap-project` and `skills/interview` are validated by their
 > `eval/eval.json` fixtures, and `wiki-skeleton/` is a standalone lint, not a pytest suite.
 
 - ☐ all module pytest suites green
