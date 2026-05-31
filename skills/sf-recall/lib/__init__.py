@@ -240,8 +240,14 @@ def grep_wiki(
             )
         )
 
-    # Sort by score desc, then by mtime desc (newer wins ties)
-    raw_hits.sort(key=lambda t: (t[0], t[1].path.stat().st_mtime), reverse=True)
+    # Sort by score desc, then by mtime desc (newer wins ties). Guard stat()
+    # so a file deleted between rglob and sort can't crash the call.
+    def _safe_mtime(p: Path) -> float:
+        try:
+            return p.stat().st_mtime
+        except OSError:
+            return 0.0
+    raw_hits.sort(key=lambda t: (t[0], _safe_mtime(t[1].path)), reverse=True)
 
     truncated = len(raw_hits) > n_hits
     hits = tuple(h[1] for h in raw_hits[:n_hits])
