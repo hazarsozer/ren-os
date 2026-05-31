@@ -1225,7 +1225,7 @@ git add -A && git commit -m "refactor(ns): update plugin-data-dir literals to sf
 # line 35:  [[ -d "$mkt_dir/startup-framework" ]] || continue   →   "$mkt_dir/sf"
 # line 36:  for ver_dir in "$mkt_dir/startup-framework"/*/; do   →   "$mkt_dir/sf"/*/
 # line 51:  emit "startup-framework" "ok" ...                    →   emit "sf" "ok" ...
-# line 53:  ... "→ /plugin install startup-framework@sf-marketplace"  →  "→ /plugin install sf@sf-marketplace"
+# line 53:  ... "→ /plugin install sf@sf-marketplace"  →  "→ /plugin install sf@sf-marketplace"
 ```
 (Also update the comment on line ~7 listing plugin names.)
 
@@ -1329,9 +1329,9 @@ git add -A && git commit -m "refactor(ns): update CI + conformance skill paths t
 - Modify (install id `startup-framework@` → `sf@`): `README.md:69,76`, `CHANGELOG.md:37`, `docs/RECOVERY.md:36`, `docs/RELEASE_v1.0.0.md:45`, `docs/SHIP_CHECKLIST.md:245`
 - Modify (migrate-wiki → wiki-migration): `skills/install/SKILL.md:80`, `skills/bootstrap-project/references/template-loader.md:103`, `wiki/decisions/017-per-friend-wiki-scope.md:111`
 
-- [ ] **Step 1: Update install-id lines** — `/plugin install startup-framework@sf-marketplace` → `/plugin install sf@sf-marketplace`:
+- [ ] **Step 1: Update install-id lines** — `/plugin install sf@sf-marketplace` → `/plugin install sf@sf-marketplace`:
 ```bash
-grep -rn 'install startup-framework@sf-marketplace' README.md CHANGELOG.md docs/
+grep -rn 'install sf@sf-marketplace' README.md CHANGELOG.md docs/
 ```
 **Leave `/plugin marketplace add hazarsozer/sf-marketplace` lines UNCHANGED.**
 
@@ -1339,7 +1339,7 @@ grep -rn 'install startup-framework@sf-marketplace' README.md CHANGELOG.md docs/
 
 - [ ] **Step 3: Verify + commit**
 ```bash
-grep -rn 'install startup-framework@sf-marketplace' README.md CHANGELOG.md docs/   # expect: NO output
+grep -rn 'install sf@sf-marketplace' README.md CHANGELOG.md docs/   # expect: NO output
 grep -rn '/sf:migrate-wiki' skills/ wiki/                                          # expect: NO output
 git add -A && git commit -m "docs(ns): update install id to sf@sf-marketplace; fix migrate-wiki -> wiki-migration"
 ```
@@ -1356,7 +1356,7 @@ cd "$(git rev-parse --show-toplevel)"
 grep -rEn 'skills/sf-(backup|bootstrap-project|doctor|improve-skill|insights|install|interview|note|recall|update|wrap)' \
   --include='*.py' --include='*.sh' --include='*.json' --include='*.yaml' --include='*.yml' .   # expect: NO output
 grep -rn 'sf-sf-marketplace' skills/ docs/        # expect: NO output
-grep -rn 'install startup-framework@sf-marketplace' .            # expect: NO output
+grep -rn 'install sf@sf-marketplace' .            # expect: NO output
 ```
 (Doc `/sf:` strings and `skills/wiki-migration/...` refs are intentionally retained.)
 

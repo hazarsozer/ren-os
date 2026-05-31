@@ -77,7 +77,7 @@ references_on_demand:
 ## When NOT to use this skill
 
 - Friend wants to ADD a single plugin → tell them to use `/plugin install <name>` directly. This skill is the full install, not a one-off.
-- Friend wants to migrate an existing wiki to a newer schema → `/sf:update` + `/sf:migrate-wiki` own that path (sf-distribution).
+- Friend wants to migrate an existing wiki to a newer schema → `/sf:update` + `/sf:wiki-migration` own that path (sf-distribution).
 - The friend has explicitly run `/sf:install --reset` and wants nothing to happen → exit cleanly; resetting state is its own command.
 
 ## How to use this skill

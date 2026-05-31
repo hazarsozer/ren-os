@@ -42,7 +42,7 @@ The Startup Framework's first ship. A private Claude Code framework for a friend
 
 ```
 /plugin marketplace add <org>/sf-marketplace
-/plugin install startup-framework@sf-marketplace
+/plugin install sf@sf-marketplace
 /sf:install
 ```
 

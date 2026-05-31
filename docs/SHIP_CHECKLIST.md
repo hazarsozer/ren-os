@@ -242,7 +242,7 @@ scripts/publish.sh
 
 # In a fresh directory or on the secondary device:
 /plugin marketplace add hazarsozer/sf-marketplace
-/plugin install startup-framework@sf-marketplace
+/plugin install sf@sf-marketplace
 /reload-plugins
 /sf:install
 ```

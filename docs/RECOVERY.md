@@ -33,7 +33,7 @@ You have a new machine. Your old wiki is gone.
 # 1. Install Claude Code on the new machine
 # 2. Install the framework
 /plugin marketplace add <org>/sf-marketplace
-/plugin install startup-framework@sf-marketplace
+/plugin install sf@sf-marketplace
 
 # 3. Restore on install
 /sf:install --restore <your-wiki-remote-url>
