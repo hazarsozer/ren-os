@@ -197,7 +197,7 @@ def validate_handle(value: str) -> str:
     sanitize-and-fall-back: the handle is identity and must be correct, not silently
     rewritten.
     """
-    if not isinstance(value, str) or not HANDLE_RE.match(value):
+    if not isinstance(value, str) or len(value) > 50 or not HANDLE_RE.match(value):
         raise InvalidHandleError(
             f"handle {value!r} is invalid; it must match ^[a-z][a-z0-9-]*$ "
             "(a lowercase letter, then lowercase letters/digits/hyphens). "
@@ -265,17 +265,19 @@ def _parse_field_from_frontmatter(text: str, field: str) -> str | None:
     if not lines or lines[0].strip() != "---":
         return None
     prefix = f"{field}:"
+    found: str | None = None
     for line in lines[1:]:
         stripped = line.strip()
         if stripped == "---":
-            return None
-        if stripped.startswith(prefix):
+            return found  # closing fence reached
+        if found is None and stripped.startswith(prefix):
             value = stripped[len(prefix):].strip()
             if value.startswith('"') and value.endswith('"'):
                 value = value[1:-1]
             elif value.startswith("'") and value.endswith("'"):
                 value = value[1:-1]
-            return value or None
+            found = value or None
+    # No closing fence: the block is unterminated, so any match was in the body.
     return None
 
 
