@@ -13,7 +13,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
-CHECK_SCRIPT="$REPO_ROOT/skills/sf-doctor/scripts/check-schemas.sh"
+CHECK_SCRIPT="$REPO_ROOT/skills/doctor/scripts/check-schemas.sh"
 SCHEMAS_JSON="$REPO_ROOT/skills/wiki-migration/schemas.json"
 
 PASS_COUNT=0
