@@ -69,17 +69,17 @@ A 4-stage pipeline:
      the 2 master-wiki additions, and a short content sample
    → asks ONE approval. User can approve / edit / abort.
 
-4. WRITE  (reuses sf-bootstrap-project template-loader, copy_if_missing)
-   → writes wiki/projects/<name>/** from drafts, additive-only
+4. WRITE  (additive-only; reuses the template-loader's write *discipline*)
+   → writes wiki/projects/<name>/** from the LLM drafts, additive-only
    → appends the 2 master-wiki registration lines
    → appends an init entry to the project log.md
 ```
 
-**Why this shape:** the scanner is mechanical and unit-testable; the LLM only interprets bounded facts; the write step reuses the *existing, tested* template-loader instead of forking write logic; the single gate satisfies ADR-017.
+**Why this shape:** the scanner is mechanical and unit-testable; the LLM only interprets bounded facts; the write step reuses the *existing, tested* additive-write discipline instead of forking write logic; the single gate satisfies ADR-017.
 
 **Reuses (not rebuilt):**
 - `lib/sf_paths.py` — `wiki_path()`, `handle()`, `framework_version()`.
-- `skills/sf-bootstrap-project/references/template-loader.md` — `copy_if_missing` + additive-diff mode.
+- `skills/sf-bootstrap-project/references/template-loader.md` — its **write discipline**: `copy_if_missing` semantics, additive-diff detection for an existing sub-wiki, and the master-`index.md`/`log.md` append pattern. **Note:** the loader's normal flow copies *static templates* with placeholder substitution; ingest's page source is **LLM-drafted full content**, so the placeholder-substitution step is bypassed (pages arrive already complete). The plan decides the exact mechanism (e.g. drafts staged to a temp dir then run through the loader with no bindings, vs. a thin shared additive-write helper) — but ingest MUST NOT route drafted content through placeholder substitution, and MUST NOT fork the additive/no-overwrite logic.
 - ADR-014 taxonomy page set (PROJECT / REQUIREMENTS / ROADMAP / STATE / CONTEXT / index / log + research/decisions/patterns dirs).
 
 **Hard boundaries:**
