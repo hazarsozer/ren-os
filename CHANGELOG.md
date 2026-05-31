@@ -46,7 +46,7 @@ The multi-user **Activity Feed was cut pre-ship** (ADR-031): the builder is solo
 - `/sf:bootstrap-project <name>` — instantiates a project sub-wiki from the per-builder skeleton.
 - Companions: `/sf:note "..."` (pin for `/sf:wrap`), `/sf:recall "..."` (wiki query without page loads).
 - `/sf:backup` (ADR-026) — git-remote primary + tarball fallback. Flags: `--setup <remote>`, `--tarball`, `--status`.
-- **Schema-versioning machinery** (`skills/wiki-migration/`, ADR-027): `schemas.json` registers **11 page-types** (identity, project-main, project-state, project-roadmap, project-requirements, project-context, research, decision, pattern, log-entry, skill); `schemas.schema.json` + `verify.schema.json` validators; `MIGRATION_PATTERN.md` + `migrations/_template/`; snapshot retention (latest 3, `userConfig.snapshotRetain`, at `${CLAUDE_PLUGIN_DATA}/wiki-snapshots/`); predicate vocabulary v1.
+- **Schema-versioning machinery** (`skills/wiki-migration/`, ADR-027): `schemas.json` registers **15 page-types** (identity, master-index, project-index, licenses, project-main, project-state, project-roadmap, project-requirements, project-context, research, decision, pattern, log-entry, project-log-entry, skill); `schemas.schema.json` + `verify.schema.json` validators; `MIGRATION_PATTERN.md` + `migrations/_template/`; snapshot retention (latest 3, `userConfig.snapshotRetain`, at `${CLAUDE_PLUGIN_DATA}/wiki-snapshots/`); predicate vocabulary v1.
 
 **Cadence — consolidation, improvement, insight**
 - `/sf:wrap` — session-end consolidation: reads the session log + `/sf:note` pins, gates on a conservative **deterministic** signal classifier (the **F2** fix; EXPERIMENTAL, bike-method) that biases hard to `none`, never raises, lets pins dominate, and creates artifacts only for `decision`/`pattern`. **Wiki-only** (no cross-user write). The LLM classifier path ships as future-upgrade primitives.
@@ -71,7 +71,7 @@ The multi-user **Activity Feed was cut pre-ship** (ADR-031): the builder is solo
 - License mix surfaced in `LICENSES.md`; friends explicitly informed of Context Mode's ELv2 SaaS restriction.
 
 ### Schema
-- All **11 page-types** start at schema version 1, supported_from 1, no migrations. Future MINOR/MAJOR releases will add migrations here. (The `feed-entry` page-type was removed pre-ship with the Activity Feed — RETIRED, not migrated, per ADR-031 + ADR-027.)
+- All **15 page-types** start at schema version 1, supported_from 1, no migrations. Future MINOR/MAJOR releases will add migrations here. (The `feed-entry` page-type was removed pre-ship with the Activity Feed — RETIRED, not migrated, per ADR-031 + ADR-027.)
 
 [Unreleased]: https://github.com/hazarsozer/sf-marketplace/compare/v1.0.0...HEAD
 [1.0.0]: https://github.com/hazarsozer/sf-marketplace/releases/tag/v1.0.0
