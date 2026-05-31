@@ -66,6 +66,16 @@ cat > "$TMP/claude.json" <<EOF
     "/home/tester/Dev/proj-b": {
       "mcpServers": {},
       "allowedTools": []
+    },
+    "/": {
+      "mcpServers": {
+        "root-mcp": {
+          "type": "stdio",
+          "command": "node",
+          "args": ["root.js"]
+        }
+      },
+      "allowedTools": []
     }
   }
 }
@@ -148,6 +158,14 @@ echo "$OUT_A" | grep -q "SessionStart" \
 echo "$OUT_A" | grep -q "proj-a" \
   && pass "per-project label (proj-a) shown" \
   || fail "per-project label not shown"
+
+# Degenerate "/" project key must never print the full path — shows "(root)" instead.
+echo "$OUT_A" | grep -q "(root)" \
+  && pass "degenerate '/' project key shows '(root)' label" \
+  || fail "degenerate '/' project key did not show '(root)'"
+echo "$OUT_A" | grep -Fq "/home/" \
+  && fail "full home path leaked in project label" \
+  || pass "no full home path printed in project labels"
 
 # CRITICAL: no seeded secret may ever appear in the output.
 SECRET_LEAK=0
