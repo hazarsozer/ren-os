@@ -78,7 +78,7 @@ REQUIRED_FIELDS_BY_TYPE: dict[str, set[str]] = {
 # ──────────────────────────────────────────────────────────────────────
 SCAN_TARGETS = [
     ("wiki-skeleton templates", "wiki-skeleton/templates/**/*.md.tmpl", "strict"),
-    ("sf-bootstrap-project templates", "skills/sf-bootstrap-project/templates/**/*.md.tmpl", "strict"),
+    ("bootstrap-project templates", "skills/bootstrap-project/templates/**/*.md.tmpl", "strict"),
     # Framework-shipped SKILL.md files — declared `type: skill` get strict-scanned (per lifecycle-2
     # coord 2026-05-28). Files without `type:` declared are treated as free-form per ADR-027 opt-in
     # semantics; no failure penalty for not opting in.

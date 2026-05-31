@@ -138,4 +138,4 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: bash skills/sf-update/scripts/version-compare.sh --self-test
+      - run: bash skills/update/scripts/version-compare.sh --self-test

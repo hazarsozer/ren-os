@@ -79,7 +79,7 @@ jobs:
           while IFS= read -r f; do bash -n "$f"; done < <(find skills hooks -name '*.sh' -type f 2>/dev/null)
           echo "  OK: all shell scripts pass bash -n"
           # Semver self-test
-          bash skills/sf-update/scripts/version-compare.sh --self-test
+          bash skills/update/scripts/version-compare.sh --self-test
 
   release:
     name: create GitHub Release
