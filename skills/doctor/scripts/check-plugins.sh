@@ -4,7 +4,7 @@
 # Output format: same as check-env.sh — `KEY|STATUS|VALUE|HINT`.
 #
 # Plugins checked (per ADR-006):
-#   startup-framework, superpowers, skill-creator, claude-mem, context-mode,
+#   sf, superpowers, skill-creator, claude-mem, context-mode,
 #   context7, claude-md-management, frontend-design (conditional)
 #
 # Also:
@@ -21,7 +21,7 @@ emit() { printf '%s|%s|%s|%s\n' "$1" "$2" "${3:-}" "${4:-}"; }
 # Locate the framework plugin install
 # ──────────────────────────────────────────────────────────────────────
 # CC plugin cache lives at ~/.claude/plugins/cache/<marketplace>/<plugin>/<version>/
-# We look for any installed startup-framework version.
+# We look for any installed sf version.
 PLUGIN_CACHE_ROOT="${HOME}/.claude/plugins/cache"
 # Honor a pre-set SF_PLUGIN_DIR (used by tests + power users to point the checks at a
 # specific plugin tree, e.g. the dev repo root). When unset, auto-discover from the cache.
@@ -32,8 +32,8 @@ SF_MARKETPLACE="${SF_MARKETPLACE:-}"
 if [[ -z "$SF_PLUGIN_DIR" && -d "$PLUGIN_CACHE_ROOT" ]]; then
   # Find the newest installed version (sort by version dir mtime, latest wins)
   for mkt_dir in "$PLUGIN_CACHE_ROOT"/*/; do
-    [[ -d "$mkt_dir/startup-framework" ]] || continue
-    for ver_dir in "$mkt_dir/startup-framework"/*/; do
+    [[ -d "$mkt_dir/sf" ]] || continue
+    for ver_dir in "$mkt_dir/sf"/*/; do
       [[ -f "$ver_dir/.claude-plugin/plugin.json" ]] || continue
       ver_basename="$(basename "$ver_dir")"
       if [[ -z "$SF_VERSION" ]] || [[ "$ver_basename" > "$SF_VERSION" ]]; then
@@ -48,9 +48,9 @@ fi
 if [[ -n "$SF_PLUGIN_DIR" ]]; then
   # Parse version from plugin.json (source of truth per CC docs)
   SF_PLUGIN_JSON_VER="$(grep -oE '"version"\s*:\s*"[^"]+"' "$SF_PLUGIN_DIR/.claude-plugin/plugin.json" | head -1 | sed 's/.*"\([^"]*\)"$/\1/')"
-  emit "startup-framework" "ok" "v${SF_PLUGIN_JSON_VER:-$SF_VERSION} (installed via ${SF_MARKETPLACE})" ""
+  emit "sf" "ok" "v${SF_PLUGIN_JSON_VER:-$SF_VERSION} (installed via ${SF_MARKETPLACE})" ""
 else
-  emit "startup-framework" "error" "not found in plugin cache" "→ /plugin install startup-framework@sf-marketplace"
+  emit "sf" "error" "not found in plugin cache" "→ /plugin install sf@sf-marketplace"
 fi
 
 # ──────────────────────────────────────────────────────────────────────
