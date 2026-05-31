@@ -211,8 +211,11 @@ class TestGrepWiki:
 
     def test_concurrent_delete_during_sort_not_fatal(self, tmp_path, monkeypatch):
         """A file deleted between the scan and the mtime-sort must not crash grep_wiki
-        (the sort key's stat() is the unguarded call in grep_wiki)."""
-        from ..__init__ import grep_wiki
+        (the sort key's stat() is the unguarded call in grep_wiki).
+
+        The monkeypatch also suppresses _recency_bonus's stat() call for a.md, so its
+        recency score is penalized before the sort — the patch touches two stat sites.
+        """
         wiki = tmp_path / "wiki"
         decisions = wiki / "decisions"
         decisions.mkdir(parents=True)
