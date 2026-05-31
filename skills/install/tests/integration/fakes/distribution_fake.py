@@ -5,7 +5,7 @@ registry (read at Stage 2 to know which plugins + versions to install; re-read a
 Stage 6 to regenerate LICENSES.md) and a thin LICENSES.md rendering helper.
 
 The real surface is currently SKILL.md docs + shell scripts in
-skills/sf-doctor/scripts/. When distribution-2 ships a Python entry point this
+skills/doctor/scripts/. When distribution-2 ships a Python entry point this
 fake adapts; signature lives in test_contract_drift.py.
 """
 

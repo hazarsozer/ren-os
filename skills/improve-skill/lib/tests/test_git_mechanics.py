@@ -10,7 +10,7 @@ thin enough that mocking the underlying calls would be testing the mock, not
 the behavior.
 
 Run with:
-    python3 -m pytest skills/sf-improve-skill/lib/tests/test_git_mechanics.py -v
+    python3 -m pytest skills/improve-skill/lib/tests/test_git_mechanics.py -v
 """
 
 from __future__ import annotations

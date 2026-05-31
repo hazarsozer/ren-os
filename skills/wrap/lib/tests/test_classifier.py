@@ -10,7 +10,7 @@ Pure-logic coverage:
     `none`, never raises, pins dominate, artifacts only for decision/pattern
 
 Per dotfiles python/testing.md (pytest). Run with:
-    python3 -m pytest skills/sf-wrap/lib/tests/test_classifier.py -v
+    python3 -m pytest skills/wrap/lib/tests/test_classifier.py -v
 """
 
 from __future__ import annotations

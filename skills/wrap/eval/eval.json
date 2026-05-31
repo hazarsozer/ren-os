@@ -75,7 +75,7 @@
   ],
   "_notes": [
     "Fixtures under fixtures/ are populated incrementally as /sf:wrap implementation lands.",
-    "Run via: uv run pytest skills/sf-wrap/eval/ (TBD wiring).",
+    "Run via: uv run pytest skills/wrap/eval/ (TBD wiring).",
     "These assertions are also the targets for /sf:improve-skill's Karpathy loop per ADR-012."
   ]
 }

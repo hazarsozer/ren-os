@@ -38,7 +38,7 @@ from integration.simulator import InstallSimulator  # noqa: E402
 @pytest.fixture(scope="session")
 def repo_root() -> Path:
     """Absolute path to the framework repo root."""
-    # This conftest.py lives at skills/sf-install/tests/integration/conftest.py
+    # This conftest.py lives at skills/install/tests/integration/conftest.py
     # so the repo root is four levels up.
     return Path(__file__).resolve().parent.parent.parent.parent.parent
 

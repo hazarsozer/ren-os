@@ -1,5 +1,5 @@
 {
-  "_schema_note": "Anthropic API pricing per million tokens. Used by skills/sf-improve-skill/lib/budget.py for shadow-USD enforcement when CC's --max-budget-usd isn't available (i.e., non-print-mode contexts). Per ADR-006 plugin-versioning discipline, bumps to this file are bound to plugin minor or patch releases. See references/cc-flag-watch.md for when we can drop this dependency.",
+  "_schema_note": "Anthropic API pricing per million tokens. Used by skills/improve-skill/lib/budget.py for shadow-USD enforcement when CC's --max-budget-usd isn't available (i.e., non-print-mode contexts). Per ADR-006 plugin-versioning discipline, bumps to this file are bound to plugin minor or patch releases. See references/cc-flag-watch.md for when we can drop this dependency.",
   "version": "1.0.0",
   "valid_as_of": "2026-05-28",
   "source_url_at_capture": "https://www.anthropic.com/pricing (verify before each plugin release)",
