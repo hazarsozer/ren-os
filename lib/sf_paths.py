@@ -195,12 +195,12 @@ def validate_handle(value: str) -> str:
     The handle is load-bearing for filesystem paths and git commit messages, so a
     malformed value is a path-traversal vector (M2/L7). We reject rather than
     sanitize-and-fall-back: the handle is identity and must be correct, not silently
-    rewritten.
+    rewritten. Also caps length at 50 characters to bound path/commit-message growth.
     """
     if not isinstance(value, str) or len(value) > 50 or not HANDLE_RE.match(value):
         raise InvalidHandleError(
             f"handle {value!r} is invalid; it must match ^[a-z][a-z0-9-]*$ "
-            "(a lowercase letter, then lowercase letters/digits/hyphens). "
+            "(a lowercase letter, then lowercase letters/digits/hyphens), max 50 characters. "
             "Run /sf:interview to set a valid handle."
         )
     return value
