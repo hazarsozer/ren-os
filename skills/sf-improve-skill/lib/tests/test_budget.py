@@ -322,3 +322,30 @@ class TestEstimateIterations:
     def test_exhausted_budget_returns_zero(self):
         state = BudgetState(max_budget_usd=5.00, shadow_usd=5.00)
         assert estimate_iterations_remaining(state, mean_usd_per_iter=0.10) == 0
+
+
+# ---------------------------------------------------------------------------
+# compute_usage_cost_usd — missing cache keys
+# ---------------------------------------------------------------------------
+
+
+class TestComputeUsageCostMissingCacheKeys:
+    def test_missing_cache_rates_no_keyerror(self, tmp_path):
+        """A pricing entry that omits cache_read/cache_creation must not crash;
+        the missing cache rates contribute $0 rather than raising KeyError."""
+        import json
+        from ..budget import load_pricing_table
+        data = {
+            "valid_as_of": "2026-01-01",
+            "pricing_usd_per_million_tokens": {"m": {"input": 1.0, "output": 2.0}},
+            "default_model": "m",
+            "alias_resolution": {},
+        }
+        path = tmp_path / "partial-pricing.json"
+        path.write_text(json.dumps(data), encoding="utf-8")
+        table = load_pricing_table(path)
+        usage = ApiUsage(
+            input_tokens=1_000_000, output_tokens=0, cache_read_input_tokens=500_000
+        )
+        cost = compute_usage_cost_usd(usage, "m", table)
+        assert cost == pytest.approx(1.0)  # 1M input × $1; cache_read counts as $0

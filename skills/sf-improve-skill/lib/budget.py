@@ -126,8 +126,8 @@ def compute_usage_cost_usd(usage: ApiUsage, model: str, table: PricingTable) -> 
     cost = (
         usage.input_tokens * rates["input"]
         + usage.output_tokens * rates["output"]
-        + usage.cache_read_input_tokens * rates["cache_read"]
-        + usage.cache_creation_input_tokens * rates["cache_creation"]
+        + usage.cache_read_input_tokens * rates.get("cache_read", 0.0)
+        + usage.cache_creation_input_tokens * rates.get("cache_creation", 0.0)
     ) / 1_000_000.0
 
     return max(cost, 0.0)
