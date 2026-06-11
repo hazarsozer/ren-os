@@ -1,4 +1,4 @@
-# Releasing the Startup Framework
+# Releasing the RenOS
 
 Maintainer-facing. Skip if you're a friend just using the framework.
 
@@ -11,8 +11,8 @@ Per ADR-019. Cadence: **monthly stable**. Out-of-cycle PATCH releases for securi
 | Repo | Purpose | Contents | Who has access |
 |---|---|---|---|
 | **dev repo** (this one, `~/Dev/startup-framework`) | Design history, ADRs, research, the source of truth | EVERYTHING — full git history, `wiki/`, `raw/`, `REVIEW*.md`, maintainer docs, **release tags** | Maintainers only; **PRIVATE, never pushed to the marketplace** |
-| `sf-marketplace` (stable) | Distribution to friends | ONE orphan commit per release — only the shippable allowlist | Maintainers write (via `publish.sh`); friends read |
-| `sf-marketplace-rc` (RC channel) | Pre-release dogfood | Same, RC versions | Maintainers write; subscribed friends read |
+| `ren-os` (stable) | Distribution to friends | ONE orphan commit per release — only the shippable allowlist | Maintainers write (via `publish.sh`); friends read |
+| `ren-os-rc` (RC channel) | Pre-release dogfood | Same, RC versions | Maintainers write; subscribed friends read |
 
 **The boundary.** The dev repo holds the product brain (wiki, research, internal reviews). Friends
 must never see it. We do **not** `git push` the dev repo to the marketplace — that would leak the
@@ -20,7 +20,7 @@ whole history. Instead, `scripts/publish.sh` builds a **fresh single-commit orph
 only the shippable allowlist and force-pushes THAT. Friends get one commit, zero history, zero wiki.
 
 **Tags live only in the dev repo.** The marketplace carries no tags — it's a rolling single orphan
-commit. Friends pick up changes with `/plugin marketplace update sf-marketplace`; `/sf:doctor`
+commit. Friends pick up changes with `/plugin marketplace update ren-os`; `/ren:doctor`
 reads the published `plugin.json#version` to notify them.
 
 ---
@@ -38,8 +38,8 @@ Run through this before bumping the version:
   - **MAJOR** (`1.x.x → 2.0.0`): anything else. Goes through the RC pipeline (below).
 - [ ] `scripts/publish.sh --dry-run` is green (validates the snapshot would be clean).
 - [ ] Migrations CI green: synthetic-wiki fixtures pass every new migration's `verify.json`.
-- [ ] `CHANGELOG.md` entry written (this drives `/sf:doctor`'s update-notification text).
-- [ ] You dogfooded the migration: ran `/sf:update` against your own wiki from the previous version, approved the diffs, confirmed `/sf:doctor` green afterward.
+- [ ] `CHANGELOG.md` entry written (this drives `/ren:doctor`'s update-notification text).
+- [ ] You dogfooded the migration: ran `/ren:update` against your own wiki from the previous version, approved the diffs, confirmed `/ren:doctor` green afterward.
 
 ---
 
@@ -68,13 +68,13 @@ $EDITOR .claude-plugin/marketplace.json
 - `identity.md` schema 1 → 2: scripted migration adds `phase`
 
 ### Fixed
-- /sf:doctor's plugin-version check no longer crashes when claude-mem worker is offline
+- /ren:doctor's plugin-version check no longer crashes when claude-mem worker is offline
 
 ### Deprecated / Removed / Security
 - (none)
 ```
 
-Keep-a-Changelog conventions. The `### Schema` section is custom — `/sf:doctor` summarises it in update notifications.
+Keep-a-Changelog conventions. The `### Schema` section is custom — `/ren:doctor` summarises it in update notifications.
 
 ### Step 3 — commit + tag in the DEV repo
 
@@ -83,7 +83,7 @@ git add -A
 git commit -m "release: v1.3.0"
 git tag v1.3.0
 # If the dev repo has a private remote: git push origin main --tags
-# (This pushes to the PRIVATE dev remote ONLY — NEVER to sf-marketplace.)
+# (This pushes to the PRIVATE dev remote ONLY — NEVER to ren-os.)
 ```
 
 ### Step 4 — publish the orphan snapshot
@@ -102,7 +102,7 @@ scripts/publish.sh            # --channel stable is the default
 Inspect the snapshot, then run the printed commands:
 
 ```bash
-git -C <snapshot> remote add origin git@github.com:hazarsozer/sf-marketplace.git
+git -C <snapshot> remote add origin git@github.com:hazarsozer/ren-os.git
 git -C <snapshot> push --force origin HEAD:main
 ```
 
@@ -111,14 +111,14 @@ tags to the marketplace.**
 
 ### Step 5 — friends pick it up on their own time
 
-`/sf:doctor` shows `⚠️ Framework update available: v1.3.0` (it reads the published `plugin.json#version`).
-Friends run `/plugin marketplace update sf-marketplace` then `/sf:update` when convenient — snapshot,
+`/ren:doctor` shows `⚠️ Framework update available: v1.3.0` (it reads the published `plugin.json#version`).
+Friends run `/plugin marketplace update ren-os` then `/ren:update` when convenient — snapshot,
 migrate, diff-review, apply. Opt-in only; no nagging beyond the doctor message (ADR-019).
 
-> **Why not GitHub Releases on `sf-marketplace`?** The marketplace carries no tags, so tag-triggered
+> **Why not GitHub Releases on `ren-os`?** The marketplace carries no tags, so tag-triggered
 > GitHub Releases don't apply there. `release.yml` is **dev-repo CI** (it validates on dev-repo tag
 > pushes if you've given the dev repo a private remote). Friends get "what changed" from `CHANGELOG.md`
-> (which ships) + `/sf:doctor`, not from a GitHub Release page.
+> (which ships) + `/ren:doctor`, not from a GitHub Release page.
 
 ---
 
@@ -129,7 +129,7 @@ For MAJOR releases or anything risky enough to want a dogfood week first.
 ### Why two repos, not two branches
 
 CC requires a unique `marketplace.json#name` per marketplace. Two branches of one repo would collide
-on that. So we use two physical repos with distinct names (`sf-marketplace`, `sf-marketplace-rc`),
+on that. So we use two physical repos with distinct names (`ren-os`, `ren-os-rc`),
 both private, both with the same read-only friend collaborators.
 
 ### Step 1 — set an RC version + publish to the RC channel
@@ -138,7 +138,7 @@ both private, both with the same read-only friend collaborators.
 $EDITOR .claude-plugin/plugin.json     # "version": "1.3.0-rc.1"
 git commit -am "rc: v1.3.0-rc.1" && git tag v1.3.0-rc.1   # dev repo
 scripts/publish.sh --channel rc        # builds + verifies the RC snapshot
-# run the printed push → git@github.com:hazarsozer/sf-marketplace-rc.git
+# run the printed push → git@github.com:hazarsozer/ren-os-rc.git
 ```
 
 > **Semver note:** CC does NOT parse semver — it treats `version` as an opaque string and only checks
@@ -148,14 +148,14 @@ scripts/publish.sh --channel rc        # builds + verifies the RC snapshot
 
 ### Step 2 — dogfood ~1 week
 
-Maintainer runs `/sf:update --rc` on their own wiki. Watch for unexpected migration diffs, new
-`/sf:doctor` warnings, or peer-plugin incompatibilities. Fix on the dev repo, bump `-rc.N`, re-publish.
+Maintainer runs `/ren:update --rc` on their own wiki. Watch for unexpected migration diffs, new
+`/ren:doctor` warnings, or peer-plugin incompatibilities. Fix on the dev repo, bump `-rc.N`, re-publish.
 
 ### Step 3 — friends opt in to RC
 
 ```text
-/plugin marketplace add hazarsozer/sf-marketplace-rc
-/sf:update --rc
+/plugin marketplace add hazarsozer/ren-os-rc
+/ren:update --rc
 ```
 
 This sets `userConfig.rcChannel = true`. They cannot run BOTH stable and RC (same plugin name); the
@@ -169,7 +169,7 @@ de-suffixed version:
 ```bash
 $EDITOR .claude-plugin/plugin.json     # "1.3.0-rc.5" → "1.3.0"
 git commit -am "release: v1.3.0 (promoted from rc.5)" && git tag v1.3.0   # dev repo
-scripts/publish.sh --channel stable    # → sf-marketplace
+scripts/publish.sh --channel stable    # → ren-os
 # run the printed force-push
 ```
 
@@ -182,11 +182,11 @@ scripts/publish.sh --channel stable    # → sf-marketplace
 
 ### A migration silently corrupted some friends' wikis
 
-1. Triage via friend reports + pasted `/sf:doctor` output.
+1. Triage via friend reports + pasted `/ren:doctor` output.
 2. Identify the broken migration; read its `verify.json` — was an assertion too lax?
 3. Ship a PATCH (`v1.3.1`) with a corrective migration `<page-type>-3-to-4` (forward fix, never reverse) + a reproducing fixture.
-4. Announce out-of-band + via the `CHANGELOG.md` entry ("v1.3.0's identity.md migration was faulty; run /sf:update to v1.3.1"). `/sf:doctor` surfaces the new version from the published `plugin.json#version`.
-5. Affected friends roll back via snapshot (`RECOVERY.md` Scenario 3) and re-`/sf:update` once the patch is out.
+4. Announce out-of-band + via the `CHANGELOG.md` entry ("v1.3.0's identity.md migration was faulty; run /ren:update to v1.3.1"). `/ren:doctor` surfaces the new version from the published `plugin.json#version`.
+5. Affected friends roll back via snapshot (`RECOVERY.md` Scenario 3) and re-`/ren:update` once the patch is out.
 
 ### A snapshot was published with the wrong contents
 
@@ -195,13 +195,13 @@ clients:
 
 1. Fix the issue in the dev repo, bump to the next PATCH (e.g. `v1.3.1`), add a CHANGELOG note ("v1.3.0 was faulty; do not stay on it").
 2. Re-run `scripts/publish.sh` → force-push the corrected orphan commit. It cleanly replaces the bad one.
-3. Ping friends out-of-band so they `/plugin marketplace update` + `/sf:update`.
+3. Ping friends out-of-band so they `/plugin marketplace update` + `/ren:update`.
 
 (Dev-repo **tags** still follow the never-delete-and-re-push rule — but the marketplace has none, so the rolling force-push is the normal mechanism, not a hazard.)
 
 ### A friend reports breakage we can't reproduce
 
-1. Ask them to paste `/sf:doctor` output, `${CLAUDE_PLUGIN_DATA}/wiki-snapshots/` listing, and the first 50 lines of the file claimed broken.
+1. Ask them to paste `/ren:doctor` output, `${CLAUDE_PLUGIN_DATA}/wiki-snapshots/` listing, and the first 50 lines of the file claimed broken.
 2. One-off corruption → walk them through `RECOVERY.md` Scenario 3.
 3. Pattern across friends → file an ADR amendment under ADR-019's sunset-review triggers.
 
@@ -211,7 +211,7 @@ clients:
 
 Per ADR-019 § sunset-review-triggers ("Hazar-bottleneck on releases"):
 
-1. Add them as a write collaborator on `sf-marketplace` AND `sf-marketplace-rc` (and the private dev remote, if any).
+1. Add them as a write collaborator on `ren-os` AND `ren-os-rc` (and the private dev remote, if any).
 2. Add their GitHub username to `wiki/maintainers.md`.
 3. Walk them through this document + `publish.sh`.
 4. Both maintainers admin on the GitHub repos (bus factor).
@@ -222,11 +222,11 @@ The process is intentionally manual + auditable. Don't add automation that bypas
 
 ## What to NOT do
 
-- **Don't `git push` the dev repo to `sf-marketplace`.** That leaks the wiki + history. Always publish via `scripts/publish.sh`.
-- **Don't push tags to `sf-marketplace`.** Tags live only in the private dev repo.
+- **Don't `git push` the dev repo to `ren-os`.** That leaks the wiki + history. Always publish via `scripts/publish.sh`.
+- **Don't push tags to `ren-os`.** Tags live only in the private dev repo.
 - **Don't bypass `publish.sh`'s guards.** The assert-absent guard is the ADR-019 boundary; if it fails, fix the leak — don't work around it.
 - Don't push directly to friends' wikis — the per-friend-wiki principle (ADR-017) is load-bearing.
 - Don't auto-update. Opt-in (ADR-019) is the safety net.
-- Don't skip the CHANGELOG — `/sf:doctor` consumes it.
+- Don't skip the CHANGELOG — `/ren:doctor` consumes it.
 - Don't combine PATCH + MINOR in one release. Pick one; the semver classification is the schema-change contract.
 - Don't ship a MAJOR without RC. The dogfood week is the safety net.

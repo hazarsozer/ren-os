@@ -1,5 +1,5 @@
 """
-sf-note library — internal implementation for /sf:note.
+sf-note library — internal implementation for /ren:note.
 
 Single public entry: `pin_note(text, *, session_id, notes_root) -> PinResult`.
 
@@ -22,7 +22,7 @@ TIMESTAMP_FORMAT: Final[str] = "%Y-%m-%dT%H:%M:%SZ"  # ISO-8601 UTC
 
 @dataclass(frozen=True)
 class PinResult:
-    """Result of a /sf:note invocation."""
+    """Result of a /ren:note invocation."""
 
     success: bool
     path: Path | None        # the file written to (None on failure)
@@ -114,7 +114,7 @@ def pin_note(
             success=False,
             path=None,
             appended_line="",
-            error="Empty text. Usage: /sf:note <text>",
+            error="Empty text. Usage: /ren:note <text>",
         )
 
     try:

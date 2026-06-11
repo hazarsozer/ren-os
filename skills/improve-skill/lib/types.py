@@ -35,7 +35,7 @@ class ExitReason(str, Enum):
 
 @dataclass(frozen=True)
 class ImproveSkillArgs:
-    """Parsed CLI arguments for /sf:improve-skill."""
+    """Parsed CLI arguments for /ren:improve-skill."""
 
     skill_name: str
     autonomous: bool = False

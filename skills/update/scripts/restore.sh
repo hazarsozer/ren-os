@@ -10,7 +10,7 @@
 #
 #   restore.sh --list
 #     Lists available snapshots in chronological order (oldest first).
-#     Used by /sf:update --restore-snapshot for the interactive picker.
+#     Used by /ren:update --restore-snapshot for the interactive picker.
 #
 # Side effects:
 #   --whole: rewrites the wiki tree. Logs to wiki/log.md.
@@ -20,7 +20,7 @@
 set -euo pipefail
 
 WIKI_ROOT="${SF_WIKI_ROOT:-${CLAUDE_PLUGIN_OPTION_WIKIROOT:-$HOME/.startup-framework/wiki}}"
-PLUGIN_DATA="${CLAUDE_PLUGIN_DATA:-$HOME/.claude/plugins/data/sf-sf-marketplace}"
+PLUGIN_DATA="${CLAUDE_PLUGIN_DATA:-$HOME/.claude/plugins/data/ren-ren-os}"
 SNAPSHOT_BASE="${PLUGIN_DATA}/wiki-snapshots"
 
 case "${1:-}" in

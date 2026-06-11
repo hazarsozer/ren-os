@@ -74,7 +74,7 @@ class LifecycleFake:
         *,
         failing_check_name: str = "wiki: identity.md",
         detail: str = "schema_version=0 (older than expected 1)",
-        remediation: str = "Run /sf:update to migrate.",
+        remediation: str = "Run /ren:update to migrate.",
     ) -> None:
         checks: list[DoctorCheck] = []
         for c in self._report.checks:

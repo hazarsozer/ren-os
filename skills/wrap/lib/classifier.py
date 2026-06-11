@@ -8,9 +8,9 @@ genuinely high-signal sessions get promoted.
 
 `classify()` is the **default production path (EXPERIMENTAL, ADR-031 bike-method)**:
 a conservative DETERMINISTIC heuristic — it scans the combined transcript
-(session log + `/sf:note` pins) for deliberate, word-boundary signal phrases,
+(session log + `/ren:note` pins) for deliberate, word-boundary signal phrases,
 biases HARD to `none`, and NEVER raises. Pinned notes DOMINATE (lower
-threshold) because an explicit `/sf:note` is a deliberate signal. It only
+threshold) because an explicit `/ren:note` is a deliberate signal. It only
 proposes `candidate_artifacts` for fired `decision`/`pattern` labels (the page-
 creating ones); the rest contribute their label (→ log append) without a new
 file. Limits: phrase-driven, no semantic understanding — it can miss subtly-
@@ -300,7 +300,7 @@ _MAX_LABELS: Final[int] = 2
 _MAX_SUMMARY_CHARS: Final[int] = 300
 
 # Marker the orchestrator (lib/__init__.py:_gather_transcript) uses to join
-# `/sf:note` pins onto the session log. Everything from here on is "pins".
+# `/ren:note` pins onto the session log. Everything from here on is "pins".
 _PINS_MARKER_RE: Final[re.Pattern[str]] = re.compile(
     r"^#{1,6}\s+Pinned notes", re.IGNORECASE | re.MULTILINE
 )
@@ -362,7 +362,7 @@ _STRICT_PATTERNS: Final[dict[SignalLabel, tuple[re.Pattern[str], ...]]] = {
 }
 
 # Looser triggers applied ONLY to the pinned-notes section — pins DOMINATE
-# (lower threshold). A friend who explicitly `/sf:note`-pinned something is
+# (lower threshold). A friend who explicitly `/ren:note`-pinned something is
 # signalling intent, so a single deliberate keyword in a pin is enough; the
 # raw session log still needs a full strict phrase. purpose_shift is absent —
 # it requires a strong exact phrase even in a pin.
@@ -476,7 +476,7 @@ def classify(
 
     DEFAULT PRODUCTION PATH (EXPERIMENTAL — ADR-031 bike-method): a conservative
     deterministic heuristic. It scans the combined transcript (session log +
-    `/sf:note` pins) for deliberate, word-boundary signal phrases. It biases
+    `/ren:note` pins) for deliberate, word-boundary signal phrases. It biases
     HARD to `none` and NEVER raises — every failure mode degrades to `none`.
 
     Behavior:

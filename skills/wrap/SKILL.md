@@ -2,7 +2,7 @@
 name: wrap
 description: |
   Use at session end when the friend wants to consolidate what they learned.
-  Triggers on the /sf:wrap slash command. Applies a high-signal-threshold:
+  Triggers on the /ren:wrap slash command. Applies a high-signal-threshold:
   most sessions produce ZERO wiki edits (that is the discipline per ADR-009 —
   routine work doesn't pollute the wiki). When signal exists (decision,
   pattern, lesson, stack change, milestone, purpose shift), updates the
@@ -55,21 +55,21 @@ references_on_demand:
 
 # sf-wrap
 
-End-of-session consolidate. The partner to the wake-up hook (ADR-008): wake-up reads what `/sf:wrap` writes. Per ADR-009 this is a **user-invoked slash command**, NEVER a Stop hook (Ralph collision + claude-mem SessionEnd ordering + the discipline that most sessions are routine and shouldn't pollute the wiki).
+End-of-session consolidate. The partner to the wake-up hook (ADR-008): wake-up reads what `/ren:wrap` writes. Per ADR-009 this is a **user-invoked slash command**, NEVER a Stop hook (Ralph collision + claude-mem SessionEnd ordering + the discipline that most sessions are routine and shouldn't pollute the wiki).
 
-Solo-first (ADR-031): `/sf:wrap` consolidates the **local wiki only**. The former Activity Feed session-end entry was removed with the feed module.
+Solo-first (ADR-031): `/ren:wrap` consolidates the **local wiki only**. The former Activity Feed session-end entry was removed with the feed module.
 
-> **EXPERIMENTAL (bike-method, ADR-031):** the default signal classifier is a conservative DETERMINISTIC heuristic — it scans the transcript + `/sf:note` pins for deliberate signal phrases, biases HARD to `none`, and never raises. It has no semantic understanding (phrase-driven), so it can miss subtly-phrased signal and rarely over-fire on a keyword used casually. The LLM classifier path (`build_classifier_prompt` + `parse_classifier_output`) ships as primitives for a future upgrade.
+> **EXPERIMENTAL (bike-method, ADR-031):** the default signal classifier is a conservative DETERMINISTIC heuristic — it scans the transcript + `/ren:note` pins for deliberate signal phrases, biases HARD to `none`, and never raises. It has no semantic understanding (phrase-driven), so it can miss subtly-phrased signal and rarely over-fire on a keyword used casually. The LLM classifier path (`build_classifier_prompt` + `parse_classifier_output`) ships as primitives for a future upgrade.
 
 ## When to use this skill
 
-- Friend invokes `/sf:wrap` (the canonical trigger)
+- Friend invokes `/ren:wrap` (the canonical trigger)
 - Friend says any of: "wrap up", "consolidate this", "let's save the learnings", "I'm done for the day" — confirm intent with them once, then run
 
 ## When NOT to use this skill
 
-- Mid-session "save my progress" — the friend wants `/sf:note <text>` for that, not a full wrap
-- Routine debugging session with no genuine signal — STILL invoke /sf:wrap if the friend asked, but expect ZERO wiki edits beyond the CONTEXT.md refresh. **Do not invent signal to justify wiki writes.** Per ADR-009: "would I want this loaded next session by default? If no, it doesn't go in."
+- Mid-session "save my progress" — the friend wants `/ren:note <text>` for that, not a full wrap
+- Routine debugging session with no genuine signal — STILL invoke /ren:wrap if the friend asked, but expect ZERO wiki edits beyond the CONTEXT.md refresh. **Do not invent signal to justify wiki writes.** Per ADR-009: "would I want this loaded next session by default? If no, it doesn't go in."
 
 ## The pipeline
 
@@ -77,7 +77,7 @@ Solo-first (ADR-031): `/sf:wrap` consolidates the **local wiki only**. The forme
 
 Sources:
 - The session's transcript (Claude Code's record; reachable via the `transcript_path` hook-input field if invoked from a hook, or via `~/.claude/projects/<slug>/*.jsonl` otherwise)
-- Any `/sf:note` pins for this session at `~/.startup-framework/wiki/.session-notes/<session-id>.md` (if no session-id available, also check `unsessioned-notes.md`)
+- Any `/ren:note` pins for this session at `~/.startup-framework/wiki/.session-notes/<session-id>.md` (if no session-id available, also check `unsessioned-notes.md`)
 - The cwd → determines the active project (or `None` if not in a `~/Dev/<X>/` dir)
 - The current state of relevant wiki pages: `wiki/projects/<active>/STATE.md`, `CONTEXT.md`, `ROADMAP.md`, `REQUIREMENTS.md`, `PROJECT.md`, `log.md`, `index.md`
 
@@ -87,7 +87,7 @@ Sources:
 
 See `references/signal-threshold.md` for the full criteria. The **default** classifier (`lib/classifier.py:classify()`) is a conservative DETERMINISTIC heuristic (EXPERIMENTAL):
 
-- It scans the combined transcript (session log + `/sf:note` pins) for deliberate, word-boundary signal phrases. **Pins dominate** — a single deliberate keyword in a pin is enough; the raw session log needs a full phrase.
+- It scans the combined transcript (session log + `/ren:note` pins) for deliberate, word-boundary signal phrases. **Pins dominate** — a single deliberate keyword in a pin is enough; the raw session log needs a full phrase.
 - It biases HARD to `none` and **never raises** (every failure degrades to `none`).
 - It proposes `candidate_artifacts` ONLY for fired `decision`/`pattern` (the page-creating labels); other labels (`lesson`/`stack_change`/`milestone`/`purpose_shift`) contribute their label (→ a log append) without a new file.
 - It takes **no file-change-count input** by design (that would conflate wiki-maintenance files with project files).
@@ -130,12 +130,12 @@ On success, append the one-line entry to `wiki/projects/<active>/log.md` (always
 
 Print the final summary to the user:
 ```
-/sf:wrap complete.
+/ren:wrap complete.
   Wiki: <N> pages updated (or "no signal; CONTEXT.md refreshed only")
   Next-session pointer (CONTEXT.md): "<first 100 chars>..."
 ```
 
-## What `/sf:wrap` explicitly DOES NOT do
+## What `/ren:wrap` explicitly DOES NOT do
 
 - Run automatically. Invoked by the user only.
 - Block session exit. After it completes, the session can continue or end.

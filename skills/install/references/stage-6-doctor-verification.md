@@ -1,12 +1,12 @@
-# Stage 6 — `/sf:doctor` verification + optional OpenTelemetry
+# Stage 6 — `/ren:doctor` verification + optional OpenTelemetry
 
 Per ADR-015 Stage 6 (2026-05-28 amendment) + ADR-010. Always runs (per stage-recheck table).
 
 ## Procedure
 
-### 6.1 Delegate to `/sf:doctor`
+### 6.1 Delegate to `/ren:doctor`
 
-Sf-lifecycle owns `/sf:doctor`. Call its programmatic entry point:
+Sf-lifecycle owns `/ren:doctor`. Call its programmatic entry point:
 
 ```
 result = doctor.report() -> DoctorResult
@@ -27,7 +27,7 @@ Check:
   detail: str
 ```
 
-If sf-lifecycle hasn't yet shipped a programmatic entry, fall back to invoking `/sf:doctor` as a slash command and parse its output. Either way, Stage 6 cares about pass/fail at the aggregate level.
+If sf-lifecycle hasn't yet shipped a programmatic entry, fall back to invoking `/ren:doctor` as a slash command and parse its output. Either way, Stage 6 cares about pass/fail at the aggregate level.
 
 ### 6.2 Per-check coverage (what sf-doctor checks)
 
@@ -112,7 +112,7 @@ If `~/.claude/` is a real directory (not a symlink), the info-log line is suppre
 ### 6.6 Friend-facing summary
 
 ```
-Stage 6 — /sf:doctor verification:
+Stage 6 — /ren:doctor verification:
   ✓ 6/6 plugins at pinned versions
   ✓ hooks registered in expected order
   ✓ env vars set

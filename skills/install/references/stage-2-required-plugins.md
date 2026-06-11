@@ -11,7 +11,7 @@ Per ADR-015 Stage 2 (with 2026-05-28 amendments) + ADR-010 hook ordering coordin
 | 3 | **Superpowers** | `superpowers@claude-plugins-official` (Anthropic marketplace already registered) | Methodology skills + brainstorming; expects sub-agent + worktree skills active |
 | 4 | **Skill Creator** | `anthropics/skills` (marketplace add first; install `skill-creator@anthropic-agent-skills`) | Self-improvement infrastructure; Layer 1 optimizer needs ANTHROPIC_API_KEY (Stage 1 verified) |
 | 5 | **context7** | `context7@claude-plugins-official` | Version-aware doc lookup; Upstash key from Stage 1 |
-| 6 | **claude-md-management** | `claude-md-management@claude-plugins-official` | CLAUDE.md hygiene; complementary to `/sf:wrap` per ADR-009 amendment |
+| 6 | **claude-md-management** | `claude-md-management@claude-plugins-official` | CLAUDE.md hygiene; complementary to `/ren:wrap` per ADR-009 amendment |
 
 ## Pin-version registry
 
@@ -47,7 +47,7 @@ If the plugin is installed at a DIFFERENT version, surface the mismatch:
 ```
 Plugin <name> is installed at version X but framework pinned Y.
   Either:
-    /plugin uninstall <id> && /sf:install --redo-stage 2
+    /plugin uninstall <id> && /ren:install --redo-stage 2
   (or accept the mismatch and continue at your own risk — say "continue")
 ```
 

@@ -1,5 +1,5 @@
 ---
-title: "/sf:improve-skill eval-runner — invoking the test suite, scoring"
+title: "/ren:improve-skill eval-runner — invoking the test suite, scoring"
 type: skill-reference
 parent_skill: sf-improve-skill
 version: 0.1.0
@@ -127,10 +127,10 @@ The wrapper isolates the choice — anything OUTSIDE `lib/eval_runner.py` sees o
 
 ## `--eval-subset` semantics
 
-When the friend passes `--eval-subset` to `/sf:improve-skill`:
+When the friend passes `--eval-subset` to `/ren:improve-skill`:
 
 ```
-/sf:improve-skill sf-wrap --eval-subset routine-debug-session-no-signal,decision-session-creates-adr
+/ren:improve-skill sf-wrap --eval-subset routine-debug-session-no-signal,decision-session-creates-adr
 ```
 
 The runner:

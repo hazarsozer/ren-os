@@ -1,13 +1,13 @@
 {
   "name": "sf-recall",
-  "description": "Binary-assertion test suite for /sf:recall. Validates wiki-grep ranking, read-only invariant, and empty-query refusal.",
+  "description": "Binary-assertion test suite for /ren:recall. Validates wiki-grep ranking, read-only invariant, and empty-query refusal.",
   "schema_version": 1,
   "framework_version": "1.0.0",
   "tests": [
     {
       "id": "decision-query-finds-decision-first",
       "fixture": "fixtures/sample-wiki-with-postgres-decision.yaml",
-      "prompt": "/sf:recall postgres decision",
+      "prompt": "/ren:recall postgres decision",
       "expected_output_summary": "Wiki match for the postgres-vs-mongo decision page ranks first; snippet includes the matching line.",
       "trigger_test": true,
       "binary_assertions": [
@@ -20,7 +20,7 @@
     {
       "id": "no-matches-explicit-message",
       "fixture": "fixtures/sample-wiki-with-postgres-decision.yaml",
-      "prompt": "/sf:recall xyzzy quux frobnitz",
+      "prompt": "/ren:recall xyzzy quux frobnitz",
       "expected_output_summary": "Query tokens don't appear in any wiki page. Skill prints an explicit no-results message.",
       "trigger_test": true,
       "binary_assertions": [
@@ -32,18 +32,18 @@
     {
       "id": "empty-query-refused",
       "fixture": "fixtures/sample-wiki-with-postgres-decision.yaml",
-      "prompt": "/sf:recall ",
+      "prompt": "/ren:recall ",
       "expected_output_summary": "Skill refuses with a usage prompt.",
       "trigger_test": true,
       "binary_assertions": [
-        "User-facing output contains the substring 'Empty query' OR 'Usage: /sf:recall'",
+        "User-facing output contains the substring 'Empty query' OR 'Usage: /ren:recall'",
         "No file under wiki/ is read for content matching (skill exits before grep)"
       ]
     },
     {
       "id": "read-only-invariant-load-bearing",
       "fixture": "fixtures/sample-wiki-with-postgres-decision.yaml",
-      "prompt": "/sf:recall postgres",
+      "prompt": "/ren:recall postgres",
       "expected_output_summary": "After the run, every wiki file's content is byte-identical to its pre-run state (the LOAD-BEARING invariant).",
       "trigger_test": true,
       "binary_assertions": [
@@ -57,12 +57,12 @@
   "non_triggers": [
     {
       "id": "wrap-not-recall",
-      "prompt": "/sf:wrap",
+      "prompt": "/ren:wrap",
       "expected_outcome": "skill_not_activated"
     },
     {
       "id": "note-not-recall",
-      "prompt": "/sf:note something to remember",
+      "prompt": "/ren:note something to remember",
       "expected_outcome": "skill_not_activated"
     }
   ]

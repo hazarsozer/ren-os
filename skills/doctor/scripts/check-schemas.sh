@@ -19,12 +19,12 @@ SCHEMAS_JSON="${1:-${SF_PLUGIN_DIR:-${CLAUDE_PLUGIN_ROOT:-.}}/skills/wiki-migrat
 WIKI_ROOT="${CLAUDE_PLUGIN_OPTION_WIKIROOT:-$HOME/.startup-framework/wiki}"
 
 if [[ ! -f "$SCHEMAS_JSON" ]]; then
-  emit "_error" "error" "schemas.json not found at $SCHEMAS_JSON" "→ The plugin install is broken. Reinstall via /sf:install."
+  emit "_error" "error" "schemas.json not found at $SCHEMAS_JSON" "→ The plugin install is broken. Reinstall via /ren:install."
   exit 1
 fi
 
 if [[ ! -d "$WIKI_ROOT" ]]; then
-  emit "_error" "error" "wiki not found at $WIKI_ROOT" "→ Run /sf:install to bootstrap; or /sf:install --restore."
+  emit "_error" "error" "wiki not found at $WIKI_ROOT" "→ Run /ren:install to bootstrap; or /ren:install --restore."
   exit 1
 fi
 
@@ -165,7 +165,7 @@ for pt, meta in page_types.items():
     elif files_without_schema_field == files_found and files_found > 0:
         # All files have frontmatter but NONE declare schema_version — legacy pre-v1 pages.
         # Per ADR-027 § Pages without schema_version: assume schema_version: 1.
-        # Don't error; just note. Friend's first /sf:update will add the field via migration 1→2.
+        # Don't error; just note. Friend's first /ren:update will add the field via migration 1→2.
         status = "warn"
         hint = (f"no schema_version field in any file (legacy pre-v1 frontmatter). "
                 f"Assuming schema_version: 1 per ADR-027 fallback. "
@@ -183,13 +183,13 @@ for pt, meta in page_types.items():
         worst = min(numeric_yours)
         hint = (f"schema v{worst} is now beyond the N+3 deprecation window — page is READ-ONLY.\n"
                 f"  → Recovery options:\n"
-                f"    (a) Restore from snapshot at ${{CLAUDE_PLUGIN_DATA}}/wiki-snapshots/ and step-migrate via /sf:update\n"
+                f"    (a) Restore from snapshot at ${{CLAUDE_PLUGIN_DATA}}/wiki-snapshots/ and step-migrate via /ren:update\n"
                 f"    (b) Edit the file(s) manually to schema v{current} (see docs/RECOVERY.md 'Schema beyond deprecation')\n"
                 f"    (c) Discard if not valuable")
     elif any(y < current for y in numeric_yours):
         status = "warn"
         worst = min(numeric_yours)
-        hint = f"migration available (v{worst} → v{current}) — Run /sf:update to apply (see CHANGELOG for schema changes)"
+        hint = f"migration available (v{worst} → v{current}) — Run /ren:update to apply (see CHANGELOG for schema changes)"
     elif deprecated_below is not None and any(y < deprecated_below for y in numeric_yours):
         status = "warn"
         hint = "schema approaches deprecation — will become read-only in next MAJOR"

@@ -58,7 +58,7 @@ From source #3 (hooks-guide event table), copied verbatim into a structured form
 | **CwdChanged** | (Referenced separately) Fires when Claude changes directory |
 | **SessionEnd** | Why the session ended — matcher filters: `clear, resume, logout, prompt_input_exit, bypass_permissions_disabled, other` |
 
-**Implication for ADR-009** (no-Stop-hook decision): the `Stop` event exists and matches what ADR-009 described. The `SessionEnd` event also exists with its own matcher set. ADR-009's decision to use a user-invoked `/sf:wrap` slash command rather than either hook still holds (Ralph collision + claude-mem SessionEnd ordering + user-control preference all unchanged).
+**Implication for ADR-009** (no-Stop-hook decision): the `Stop` event exists and matches what ADR-009 described. The `SessionEnd` event also exists with its own matcher set. ADR-009's decision to use a user-invoked `/ren:wrap` slash command rather than either hook still holds (Ralph collision + claude-mem SessionEnd ordering + user-control preference all unchanged).
 
 ## 3. SessionStart hook — input schema (stdin)
 
@@ -205,7 +205,7 @@ From source #3 line 7: "After all matching hooks finish, Claude Code combines th
 
 **Implication for ADR-010**: when Context Mode, claude-mem, and our wake-up all register SessionStart hooks, **all three additionalContext payloads are concatenated and sent to Claude together**. Order of concatenation = order of registration. This is the additive coexistence ADR-010 designs around. No competitive failure mode; only ordering ergonomics.
 
-**Implication for `/sf:doctor`**: at hook-registration time, we should detect existing SessionStart hooks and warn if the combined estimated context payload exceeds ~10K tokens (since our 5K wake-up + others' could grow large).
+**Implication for `/ren:doctor`**: at hook-registration time, we should detect existing SessionStart hooks and warn if the combined estimated context payload exceeds ~10K tokens (since our 5K wake-up + others' could grow large).
 
 ## 11. Confirmed CC flags relevant to our work
 
@@ -213,14 +213,14 @@ From source #1 (`claude --help`):
 
 | Flag | Status | Use case |
 |---|---|---|
-| `--bare` | ✅ confirmed | Per ADR-012: skip plugins/hooks/CLAUDE.md/auto-memory; pass to inner sub-runs in `/sf:improve-skill` |
+| `--bare` | ✅ confirmed | Per ADR-012: skip plugins/hooks/CLAUDE.md/auto-memory; pass to inner sub-runs in `/ren:improve-skill` |
 | `--max-budget-usd <amount>` | ✅ confirmed, **print-mode only** | Per ADR-012; shadow with our own tracking in non-print sub-runs |
 | `--max-turns` | ❌ **NOT FOUND** in CLI help | See §12 below |
 | `--debug [filter]` (accepts `"hooks"` and `"api"`) | ✅ confirmed | Debug runs during cache verification |
 | `--include-hook-events` | ✅ confirmed; works with `--output-format=stream-json` | Capture hook lifecycle in verification |
 | `--exclude-dynamic-system-prompt-sections` | ✅ confirmed | Strongest supporting evidence for ADR-008's design (CC's own pattern moves content from system prompt to first user message for cache reuse) |
 | `--output-format <text\|json\|stream-json>` | ✅ confirmed | Used in verification |
-| `--system-prompt`, `--append-system-prompt` | ✅ confirmed | For inner sub-runs in `/sf:improve-skill` if needed |
+| `--system-prompt`, `--append-system-prompt` | ✅ confirmed | For inner sub-runs in `/ren:improve-skill` if needed |
 
 ## 12. Open issue: `--max-turns` is NOT a CC CLI flag
 
@@ -235,7 +235,7 @@ ADR-012 amendment dated 2026-05-28 states:
 - (b) The flag was removed or renamed between the docs-validation pass and now
 - (c) It exists at a less-discoverable level we haven't probed
 
-**Action item** (for Task #15 `/sf:improve-skill`):
+**Action item** (for Task #15 `/ren:improve-skill`):
 - Do NOT bake `--max-turns` into the pre-flight requirement until the flag's true status is confirmed
 - Use `--max-iterations` + `--max-budget-usd` (print-mode) + our shadow-budget-tracking as the three safety primitives
 - Document in `references/cc-flag-watch.md`: "Re-check `--max-turns` availability on next CC release"
@@ -310,7 +310,7 @@ These are unedited blocks copied directly from `claude --help` on **Claude Code 
                                         calls (only works with --print)
 ```
 
-Note the **"only works with --print"** constraint. Implication for `/sf:improve-skill`: if we want CC-native budget enforcement on inner sub-runs, those sub-runs must use `--print` mode. For interactive top-level invocations, our framework's shadow-budget-tracker fills the gap (sum `usage.input_tokens + output_tokens` × model pricing, abort when exceeded).
+Note the **"only works with --print"** constraint. Implication for `/ren:improve-skill`: if we want CC-native budget enforcement on inner sub-runs, those sub-runs must use `--print` mode. For interactive top-level invocations, our framework's shadow-budget-tracker fills the gap (sum `usage.input_tokens + output_tokens` × model pricing, abort when exceeded).
 
 ### A.3 `--max-turns` flag — VERIFIED ABSENT
 
@@ -322,7 +322,7 @@ $ claude --help 2>&1 | grep -i -- "--max-turns"
 
 The string `--max-turns` does NOT appear anywhere in `claude --help` output on CC `2.1.154`. ADR-012's amendment dated 2026-05-28 referenced this flag as if it existed; verification disproves that. The amendment must be corrected (see the ADR-012 amendments block for the correction record, 2026-05-28 entry referencing this document).
 
-**Implication for `/sf:improve-skill` pre-flight**: requires `--max-iterations` (our framework cap) + `--max-budget-usd` (CC-native, print-mode for inner sub-runs). Shadow turn-tracking via response-count summation is the belt-and-suspenders fallback for non-print contexts. Re-check on each CC release whether `--max-turns` returns.
+**Implication for `/ren:improve-skill` pre-flight**: requires `--max-iterations` (our framework cap) + `--max-budget-usd` (CC-native, print-mode for inner sub-runs). Shadow turn-tracking via response-count summation is the belt-and-suspenders fallback for non-print contexts. Re-check on each CC release whether `--max-turns` returns.
 
 ### A.4 `--exclude-dynamic-system-prompt-sections` (load-bearing for ADR-008's design)
 

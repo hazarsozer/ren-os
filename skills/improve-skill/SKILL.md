@@ -3,7 +3,7 @@ name: improve-skill
 description: |
   Use when the friend wants to improve an existing skill's body (SKILL.md
   instructions, references/, examples) against its own eval/eval.json
-  binary-assertion test suite. Triggers on the /sf:improve-skill <skill-name>
+  binary-assertion test suite. Triggers on the /ren:improve-skill <skill-name>
   slash command. Applies the Karpathy auto-research loop per ADR-012:
   read skill → run evals → propose ONE change → re-run → keep on score
   improvement, revert on score drop. Defaults to interactive mode (user
@@ -74,9 +74,9 @@ Layer-2 skill self-improvement per ADR-012. The mechanical realization of Karpat
 
 ## When to use this skill
 
-- Friend invokes `/sf:improve-skill <skill-name>` (canonical trigger)
+- Friend invokes `/ren:improve-skill <skill-name>` (canonical trigger)
 - Friend says any of: "make X skill better", "improve X", "let X learn from its evals", "run the improvement loop on X" — confirm intent + the target skill name, then run
-- During `/sf:doctor` if a skill's eval pass rate drops below a threshold (proactive nudge; user invokes manually)
+- During `/ren:doctor` if a skill's eval pass rate drops below a threshold (proactive nudge; user invokes manually)
 
 ## When NOT to use this skill
 
@@ -88,7 +88,7 @@ Layer-2 skill self-improvement per ADR-012. The mechanical realization of Karpat
 ## Flag set (locked per team-lead arbitration, 2026-05-28)
 
 ```
-/sf:improve-skill <skill-name> [flags]
+/ren:improve-skill <skill-name> [flags]
 ```
 
 **REQUIRED in `--autonomous` mode** (all must be set; pre-flight refuses to run otherwise):
@@ -204,7 +204,7 @@ See `references/git-mechanics.md` for branch / commit / revert / merge details. 
 | Eval framework crash | Same as inner sub-run error: treat as score=0 for current iteration | Logged |
 | CC sub-process crash | One iteration lost; outer loop retries on next iteration (state re-read from git) | Logged |
 
-## What `/sf:improve-skill` explicitly DOES NOT do
+## What `/ren:improve-skill` explicitly DOES NOT do
 
 - Touch the skill's `description` field — Layer 1, Skill Creator's job
 - Touch any skill OTHER than the named target — the branch isolates writes

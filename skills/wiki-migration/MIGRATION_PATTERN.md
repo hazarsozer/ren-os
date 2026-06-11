@@ -103,7 +103,7 @@ These are enforced by CI (validate.yml + verify-migrations.yml) or reviewed at P
 2. **Deterministic.** Same input → same output. LLM-driven migrations get one chance per page (no retry-with-different-seed); verify.json catches non-determinism.
 3. **No body data loss without explicit consent.** A `snapshot.body-identical` assertion in verify.json defends against accidental body rewrites in scripted migrations. LLM-driven migrations that intentionally rewrite the body must omit this assertion AND require user approval at DIFF_REVIEW.
 4. **Frontmatter preservation.** All frontmatter keys not explicitly touched by the migration must survive verbatim. Use targeted `sed` ranges, NOT a full-file rewrite.
-5. **PATCH-version migrations are forbidden.** If `/sf:update` detects a PATCH bump with any migrations queued, it aborts with an error. Only MINOR and MAJOR may ship migrations.
+5. **PATCH-version migrations are forbidden.** If `/ren:update` detects a PATCH bump with any migrations queued, it aborts with an error. Only MINOR and MAJOR may ship migrations.
 6. **No external network calls in `migrate.sh`.** Migrations run on the friend's machine, sometimes offline. `migrate.md` may use Claude (already a network call by virtue of running in CC), but `migrate.sh` is local-only.
 7. **No writes outside the target page.** A migration for `identity.md` may not touch `wiki/projects/sidecar/STATE.md`. Cross-page migrations need a different design — flag for a follow-up ADR.
 
@@ -129,7 +129,7 @@ If you need a new predicate, propose it in a PR adding to `verify.schema.json` +
 
 ## What you can rely on at runtime
 
-When `/sf:update` invokes your migration:
+When `/ren:update` invokes your migration:
 
 - **The wiki has been fully snapshotted** at `${CLAUDE_PLUGIN_DATA}/wiki-snapshots/v<from>-pre-update-<timestamp>/` BEFORE your `migrate.sh` runs. Your script doesn't snapshot; the driver does. Snapshots are byte-isolated from the live wiki by default — modifications to the live wiki cannot corrupt the snapshot.
 - **Advanced (opt-in): hardlink mode.** Friends with massive wikis can set `SF_SNAPSHOT_MODE=hardlink` to make snapshots share inodes with the live wiki (cheaper on disk). This is **safe ONLY if every migration script + LLM-driven migration uses atomic rename-on-write semantics** (GNU `sed -i` does; `open(path, "w")` does NOT). If you're authoring a migration and considering naive truncate-and-rewrite, your script will silently corrupt the hardlink-mode snapshot. Prefer:
@@ -139,7 +139,7 @@ When `/sf:update` invokes your migration:
 - **The snapshot path is available** to your script as the environment variable `SF_SNAPSHOT_DIR`. Read your page's pre-migration content via `cat "$SF_SNAPSHOT_DIR/$(realpath --relative-to="$SF_WIKI_ROOT" "$1")"`.
 - **The wiki root is available** as `SF_WIKI_ROOT`.
 - **Failure exits non-zero.** The driver enters ROLLBACK_PAGE if your script exits non-zero OR if any non-optional verify.json assertion fails. Other pages continue.
-- **Idempotent rerun.** A failed migration may be retried by re-invoking `/sf:update`; the snapshot from the first attempt is preserved (per ADR-027's retention rule).
+- **Idempotent rerun.** A failed migration may be retried by re-invoking `/ren:update`; the snapshot from the first attempt is preserved (per ADR-027's retention rule).
 
 ---
 

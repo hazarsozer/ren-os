@@ -1,8 +1,8 @@
 # Changelog
 
-All notable changes to the Startup Framework are documented in this file.
+All notable changes to RenOS are documented in this file.
 
-Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) + a `### Schema` section custom to this framework (consumed by `/sf:doctor` for schema-drift notifications, per ADR-027).
+Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) + a `### Schema` section custom to this framework (consumed by `/ren:doctor` for schema-drift notifications, per ADR-027).
 
 Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html) (`MAJOR.MINOR.PATCH`) per ADR-019. Note that Claude Code itself does NOT parse semver — the framework's own tooling (`scripts/version-compare.sh`) implements semver semantics including pre-release suffix ordering. Schema-change rules tied to bump kind:
 
@@ -16,7 +16,9 @@ Cadence: monthly stable. Out-of-cycle PATCH releases only for security or broken
 
 ## [Unreleased]
 
-Nothing yet.
+### Changed
+- **Rebranded to RenOS** (from 仁 *rén*, humaneness) — command namespace `/sf:` → `/ren:`, plugin `name: sf → ren`, repo/marketplace `ren-os` (install `ren@ren-os`). Skill dirs unchanged. See ADR-033. No version bump — pre-first-republish, so `ren` / `/ren:` is the first public command surface anyone sees.
+- **Foundation merged** — the v1.0 remediation Phases 1–4 (Python correctness, doc/contract drift, security/privacy, and the `/sf:` namespace-defect fix) landed on the dev branch (`9555a2d`); 454+ tests green, `claude plugin validate --strict` ✔.
 
 ---
 

@@ -261,7 +261,7 @@ class TestRecall:
         assert not result.has_results
 
     def test_read_only_no_modifications(self, sample_wiki: Path, tmp_path: Path):
-        """LOAD-BEARING: /sf:recall must not modify the wiki."""
+        """LOAD-BEARING: /ren:recall must not modify the wiki."""
         import hashlib
         before = {
             p: hashlib.sha256(p.read_bytes()).hexdigest()

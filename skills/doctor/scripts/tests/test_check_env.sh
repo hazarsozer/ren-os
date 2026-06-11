@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test_check_env.sh — hermetic pin tests for the /sf:doctor ENVIRONMENT section.
+# test_check_env.sh — hermetic pin tests for the /ren:doctor ENVIRONMENT section.
 # SECURITY guarantee: when OTEL_EXPORTER_OTLP_ENDPOINT is set, the raw endpoint
 # URL (which can embed basic-auth or a token) is NEVER printed; the otel line
 # reports presence ("configured"), mirroring ANTHROPIC_API_KEY's "set".

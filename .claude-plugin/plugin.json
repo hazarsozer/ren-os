@@ -1,22 +1,22 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
-  "name": "sf",
-  "displayName": "Startup Framework",
+  "name": "ren",
+  "displayName": "RenOS",
   "version": "1.0.0",
-  "description": "Per-builder wiki + curated stack + self-improving skills. The plugin's source-of-truth version lives in this field; the marketplace entry omits version to avoid drift (per CC docs, plugin.json wins silently when both are set).",
+  "description": "RenOS — a governable second-brain OS for Claude Code. A compounding wiki you own as your single source of truth + thin glue over native primitives (Routines, Memory, Agents). The plugin's source-of-truth version lives in this field; the marketplace entry omits version to avoid drift (per CC docs, plugin.json wins silently when both are set).",
   "author": {
     "name": "Hazar Sozer",
     "email": "hsozer00@gmail.com"
   },
-  "homepage": "https://github.com/hazarsozer/sf-marketplace",
-  "repository": "https://github.com/hazarsozer/sf-marketplace",
+  "homepage": "https://github.com/hazarsozer/ren-os",
+  "repository": "https://github.com/hazarsozer/ren-os",
   "license": "MIT",
   "keywords": [
     "wiki",
     "memory",
+    "second-brain",
+    "agentic-os",
     "solo-builder",
-    "startup",
-    "ideation",
     "claude-code"
   ],
   "userConfig": {
@@ -45,7 +45,7 @@
     "rcChannel": {
       "type": "boolean",
       "title": "Subscribe to release candidates",
-      "description": "When true, /sf:update --rc and /sf:doctor will track sf-marketplace-rc in addition to stable. Builders who want early access enable this; everyone else leaves it off and rides the monthly stable cadence (per ADR-019).",
+      "description": "When true, /ren:update --rc and /ren:doctor will track ren-os-rc in addition to stable. Builders who want early access enable this; everyone else leaves it off and rides the monthly stable cadence (per ADR-019).",
       "default": false
     }
   }

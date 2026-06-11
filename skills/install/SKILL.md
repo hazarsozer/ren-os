@@ -1,7 +1,7 @@
 ---
 name: install
 description: |
-  Use when the friend invokes /sf:install. Orchestrates the 7-stage
+  Use when the friend invokes /ren:install. Orchestrates the 7-stage
   onboarding flow per ADR-015 (solo-first per ADR-031): environment check,
   required plugin install, conditional plugins, identity bootstrap, wiki
   skeleton bootstrap, doctor verification, and first-session walkthrough.
@@ -17,7 +17,7 @@ contract:
     - "All 6 required plugins installed at pinned versions"
     - "~/.startup-framework/wiki/ skeleton present (or additive-diff'd onto existing wiki)"
     - "~/.startup-framework/wiki/identity.md populated via sf-interview"
-    - "Green /sf:doctor verification at end"
+    - "Green /ren:doctor verification at end"
     - "Idempotent checkpoint file with all 7 stages marked completed"
   budgets:
     turns: 80                       # 7 stages × ~10 turns each; generous slack
@@ -35,7 +35,7 @@ contract:
     execute:
       - "claude auth status"
       - "claude auth login"
-      - "gh auth status"          # soft requirement, used by /sf:doctor's update check
+      - "gh auth status"          # soft requirement, used by /ren:doctor's update check
       - "gh auth login"
       - "node --version"
       - "git --version"
@@ -44,7 +44,7 @@ contract:
   completion_conditions:
     - "All 7 stages report completed in $XDG_STATE_HOME/sf/install-state.json"
     - "Friend has explicitly acknowledged the Stage 7 walkthrough"
-    - "/sf:doctor exit status is 0 with no red flags"
+    - "/ren:doctor exit status is 0 with no red flags"
   output_paths:
     - "$XDG_STATE_HOME/sf/install-state.json"
     - "~/.startup-framework/wiki/**"
@@ -70,15 +70,15 @@ references_on_demand:
 
 ## When to use this skill
 
-- Friend invokes `/sf:install` (canonical trigger).
+- Friend invokes `/ren:install` (canonical trigger).
 - Friend says "let me re-run install" / "I think install didn't finish" — confirm and run; the resume protocol picks up at the right stage.
-- After a framework update (`/sf:update`) when migration prompts the friend to re-verify their setup.
+- After a framework update (`/ren:update`) when migration prompts the friend to re-verify their setup.
 
 ## When NOT to use this skill
 
 - Friend wants to ADD a single plugin → tell them to use `/plugin install <name>` directly. This skill is the full install, not a one-off.
-- Friend wants to migrate an existing wiki to a newer schema → `/sf:update` + `/sf:wiki-migration` own that path (sf-distribution).
-- The friend has explicitly run `/sf:install --reset` and wants nothing to happen → exit cleanly; resetting state is its own command.
+- Friend wants to migrate an existing wiki to a newer schema → `/ren:update` + `/ren:wiki-migration` own that path (sf-distribution).
+- The friend has explicitly run `/ren:install --reset` and wants nothing to happen → exit cleanly; resetting state is its own command.
 
 ## How to use this skill
 
@@ -89,8 +89,8 @@ Load `references/resume-protocol.md`. Open `$XDG_STATE_HOME/sf/install-state.jso
 Branch:
 - File doesn't exist → fresh install; create empty state with `completed_stages: []`.
 - File exists + valid → resumable; the protocol determines the entry stage.
-- File exists + malformed → refuse; print parser error + offer `/sf:install --reset` as remediation.
-- File exists + `framework_version` newer than ours → refuse; recommend running `/sf:install` from the newer plugin version.
+- File exists + malformed → refuse; print parser error + offer `/ren:install --reset` as remediation.
+- File exists + `framework_version` newer than ours → refuse; recommend running `/ren:install` from the newer plugin version.
 
 ### 1. Run stages in order
 
@@ -100,7 +100,7 @@ For each stage 1–7, in order:
 2. Load the stage's reference doc on demand: `references/stage-<N>-*.md`.
 3. Execute the stage's procedure. The orchestrator passes the current state object; the stage returns an updated state.
 4. Persist the updated state to disk before moving on (atomic write — `state.tmp` → `rename`).
-5. If the stage raises a recoverable error, append to `state.abort_log` with `{stage, error_summary, ts}`; persist; exit with "re-run /sf:install to resume from Stage N" message.
+5. If the stage raises a recoverable error, append to `state.abort_log` with `{stage, error_summary, ts}`; persist; exit with "re-run /ren:install to resume from Stage N" message.
 
 ### Per-stage skip overrides
 
@@ -119,14 +119,14 @@ Each stage reference doc is self-contained. SKILL.md is the orchestrator; per-st
 | 3 | Conditional plugins (opt-in, e.g. Frontend Design for UI work) | `references/stage-3-conditional-plugins.md` |
 | 4 | Identity bootstrap via `sf-interview` skill | `references/stage-4-identity-bootstrap.md` |
 | 5 | Master wiki skeleton bootstrap (additive-diff) | `references/stage-5-wiki-bootstrap.md` |
-| 6 | `/sf:doctor` verification | `references/stage-6-doctor-verification.md` (lifecycle owns `/sf:doctor` itself) |
+| 6 | `/ren:doctor` verification | `references/stage-6-doctor-verification.md` (lifecycle owns `/ren:doctor` itself) |
 | 7 | First-session walkthrough | `references/stage-7-walkthrough.md` |
 
 ### 3. CLI variants
 
-- `/sf:install` — default; resume from checkpoint.
-- `/sf:install --reset` — delete checkpoint; do NOT touch wiki or plugins; next `/sf:install` runs from scratch. Friend must explicitly confirm.
-- `/sf:install --redo-stage <N>` — force re-execution of stage N; checkpoint records `completed_stages` is recomputed by removing N and any stage that depended on N's outputs.
+- `/ren:install` — default; resume from checkpoint.
+- `/ren:install --reset` — delete checkpoint; do NOT touch wiki or plugins; next `/ren:install` runs from scratch. Friend must explicitly confirm.
+- `/ren:install --redo-stage <N>` — force re-execution of stage N; checkpoint records `completed_stages` is recomputed by removing N and any stage that depended on N's outputs.
 
 ### 4. Print a final summary
 
@@ -136,10 +136,10 @@ Each stage reference doc is self-contained. SKILL.md is the orchestrator; per-st
 ✓ Stage 3 — Conditional plugins resolved (none requested)
 ✓ Stage 4 — Identity bootstrapped (handle: <handle>)
 ✓ Stage 5 — Wiki skeleton at ~/.startup-framework/wiki/
-✓ Stage 6 — /sf:doctor passed
+✓ Stage 6 — /ren:doctor passed
 ✓ Stage 7 — Walkthrough acknowledged
 
-Ready. Try /sf:wake-up to start your first session.
+Ready. Try /ren:wake-up to start your first session.
 ```
 
 ## Anti-patterns

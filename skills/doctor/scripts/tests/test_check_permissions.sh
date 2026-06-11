@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test_check_permissions.sh — hermetic pin tests for the /sf:doctor --permissions audit.
+# test_check_permissions.sh — hermetic pin tests for the /ren:doctor --permissions audit.
 #
 # check-permissions.sh reads ~/.claude.json + ~/.claude/settings.json(.local) and emits a
 # "KEYS ON YOUR RING" report. These tests seed crafted config via the script's explicit

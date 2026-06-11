@@ -1,15 +1,21 @@
-# Startup Framework
+# RenOS
 
-> A private Claude Code plugin that turns every session into a compounding system:
-> a per-project hierarchical wiki (long-term memory) + a curated plugin stack +
-> self-improving skills — all wired into one daily loop.
+> *from **仁 (rén)** — the Confucian word for **humaneness**: the irreducible human core of any system.*
 
-You install it once, run `/sf:install`, and from then on every Claude Code session wakes up
-already knowing your projects, your decisions, and where you left off.
+**RenOS** is a governable second-brain OS for Claude Code. Claude Code now ships the muscle — scheduled
+routines, agent teams, background memory. RenOS is the thin, governable layer that aims all of it at a
+single source of truth you actually own: a transparent wiki you can read, override, and steer. The
+machine runs the muscle; **you stay the mind.**
 
-> **Solo-first.** The framework runs per-person and fully local — your wiki lives on *your* disk
-> and never leaves it unless you push it to your own backup remote. (Friends you share the plugin
-> with each run their own independent copy; there is no shared cross-user channel.)
+Most memory systems consolidate in the dark and hand you a black box. RenOS keeps the brain in the open
+and in your hands. **Ship the engine — you bring the 仁.**
+
+You install it once, run `/ren:install`, and from then on every Claude Code session wakes up already
+knowing your projects, your decisions, and where you left off.
+
+> **Solo-first.** RenOS runs per-person and fully local — your wiki lives on *your* disk and never
+> leaves it unless you push it to your own backup remote. (Anyone you share the plugin with runs their
+> own independent copy; there is no shared cross-user channel.)
 
 ---
 
@@ -28,25 +34,25 @@ re-establishing where you left off.
 
 ### Connections — a curated, audited stack
 
-`/sf:install` sets up a vetted set of Claude Code plugins that work well together (development
+`/ren:install` sets up a vetted set of Claude Code plugins that work well together (development
 methodology, cross-session memory, token-efficient context, version-aware docs, more). And because
-**keys ≠ instructions** — a granted capability is not the same as a documented intent — `/sf:doctor
+**keys ≠ instructions** — a granted capability is not the same as a documented intent — `/ren:doctor
 --permissions` gives you a read-only audit of which tool-keys are actually on your ring (MCP
 servers, `allow`/`deny`/`ask` rules, broad grants like a bare `Bash`), so what the docs *say* and
 what your tools *can do* can't quietly drift apart.
 
-### Capabilities — `/sf:*` skills with eval hygiene
+### Capabilities — `/ren:*` skills with eval hygiene
 
-The framework's own skills (`/sf:wrap`, `/sf:recall`, `/sf:note`, `/sf:improve-skill`, …) ship with
-execution contracts and binary evals. Two of them — `/sf:wrap`'s signal classifier and
-`/sf:improve-skill` — are marked **EXPERIMENTAL** on purpose: the **bike-method** of earned trust.
-The training wheels stay on (a conservative deterministic default for `/sf:wrap`; an honest
-"requires a configured backend" for `/sf:improve-skill`) until real runs prove the autonomy out.
+The framework's own skills (`/ren:wrap`, `/ren:recall`, `/ren:note`, `/ren:improve-skill`, …) ship with
+execution contracts and binary evals. Two of them — `/ren:wrap`'s signal classifier and
+`/ren:improve-skill` — are marked **EXPERIMENTAL** on purpose: the **bike-method** of earned trust.
+The training wheels stay on (a conservative deterministic default for `/ren:wrap`; an honest
+"requires a configured backend" for `/ren:improve-skill`) until real runs prove the autonomy out.
 
 ### Cadence — a deterministic daily loop
 
-`/sf:wrap` at session end consolidates *real* signal into your wiki (most sessions write nothing —
-that's the discipline, not a bug). `/sf:insights` mines your local Claude Code session history for
+`/ren:wrap` at session end consolidates *real* signal into your wiki (most sessions write nothing —
+that's the discipline, not a bug). `/ren:insights` mines your local Claude Code session history for
 what's working and what's slowing you down. Upgrades are schema-versioned with
 snapshot-before-migrate and are always opt-in.
 
@@ -55,31 +61,31 @@ snapshot-before-migrate and are always opt-in.
 ## Requirements
 
 - **Claude Code** ≥ 1.0.33 (run `claude --version`; update with `npm i -g @anthropic-ai/claude-code@latest` or `brew upgrade claude-code`).
-- **`gh`** (GitHub CLI), authenticated (`gh auth status`) — used by `/sf:doctor`'s update check and `/sf:update` to read the marketplace. Optional unless you want update notifications.
+- **`gh`** (GitHub CLI), authenticated (`gh auth status`) — used by `/ren:doctor`'s update check and `/ren:update` to read the marketplace. Optional unless you want update notifications.
 - **`python3`** (3.10+) — the wake-up hook and several skills are Python (standard library only).
 
-`/sf:doctor` checks all of this for you after install.
+`/ren:doctor` checks all of this for you after install.
 
 ---
 
 ## Install (about 10 minutes)
 
 ```text
-/plugin marketplace add hazarsozer/sf-marketplace
-/plugin install sf@sf-marketplace
+/plugin marketplace add hazarsozer/ren-os
+/plugin install ren@ren-os
 /reload-plugins
-/sf:install
+/ren:install
 ```
 
-1. **`/plugin marketplace add hazarsozer/sf-marketplace`** — registers the private marketplace
+1. **`/plugin marketplace add hazarsozer/ren-os`** — registers the private marketplace
    (ask the maintainer to add you as a read collaborator first).
-2. **`/plugin install sf@sf-marketplace`** — installs the plugin.
+2. **`/plugin install ren@ren-os`** — installs the plugin.
 3. **`/reload-plugins`** — activates it in the current session.
-4. **`/sf:install`** — runs the 7-stage onboarding: environment check → required plugins →
-   conditional/optional plugins → identity → wiki skeleton → `/sf:doctor` verification →
+4. **`/ren:install`** — runs the 7-stage onboarding: environment check → required plugins →
+   conditional/optional plugins → identity → wiki skeleton → `/ren:doctor` verification →
    first-session walkthrough. It's idempotent — re-run it any time and it resumes where it left off.
 
-> Updating later? `/plugin marketplace update sf-marketplace` refreshes the catalog.
+> Updating later? `/plugin marketplace update ren-os` refreshes the catalog.
 
 ---
 
@@ -88,16 +94,16 @@ snapshot-before-migrate and are always opt-in.
 - **Wake up (automatic).** A SessionStart hook injects your wiki context at the start of every
   session — your master index, the current project's state, and recent log. Nothing to run.
 - **Work.** Use Claude Code normally. The curated stack is doing its job underneath.
-- **`/sf:wrap` (session end).** Consolidates what you learned and, *if* there's real signal
+- **`/ren:wrap` (session end).** Consolidates what you learned and, *if* there's real signal
   (a decision, a pattern, a gotcha, a stack change), writes it to your wiki. Most sessions write
   nothing — that's the discipline, not a bug. *(The classifier is EXPERIMENTAL — see Capabilities.)*
 
 Helpers:
 
-- **`/sf:bootstrap-project <name>`** — scaffolds a project sub-wiki.
-- **`/sf:insights`** — read-only: mines your local session history for what's working / what's
+- **`/ren:bootstrap-project <name>`** — scaffolds a project sub-wiki.
+- **`/ren:insights`** — read-only: mines your local session history for what's working / what's
   slowing you down (`--days N`, `--project <name>`).
-- **`/sf:doctor --permissions`** — read-only audit of the tool-keys on your ring (keys ≠ instructions).
+- **`/ren:doctor --permissions`** — read-only audit of the tool-keys on your ring (keys ≠ instructions).
 
 ---
 
@@ -105,7 +111,7 @@ Helpers:
 
 The framework's load-bearing principle: **your wiki is private, local, and yours.** It lives on
 *your* machine; the maintainer never touches it; nothing in it is pushed anywhere you didn't
-choose. The only outbound path is the backup remote *you* configure for `/sf:backup` (per
+choose. The only outbound path is the backup remote *you* configure for `/ren:backup` (per
 `docs/RECOVERY.md`) — there is no cross-user channel.
 
 By default your wiki lives at `~/.startup-framework/wiki/`. You can move it via the
@@ -118,13 +124,13 @@ By default your wiki lives at `~/.startup-framework/wiki/`. You can move it via 
 
 | Command | What it does |
 |---|---|
-| `/sf:install` | One-time (idempotent) onboarding — sets up the whole framework |
-| `/sf:doctor` | Health check: environment, plugins, schema versions, available updates, backups |
-| `/sf:doctor --permissions` | Read-only **permission audit** ("keys on your ring") — MCP servers, allow/deny rules, broad grants, enabled plugins/hooks. Never prints secrets. |
-| `/sf:update` | Opt-in framework upgrade — snapshots, migrates your wiki, shows diffs for approval |
-| `/sf:wrap` | End-of-session consolidation into your wiki (only when there's real signal) |
-| `/sf:insights` | Read-only insights from your local Claude Code session history (`--days`, `--project`) |
-| `/sf:bootstrap-project <name>` | Create a project sub-wiki |
+| `/ren:install` | One-time (idempotent) onboarding — sets up the whole framework |
+| `/ren:doctor` | Health check: environment, plugins, schema versions, available updates, backups |
+| `/ren:doctor --permissions` | Read-only **permission audit** ("keys on your ring") — MCP servers, allow/deny rules, broad grants, enabled plugins/hooks. Never prints secrets. |
+| `/ren:update` | Opt-in framework upgrade — snapshots, migrates your wiki, shows diffs for approval |
+| `/ren:wrap` | End-of-session consolidation into your wiki (only when there's real signal) |
+| `/ren:insights` | Read-only insights from your local Claude Code session history (`--days`, `--project`) |
+| `/ren:bootstrap-project <name>` | Create a project sub-wiki |
 
 (Plus an automatic SessionStart wake-up hook — you never invoke it directly.)
 
@@ -134,13 +140,13 @@ By default your wiki lives at `~/.startup-framework/wiki/`. You can move it via 
 
 Releases are **monthly stable** (with out-of-cycle patches for security or broken-hook fixes).
 
-- **`/sf:doctor`** tells you when a new version is available. It never updates on its own.
-- **`/sf:update`** performs the upgrade *when you choose to* — it snapshots your wiki first,
+- **`/ren:doctor`** tells you when a new version is available. It never updates on its own.
+- **`/ren:update`** performs the upgrade *when you choose to* — it snapshots your wiki first,
   runs any schema migrations, and shows you a diff to approve before anything is written.
   There is **no auto-update on session start**; updates are always opt-in.
 
 Want early access to release candidates? Enable the `rcChannel` plugin setting and use
-`/sf:update --rc`. Everyone else rides the monthly stable cadence.
+`/ren:update --rc`. Everyone else rides the monthly stable cadence.
 
 If something ever goes wrong, **`docs/RECOVERY.md`** walks through the recovery scenarios
 (snapshots, rollback, re-bootstrap).
@@ -149,7 +155,7 @@ If something ever goes wrong, **`docs/RECOVERY.md`** walks through the recovery 
 
 ## Licensing
 
-The Startup Framework itself is **MIT** (declared in the plugin manifest). The curated stack it
+The RenOS itself is **MIT** (declared in the plugin manifest). The curated stack it
 installs is a mix of **MIT**, **Apache-2.0**, and **Elastic License v2 (ELv2)**.
 
 ⚠️ **Read `LICENSES.md` before you ship a hosted SaaS.** One component (**Context Mode**) is ELv2,

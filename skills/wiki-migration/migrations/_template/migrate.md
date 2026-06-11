@@ -4,7 +4,7 @@
 
 ## When this prompt runs
 
-This prompt is invoked by `/sf:update`'s MIGRATING state when the migration mode (declared in `README.md`) is `LLM-driven` or `hybrid`. The driver passes:
+This prompt is invoked by `/ren:update`'s MIGRATING state when the migration mode (declared in `README.md`) is `LLM-driven` or `hybrid`. The driver passes:
 
 - `${page_path}` — absolute path to the current page (post-script if hybrid; pre-anything if LLM-only)
 - `${snapshot_path}` — absolute path to the pre-migration snapshot of the same page

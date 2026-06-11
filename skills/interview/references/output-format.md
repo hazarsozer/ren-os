@@ -14,7 +14,7 @@ framework_version: "<semver>"            # required; string
 handle: <handle>                         # required; kebab-case ^[a-z][a-z0-9-]*$
 name: "<Display Name>"                   # required; string
 created: <YYYY-MM-DD>                    # required; ISO date
-updated: <YYYY-MM-DD>                    # required; ISO date; rewritten every /sf:interview
+updated: <YYYY-MM-DD>                    # required; ISO date; rewritten every /ren:interview
 
 phase: ideation                          # required; enum {ideation|building|shipping|other}
                                          # default: ideation

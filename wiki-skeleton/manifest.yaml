@@ -1,5 +1,5 @@
 # wiki-skeleton manifest
-# Consumed by /sf:install Stage 5 (master wiki bootstrap) and /sf:bootstrap-project
+# Consumed by /ren:install Stage 5 (master wiki bootstrap) and /ren:bootstrap-project
 # (per-project sub-wiki bootstrap). Each entry describes one file or directory
 # the loader can stamp into a friend's wiki. The loader NEVER overwrites
 # existing files — it diffs additive changes and requires explicit friend approval
@@ -10,11 +10,11 @@
 schema_version: 1
 
 # Manifest profiles — different consumers stamp different subsets.
-# `master` = /sf:install Stage 5
-# `project` = /sf:bootstrap-project <name>
+# `master` = /ren:install Stage 5
+# `project` = /ren:bootstrap-project <name>
 profiles:
   master:
-    description: "Files stamped at the master wiki root during /sf:install Stage 5"
+    description: "Files stamped at the master wiki root during /ren:install Stage 5"
     entries:
       - path: "index.md"
         template: "templates/index.md.tmpl"
@@ -35,8 +35,8 @@ profiles:
         type: file
         write_rule: copy_if_missing
         min_framework_version: "1.0.0"
-        description: "Identity frontmatter stub; /sf:interview populates fields"
-        # /sf:interview re-runs are responsible for in-place updates; Stage 5
+        description: "Identity frontmatter stub; /ren:interview populates fields"
+        # /ren:interview re-runs are responsible for in-place updates; Stage 5
         # only writes this template if no identity.md exists yet.
 
       - path: "LICENSES.md"
@@ -73,7 +73,7 @@ profiles:
         min_framework_version: "1.0.0"
 
   project:
-    description: "Files stamped into wiki/projects/<project>/ by /sf:bootstrap-project"
+    description: "Files stamped into wiki/projects/<project>/ by /ren:bootstrap-project"
     # The per-project taxonomy lives in skills/bootstrap-project/ (per ADR-014).
     # This profile is reserved for future shared per-project files. v1: empty.
     # When sf-bootstrap-project ships, its template set MAY be migrated here so

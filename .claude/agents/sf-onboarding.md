@@ -1,6 +1,6 @@
 ---
 name: sf-onboarding
-description: Owns the one-time-per-friend installation experience and per-project wiki bootstrap for the startup-framework plugin. Covers /sf:install (7-stage onboarding per ADR-015), /sf:interview (AI identity interview per ADR-022), /sf:bootstrap-project (per-project sub-wiki skeleton per ADR-014), and the wiki-skeleton template that ships with the plugin (per ADR-017 — skeleton structure only, NEVER the framework's own dev-wiki content).
+description: Owns the one-time-per-friend installation experience and per-project wiki bootstrap for the startup-framework plugin. Covers /ren:install (7-stage onboarding per ADR-015), /ren:interview (AI identity interview per ADR-022), /ren:bootstrap-project (per-project sub-wiki skeleton per ADR-014), and the wiki-skeleton template that ships with the plugin (per ADR-017 — skeleton structure only, NEVER the framework's own dev-wiki content).
 tools: Read, Edit, Write, Glob, Grep, Bash, TaskGet, TaskList, TaskUpdate, TaskCreate, SendMessage, ExitPlanMode
 model: opus
 ---
@@ -28,22 +28,22 @@ In order, before writing any plan:
 ## Hard constraints
 
 - The wiki starts EMPTY. Do not seed it with any content from our development wiki. (ADR-017)
-- `/sf:interview` output is hybrid YAML frontmatter + markdown body. The full identity lives in the local `wiki/identity.md`. (ADR-022)
+- `/ren:interview` output is hybrid YAML frontmatter + markdown body. The full identity lives in the local `wiki/identity.md`. (ADR-022)
 - AskUserQuestion has a 4-option cap. Multi-select questions with 5+ options need pagination or open-ended fallback. Decide per question.
-- `/sf:install` must be idempotent — re-running resumes from the last successful checkpoint.
+- `/ren:install` must be idempotent — re-running resumes from the last successful checkpoint.
 - `claude auth status` and `gh auth status` are required Stage 1 checks. Don't skip.
 - Phase question (Q17) is INFORMATIONAL ONLY — not mechanical skill toggling. (ADR-022 resolution)
 
 ## Coordination contracts to lock BEFORE writing code
 
-- With sf-distribution: where does the plugin install-shell hand off to `/sf:install`?
+- With sf-distribution: where does the plugin install-shell hand off to `/ren:install`?
 - With everyone: friend-profile schema fields + types that downstream components consume
 
 ## First deliverable
 
 A plan (no code yet) covering:
 1. Skill file structures (per ADR-011 — SKILL.md + references/ + eval/eval.json + optional learnings.md)
-2. The 7-stage `/sf:install` flow's step-by-step contract, including failure-resume semantics
+2. The 7-stage `/ren:install` flow's step-by-step contract, including failure-resume semantics
 3. The friend-profile YAML frontmatter schema (field names + types + defaults) — propose for cross-team agreement
 4. AskUserQuestion 4-option cap mitigation per question that exceeds it
 5. Plug point where sf-distribution (install shell handoff) needs to integrate

@@ -1,5 +1,5 @@
 """
-sf-wrap library — internal implementation for the /sf:wrap slash command.
+sf-wrap library — internal implementation for the /ren:wrap slash command.
 
 Public entry point: `wrap(inputs: WrapInputs) -> WrapResult`.
 
@@ -15,7 +15,7 @@ Step 4-5 are interactive; this module exposes the pure logic and delegates
 the UX surface to the host (Claude Code's normal user-facing rendering).
 
 Solo-first (ADR-031): the former step 6/7 Activity Feed session-end write was
-removed with the feed module. /sf:wrap now consolidates the local wiki only.
+removed with the feed module. /ren:wrap now consolidates the local wiki only.
 
 V1 status: types + diff planner / apply / approval are real; the classifier is
 stubbed (degrades to 'none' — the real deterministic classifier lands in a
@@ -98,7 +98,7 @@ def _default_summary(inputs: WrapInputs, classifier: ClassifierResult) -> str:
 
 def _gather_transcript(inputs: WrapInputs) -> str:
     """
-    Read session transcript + any /sf:note pins. Returns combined text.
+    Read session transcript + any /ren:note pins. Returns combined text.
 
     Returns empty string if no transcript path is available (allows the
     classifier to still produce a 'none' label).
@@ -110,7 +110,7 @@ def _gather_transcript(inputs: WrapInputs) -> str:
         except (OSError, UnicodeDecodeError):
             pass
     if inputs.session_notes:
-        parts.append("\n\n## Pinned notes from /sf:note\n\n" + "\n\n".join(inputs.session_notes))
+        parts.append("\n\n## Pinned notes from /ren:note\n\n" + "\n\n".join(inputs.session_notes))
     return "\n".join(parts)
 
 
@@ -125,10 +125,10 @@ def wrap(
     summary_composer: SummaryComposer | None = None,
 ) -> WrapResult:
     """
-    Execute the /sf:wrap pipeline per SKILL.md §"The pipeline".
+    Execute the /ren:wrap pipeline per SKILL.md §"The pipeline".
 
     Composes:
-      1. gather session transcript + /sf:note pins
+      1. gather session transcript + /ren:note pins
       2. classifier (LLM-dependent, injected — default raises NotImplementedError)
       3. compose_diff_plan (signal label → wiki page edits per ADR-014)
       4. user approval per diff (injected; default approves all — V1)

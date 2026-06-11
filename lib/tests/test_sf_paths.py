@@ -75,7 +75,7 @@ def test_validate_handle_rejects_invalid(h):
 
 def test_invalid_handle_subclasses_not_configured():
     """Existing `except HandleNotConfiguredError` handlers (sf-recall/sf-wrap) must
-    still catch the malformed-handle error with the same /sf:interview remediation."""
+    still catch the malformed-handle error with the same /ren:interview remediation."""
     assert issubclass(InvalidHandleError, HandleNotConfiguredError)
     with pytest.raises(HandleNotConfiguredError):
         validate_handle("../../etc/passwd")
@@ -87,7 +87,7 @@ def test_invalid_handle_subclasses_not_configured():
 def test_handle_raises_when_identity_missing(temp_wiki):
     with pytest.raises(HandleNotConfiguredError) as exc:
         handle()
-    assert "/sf:interview" in str(exc.value)
+    assert "/ren:interview" in str(exc.value)
 
 
 def test_handle_raises_when_no_handle_field(temp_wiki):
@@ -104,7 +104,7 @@ def test_handle_raises_on_malformed_identity_handle(temp_wiki):
     )
     with pytest.raises(InvalidHandleError) as exc:
         handle()
-    assert "/sf:interview" in str(exc.value)
+    assert "/ren:interview" in str(exc.value)
 
 
 def test_handle_validates_even_when_strict_schema_false(temp_wiki):
@@ -136,7 +136,7 @@ def test_handle_raises_on_schema_mismatch(temp_wiki):
         handle()
     assert exc.value.found == bad
     assert exc.value.expected == EXPECTED_IDENTITY_SCHEMA_VERSION
-    assert "/sf:update" in str(exc.value)
+    assert "/ren:update" in str(exc.value)
 
 
 def test_handle_strict_schema_false_reads_stale_schema(temp_wiki):

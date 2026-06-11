@@ -22,7 +22,7 @@ fi
 # Wiki git remote
 # ──────────────────────────────────────────────────────────────────────
 if [[ ! -d "$WIKI_ROOT/.git" ]]; then
-  emit "wiki-remote" "warn" "wiki is not a git repo" "→ /sf:backup --setup <your-private-repo-url> initialises git + adds remote"
+  emit "wiki-remote" "warn" "wiki is not a git repo" "→ /ren:backup --setup <your-private-repo-url> initialises git + adds remote"
   emit "last-commit" "skip" "" ""
 else
   cd "$WIKI_ROOT" || exit 0
@@ -45,9 +45,9 @@ else
 
   if [[ -z "$REMOTE_URL" ]]; then
     if [[ "$DAYS_SINCE" -gt 7 ]]; then
-      emit "wiki-remote" "error" "not configured AND >7d since last commit" "→ ⚠️⚠️ Configure a wiki backup before you lose context — it would be hard to reconstruct. /sf:backup --setup <your-private-repo-url>"
+      emit "wiki-remote" "error" "not configured AND >7d since last commit" "→ ⚠️⚠️ Configure a wiki backup before you lose context — it would be hard to reconstruct. /ren:backup --setup <your-private-repo-url>"
     else
-      emit "wiki-remote" "warn" "not configured" "→ Recommend: /sf:backup --setup <your-private-repo-url>"
+      emit "wiki-remote" "warn" "not configured" "→ Recommend: /ren:backup --setup <your-private-repo-url>"
     fi
   else
     # Check if remote is reachable (last push status from cached HEAD)
@@ -75,7 +75,7 @@ else
       emit "last-commit" "ok" "${DUR}, ${AHEAD} commit(s) total (no remote)" ""
     fi
   else
-    emit "last-commit" "warn" "no commits yet" "→ git add -A && git commit -m 'initial wiki state' (or /sf:backup)"
+    emit "last-commit" "warn" "no commits yet" "→ git add -A && git commit -m 'initial wiki state' (or /ren:backup)"
   fi
 fi
 

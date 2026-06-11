@@ -1,13 +1,13 @@
 {
   "name": "sf-backup",
-  "description": "Binary-assertion test suite for /sf:backup. Covers default backup, --setup, --tarball, --status subcommands, and the load-bearing 'refuse force-push on remote divergence' invariant.",
+  "description": "Binary-assertion test suite for /ren:backup. Covers default backup, --setup, --tarball, --status subcommands, and the load-bearing 'refuse force-push on remote divergence' invariant.",
   "schema_version": 1,
   "framework_version": "1.0.0",
   "tests": [
     {
       "id": "default-backup-with-remote-succeeds",
       "fixture": "fixtures/wiki-with-clean-remote.yaml",
-      "prompt": "/sf:backup",
+      "prompt": "/ren:backup",
       "expected_output_summary": "Commits pending changes and pushes to the configured remote.",
       "trigger_test": true,
       "binary_assertions": [
@@ -20,20 +20,20 @@
     {
       "id": "default-backup-no-remote-falls-back-to-tarball",
       "fixture": "fixtures/wiki-no-remote.yaml",
-      "prompt": "/sf:backup",
+      "prompt": "/ren:backup",
       "expected_output_summary": "No remote configured → tarball fallback automatic + setup nag in output.",
       "trigger_test": true,
       "binary_assertions": [
         "After the run, exactly one new tarball exists at ~/.startup-framework/backups/wiki-<timestamp>.tar.gz",
         "The tarball filename matches the canonical regex `wiki-\\d{4}-\\d{2}-\\d{2}-\\d{6}\\.tar\\.gz`",
         "User-facing output contains 'No remote configured' OR 'configure a remote'",
-        "User-facing output mentions '/sf:backup --setup'"
+        "User-facing output mentions '/ren:backup --setup'"
       ]
     },
     {
       "id": "setup-configures-remote-without-pushing",
       "fixture": "fixtures/wiki-no-remote.yaml",
-      "prompt": "/sf:backup --setup https://github.com/user/wiki.git",
+      "prompt": "/ren:backup --setup https://github.com/user/wiki.git",
       "expected_output_summary": "Adds the remote; reports success; does NOT push.",
       "trigger_test": true,
       "binary_assertions": [
@@ -46,7 +46,7 @@
     {
       "id": "setup-rejects-bad-url",
       "fixture": "fixtures/wiki-no-remote.yaml",
-      "prompt": "/sf:backup --setup not-a-real-url",
+      "prompt": "/ren:backup --setup not-a-real-url",
       "expected_output_summary": "Refuses to configure a malformed URL; no git state change.",
       "trigger_test": true,
       "binary_assertions": [
@@ -58,7 +58,7 @@
     {
       "id": "force-tarball-skips-push",
       "fixture": "fixtures/wiki-with-clean-remote.yaml",
-      "prompt": "/sf:backup --tarball",
+      "prompt": "/ren:backup --tarball",
       "expected_output_summary": "Tarball created even though remote is configured; push is skipped.",
       "trigger_test": true,
       "binary_assertions": [
@@ -70,7 +70,7 @@
     {
       "id": "non-fast-forward-refuses-force-push",
       "fixture": "fixtures/wiki-with-diverged-remote.yaml",
-      "prompt": "/sf:backup",
+      "prompt": "/ren:backup",
       "expected_output_summary": "Remote has commits not on local; skill refuses force-push and points at RECOVERY.md. NO tarball auto-fallback (this is a user-decision moment per ADR-026).",
       "trigger_test": true,
       "binary_assertions": [
@@ -84,7 +84,7 @@
     {
       "id": "status-no-remote-no-tarballs",
       "fixture": "fixtures/wiki-fresh-no-history.yaml",
-      "prompt": "/sf:backup --status",
+      "prompt": "/ren:backup --status",
       "expected_output_summary": "Reports fresh wiki: no remote, no last commit, no tarballs.",
       "trigger_test": true,
       "binary_assertions": [
@@ -98,7 +98,7 @@
     {
       "id": "tarball-retention-prunes-oldest",
       "fixture": "fixtures/wiki-with-25-tarballs.yaml",
-      "prompt": "/sf:backup --tarball",
+      "prompt": "/ren:backup --tarball",
       "expected_output_summary": "After creating a new tarball, total tarballs are capped at TARBALL_RETENTION_KEEP (default 20).",
       "trigger_test": true,
       "binary_assertions": [
@@ -111,17 +111,17 @@
   "non_triggers": [
     {
       "id": "wrap-not-backup",
-      "prompt": "/sf:wrap",
+      "prompt": "/ren:wrap",
       "expected_outcome": "skill_not_activated"
     },
     {
       "id": "doctor-not-backup",
-      "prompt": "/sf:doctor",
+      "prompt": "/ren:doctor",
       "expected_outcome": "skill_not_activated"
     },
     {
       "id": "install-restore-not-backup",
-      "prompt": "/sf:install --restore https://github.com/me/wiki.git",
+      "prompt": "/ren:install --restore https://github.com/me/wiki.git",
       "expected_outcome": "skill_not_activated"
     }
   ]

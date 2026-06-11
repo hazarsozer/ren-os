@@ -1,4 +1,4 @@
-"""InstallSimulator — walks the documented 7-stage /sf:install procedure.
+"""InstallSimulator — walks the documented 7-stage /ren:install procedure.
 
 Each stage method maps 1:1 to a step in skills/install/references/stage-N-*.md.
 Keep this thin: any time you're tempted to add "business logic" here, add it to
@@ -94,7 +94,7 @@ def _today() -> str:
 
 
 class InstallSimulator:
-    """Walks the 7-stage /sf:install procedure against fakes.
+    """Walks the 7-stage /ren:install procedure against fakes.
 
     Construction args:
         wiki_root        — friend's wiki root (typically ~/.startup-framework/wiki/)
@@ -344,7 +344,7 @@ class InstallSimulator:
             self.stage_log.append((7, "skip", "already acknowledged"))
             return
         # Stage 7 is informational; the friend types `y` to ack.
-        # IMPORTANT P3: we do NOT auto-invoke /sf:wake-up, /sf:doctor, etc.
+        # IMPORTANT P3: we do NOT auto-invoke /ren:wake-up, /ren:doctor, etc.
         # The auto_invoked_commands list MUST stay empty.
         self.state["stage_artifacts"]["7"] = {
             "walkthrough_acknowledged": True,

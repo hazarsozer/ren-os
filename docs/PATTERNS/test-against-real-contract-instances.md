@@ -36,7 +36,7 @@ def feed_write_entry(
 **Lifecycle's consumer encoded:**
 
 ```python
-# Lifecycle's /sf:wrap call site (mid-flight)
+# Lifecycle's /ren:wrap call site (mid-flight)
 from feed import feed_write_session_end  # ← assumed split shape
 feed_write_session_end(handle=..., project=..., task_brief=..., files_touched=[...])
 ```

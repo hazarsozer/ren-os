@@ -11,8 +11,8 @@
 # Exit: always 0 (the fallback guarantees a printable answer).
 #
 # Used by:
-#   - /sf:doctor's check-update.sh (cross-version compare)
-#   - /sf:update's state machine (current-version source of truth)
+#   - /ren:doctor's check-update.sh (cross-version compare)
+#   - /ren:update's state machine (current-version source of truth)
 #   - any future bash consumer needing "what version am I?"
 #
 # Python consumers should use lib.sf_paths.framework_version() instead — same chain,

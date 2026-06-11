@@ -1,4 +1,4 @@
-"""P1 pin: Stage 1 env probes run on every /sf:install invocation.
+"""P1 pin: Stage 1 env probes run on every /ren:install invocation.
 
 Team-lead pushback: "always run Stage 1 checks (they're cheap); skip only the
 prompt-for-fix step when all green." The check itself is the cost we pay for

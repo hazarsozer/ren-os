@@ -14,7 +14,7 @@
 
 set -euo pipefail
 
-PLUGIN_DATA="${CLAUDE_PLUGIN_DATA:-$HOME/.claude/plugins/data/sf-sf-marketplace}"
+PLUGIN_DATA="${CLAUDE_PLUGIN_DATA:-$HOME/.claude/plugins/data/ren-ren-os}"
 SNAPSHOT_BASE="${PLUGIN_DATA}/wiki-snapshots"
 
 DRY_RUN=0

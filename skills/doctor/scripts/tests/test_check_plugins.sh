@@ -4,7 +4,7 @@
 # H1: check-plugins.sh + references/hook-id-registry.md grepped for `sf-wake-up.js`,
 # but the shipped hook is `sf-wake-up.py` (hooks.json registers
 # `python3 "$CLAUDE_PLUGIN_ROOT/hooks/wake-up/sf-wake-up.py"`). Result: every
-# friend's first /sf:doctor falsely warned "command path is wrong" and pointed at
+# friend's first /ren:doctor falsely warned "command path is wrong" and pointed at
 # a nonexistent .js file.
 #
 # Test 1 is the ADR-029 "real contract instance" assertion that would have caught

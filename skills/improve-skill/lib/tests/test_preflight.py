@@ -276,7 +276,7 @@ class TestCanonicalEvalFixtureConformance:
     eval.json and asserting preflight accepts them. They exist because the
     previous validator (used wrong keys: 'test_cases' / 'assertions' /
     objects-with-binary-field) would have rejected EVERY framework skill's
-    real eval.json — making /sf:improve-skill unusable on shipped skills.
+    real eval.json — making /ren:improve-skill unusable on shipped skills.
 
     Lesson: always validate against a real instance of the contract, not
     against an in-memory model of what the contract should be. See

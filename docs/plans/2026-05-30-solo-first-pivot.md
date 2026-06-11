@@ -15,7 +15,7 @@ The startup-framework was built as a multi-user "friend group" Claude Code plugi
 Two decisions came out of the brainstorm:
 
 1. **Pivot to a solo-first base framework.** The builder is solo; the multi-user Activity Feed is speculative complexity (YAGNI). Removing it is the biggest available complexity cut — and it *moots* the Codex findings that were all feed-related (F3, F4, F6) and shrinks F1. Multi-user becomes a **deferred** layer, preserved in git + the baseline tag, **not rebuilt now**.
-2. **Adopt Nate's value, not his complexity.** Reorganize under his **Four C's** (Context → Connections → Capabilities → Cadence); take the framings for free (they're better *words* for fixes we're already making); close the genuine gaps (`/sf:insights`, a permission audit, a working deterministic cadence).
+2. **Adopt Nate's value, not his complexity.** Reorganize under his **Four C's** (Context → Connections → Capabilities → Cadence); take the framings for free (they're better *words* for fixes we're already making); close the genuine gaps (`/ren:insights`, a permission audit, a working deterministic cadence).
 
 **Net effect:** the ship gate drops from **7 findings to 4** (F1′, F2, F5, F7 — all local, deterministic, low-risk) **while** the framework gains legibility (Four C's), a session-insights skill, a permission audit, and a self-improvement loop whose default path actually works.
 
@@ -27,7 +27,7 @@ Two decisions came out of the brainstorm:
 |---|---|---|
 | **F1** (High) | `wikiRoot`/`activityFeedLocalClone` plugin options advertised but ignored (`feed/config.py` resolves only `SF_FRAMEWORK_ROOT`) | **Shrinks** to wiki-path-only; **becomes** the config-extraction refactor (Commit 1) |
 | **F2** (High) | `classify()` + `run_evals()` raise `NotImplementedError` on the default path | **Fix**: deterministic default classifier (4a) + honest fail-fast for sf-improve (9) |
-| **F3** (High) | `/sf:wrap` reports wiki files as project "files touched" in the feed | **Mooted** by feed removal |
+| **F3** (High) | `/ren:wrap` reports wiki files as project "files touched" in the feed | **Mooted** by feed removal |
 | **F4** (Med) | Handle validation incomplete across feed APIs (path-traversal trap) | **Mooted** by feed removal (no handles) |
 | **F5** (Med) | `publish.sh` copies ignored artifacts into the orphan snapshot | **Fix**: `git ls-files` snapshot + guard (Commit 2) |
 | **F6** (Med) | Feed privacy docs contradict implementation + ADRs | **Mooted** by feed removal |
@@ -38,9 +38,9 @@ Two decisions came out of the brainstorm:
 ## 2. Locked decisions
 
 - **Solo-first.** Remove the Activity Feed / multi-user layer entirely. No speculative replacement plugin.
-- **F2 → deterministic default classifier** for `/sf:wrap` so the default path works for real; the LLM/autonomous variants stay **experimental** (bike-method). `/sf:improve-skill`'s default = **honest fail-fast** ("requires configured backend"), not a half-real runner.
+- **F2 → deterministic default classifier** for `/ren:wrap` so the default path works for real; the LLM/autonomous variants stay **experimental** (bike-method). `/ren:improve-skill`'s default = **honest fail-fast** ("requires configured backend"), not a half-real runner.
 - **Cadence = "working + improved, not extreme."** Deterministic on-demand loop; autonomous scheduling deferred.
-- **`/sf:insights` = full** read-only skill (mine local Claude Code session history).
+- **`/ren:insights` = full** read-only skill (mine local Claude Code session history).
 - **Permission audit = in** (read-only "audit your keys"). **"Other worlds" = out** (the hierarchical wiki already does cross-project discovery — ADR-004/017). **Reverse-engineer coach = deferred** (overlaps Skill Creator).
 - Time is not a constraint → build to "v1.2 quality."
 
@@ -50,8 +50,8 @@ Two decisions came out of the brainstorm:
 |---|---|---|
 | **Context** | Ahead — keep & polish | Wiki + cache-preserving wake-up injection (keep); *default-shift* framing; **F7** lint fix |
 | **Connections** | Was weakest; feed removed → rebuild | Drop feed; **F1′** centralize wiki-path resolution; **permission audit** (`keys ≠ instructions`) |
-| **Capabilities** | Ahead on rigor — keep | `/sf:*` skills + eval hygiene |
-| **Cadence** | Weak layer — strengthen | **F2** deterministic classifier + honest `sf-improve` default (*bike-method*); **`/sf:insights`** |
+| **Capabilities** | Ahead on rigor — keep | `/ren:*` skills + eval hygiene |
+| **Cadence** | Weak layer — strengthen | **F2** deterministic classifier + honest `sf-improve` default (*bike-method*); **`/ren:insights`** |
 
 ---
 
@@ -73,17 +73,17 @@ SPINE (sequential — one builder, verification gate between each)
      │
      ├──────────── TAIL (parallel — 3 independent agents, disjoint dirs) ────────────┐
      │   Commit 7  permission audit  (skills/sf-doctor/scripts/check-permissions.sh)  │
-     │   Commit 8  /sf:insights       (new skills/sf-insights/**)                     │
+     │   Commit 8  /ren:insights       (new skills/sf-insights/**)                     │
      │   Commit 9  sf-improve honest default (skills/sf-improve-skill/lib/**)         │
      └───────────────────────────────────────────────────────────────────────────────┘
      │
-  Commit 6  framings / README Four C's  (LAST — references /sf:insights + --permissions,
+  Commit 6  framings / README Four C's  (LAST — references /ren:insights + --permissions,
             so it lands after the tail features exist)
 ```
 
 - **Spine (1→5)** is a hard dependency chain (can't delete `feed/config.py` before its core is extracted; can't rewrite install tests before feed skills are gone). One builder, sequential, green gate between commits.
 - **Tail (7/8/9)** touches disjoint directories → 3 parallel agents (worktrees optional). Only shared touch points are `wiki/index.md` and `README` command tables — resolved in the final docs pass.
-- **Commit 6 (framings)** runs **after** the tail because the README/commands reference `/sf:insights` and `/sf:doctor --permissions`.
+- **Commit 6 (framings)** runs **after** the tail because the README/commands reference `/ren:insights` and `/ren:doctor --permissions`.
 
 ---
 
@@ -135,7 +135,7 @@ Tests run **per-module** — root `pytest` collides on duplicate `lib.tests.*` (
 ### Commit 3 — Delete feed skills; de-feed doctor/install/interview; C1-only runtime test
 - **Delete (`git rm`)** `skills/sf-catch-up/`, `skills/sf-disable-feed/`, `skills/activity-feed/`.
 - **sf-doctor:** strip the Activity Feed block from `check-plugins.sh` (keep version + hook checks); remove `feed-entry` handling from `check-schemas.sh`; update `test_check_plugins.sh`/`test_check_schemas.sh` (drop feed env/rows; **update the advertised counts from a green run, not blind** — Risk 3); de-feed `SKILL.md` + `reference.md`/`references/hook-id-registry.md`.
-- **sf-install:** delete `references/stage-3-activity-feed.md`; retitle Stage 3 to conditional-plugins-only; remove `--remove-activity-feed`; drop feed from `contract.required_outputs`/`output_paths`/Stage-3 summary; Stage-4 identity writes only `wiki/identity.md` (no feed push/rename); strip feed mentions from the other stage refs (keep `gh` — Risk 2 — reword as "used by `/sf:doctor`'s update check"). Delete `tests/integration/fakes/feed_fake.py`; update `conftest.py`/`simulator.py`/`test_fresh_machine`/`test_daily_loop_e2e`; delete `test_joiner.py` + `joiner.yaml` (a no-feed joiner == a fresh install). Drop feed assertions from `eval/eval.json` + fixtures.
+- **sf-install:** delete `references/stage-3-activity-feed.md`; retitle Stage 3 to conditional-plugins-only; remove `--remove-activity-feed`; drop feed from `contract.required_outputs`/`output_paths`/Stage-3 summary; Stage-4 identity writes only `wiki/identity.md` (no feed push/rename); strip feed mentions from the other stage refs (keep `gh` — Risk 2 — reword as "used by `/ren:doctor`'s update check"). Delete `tests/integration/fakes/feed_fake.py`; update `conftest.py`/`simulator.py`/`test_fresh_machine`/`test_daily_loop_e2e`; delete `test_joiner.py` + `joiner.yaml` (a no-feed joiner == a fresh install). Drop feed assertions from `eval/eval.json` + fixtures.
 - **sf-interview:** keep the interview; remove the feed identity-push behavior; **keep** the `handle:` frontmatter field but reframe Q1 from "handle for the Activity Feed" → "preferred handle/short name"; delete `references/public-summary-format.md`; de-feed `output-format.md` + `eval`.
 - **wake-up final polish:** unify `_resolve_wiki_root()` to delegate to `lib.sf_paths.wiki_path()`; de-feed the module docstring + `CC_API_NOTES.md` (keep the graceful-failure + resolution test guarantees).
 - **Rewrite installed-runtime test** `tests/integration/installed_runtime/test_installed_runtime.py` (C1+C2 → **C1-only**): drop all C2/feed assertions + `FEED_ACTIVITY_MARKER`; keep + strengthen C1; **promote** `test_wiki_resolves_via_plugin_option_wikiroot` to the headline F1 test (set ONLY `CLAUDE_PLUGIN_OPTION_WIKIROOT`). `conftest.py`: remove `include_feed`/`with_feed_clone`/`friend-b` seeding; `make_plugin_root` materializes `lib/` not `feed/`.
@@ -145,7 +145,7 @@ Tests run **per-module** — root `pytest` collides on duplicate `lib.tests.*` (
 ### Commit 4 — `sf-wrap`: remove feed write (F3 mooted) + deterministic classifier (F2a)
 - **Feed-write removal:** delete `skills/sf-wrap/lib/feed_call.py` + `references/feed-call.md`; remove the `feed_write_fn` param, Step 6 feed write, and all `feed_write_*` fields from `WrapResult`/`WrapInputs` (`lib/__init__.py`, `lib/types.py`). Delete `lib/validate.py` (feed-shape guards) + `test_validate.py` + `test_feed_call.py`; drop feed-write assertions + `_FakeFeedOutcome` from `test_wrap_orchestrator.py`.
 - **F2a deterministic classifier** — ground truth: `classify(transcript_text, *, project_name) -> ClassifierResult` (`classifier.py:286`, currently raises at `:315`); orchestrator catches → forces `("none",)`. The primitives `build_classifier_prompt` + `parse_classifier_output` **stay** (the future LLM path); `parse_classifier_output` enforces `labels==["none"] ⇒ candidate_artifacts empty`. `compose_diff_plan` consumes `labels` (primary label → log append) + `candidate_artifacts` (creates files only for `decision`/`pattern`).
-  - Implement `classify()` as a **conservative deterministic heuristic**: valid `ClassifierResult`, biases hard to `none`, **never raises**. Signal source = combined transcript (session log + `/sf:note` pins joined under "## Pinned notes"). **Pins dominate** (lower threshold). Word-boundary, deliberate-phrase regex tables per label (`decision`/`lesson`/`stack_change`/`milestone`/`pattern`/`purpose_shift`; `purpose_shift` only on a strong exact phrase). `candidate_artifacts` only for fired `decision`/`pattern` (deterministic kebab title, ≤300-char summary, `target_file` per `signal-threshold.md`). Multi-label cap ~2. Honor `none ⇒ no artifacts`.
+  - Implement `classify()` as a **conservative deterministic heuristic**: valid `ClassifierResult`, biases hard to `none`, **never raises**. Signal source = combined transcript (session log + `/ren:note` pins joined under "## Pinned notes"). **Pins dominate** (lower threshold). Word-boundary, deliberate-phrase regex tables per label (`decision`/`lesson`/`stack_change`/`milestone`/`pattern`/`purpose_shift`; `purpose_shift` only on a strong exact phrase). `candidate_artifacts` only for fired `decision`/`pattern` (deterministic kebab title, ≤300-char summary, `target_file` per `signal-threshold.md`). Multi-label cap ~2. Honor `none ⇒ no artifacts`.
   - **Do NOT** add a file-change-count input — `apply_result.files_changed` is *wiki* files (the exact F3 confusion). Deferred.
   - Keep the orchestrator try/except as cheap dead-code safety. Mark **experimental** (bike-method, Commit 6).
 - **Tests:** replace the "stub raises" test with deterministic-classify cases (routine → none+no artifacts; "we decided to use Postgres over Mongo" → decision+1 artifact; "gotcha: …" → lesson no artifact; pin escalation; multi-label cap; none⇒empty). **Add** an orchestrator end-to-end test using the **real** default classifier (closes F2's "default path ≠ tests"). Update `signal-threshold.md` + `SKILL.md` (remove "no-signal wrap still writes a feed entry"; describe the deterministic classifier + limits + EXPERIMENTAL).
@@ -159,16 +159,16 @@ Tests run **per-module** — root `pytest` collides on duplicate `lib.tests.*` (
 - **F7:** quote the `attribution:` value in `wiki/research/py-harness-engineering.md:8` → `python3 scripts/lint-yaml-frontmatter.py .` exits 0.
 - **Commit:** `docs(adr): ADR-031 solo-first pivot supersedes 017/018/020/021; de-feed wiki + docs (F7)`.
 
-### Commit 7 — Permission audit (`/sf:doctor --permissions`) [tail]
+### Commit 7 — Permission audit (`/ren:doctor --permissions`) [tail]
 Real on-disk sources (verified): `~/.claude.json` (`mcpServers` global + `projects.<path>.{mcpServers,allowedTools,…}`), `~/.claude/settings.json` (`permissions.{allow,deny,ask}`, `enabledPlugins` dict, `hooks`), `~/.claude/settings.local.json` (tolerate absent). Files are mode 0600 — **never echo `env`/secret values**.
 - **Create** `skills/sf-doctor/scripts/check-permissions.sh` (+ small python). Read-only: enumerate MCP servers by **name + transport type** with tool counts; tally `allow/deny/ask` by tool prefix (flag broad grants like bare `Bash` / wildcard MCP); list enabled plugins + hooks. Output a "KEYS ON YOUR RING" report. No writes, no network.
-- Wire into `sf-doctor` `SKILL.md` as `--permissions`; one-line teaser in default `/sf:doctor`; Stage-7 onboarding runs it once. Framing copy: "keys ≠ instructions."
+- Wire into `sf-doctor` `SKILL.md` as `--permissions`; one-line teaser in default `/ren:doctor`; Stage-7 onboarding runs it once. Framing copy: "keys ≠ instructions."
 - **Tests:** `scripts/tests/test_check_permissions.sh` — hermetic temp `HOME`; assert seeded MCP names listed, allow-rules tallied, **secrets never printed**. Update `eval.json`.
 - **Commit:** `feat(sf-doctor): read-only permission audit (--permissions) — keys on your ring`.
 
-### Commit 8 — `/sf:insights` (read-only skill) [tail]
+### Commit 8 — `/ren:insights` (read-only skill) [tail]
 Real on-disk sources (verified): `~/.claude/projects/<encoded-cwd>/*.jsonl` (rich heterogeneous transcripts; fields `cwd`, `gitBranch`, `timestamp`, `sessionId`, `version`) + `~/.claude/session-data/*.tmp` (narrative summaries from `save-session`).
-- **Create** `skills/sf-insights/` (full ADR-011 schema; ADR-013 slash command `/sf:insights [--days N] [--project <name>]`). `scripts/collect.py`: walk both sources (mtime within `--days`, default 30); parse **tolerantly** (JSONL line-by-line; heterogeneous records; malformed lines skipped); extract per-session project/tools/topics/error-retry signals; emit a structured block on stdout. **No writes, no network.** `references/synthesis-prompt.md`: LLM owns the "what's-working / what's-hindering / quick-wins" narrative (bounded, cited). `eval/eval.json`: binary assertions (no files written; four insight sections; empty-window tolerated; `--days` respected).
+- **Create** `skills/sf-insights/` (full ADR-011 schema; ADR-013 slash command `/ren:insights [--days N] [--project <name>]`). `scripts/collect.py`: walk both sources (mtime within `--days`, default 30); parse **tolerantly** (JSONL line-by-line; heterogeneous records; malformed lines skipped); extract per-session project/tools/topics/error-retry signals; emit a structured block on stdout. **No writes, no network.** `references/synthesis-prompt.md`: LLM owns the "what's-working / what's-hindering / quick-wins" narrative (bounded, cited). `eval/eval.json`: binary assertions (no files written; four insight sections; empty-window tolerated; `--days` respected).
 - **Tests:** `scripts/tests/` hermetic — seed temp `HOME` with crafted `.jsonl` + `.tmp`; assert summarized + nothing written.
 - **Commit:** `feat(sf-insights): read-only local-session insights skill (collector + LLM synthesis)`.
 
@@ -180,8 +180,8 @@ Ground truth: the default `eval_runner` → `run_evals` raises `NotImplementedEr
 - **Commit:** `feat(sf-improve-skill): honest fail-fast default (REQUIRES_CONFIGURED_BACKEND); mark experimental (F2)`.
 
 ### Commit 6 — Framings (docs-only) [after the tail]
-- `README.md`: reframe "What you get" around the **Four C's** (attribute Nate lightly); remove the Activity Feed bullet/section + `/sf:catch-up` rows; reword the `gh` requirement (→ `/sf:doctor` update check, Risk 2); add a **default-shift** note, a **keys ≠ instructions** note (→ `/sf:doctor --permissions`), and a **bike-method** sentence on the experimental labels. Commands table: drop `/sf:catch-up`; add `/sf:insights` + `/sf:doctor --permissions`.
-- `skills/sf-install/references/stage-7-walkthrough.md`: reframe around the Four C's; drop feed; point at `--permissions` + `/sf:insights`.
+- `README.md`: reframe "What you get" around the **Four C's** (attribute Nate lightly); remove the Activity Feed bullet/section + `/ren:catch-up` rows; reword the `gh` requirement (→ `/ren:doctor` update check, Risk 2); add a **default-shift** note, a **keys ≠ instructions** note (→ `/ren:doctor --permissions`), and a **bike-method** sentence on the experimental labels. Commands table: drop `/ren:catch-up`; add `/ren:insights` + `/ren:doctor --permissions`.
+- `skills/sf-install/references/stage-7-walkthrough.md`: reframe around the Four C's; drop feed; point at `--permissions` + `/ren:insights`.
 - EXPERIMENTAL banners on `sf-wrap`/`sf-improve-skill` `SKILL.md`. `CHANGELOG.md`: "Solo-First Pivot" entry.
 - **Commit:** `docs(framing): adopt Four C's spine; default-shift + keys≠instructions + bike-method notes`.
 
@@ -217,13 +217,13 @@ scripts/publish.sh --dry-run
 ## 9. Risks / judgment calls
 
 1. **`feed/config.py` dual-purpose** — the main trap; extract-then-delete (Commit 1 shim → Commit 2 delete). A naive `git rm feed/` breaks recall, sf-wrap, and the hook's `handle()` (5+ non-feed consumers).
-2. **`gh` does NOT fully evaporate** — `sf-doctor`'s update check + `/sf:update` still use `gh api .../sf-marketplace`. `gh` stays a soft requirement for *updates*, not a feed. Reword, don't delete. (Confirm `sf-backup` uses a configured git remote, not gh.)
+2. **`gh` does NOT fully evaporate** — `sf-doctor`'s update check + `/ren:update` still use `gh api .../ren-os`. `gh` stays a soft requirement for *updates*, not a feed. Reword, don't delete. (Confirm `sf-backup` uses a configured git remote, not gh.)
 3. **Test-count drift** — doctor "8/8"/"5/5", migration-dogfood "17/17", conformance "26 informational" shift when feed-entry rows go. Re-read counts from the Phase-0 green run; don't hard-code blind.
 4. **`sf-improve` default = fail-fast, not a real runner** — the honest bike-method choice (a deterministic proposer can't meaningfully self-improve a skill). Revisit if a minimal real default is wanted.
 5. **`publish.sh` still ships per-module `tests/`** (they're tracked) — preserves current behavior; caches/bytecode now excluded. Add a `*/tests/*` filter only to change that (a behavior change — flag it).
 6. **`handle:` field kept** in `identity.md` (reframed "short name") so the deferred multi-user layer can return without a migration. Costs nothing; remove for zero feed residue.
 7. **F2 classifier scope-creep** — file-change heuristics need a `project_files_changed` input that doesn't exist (the F3 confusion). v1 uses transcript + pins only.
-8. **`/sf:insights` two disjoint sources** — `.jsonl` (rich, the real signal) vs `.tmp` (sparse, user-dependent). Assume neither exists; parse heterogeneous JSONL tolerantly.
+8. **`/ren:insights` two disjoint sources** — `.jsonl` (rich, the real signal) vs `.tmp` (sparse, user-dependent). Assume neither exists; parse heterogeneous JSONL tolerantly.
 9. **ADR-028/030 are amended, not superseded** — they bake in feed specifics AND non-feed contracts. Supersede-vs-amend distinction matters for wiki integrity.
 10. **Permission-audit data shape** — `enabledPlugins` is a dict; `permissions.allow` a flat `Tool(arg)` list; per-project `mcpServers` may be empty; `settings.local.json` may be absent. Tolerate all; never echo secrets.
 

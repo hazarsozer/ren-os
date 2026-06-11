@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# check-permissions.sh — sf-doctor PERMISSION AUDIT ("/sf:doctor --permissions")
+# check-permissions.sh — sf-doctor PERMISSION AUDIT ("/ren:doctor --permissions")
 #
 # Unlike the four KEY|STATUS|VALUE|HINT section scripts, this emits a SELF-CONTAINED
 # human-readable "KEYS ON YOUR RING" report. It is a standalone, on-demand audit

@@ -30,7 +30,7 @@ Total target: ~10 minutes for the friend, 70% complete acceptable. Friend may sk
     handle do you prefer as a personal label? (handle: lowercase, kebab-case,
     letters/digits/hyphens only)
 - validation: handle matches `^[a-z][a-z0-9-]*$`
-- prepopulation: if `/sf:install` Stage 3 supplied `proposed_handle`, pre-fill
+- prepopulation: if `/ren:install` Stage 3 supplied `proposed_handle`, pre-fill
   the handle answer. Friend confirms or changes.
 - default: prompt user; no neutral default
 

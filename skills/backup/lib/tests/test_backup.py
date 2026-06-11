@@ -279,7 +279,7 @@ class TestSetupRemote:
         result = setup_remote("https://github.com/user/repo.git", tmp_path)
         assert not result.success
         assert result.error == "not-a-git-repo"
-        assert "/sf:install" in result.message
+        assert "/ren:install" in result.message
 
 
 # ---------------------------------------------------------------------------
@@ -564,7 +564,7 @@ class TestBackupOrchestrator:
         assert not result.success
         assert result.method == "skipped"
         assert result.error == "not-a-git-repo"
-        assert "/sf:install" in result.message
+        assert "/ren:install" in result.message
 
     def test_clean_repo_no_remote_falls_back_to_tarball(self, tmp_path: Path):
         wiki = tmp_path / "wiki"

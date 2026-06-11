@@ -1,4 +1,4 @@
-# Resume Protocol — `/sf:install` idempotent checkpoint
+# Resume Protocol — `/ren:install` idempotent checkpoint
 
 Per plan §2 + team-lead's three pushbacks. Loaded by SKILL.md step 0.
 
@@ -24,7 +24,7 @@ $XDG_STATE_HOME/sf/install-state.json is malformed.
   Path:   <absolute-path>
 
 Resolve by one of:
-  /sf:install --reset       Delete the checkpoint and re-run install fresh.
+  /ren:install --reset       Delete the checkpoint and re-run install fresh.
   Edit the file manually    If you know what you're doing.
 ```
 
@@ -45,7 +45,7 @@ The orchestrator runs `entry_stage`, then sequentially every subsequent stage. *
 Some stages always run their core check even when marked completed (per team-lead P1):
 
 - **Stage 1** always re-runs `claude auth status`, `gh auth status`, env-var presence, version probes. The check is cheap; correctness wins. Only the prompt-for-fix UX is skipped when last checkpoint was green.
-- **Stage 6** always re-runs `/sf:doctor`. Same rationale.
+- **Stage 6** always re-runs `/ren:doctor`. Same rationale.
 - **Stages 2, 3, 4, 5, 7** are idempotent at the action level — re-running them after success does no work (each stage's pre-check sees its outputs already exist and exits clean).
 
 Concretely, the rule is encoded as a per-stage `always_recheck` boolean in this protocol doc:
@@ -74,8 +74,8 @@ When a stage raises a recoverable error:
    Stage N (<name>) hit a problem:
      <error_summary>
 
-   Re-run /sf:install to resume from Stage N.
-   If the problem persists, /sf:install --redo-stage <N-1> may help.
+   Re-run /ren:install to resume from Stage N.
+   If the problem persists, /ren:install --redo-stage <N-1> may help.
 
    Full error log: <state-file-path>
    ```
@@ -102,9 +102,9 @@ The single exception: state file corruption. If the orchestrator can't persist t
 
 | Command | Behavior |
 |---|---|
-| `/sf:install` | Default. Resume from checkpoint. |
-| `/sf:install --reset` | Friend confirms; delete checkpoint file; do NOT touch wiki, plugins, or identity. Next `/sf:install` runs from scratch. |
-| `/sf:install --redo-stage <N>` | Remove N (and any subsequent completed_stages that depended on N's outputs — table below). Persist. Resume from N. |
+| `/ren:install` | Default. Resume from checkpoint. |
+| `/ren:install --reset` | Friend confirms; delete checkpoint file; do NOT touch wiki, plugins, or identity. Next `/ren:install` runs from scratch. |
+| `/ren:install --redo-stage <N>` | Remove N (and any subsequent completed_stages that depended on N's outputs — table below). Persist. Resume from N. |
 
 ### --redo-stage dependency table
 
@@ -122,7 +122,7 @@ Removing stage N forces recomputation of these downstream stages:
 
 ## What this protocol deliberately does NOT do
 
-- Doesn't lock the checkpoint file (no other process should be writing it; if two `/sf:install` runs race, the later one's atomic rename wins and the earlier one's progress is lost — surface this as an "unexpected stage rollback" warning at next resume).
+- Doesn't lock the checkpoint file (no other process should be writing it; if two `/ren:install` runs race, the later one's atomic rename wins and the earlier one's progress is lost — surface this as an "unexpected stage rollback" warning at next resume).
 - Doesn't snapshot the wiki or plugins for rollback. Per the no-rollback policy.
 - Doesn't expire the checkpoint. A stale checkpoint from 6 months ago is still valid input; the friend can `--reset` if they want a clean slate.
 

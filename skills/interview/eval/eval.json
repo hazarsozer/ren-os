@@ -1,12 +1,12 @@
 {
   "name": "sf-interview",
-  "description": "Binary-assertion test suite for /sf:interview. Covers fresh-bootstrap, refresh on existing identity, emoji-free style respect, and handle validation.",
+  "description": "Binary-assertion test suite for /ren:interview. Covers fresh-bootstrap, refresh on existing identity, emoji-free style respect, and handle validation.",
   "schema_version": 1,
   "tests": [
     {
       "id": "fresh-interview-complete",
       "fixture": "fixtures/fresh-interview.yaml",
-      "prompt": "/sf:interview",
+      "prompt": "/ren:interview",
       "expected_output_summary": "All 18 questions asked; identity.md written with full frontmatter.",
       "trigger_test": true,
       "binary_assertions": [
@@ -22,7 +22,7 @@
     {
       "id": "refresh-existing",
       "fixture": "fixtures/refresh-existing.yaml",
-      "prompt": "/sf:interview",
+      "prompt": "/ren:interview",
       "expected_output_summary": "Re-run detects existing identity.md, summarizes, offers full/sections/fields/cancel branch.",
       "trigger_test": true,
       "binary_assertions": [
@@ -36,7 +36,7 @@
     {
       "id": "emoji-free-respect",
       "fixture": "fixtures/emoji-free-respect.yaml",
-      "prompt": "/sf:interview",
+      "prompt": "/ren:interview",
       "expected_output_summary": "Friend chooses emoji-free communication_style; resulting identity.md body contains no emoji characters.",
       "trigger_test": false,
       "binary_assertions": [
@@ -48,7 +48,7 @@
     {
       "id": "handle-validation",
       "fixture": "fixtures/fresh-interview.yaml",
-      "prompt": "/sf:interview",
+      "prompt": "/ren:interview",
       "expected_output_summary": "Non-kebab-case handle is rejected and re-prompted.",
       "trigger_test": false,
       "binary_assertions": [
@@ -62,14 +62,14 @@
     {
       "id": "skipped-question-handling",
       "fixture": "fixtures/fresh-interview.yaml",
-      "prompt": "/sf:interview",
+      "prompt": "/ren:interview",
       "expected_output_summary": "Friend skips Q4 + Q16; identity.md records skipped question IDs.",
       "trigger_test": false,
       "binary_assertions": [
         "skipped_questions list contains 'q4-strong-skills' and 'q16-avoid-patterns'",
         "strong_skills field has its default value (empty list) since Q4 was skipped",
         "Markdown body's 'Strong opinions + non-goals' section is present but only contains the TDD framing from Q15 (no Q16 content)",
-        "Re-running /sf:interview detects skipped questions and offers to ask them again as part of a refresh"
+        "Re-running /ren:interview detects skipped questions and offers to ask them again as part of a refresh"
       ]
     }
   ],

@@ -6,4 +6,4 @@ Format: dated bullet entries. Newest at top.
 
 ---
 
-_No learnings yet — skill is freshly authored. As friends use `/sf:bootstrap-project` and surface surprises, capture them here._
+_No learnings yet — skill is freshly authored. As friends use `/ren:bootstrap-project` and surface surprises, capture them here._

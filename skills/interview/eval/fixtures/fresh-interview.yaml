@@ -1,4 +1,4 @@
-# Fixture: fresh /sf:interview — no existing identity.md, no prior install state.
+# Fixture: fresh /ren:interview — no existing identity.md, no prior install state.
 #
 # Consumed by eval.json tests: fresh-interview-complete, handle-validation,
 # skipped-question-handling.
@@ -14,7 +14,7 @@ environment:
 filesystem:
   - path: ~/.startup-framework/wiki/index.md
     kind: file
-    content_summary: "Master index from a prior /sf:install run; no identity link yet."
+    content_summary: "Master index from a prior /ren:install run; no identity link yet."
 
   - path: ~/.startup-framework/wiki/log.md
     kind: file

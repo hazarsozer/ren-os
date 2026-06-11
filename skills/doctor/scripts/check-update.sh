@@ -55,7 +55,7 @@ if [[ $POST_UPDATE -eq 1 ]]; then
   exit 0
 fi
 
-# Parse org from repository URL: https://github.com/<org>/sf-marketplace → "<org>"
+# Parse org from repository URL: https://github.com/<org>/ren-os → "<org>"
 ORG=""
 if [[ "$REPO_URL" =~ github\.com/([^/]+)/([^/]+) ]]; then
   ORG="${BASH_REMATCH[1]}"
@@ -77,7 +77,7 @@ RC_CHANNEL="${CLAUDE_PLUGIN_OPTION_RCCHANNEL:-false}"
 
 # Fetch stable marketplace plugin.json
 LATEST_STABLE=""
-STABLE_REPO="${ORG}/sf-marketplace"
+STABLE_REPO="${ORG}/ren-os"
 if STABLE_PJ="$(timeout 8 gh api "repos/${STABLE_REPO}/contents/.claude-plugin/plugin.json" --jq '.content' 2>/dev/null)"; then
   if [[ -n "$STABLE_PJ" ]]; then
     LATEST_STABLE="$(echo "$STABLE_PJ" | base64 -d 2>/dev/null | grep -oE '"version"\s*:\s*"[^"]+"' | head -1 | sed 's/.*"\([^"]*\)"$/\1/')"
@@ -92,15 +92,15 @@ else
   if [[ "$cmp" == "$INSTALLED_VER" && "$INSTALLED_VER" == "$LATEST_STABLE" ]]; then
     emit "latest-stable" "ok" "v${LATEST_STABLE}" "(up to date)"
   elif [[ "$cmp" == "$LATEST_STABLE" ]]; then
-    emit "latest-stable" "warn" "v${LATEST_STABLE}" "→ Run /sf:update to install. See CHANGELOG for what's new."
+    emit "latest-stable" "warn" "v${LATEST_STABLE}" "→ Run /ren:update to install. See CHANGELOG for what's new."
   else
-    emit "latest-stable" "warn" "v${LATEST_STABLE} (installed is ahead)" "→ Local version exceeds latest published — likely dogfood / RC. Run /sf:doctor --post-update if you just updated."
+    emit "latest-stable" "warn" "v${LATEST_STABLE} (installed is ahead)" "→ Local version exceeds latest published — likely dogfood / RC. Run /ren:doctor --post-update if you just updated."
   fi
 fi
 
 # Fetch RC if user is on RC channel
 if [[ "$RC_CHANNEL" == "true" ]]; then
-  RC_REPO="${ORG}/sf-marketplace-rc"
+  RC_REPO="${ORG}/ren-os-rc"
   LATEST_RC=""
   if RC_PJ="$(timeout 8 gh api "repos/${RC_REPO}/contents/.claude-plugin/plugin.json" --jq '.content' 2>/dev/null)"; then
     if [[ -n "$RC_PJ" ]]; then
@@ -108,13 +108,13 @@ if [[ "$RC_CHANNEL" == "true" ]]; then
     fi
   fi
   if [[ -n "$LATEST_RC" ]]; then
-    emit "latest-rc" "ok" "v${LATEST_RC}" "(subscribed via sf-marketplace-rc)"
+    emit "latest-rc" "ok" "v${LATEST_RC}" "(subscribed via ren-os-rc)"
   else
     emit "latest-rc" "skip" "" "(no RC published or unreachable)"
   fi
   emit "channel" "ok" "rc (subscribed)" ""
 else
-  emit "latest-rc" "skip" "" "(subscribe to sf-marketplace-rc to receive release candidates)"
+  emit "latest-rc" "skip" "" "(subscribe to ren-os-rc to receive release candidates)"
   emit "channel" "ok" "stable" ""
 fi
 

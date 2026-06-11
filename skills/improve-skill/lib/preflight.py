@@ -131,7 +131,7 @@ def validate_working_tree_clean(*, cwd: Path | None = None) -> None:
     if result.stdout.strip():
         raise PreFlightError(
             "Working tree has uncommitted changes. Commit or stash before running "
-            "/sf:improve-skill. (The loop uses `git reset --hard` to revert iterations; "
+            "/ren:improve-skill. (The loop uses `git reset --hard` to revert iterations; "
             "we won't risk clobbering your WIP.)"
         )
 
@@ -146,7 +146,7 @@ def _validate_skill_exists(skill_path: Path) -> None:
     skill_md = skill_path / SKILL_MD_FILE
     if not skill_md.is_file():
         raise PreFlightError(
-            f"{skill_md} not found. /sf:improve-skill needs an existing SKILL.md to work on."
+            f"{skill_md} not found. /ren:improve-skill needs an existing SKILL.md to work on."
         )
 
 
@@ -180,7 +180,7 @@ def _validate_eval_file(skill_path: Path) -> None:
     eval_path = skill_path / EVAL_FILE
     if not eval_path.is_file():
         raise PreFlightError(
-            f"{eval_path} not found. /sf:improve-skill requires an eval suite per ADR-011. "
+            f"{eval_path} not found. /ren:improve-skill requires an eval suite per ADR-011. "
             "Run /skill-creator to bootstrap evals."
         )
 
@@ -230,5 +230,5 @@ def _validate_cc_available() -> None:
     if shutil.which("claude") is None:
         raise PreFlightError(
             "Claude Code CLI ('claude') not found on PATH. "
-            "Install Claude Code before running /sf:improve-skill."
+            "Install Claude Code before running /ren:improve-skill."
         )

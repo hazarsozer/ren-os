@@ -239,7 +239,7 @@ def check_file(path: Path, target_desc: str, mode: str, registry: dict) -> Check
         )
 
     # framework_version strict-semver check (page level). Per lifecycle-2 coord 2026-05-28:
-    # the consumer side of framework_version (sf-update's migration driver, /sf:wrap's
+    # the consumer side of framework_version (sf-update's migration driver, /ren:wrap's
     # consolidate) expects a valid semver string. A malformed value here would manifest
     # as a silent skip-bug downstream. Catch at write time.
     fv_raw = fm.get("framework_version", "")

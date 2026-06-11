@@ -1,12 +1,12 @@
 {
   "name": "sf-install",
-  "description": "Binary-assertion test suite for /sf:install. Covers fresh-machine flow, partial-Stage-2 resume, abort-and-resume, and the three team-lead pushbacks (always-check Stage 1, additive-diff Stage 5, manual handoff).",
+  "description": "Binary-assertion test suite for /ren:install. Covers fresh-machine flow, partial-Stage-2 resume, abort-and-resume, and the three team-lead pushbacks (always-check Stage 1, additive-diff Stage 5, manual handoff).",
   "schema_version": 1,
   "tests": [
     {
       "id": "fresh-machine-complete",
       "fixture": "fixtures/fresh-machine.yaml",
-      "prompt": "/sf:install",
+      "prompt": "/ren:install",
       "expected_output_summary": "All 7 stages complete; doctor green; identity populated; walkthrough acknowledged.",
       "trigger_test": true,
       "binary_assertions": [
@@ -23,7 +23,7 @@
     {
       "id": "resume-from-partial-stage-2",
       "fixture": "fixtures/partial-stage-2.yaml",
-      "prompt": "/sf:install",
+      "prompt": "/ren:install",
       "expected_output_summary": "Checkpoint shows 3 of 6 plugins installed; resume picks up at plugin 4 without reinstalling 1-3.",
       "trigger_test": false,
       "binary_assertions": [
@@ -38,7 +38,7 @@
     {
       "id": "pushback-p1-stage1-always-check",
       "fixture": "fixtures/fresh-machine.yaml",
-      "prompt": "/sf:install",
+      "prompt": "/ren:install",
       "expected_output_summary": "Even with a green Stage 1 in the checkpoint, the probes run again on re-invocation.",
       "trigger_test": false,
       "binary_assertions": [
@@ -51,7 +51,7 @@
     {
       "id": "pushback-p2-stage5-additive-diff",
       "fixture": "fixtures/fresh-machine.yaml",
-      "prompt": "/sf:install",
+      "prompt": "/ren:install",
       "expected_output_summary": "Re-running install against an existing wiki triggers Stage 5 additive-diff mode and never overwrites.",
       "trigger_test": false,
       "binary_assertions": [
@@ -66,26 +66,26 @@
     {
       "id": "pushback-p3-no-auto-invoke",
       "fixture": "fixtures/fresh-machine.yaml",
-      "prompt": "/sf:install",
+      "prompt": "/ren:install",
       "expected_output_summary": "After install completes, no follow-up slash command is auto-invoked. Friend triggers the next action.",
       "trigger_test": false,
       "binary_assertions": [
-        "After Stage 7 acknowledgment, the orchestrator exits cleanly without calling /sf:wake-up, /sf:doctor, /sf:bootstrap-project, or any other slash command",
-        "The Stage 7 walkthrough suggests next actions (e.g. /sf:wake-up) but does NOT execute them",
-        "The plugin's install hook (if any) does not invoke /sf:install at PostInstall time — friend must type the three-command sequence per ADR-019"
+        "After Stage 7 acknowledgment, the orchestrator exits cleanly without calling /ren:wake-up, /ren:doctor, /ren:bootstrap-project, or any other slash command",
+        "The Stage 7 walkthrough suggests next actions (e.g. /ren:wake-up) but does NOT execute them",
+        "The plugin's install hook (if any) does not invoke /ren:install at PostInstall time — friend must type the three-command sequence per ADR-019"
       ]
     },
     {
       "id": "abort-and-resume-on-plugin-fail",
       "fixture": "fixtures/fresh-machine.yaml",
-      "prompt": "/sf:install",
+      "prompt": "/ren:install",
       "expected_output_summary": "A Stage 2 plugin install fails (simulated network timeout); install aborts cleanly; re-run resumes at Stage 2 without reinstalling earlier plugins.",
       "trigger_test": false,
       "binary_assertions": [
         "Mid-run, a /plugin install raises a recoverable error (simulated network timeout)",
         "Orchestrator appends an entry to state.abort_log with stage=2 and a short error_summary",
         "completed_stages does NOT include 2",
-        "Skill output to the friend includes 're-run /sf:install to resume from Stage 2'",
+        "Skill output to the friend includes 're-run /ren:install to resume from Stage 2'",
         "Exit code is non-zero",
         "Re-run after the timeout is cleared: install resumes at Stage 2, does NOT reinstall the already-installed plugins",
         "Re-run completes all 7 stages and final checkpoint shows all stages done"
@@ -94,7 +94,7 @@
     {
       "id": "reset-command",
       "fixture": "fixtures/fresh-machine.yaml",
-      "prompt": "/sf:install --reset",
+      "prompt": "/ren:install --reset",
       "expected_output_summary": "Friend confirms; checkpoint deleted; wiki + plugins + identity left untouched.",
       "trigger_test": false,
       "binary_assertions": [
@@ -102,7 +102,7 @@
         "If confirmed, $XDG_STATE_HOME/sf/install-state.json is deleted",
         "No file under ~/.startup-framework/wiki/ is modified or deleted",
         "No plugin is uninstalled",
-        "Subsequent /sf:install (without --reset) starts from Stage 1 as if fresh"
+        "Subsequent /ren:install (without --reset) starts from Stage 1 as if fresh"
       ]
     }
   ],

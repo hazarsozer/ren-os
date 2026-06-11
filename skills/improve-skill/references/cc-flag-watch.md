@@ -10,9 +10,9 @@ verification-source: "hooks/wake-up/CC_API_NOTES.md Appendix A (verbatim claude 
 
 # CC CLI flag watch list
 
-This document tracks Claude Code CLI flags that **`/sf:improve-skill` would like to use** but which either don't exist yet, only work in restricted contexts, or have behaviors we want to monitor across CC releases. When a flag changes status, this doc gets the update and the `/sf:improve-skill` pre-flight check follows.
+This document tracks Claude Code CLI flags that **`/ren:improve-skill` would like to use** but which either don't exist yet, only work in restricted contexts, or have behaviors we want to monitor across CC releases. When a flag changes status, this doc gets the update and the `/ren:improve-skill` pre-flight check follows.
 
-**Re-verify on every CC release** by running `claude --help` and diffing against `hooks/wake-up/CC_API_NOTES.md Appendix A`. When `/sf:doctor` checks CC version drift, it should also nudge to re-verify this watch list.
+**Re-verify on every CC release** by running `claude --help` and diffing against `hooks/wake-up/CC_API_NOTES.md Appendix A`. When `/ren:doctor` checks CC version drift, it should also nudge to re-verify this watch list.
 
 ## Watch list
 
@@ -35,7 +35,7 @@ This document tracks Claude Code CLI flags that **`/sf:improve-skill` would like
 - Verify in `claude --help` on a fresh CC install
 - Verify it works in non-print mode (i.e., interactive sub-runs)
 - Verify behavior on hit: error exit vs graceful stop
-- Update `/sf:improve-skill` pre-flight to require it in autonomous mode (alongside `--max-iterations` + `--max-budget-usd`)
+- Update `/ren:improve-skill` pre-flight to require it in autonomous mode (alongside `--max-iterations` + `--max-budget-usd`)
 - Drop the shadow turn-counter (or keep it as belt-and-suspenders — TBD)
 
 ### `--max-budget-usd N`
@@ -48,9 +48,9 @@ This document tracks Claude Code CLI flags that **`/sf:improve-skill` would like
                                         calls (only works with --print)
 ```
 
-**Implication for `/sf:improve-skill`**:
+**Implication for `/ren:improve-skill`**:
 - Inner sub-runs (the change-proposal LLM calls) ARE in print mode — `claude --bare --print --max-budget-usd $REMAINING`. ✅ Works there.
-- The top-level `/sf:improve-skill` invocation may NOT be in print mode (the friend wants interactive UX). For that level, we shadow-track budget using `usage.input_tokens + usage.output_tokens` × model pricing.
+- The top-level `/ren:improve-skill` invocation may NOT be in print mode (the friend wants interactive UX). For that level, we shadow-track budget using `usage.input_tokens + usage.output_tokens` × model pricing.
 
 **Adoption criteria when it expands to non-print mode**:
 - Verify `claude --max-budget-usd $X` works in interactive mode
@@ -75,7 +75,7 @@ This document tracks Claude Code CLI flags that **`/sf:improve-skill` would like
 
 **Status**: ✅ **AVAILABLE** (verified 2026-05-28 — see `CC_API_NOTES.md` Appendix A.4).
 
-**Relevance to `/sf:improve-skill`**: not directly used, but documented here because **it's the load-bearing evidence for ADR-008's design** (CC's own pattern of moving content from cacheable system-prompt prefix into the first user message). Any drift in this flag's behavior signals broader cache-architecture changes we'd need to react to in the wake-up hook.
+**Relevance to `/ren:improve-skill`**: not directly used, but documented here because **it's the load-bearing evidence for ADR-008's design** (CC's own pattern of moving content from cacheable system-prompt prefix into the first user message). Any drift in this flag's behavior signals broader cache-architecture changes we'd need to react to in the wake-up hook.
 
 **Watch for**: deprecation notices; behavior changes in cache-reuse measurements; renaming.
 
@@ -83,7 +83,7 @@ This document tracks Claude Code CLI flags that **`/sf:improve-skill` would like
 
 **Status**: ✅ **AVAILABLE** with `--output-format=stream-json` (verified 2026-05-28 — see `CC_API_NOTES.md` Appendix A.5).
 
-**Relevance**: used by lifecycle plan §2 cache-verification infrastructure (Task #11). Not directly used by `/sf:improve-skill` itself but lifecycle-2 owns both.
+**Relevance**: used by lifecycle plan §2 cache-verification infrastructure (Task #11). Not directly used by `/ren:improve-skill` itself but lifecycle-2 owns both.
 
 **Watch for**: stream-json format changes; new hook events that affect our cache-verification collector.
 
@@ -103,9 +103,9 @@ When a flag's status changes:
 2. Capture the verbatim `claude --help` block (per the CC_API_NOTES.md Appendix A discipline)
 3. Update the relevant section of this doc
 4. If a status change unlocks new safety guarantees, propose an amendment to ADR-012 documenting the new pre-flight semantics
-5. If a status change forces fallback to alternative safety mechanisms, this doc becomes the diagnostic for `/sf:doctor`
+5. If a status change forces fallback to alternative safety mechanisms, this doc becomes the diagnostic for `/ren:doctor`
 
-## How `/sf:improve-skill` consumes this
+## How `/ren:improve-skill` consumes this
 
 Pre-flight code:
 

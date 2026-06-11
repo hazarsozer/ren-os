@@ -3,9 +3,9 @@ name: recall
 description: |
   Use when the friend wants to look up something the wiki should know — a
   past decision, pattern, or lesson — WITHOUT loading more wiki context
-  into the session. Triggers on /sf:recall <query>. Read-only: greps the
+  into the session. Triggers on /ren:recall <query>. Read-only: greps the
   local wiki for matches and returns ranked snippets. Companion to
-  /sf:wrap (the consolidate) and /sf:note (the pin).
+  /ren:wrap (the consolidate) and /ren:note (the pin).
 version: 0.1.0
 license: MIT
 
@@ -46,14 +46,14 @@ Solo-first (ADR-031): recall searches the local wiki only. The former cross-frie
 
 ## When to use this skill
 
-- Friend invokes `/sf:recall <query>` (canonical trigger; everything after the command name is the query)
+- Friend invokes `/ren:recall <query>` (canonical trigger; everything after the command name is the query)
 - Friend says: "what do we know about X", "did we decide on Y", "recall <topic>", "remind me about <pattern>" — confirm the query once, then run
 
 ## When NOT to use this skill
 
-- Friend wants to pin something for later → `/sf:note <text>` (not a search)
-- Empty query after `/sf:recall` → refuse with usage hint
-- Friend wants to modify the wiki → that's `/sf:wrap`'s domain; this skill is strictly read-only
+- Friend wants to pin something for later → `/ren:note <text>` (not a search)
+- Empty query after `/ren:recall` → refuse with usage hint
+- Friend wants to modify the wiki → that's `/ren:wrap`'s domain; this skill is strictly read-only
 
 ## Behavior
 
@@ -82,7 +82,7 @@ Solo-first (ADR-031): recall searches the local wiki only. The former cross-frie
 
 | Failure | Behavior | User-visible |
 |---|---|---|
-| Empty query | Refuse, prompt for query | "What should I search for? Usage: /sf:recall <query>" |
+| Empty query | Refuse, prompt for query | "What should I search for? Usage: /ren:recall <query>" |
 | Wiki root missing | Treat as zero hits | "No wiki matches for '<query>'" |
 | Single file unreadable mid-walk | Skip the file; log to stderr; continue | (no user-visible change) |
 | No matches | Explicit no-results message | "No matches for '<query>' in the wiki." |

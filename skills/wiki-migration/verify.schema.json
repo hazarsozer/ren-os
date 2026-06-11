@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://startup-framework.local/schemas/verify.schema.json",
   "title": "Migration Verify Manifest",
-  "description": "JSON Schema for a migration directory's verify.json file (per ADR-027 § Hybrid migrations). Binary assertions confirming a migration produced valid output. /sf:update's VERIFYING state runs each assertion against every migrated page; FAIL triggers ROLLBACK_PAGE.",
+  "description": "JSON Schema for a migration directory's verify.json file (per ADR-027 § Hybrid migrations). Binary assertions confirming a migration produced valid output. /ren:update's VERIFYING state runs each assertion against every migrated page; FAIL triggers ROLLBACK_PAGE.",
   "type": "object",
   "required": ["migration", "page_type", "assertions"],
   "additionalProperties": false,
@@ -39,7 +39,7 @@
         "description": {
           "type": "string",
           "minLength": 5,
-          "description": "Human-readable explanation. Surfaced in /sf:update output on failure."
+          "description": "Human-readable explanation. Surfaced in /ren:update output on failure."
         },
         "predicate": {
           "type": "string",

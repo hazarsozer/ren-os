@@ -1,6 +1,6 @@
 # Ship Checklist — v1.0.0
 
-Maintainer-only. Single-page gate Hazar runs through before tagging + publishing. Every item must be ☑ before the orphan snapshot is pushed to `sf-marketplace`. Skip nothing.
+Maintainer-only. Single-page gate Hazar runs through before tagging + publishing. Every item must be ☑ before the orphan snapshot is pushed to `ren-os`. Skip nothing.
 
 The verification commands assume you're at the **dev repo** root (`~/Dev/startup-framework`).
 
@@ -8,7 +8,7 @@ The verification commands assume you're at the **dev repo** root (`~/Dev/startup
 > everything — full history, `wiki/`, `raw/`, `REVIEW*.md`, maintainer docs, tags. Friends
 > NEVER see it. Releases are published by `scripts/publish.sh`, which builds a **fresh
 > single-commit orphan snapshot containing only the shippable allowlist** and force-pushes
-> THAT to `sf-marketplace`. Friends get one commit, zero history, zero wiki. See
+> THAT to `ren-os`. Friends get one commit, zero history, zero wiki. See
 > `docs/RELEASING.md` for the full flow.
 
 ---
@@ -217,15 +217,15 @@ Expected: `✅ DRY-RUN PASSED`.
 ### 5.2 — Marketplace repo exists + friends are read collaborators
 
 ```bash
-gh repo view hazarsozer/sf-marketplace --json visibility,defaultBranchRef -q '.'
-gh api repos/hazarsozer/sf-marketplace/collaborators -q '.[]|.login'
+gh repo view hazarsozer/ren-os --json visibility,defaultBranchRef -q '.'
+gh api repos/hazarsozer/ren-os/collaborators -q '.[]|.login'
 ```
 
 Expected: `"visibility":"PRIVATE"`, default branch `main`, every friend's handle listed with `read`.
 
-- ☐ `sf-marketplace` exists + is private
+- ☐ `ren-os` exists + is private
 - ☐ each friend added as a `read` collaborator
-- ☐ (optional, RC users) `sf-marketplace-rc` exists, private, same collaborators
+- ☐ (optional, RC users) `ren-os-rc` exists, private, same collaborators
 
 ---
 
@@ -241,15 +241,15 @@ scripts/publish.sh
 # Inspect, then run the printed push commands by hand.
 
 # In a fresh directory or on the secondary device:
-/plugin marketplace add hazarsozer/sf-marketplace
-/plugin install sf@sf-marketplace
+/plugin marketplace add hazarsozer/ren-os
+/plugin install ren@ren-os
 /reload-plugins
-/sf:install
+/ren:install
 ```
 
 - ☐ install completes within 10 minutes (design target per ADR-015)
-- ☐ all 7 stages of `/sf:install` complete green
-- ☐ `/sf:doctor` post-install shows all sections ✅ (or known-acceptable ⏭️)
+- ☐ all 7 stages of `/ren:install` complete green
+- ☐ `/ren:doctor` post-install shows all sections ✅ (or known-acceptable ⏭️)
 
 ### 6.2 — `${HOME}` userConfig expansion verification
 
@@ -258,10 +258,10 @@ expands them before exposing `CLAUDE_PLUGIN_OPTION_*`. The Python hook + the she
 strip+expand-guarded, but verify on a real install:
 
 ```bash
-/sf:doctor   # check the reported wiki path
+/ren:doctor   # check the reported wiki path
 ```
 
-- ☐ `/sf:doctor`'s wiki path is an **absolute** path (e.g. `/home/you/.startup-framework/wiki`), NOT a literal `${HOME}/.startup-framework/wiki`
+- ☐ `/ren:doctor`'s wiki path is an **absolute** path (e.g. `/home/you/.startup-framework/wiki`), NOT a literal `${HOME}/.startup-framework/wiki`
 - ☐ project detection works (open a project under your `devRoot`; wake-up injects its context)
 
 If a literal `${HOME}` shows up: CC is passing the unexpanded default → confirm the shell scripts
@@ -270,8 +270,8 @@ If a literal `${HOME}` shows up: CC is passing the unexpanded default → confir
 ### 6.3 — Real session: the daily loop
 
 - ☐ wake-up hook injects sensible context at session start
-- ☐ `/sf:wrap` writes the session-end summary to the local wiki (Activity Feed removed — ADR-031; no push to any shared repo)
-- ☐ `/sf:bootstrap-project test-project` creates the project sub-wiki
+- ☐ `/ren:wrap` writes the session-end summary to the local wiki (Activity Feed removed — ADR-031; no push to any shared repo)
+- ☐ `/ren:bootstrap-project test-project` creates the project sub-wiki
 
 ### 6.4 — Recovery dry-run (in a tmpdir, NOT your real wiki)
 
@@ -289,7 +289,7 @@ Only after every box above is ☑.
 
 > ⚠️ **DATE FOOT-GUN — read before tagging.** `CHANGELOG.md`'s `## [1.0.0]` line is pre-stamped
 > **2026-05-31**. If you are tagging on any **later** day, **edit that date to today first** — otherwise
-> `/sf:doctor`'s update-notification text (and `release.yml`'s CHANGELOG-date assertion) will carry a
+> `/ren:doctor`'s update-notification text (and `release.yml`'s CHANGELOG-date assertion) will carry a
 > wrong, past date. One line; easy to forget; checked again in the boxes below.
 
 ### 7.1 — Tag in the PRIVATE dev repo
@@ -299,7 +299,7 @@ git status                      # working tree clean
 git tag v1.0.0                  # tags live ONLY in the private dev repo
 PJ_VER=$(python3 -c "import json; print(json.load(open('.claude-plugin/plugin.json'))['version'])")
 [[ "$PJ_VER" == "1.0.0" ]] || { echo "ABORT: plugin.json#version is $PJ_VER, not 1.0.0"; exit 1; }
-# If the dev repo has a remote: git push origin v1.0.0   (NEVER push tags to sf-marketplace)
+# If the dev repo has a remote: git push origin v1.0.0   (NEVER push tags to ren-os)
 ```
 
 ### 7.2 — Publish the orphan snapshot
@@ -307,17 +307,17 @@ PJ_VER=$(python3 -c "import json; print(json.load(open('.claude-plugin/plugin.js
 ```bash
 scripts/publish.sh             # builds + verifies; prints the exact push commands
 # Inspect the snapshot, then run the printed:
-#   git -C <snapshot> remote add origin git@github.com:hazarsozer/sf-marketplace.git
+#   git -C <snapshot> remote add origin git@github.com:hazarsozer/ren-os.git
 #   git -C <snapshot> push --force origin HEAD:main
 ```
 
-- ☐ `CHANGELOG.md`'s `## [1.0.0]` date == today's tag date (it's pre-stamped 2026-05-31 — **update it if the tag slips to a later day** so `/sf:doctor`'s notification text is accurate)
+- ☐ `CHANGELOG.md`'s `## [1.0.0]` date == today's tag date (it's pre-stamped 2026-05-31 — **update it if the tag slips to a later day** so `/ren:doctor`'s notification text is accurate)
 - ☐ snapshot built + all guards green
-- ☐ orphan commit force-pushed to `sf-marketplace` (single commit, no tags)
-- ☐ `/plugin marketplace update sf-marketplace` on a friend machine surfaces v1.0.0
-- ☐ Friends notified out-of-band (Activity Feed removed — ADR-031; the `CHANGELOG.md` entry + `/sf:doctor` carry "what shipped")
+- ☐ orphan commit force-pushed to `ren-os` (single commit, no tags)
+- ☐ `/plugin marketplace update ren-os` on a friend machine surfaces v1.0.0
+- ☐ Friends notified out-of-band (Activity Feed removed — ADR-031; the `CHANGELOG.md` entry + `/ren:doctor` carry "what shipped")
 
-> **Never** `git push --tags` to `sf-marketplace`. Tags carry no value to friends and the
+> **Never** `git push --tags` to `ren-os`. Tags carry no value to friends and the
 > marketplace is meant to hold exactly one orphan commit per release.
 
 ---
@@ -326,9 +326,9 @@ scripts/publish.sh             # builds + verifies; prints the exact push comman
 
 Within 24h:
 
-- ☐ One friend other than Hazar runs `/plugin marketplace add` + `/plugin install` + `/reload-plugins` + `/sf:install` end-to-end
-- ☐ That friend reports a green `/sf:doctor`
-- ☐ Their `/sf:bootstrap-project` works
+- ☐ One friend other than Hazar runs `/plugin marketplace add` + `/plugin install` + `/reload-plugins` + `/ren:install` end-to-end
+- ☐ That friend reports a green `/ren:doctor`
+- ☐ Their `/ren:bootstrap-project` works
 
 ---
 
@@ -338,7 +338,7 @@ Within 24h:
 - **`claude plugin validate` errors** → consult `tests/integration/plugin-validate-known-issues.md`.
 - **`publish.sh` guard fails** → the message names the problem (placeholder / leaked path / validation). Fix it; the guard is doing its job — never bypass it.
 - **Schema-conformance blockers** → patch the offending template; rerun.
-- **`/sf:install` fails on first-friend dogfood** → triage with the failing teammate (likely sf-onboarding); do NOT publish.
+- **`/ren:install` fails on first-friend dogfood** → triage with the failing teammate (likely sf-onboarding); do NOT publish.
 - **First friend (post-publish) reports failure** → triage; ship a v1.0.1 PATCH per `docs/RELEASING.md` § Recovery from a bad release.
 
 ---

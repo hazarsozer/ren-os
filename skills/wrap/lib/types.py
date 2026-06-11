@@ -1,7 +1,7 @@
 """
 sf-wrap local types.
 
-Pure dataclasses for the /sf:wrap pipeline. No I/O, no external deps beyond
+Pure dataclasses for the /ren:wrap pipeline. No I/O, no external deps beyond
 stdlib + typing. Frozen by default per dotfiles python/coding-style.md
 (immutability principle from common/coding-style.md).
 """
@@ -86,10 +86,10 @@ class DiffPlan:
 
 @dataclass(frozen=True)
 class WrapInputs:
-    """All inputs gathered for a /sf:wrap invocation."""
+    """All inputs gathered for a /ren:wrap invocation."""
 
     session_transcript_path: str | None
-    session_notes: tuple[str, ...]  # contents of /sf:note pin file(s)
+    session_notes: tuple[str, ...]  # contents of /ren:note pin file(s)
     cwd: str
     active_project: str | None
 
@@ -97,10 +97,10 @@ class WrapInputs:
 @dataclass(frozen=True)
 class WrapResult:
     """
-    Final result returned to the user after /sf:wrap completes. The user-
+    Final result returned to the user after /ren:wrap completes. The user-
     facing summary is composed from this.
 
-    Solo-first (ADR-031): /sf:wrap consolidates the local wiki only. The former
+    Solo-first (ADR-031): /ren:wrap consolidates the local wiki only. The former
     Activity Feed session-end write was removed with the feed module.
     """
 

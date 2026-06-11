@@ -1,5 +1,5 @@
 ---
-title: "/sf:recall grep-strategy — scoring + snippet heuristic (v1)"
+title: "/ren:recall grep-strategy — scoring + snippet heuristic (v1)"
 type: skill-reference
 parent_skill: sf-recall
 version: 0.1.0
@@ -90,7 +90,7 @@ Per ADR-005, the v2 path is deliberately preserved by keeping the layer abstract
 
 Tempting: ask an LLM "find the most relevant page about X." But:
 - v1 wiki sizes (a few dozen pages) don't justify the latency + cost
-- Deterministic results matter for `/sf:doctor` smoke checks against `recall()`
+- Deterministic results matter for `/ren:doctor` smoke checks against `recall()`
 - The grep heuristic above is good enough for v1; LLM-judged retrieval is the v2 upgrade if v1 misses
 
 Deterministic > clever, at v1 scale.

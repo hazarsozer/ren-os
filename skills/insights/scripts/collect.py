@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-collect.py — read-only local-session fact collector for /sf:insights.
+collect.py — read-only local-session fact collector for /ren:insights.
 
 Walks two LOCAL on-disk sources, filters each by file mtime within a
 look-back window, and emits a bounded, structured fact-block on stdout.
@@ -637,7 +637,7 @@ def render(data: CollectedData) -> str:
 def build_arg_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="collect.py",
-        description="Read-only local-session fact collector for /sf:insights.",
+        description="Read-only local-session fact collector for /ren:insights.",
     )
     p.add_argument(
         "--days",

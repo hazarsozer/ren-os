@@ -390,10 +390,10 @@ class TestClassifyDeterministic:
         assert result.labels == ("none",)
 
     def test_pin_escalation_fires_when_log_is_routine(self):
-        """A routine log + a deliberate /sf:note pin escalates (pins dominate)."""
+        """A routine log + a deliberate /ren:note pin escalates (pins dominate)."""
         transcript = (
             "Spent the session fixing flaky tests and bumping a dependency.\n\n"
-            "## Pinned notes from /sf:note\n\n"
+            "## Pinned notes from /ren:note\n\n"
             "decision: going with Tailwind for the design system"
         )
         result = classify(transcript, project_name="sidecar")

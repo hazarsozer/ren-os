@@ -4,7 +4,7 @@ description: |
   Use when the solo builder wants a read-only retrospective on how their
   recent Claude Code sessions actually went — what's working, what keeps
   hindering them, and the quick wins worth taking. Triggers on the
-  /sf:insights slash command (optional --days N, default 30; optional
+  /ren:insights slash command (optional --days N, default 30; optional
   --project <name>). A collector script mines LOCAL session history
   (~/.claude transcripts + save-session summaries) and emits facts;
   the LLM synthesizes the narrative. Strictly read-only: no writes,
@@ -52,14 +52,14 @@ Solo-first (ADR-031): this is the **Cadence** layer's reflection surface. It min
 
 ## When to use this skill
 
-- Builder invokes `/sf:insights` (optionally `/sf:insights --days 14` or `/sf:insights --project sidecar`)
+- Builder invokes `/ren:insights` (optionally `/ren:insights --days 14` or `/ren:insights --project sidecar`)
 - Builder says: "how have my sessions been going", "what's slowing me down lately", "review my last month of building", "where am I losing time" — confirm scope once, then run
 
 ## When NOT to use this skill
 
-- Builder wants to consolidate the *current* session into the wiki → `/sf:wrap`
-- Builder wants to look up a specific past decision → `/sf:recall <query>`
-- Builder wants to verify the install / permissions → `/sf:doctor`
+- Builder wants to consolidate the *current* session into the wiki → `/ren:wrap`
+- Builder wants to look up a specific past decision → `/ren:recall <query>`
+- Builder wants to verify the install / permissions → `/ren:doctor`
 - Builder wants insights about a remote or shared history → out of scope; this skill is local-only and read-only
 
 ## Flags
@@ -121,6 +121,6 @@ v2 path: when richer session telemetry lands, the collector's extractors widen; 
 
 ## References
 
-- ADR-013 (Slash Command Namespacing) — `/sf:insights` uses the `/sf:` prefix
+- ADR-013 (Slash Command Namespacing) — `/ren:insights` uses the `/ren:` prefix
 - ADR-031 (Solo-First Pivot) — defines this as the Cadence-layer reflection surface
 - `references/synthesis-prompt.md` — the bounded, cited, four-section synthesis contract

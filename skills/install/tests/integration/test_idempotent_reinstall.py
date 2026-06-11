@@ -1,4 +1,4 @@
-"""Idempotent re-install — second /sf:install no-ops cleanly on a completed install."""
+"""Idempotent re-install — second /ren:install no-ops cleanly on a completed install."""
 
 from __future__ import annotations
 

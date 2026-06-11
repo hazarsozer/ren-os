@@ -51,7 +51,7 @@ ANTHROPIC_API_KEY:  ❌ not set
 
 ```
 ▶ PLUGINS
-  Startup Framework:    {status} v{version}  (installed via {marketplace-name})
+  RenOS:    {status} v{version}  (installed via {marketplace-name})
   Superpowers:          {status} v{version}
   Skill Creator:        {status}
   claude-mem:           {status} v{version}  ({worker-status})
@@ -71,7 +71,7 @@ claude-mem worker:   ❌ not running on :37777
                         → or restart your session
 
 Hooks registered:    ⚠️  SessionStart hook missing
-                        → Run /sf:update which re-registers hooks, OR /reload-plugins
+                        → Run /ren:update which re-registers hooks, OR /reload-plugins
 ```
 
 The Context Mode entry ALWAYS surfaces the ELv2 caveat — even when green — because friends sometimes forget licensing applies indefinitely.
@@ -99,13 +99,13 @@ Annotations (right-side of the line):
 
 ```
   identity.md:        1  (current: 2)   ⚠️  migration available
-                                          → Run /sf:update to apply (see CHANGELOG for v1.3 schema changes)
+                                          → Run /ren:update to apply (see CHANGELOG for v1.3 schema changes)
 
   identity.md:        1  (current: 4)   ❌  schema v1 is now beyond the N+3 deprecation window
                                           → page is READ-ONLY; the framework will not write to it.
                                           → Recovery options:
                                             (a) Restore from snapshot at ${CLAUDE_PLUGIN_DATA}/wiki-snapshots/
-                                                and step through intermediate versions via /sf:update
+                                                and step through intermediate versions via /ren:update
                                             (b) Edit identity.md manually to schema v4 (see docs/RECOVERY.md
                                                 "Schema beyond deprecation")
                                             (c) Discard if not valuable
@@ -113,7 +113,7 @@ Annotations (right-side of the line):
 
 Summary line, by precedence:
 - All page-types green → `No schema migrations pending.`
-- Any `⚠️ migration available` → `{N} page-type(s) have migrations available. Run /sf:update.`
+- Any `⚠️ migration available` → `{N} page-type(s) have migrations available. Run /ren:update.`
 - Any `❌ beyond deprecation` → `{N} page-type(s) stuck at deprecated schemas (read-only). See docs/RECOVERY.md "Schema beyond deprecation."`
 - Mixed → enumerate.
 
@@ -131,18 +131,18 @@ For `skill`: per-line annotation `(N friend-authored skills)` — distinct from 
 ▶ FRAMEWORK UPDATE
   Installed:  v{installed-version}
   Latest stable:  v{latest-stable}   {status}
-  Latest RC:      v{latest-rc} | —    ({rc-status} | subscribe to sf-marketplace-rc to receive release candidates)
+  Latest RC:      v{latest-rc} | —    ({rc-status} | subscribe to ren-os-rc to receive release candidates)
   Update channel: {stable | rc}
 ```
 
 Status:
 - `✅ up to date` (installed == latest)
 - `⚠️ update available: v{X}` (latest > installed via strict semver)
-- `❌ installed version is ahead of latest published (downgrade or unstable)` (installed > latest — should not happen via `/sf:update` normally)
+- `❌ installed version is ahead of latest published (downgrade or unstable)` (installed > latest — should not happen via `/ren:update` normally)
 - `⚠️ network failure ({error})` (gh api call failed)
 
 With `--install-mode`: section is replaced with `▶ FRAMEWORK UPDATE  ⏭️  skipped (install mode)`.
-With `--post-update`: section is replaced with `▶ FRAMEWORK UPDATE  ✅ v{version} (just installed via /sf:update)`.
+With `--post-update`: section is replaced with `▶ FRAMEWORK UPDATE  ✅ v{version} (just installed via /ren:update)`.
 
 If `userConfig.rcChannel = true`: Latest stable AND Latest RC are both checked. Otherwise only stable is checked.
 
@@ -154,11 +154,11 @@ CHANGELOG excerpt is fetched + shown when an update is available:
   CHANGELOG v1.3.0 — 2026-08-15:
     ### Added
     - new optional field `phase` in identity.md frontmatter
-    - new command /sf:audit-stack
+    - new command /ren:audit-stack
     ### Schema
     - identity.md schema 1 → 2: scripted migration
   
-  → Run /sf:update to install.
+  → Run /ren:update to install.
 ```
 
 ---

@@ -1,6 +1,7 @@
 ---
 title: "ADR-013: Slash Command Namespacing — `/sf:*` Prefix for All Framework Commands"
-status: accepted
+status: superseded
+superseded-by: "ADR-033 (2026-06-11): RenOS rebrand — command namespace /sf: → /ren:"
 date: 2026-05-28
 sunset-review: 2027-05-28
 references-pages: [context-mode, claude-mem, superpowers, ralph]
@@ -9,6 +10,8 @@ relates-to: [006-curated-stack, 008-wake-up-hook, 009-consolidate-via-wrap, 012-
 ---
 
 # ADR-013: Slash Command Namespacing — `/sf:*` Prefix for All Framework Commands
+
+> ⚠️ **SUPERSEDED by [ADR-033](033-renos-rebrand.md) (2026-06-11).** The RenOS rebrand changed the command namespace from `/sf:` to `/ren:` (plugin `name: sf → ren`). This ADR's `/sf:` references are preserved as the historical record of the original decision; the shipped surface now uses `/ren:`.
 
 ## Context
 

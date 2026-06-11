@@ -1,5 +1,5 @@
 ---
-title: "/sf:improve-skill budget tracking — shadow USD + shadow turns"
+title: "/ren:improve-skill budget tracking — shadow USD + shadow turns"
 type: skill-reference
 parent_skill: sf-improve-skill
 version: 0.1.0
@@ -53,7 +53,7 @@ The shadow USD budget needs current per-token prices. We bake them into a config
       "cache_creation": 1.25
     }
   },
-  "_notes": "Pricing tracked here per ADR-006 plugin-versioning discipline. Bumps to this file are bound to plugin minor or patch releases. If Anthropic changes pricing mid-version-cycle, /sf:doctor will warn about staleness and prompt /sf:update."
+  "_notes": "Pricing tracked here per ADR-006 plugin-versioning discipline. Bumps to this file are bound to plugin minor or patch releases. If Anthropic changes pricing mid-version-cycle, /ren:doctor will warn about staleness and prompt /ren:update."
 }
 ```
 
@@ -140,8 +140,8 @@ Anthropic announces pricing changes via their docs + CHANGELOG. Our discipline:
 
 1. Watch the Anthropic announcements channel (or set up an alert)
 2. Within 7 days of a pricing change, update `references/model-pricing.json` + bump plugin patch version
-3. `/sf:doctor` warns when `valid_as_of` is >60 days stale
-4. Friends running `/sf:update` get the new pricing; their next `/sf:improve-skill` run uses fresh data
+3. `/ren:doctor` warns when `valid_as_of` is >60 days stale
+4. Friends running `/ren:update` get the new pricing; their next `/ren:improve-skill` run uses fresh data
 
 ## Implementation note
 

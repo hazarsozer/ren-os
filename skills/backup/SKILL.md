@@ -3,11 +3,11 @@ name: backup
 description: |
   Use when the friend wants to back up their local wiki — either to a
   configured git remote (preferred) or to a local tarball (fallback). Triggers
-  on /sf:backup with optional subcommands (--setup, --tarball, --status).
+  on /ren:backup with optional subcommands (--setup, --tarball, --status).
   Per ADR-026: the framework backs up the wiki ONLY; plugin-internal state
   (claude-mem, Context Mode SQLites) is each plugin's own responsibility and
   not in scope. New-machine recovery from a git remote is handled by
-  /sf:install --restore (onboarding-2's surface), not by this skill.
+  /ren:install --restore (onboarding-2's surface), not by this skill.
 version: 0.1.0
 license: MIT
 
@@ -17,10 +17,10 @@ type: skill
 
 contract:
   required_outputs:
-    - "For /sf:backup: either a successful git push to the configured remote, OR a tarball at ~/.startup-framework/backups/wiki-<timestamp>.tar.gz"
-    - "For /sf:backup --setup: git remote 'origin' configured on the wiki repo at the provided URL"
-    - "For /sf:backup --tarball: a tarball, regardless of remote configuration"
-    - "For /sf:backup --status: a printed report including last-backup timestamp + remote URL (or 'not configured')"
+    - "For /ren:backup: either a successful git push to the configured remote, OR a tarball at ~/.startup-framework/backups/wiki-<timestamp>.tar.gz"
+    - "For /ren:backup --setup: git remote 'origin' configured on the wiki repo at the provided URL"
+    - "For /ren:backup --tarball: a tarball, regardless of remote configuration"
+    - "For /ren:backup --status: a printed report including last-backup timestamp + remote URL (or 'not configured')"
     - "Tarball retention enforced: at most TARBALL_RETENTION_KEEP (default 20) most-recent tarballs in the backups dir"
   budgets:
     turns: 3
@@ -61,24 +61,24 @@ This skill ONLY backs up the wiki. Plugin-internal state (claude-mem / Context M
 
 ## When to use this skill
 
-- Friend invokes `/sf:backup` (canonical trigger; commits + pushes if remote configured; else tarball)
-- Friend invokes `/sf:backup --setup <remote-url>` to configure a git remote for the wiki (typically a private GitHub repo)
-- Friend invokes `/sf:backup --tarball` to force a tarball even if a remote is configured (offline use, paranoia, etc.)
-- Friend invokes `/sf:backup --status` to check the wiki's backup state without performing any backup
-- `/sf:doctor` may suggest invoking this when missing-remote nag fires (per ADR-026 §"/sf:doctor integration")
+- Friend invokes `/ren:backup` (canonical trigger; commits + pushes if remote configured; else tarball)
+- Friend invokes `/ren:backup --setup <remote-url>` to configure a git remote for the wiki (typically a private GitHub repo)
+- Friend invokes `/ren:backup --tarball` to force a tarball even if a remote is configured (offline use, paranoia, etc.)
+- Friend invokes `/ren:backup --status` to check the wiki's backup state without performing any backup
+- `/ren:doctor` may suggest invoking this when missing-remote nag fires (per ADR-026 §"/ren:doctor integration")
 
 ## When NOT to use this skill
 
-- Friend wants new-machine recovery → `/sf:install --restore <url>` (onboarding-2's domain)
+- Friend wants new-machine recovery → `/ren:install --restore <url>` (onboarding-2's domain)
 - Friend wants to back up claude-mem / Context Mode SQLites → that's their plugin's responsibility per ADR-026; the framework doesn't manage plugin-internal state
-- Friend wants Activity Feed backed up → the GitHub remote IS the backup per ADR-026 §"What does NOT get backed up by /sf:backup"
+- Friend wants Activity Feed backed up → the GitHub remote IS the backup per ADR-026 §"What does NOT get backed up by /ren:backup"
 - Friend wants to push the wiki to ANY non-git destination → out of scope; we only do git push or local tarball
 
 ## Behavior by subcommand
 
-### `/sf:backup` (default)
+### `/ren:backup` (default)
 
-1. Read wiki state at `~/.startup-framework/wiki/`. Refuse if not a git repo (point at `/sf:install` to bootstrap).
+1. Read wiki state at `~/.startup-framework/wiki/`. Refuse if not a git repo (point at `/ren:install` to bootstrap).
 2. `git add -A` and commit any uncommitted changes with message `"sf:backup at <YYYY-MM-DD HH:MM:SS UTC>"`.
 3. If a remote is configured:
    - Attempt `git push`. On success → "✓ wiki backed up to <remote>".
@@ -86,25 +86,25 @@ This skill ONLY backs up the wiki. Plugin-internal state (claude-mem / Context M
    - On force-push-required (history rewrite) → refuse with a pointer to RECOVERY.md; no tarball auto-fallback (this is a user-decision moment).
 4. If no remote configured → tarball + status nag suggesting `--setup`.
 
-### `/sf:backup --setup <remote-url>`
+### `/ren:backup --setup <remote-url>`
 
 1. Validate `<remote-url>` looks like a git URL (basic shape check — defer to `git` for full validation).
 2. `cd ~/.startup-framework/wiki && git remote add origin <url>` (or `set-url` if 'origin' already exists; we let the friend override).
 3. Confirm by reading back `git remote get-url origin`.
-4. Do NOT auto-push. Friend runs `/sf:backup` separately to actually push. This split keeps "configure" idempotent and disentangles auth-failure from setup confusion.
+4. Do NOT auto-push. Friend runs `/ren:backup` separately to actually push. This split keeps "configure" idempotent and disentangles auth-failure from setup confusion.
 
-### `/sf:backup --tarball`
+### `/ren:backup --tarball`
 
 1. Read wiki state.
 2. Create `~/.startup-framework/backups/wiki-<YYYY-MM-DD-HHMMSS>.tar.gz` covering the entire wiki directory (incl. `.git/` so the tarball is a complete restore artifact).
 3. Prune to retain the most-recent `TARBALL_RETENTION_KEEP` (default 20) tarballs; older are deleted.
 4. Report path + size.
 
-### `/sf:backup --status`
+### `/ren:backup --status`
 
 Print:
 - Wiki path: `~/.startup-framework/wiki/`
-- Git remote: `<url>` or `not configured (suggest: /sf:backup --setup <url>)`
+- Git remote: `<url>` or `not configured (suggest: /ren:backup --setup <url>)`
 - Last commit: `<sha> from <date>` (or `no commits yet`)
 - Last push: `<date>` (or `never`) — computed via `git log <remote>/main --oneline -1` if remote exists
 - Tarballs: `<count>` files, oldest from `<date>`, newest from `<date>` (or `none`)
@@ -113,10 +113,10 @@ Print:
 
 | Failure | Behavior | User-visible |
 |---|---|---|
-| Wiki not a git repo | Refuse; suggest `/sf:install` to bootstrap | "Wiki at <path> is not a git repo. Run /sf:install to bootstrap." |
-| No remote configured + `/sf:backup` | Tarball fallback automatic + nag | "No remote configured. Created tarball at <path>. Configure a remote with /sf:backup --setup <url>" |
+| Wiki not a git repo | Refuse; suggest `/ren:install` to bootstrap | "Wiki at <path> is not a git repo. Run /ren:install to bootstrap." |
+| No remote configured + `/ren:backup` | Tarball fallback automatic + nag | "No remote configured. Created tarball at <path>. Configure a remote with /ren:backup --setup <url>" |
 | git push auth failure | Tarball fallback + warning | "Push failed (auth). Tarball at <path>. Check `gh auth status`." |
-| git push network failure | Tarball fallback + warning | "Push failed (network). Tarball at <path>. Retry with /sf:backup later." |
+| git push network failure | Tarball fallback + warning | "Push failed (network). Tarball at <path>. Retry with /ren:backup later." |
 | git push rejected (non-fast-forward) | Refuse force-push; surface RECOVERY.md | "Push rejected: remote diverged. See RECOVERY.md §'remote-history-rewrite' before proceeding." |
 | Tarball dir unwritable | Surface error with override hint | "Backup dir unwritable. Override via SF_BACKUP_DIR env var or fix permissions." |
 | `--setup` with bad URL shape | Refuse before touching git | "URL doesn't look like a git remote. Expected git@github.com:user/repo.git or https://..." |
@@ -135,4 +135,4 @@ The pure-logic layers are fully unit-testable. The subprocess calls (`git`, `tar
 - ADR-017 (Per-Friend Wiki Scope) — self-sync recommendation this skill operationalizes
 - `docs/RECOVERY.md` (distribution-2 shipped) — the recovery doc this skill points at on remote-history-rewrite refusal
 - `skills/sf-install/SKILL.md` — Stage 5 wiki bootstrap that creates the git repo this skill backs up
-- `skills/sf-doctor/SKILL.md` — surfaces the missing-remote nag that points friends at `/sf:backup --setup`
+- `skills/sf-doctor/SKILL.md` — surfaces the missing-remote nag that points friends at `/ren:backup --setup`

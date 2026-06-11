@@ -1,6 +1,6 @@
-# Re-Run Flow — `/sf:interview` on an existing identity.md
+# Re-Run Flow — `/ren:interview` on an existing identity.md
 
-When the friend invokes `/sf:interview` and `~/.startup-framework/wiki/identity.md` already exists, the skill switches into refresh mode. Per ADR-022 § "Re-running the interview" and the user direction "knows if there's an earlier interview file or not when the skill runs."
+When the friend invokes `/ren:interview` and `~/.startup-framework/wiki/identity.md` already exists, the skill switches into refresh mode. Per ADR-022 § "Re-running the interview" and the user direction "knows if there's an earlier interview file or not when the skill runs."
 
 ## Step 1: Detect + parse
 
@@ -103,16 +103,16 @@ Mirrors the `/revise-claude-md` approval pattern. The friend always has a chance
 ## Edge cases
 
 - **schema_version older than current** → step 1 handles migration first; user sees migration diff separately from the refresh diff.
-- **schema_version newer than current** → refuse to overwrite (the current framework version can't safely round-trip a newer schema). Recommend the friend update the framework first (`/sf:update`).
+- **schema_version newer than current** → refuse to overwrite (the current framework version can't safely round-trip a newer schema). Recommend the friend update the framework first (`/ren:update`).
 - **identity.md exists but is empty** → treat as no identity; run fresh interview (skip the refresh branch entirely).
 
 ## What the re-run flow deliberately does NOT do
 
 - It doesn't ask the friend to confirm every defaulted answer. That's what full-refresh (branch 3a) is for; non-full refresh trusts the friend's intent.
-- It doesn't auto-bump `framework_version` in the YAML. Only `updated` changes. `framework_version` is rewritten by `/sf:install` Stage 5 (it tracks the wiki skeleton's version, not per-file edits).
+- It doesn't auto-bump `framework_version` in the YAML. Only `updated` changes. `framework_version` is rewritten by `/ren:install` Stage 5 (it tracks the wiki skeleton's version, not per-file edits).
 
 ## Cross-references
 
 - ADR-022 § "Re-running the interview" — source spec
 - `output-format.md` — what gets rendered
-- `/sf:install` Stage 4 — first-time invocation path (skips this whole flow)
+- `/ren:install` Stage 4 — first-time invocation path (skips this whole flow)
