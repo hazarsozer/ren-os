@@ -1,0 +1,46 @@
+---
+title: "Routine: {{routine_name}}"
+type: routine-spec
+schema_version: 1
+framework_version: "{{framework_version}}"
+name: "{{routine_name}}"
+trigger_type: "{{trigger_type}}"
+linked_repo: "{{linked_repo}}"
+network_tier: "{{network_tier}}"
+env_secrets_ref: "{{env_secrets_ref}}"
+schedule: "{{schedule}}"
+expected_output: "{{expected_output}}"
+failure_handler: "{{failure_handler}}"
+created: "{{today}}"
+updated: "{{today}}"
+---
+
+# Routine: {{routine_name}}
+
+Documents one live cadence routine deployed via `/ren:routine-init` (ADR-034). Surfaced by the wake-up hook (every session sees which automations are live) and audited by `/ren:doctor` (network tier + quota headroom).
+
+## What it does
+
+{{expected_output}}
+
+## Trigger
+
+- **Type:** {{trigger_type}}
+- **Schedule:** {{schedule}}
+
+## Linked repo
+
+{{linked_repo}}
+
+## Safety
+
+- **Network tier:** {{network_tier}} — `trusted` = Anthropic allowlist; `full` = unrestricted egress = a prompt-injection exfiltration surface (flagged by `/ren:doctor`).
+- **Secrets:** {{env_secrets_ref}} — live in the cloud env, never the repo.
+
+## Failure handling
+
+{{failure_handler}}
+
+## Cross-run memory
+
+State trail lives in the linked repo's `state.md` + `run-log.md`, read at run start via `/ren:recall --routine .` (ADR-034 / ADR-026 pull-model write-back).
