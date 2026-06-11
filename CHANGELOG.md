@@ -20,7 +20,7 @@ Nothing yet.
 
 ---
 
-## [1.0.0] — 2026-05-30
+## [1.0.0] — 2026-05-31
 
 The first stable release — a **solo-first** framework organized under Nate Herk's **Four C's** (Context → Connections → Capabilities → Cadence): a per-builder hierarchical wiki, cache-preserving wake-up context injection, schema-versioned wiki pages, a deterministic session-consolidation loop, read-only insight + permission-audit surfaces, and a curated plugin stack.
 
@@ -34,7 +34,7 @@ The multi-user **Activity Feed was cut pre-ship** (ADR-031): the builder is solo
 - Per-builder hierarchical wiki + `wiki-skeleton/` templates (`identity.md`, master `index.md` + `log.md`, project sub-wiki taxonomy).
 
 **Connections — distribution, updates, permissions**
-- `sf-marketplace` private Claude Code marketplace (ADR-019): friends install via `/plugin marketplace add hazarsozer/sf-marketplace` + `/plugin install startup-framework@sf-marketplace`. `sf-marketplace-rc` RC channel (opt-in via `userConfig.rcChannel`).
+- `sf-marketplace` private Claude Code marketplace (ADR-019): friends install via `/plugin marketplace add hazarsozer/sf-marketplace` + `/plugin install sf@sf-marketplace`. `sf-marketplace-rc` RC channel (opt-in via `userConfig.rcChannel`).
 - `.claude-plugin/{marketplace,plugin}.json` manifests at the repo root (one-repo layout, `source: "./"`).
 - `/sf:doctor` — environment + plugin + schema + framework-update + backup verification (ADR-025 + ADR-027).
 - `/sf:doctor --permissions` — read-only permission audit ("keys on your ring"): MCP servers (name + transport + tool-key counts), `allow`/`deny`/`ask` tally, broad-grant flags, enabled plugins + hooks. Framing: **keys ≠ instructions**. Never prints secret/env/token values.
@@ -46,7 +46,7 @@ The multi-user **Activity Feed was cut pre-ship** (ADR-031): the builder is solo
 - `/sf:bootstrap-project <name>` — instantiates a project sub-wiki from the per-builder skeleton.
 - Companions: `/sf:note "..."` (pin for `/sf:wrap`), `/sf:recall "..."` (wiki query without page loads).
 - `/sf:backup` (ADR-026) — git-remote primary + tarball fallback. Flags: `--setup <remote>`, `--tarball`, `--status`.
-- **Schema-versioning machinery** (`skills/wiki-migration/`, ADR-027): `schemas.json` registers **11 page-types** (identity, project-main, project-state, project-roadmap, project-requirements, project-context, research, decision, pattern, log-entry, skill); `schemas.schema.json` + `verify.schema.json` validators; `MIGRATION_PATTERN.md` + `migrations/_template/`; snapshot retention (latest 3, `userConfig.snapshotRetain`, at `${CLAUDE_PLUGIN_DATA}/wiki-snapshots/`); predicate vocabulary v1.
+- **Schema-versioning machinery** (`skills/wiki-migration/`, ADR-027): `schemas.json` registers **15 page-types** (identity, master-index, project-index, licenses, project-main, project-state, project-roadmap, project-requirements, project-context, research, decision, pattern, log-entry, project-log-entry, skill); `schemas.schema.json` + `verify.schema.json` validators; `MIGRATION_PATTERN.md` + `migrations/_template/`; snapshot retention (latest 3, `userConfig.snapshotRetain`, at `${CLAUDE_PLUGIN_DATA}/wiki-snapshots/`); predicate vocabulary v1.
 
 **Cadence — consolidation, improvement, insight**
 - `/sf:wrap` — session-end consolidation: reads the session log + `/sf:note` pins, gates on a conservative **deterministic** signal classifier (the **F2** fix; EXPERIMENTAL, bike-method) that biases hard to `none`, never raises, lets pins dominate, and creates artifacts only for `decision`/`pattern`. **Wiki-only** (no cross-user write). The LLM classifier path ships as future-upgrade primitives.
@@ -71,7 +71,7 @@ The multi-user **Activity Feed was cut pre-ship** (ADR-031): the builder is solo
 - License mix surfaced in `LICENSES.md`; friends explicitly informed of Context Mode's ELv2 SaaS restriction.
 
 ### Schema
-- All **11 page-types** start at schema version 1, supported_from 1, no migrations. Future MINOR/MAJOR releases will add migrations here. (The `feed-entry` page-type was removed pre-ship with the Activity Feed — RETIRED, not migrated, per ADR-031 + ADR-027.)
+- All **15 page-types** start at schema version 1, supported_from 1, no migrations. Future MINOR/MAJOR releases will add migrations here. (The `feed-entry` page-type was removed pre-ship with the Activity Feed — RETIRED, not migrated, per ADR-031 + ADR-027.)
 
 [Unreleased]: https://github.com/hazarsozer/sf-marketplace/compare/v1.0.0...HEAD
 [1.0.0]: https://github.com/hazarsozer/sf-marketplace/releases/tag/v1.0.0

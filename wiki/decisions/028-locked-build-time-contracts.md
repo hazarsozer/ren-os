@@ -43,7 +43,7 @@ The install-state checkpoint (`install-state.json`) is the only piece of friend 
 
 ### 2. Marketplace name: `sf-marketplace`
 
-The private GitHub plugin marketplace repo is named `sf-marketplace` (kebab-case, public-facing in `/plugin install startup-framework@sf-marketplace`). Verified against CC's reserved-name blocklist — clean.
+The private GitHub plugin marketplace repo is named `sf-marketplace` (kebab-case, public-facing in `/plugin install sf@sf-marketplace`). Verified against CC's reserved-name blocklist — clean.
 
 RC channel uses a separate repo: `sf-marketplace-rc` (per § 6 below).
 
@@ -116,8 +116,8 @@ All page-types start at `current: 1, supported_from: 1, migrations: []` for V1.0
 
 Per CC docs (`code.claude.com/docs/en/plugin-marketplaces` § Release channels), the release-candidate pattern uses **two separate marketplace repos**, not branches of one:
 
-- `sf-marketplace` (stable; friends pin via `/plugin install startup-framework@sf-marketplace`)
-- `sf-marketplace-rc` (pre-release; friends opt-in via `/plugin install startup-framework@sf-marketplace-rc`)
+- `sf-marketplace` (stable; friends pin via `/plugin install sf@sf-marketplace`)
+- `sf-marketplace-rc` (pre-release; friends opt-in via `/plugin install sf@sf-marketplace-rc`)
 
 Same friend-collaborator set on both (read access). Promotion is a manual maintainer-driven cherry-pick from rc → stable per `docs/RELEASING.md`; a draft-PR-on-tag GitHub Action template is shipped at `.github/workflows/promote-rc-draft.yml.template` for maintainers who want to wire it up.
 

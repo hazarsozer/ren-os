@@ -33,7 +33,7 @@ You have a new machine. Your old wiki is gone.
 # 1. Install Claude Code on the new machine
 # 2. Install the framework
 /plugin marketplace add <org>/sf-marketplace
-/plugin install startup-framework@sf-marketplace
+/plugin install sf@sf-marketplace
 
 # 3. Restore on install
 /sf:install --restore <your-wiki-remote-url>
@@ -77,10 +77,10 @@ tar -xzf ~/.startup-framework/backups/wiki-<latest>.tar.gz -C ~/.startup-framewo
 
 ```bash
 ls ~/.claude/plugins/data/ | grep startup-framework
-# typically: startup-framework-sf-marketplace
-ls ~/.claude/plugins/data/startup-framework-sf-marketplace/wiki-snapshots/
+# typically: sf-sf-marketplace
+ls ~/.claude/plugins/data/sf-sf-marketplace/wiki-snapshots/
 # pick the most recent
-cp -a ~/.claude/plugins/data/startup-framework-sf-marketplace/wiki-snapshots/<latest>/. ~/.startup-framework/wiki/
+cp -a ~/.claude/plugins/data/sf-sf-marketplace/wiki-snapshots/<latest>/. ~/.startup-framework/wiki/
 ```
 
 ---
@@ -92,14 +92,14 @@ You ran `/sf:update`, approved the diffs, but something feels wrong — a projec
 **First, check the snapshot.** Every `/sf:update` snapshots before migrating (per ADR-027). Locate the latest:
 
 ```bash
-ls -lt ~/.claude/plugins/data/startup-framework-sf-marketplace/wiki-snapshots/
+ls -lt ~/.claude/plugins/data/sf-sf-marketplace/wiki-snapshots/
 ```
 
 The most recent directory contains your wiki state immediately before the last `/sf:update`. To restore the whole wiki:
 
 ```bash
 # Bash one-liner. Replace <latest> with the actual snapshot dir name.
-SNAP=~/.claude/plugins/data/startup-framework-sf-marketplace/wiki-snapshots/<latest>
+SNAP=~/.claude/plugins/data/sf-sf-marketplace/wiki-snapshots/<latest>
 # Optional: tarball the current (broken) state in case you want to inspect it later
 tar -czf ~/.startup-framework/backups/wiki-post-update-broken-$(date -u +%Y%m%dT%H%M%SZ).tar.gz -C ~/.startup-framework wiki
 # Restore
@@ -112,7 +112,7 @@ cp -a "$SNAP" ~/.startup-framework/wiki
 To restore a single page only:
 
 ```bash
-SNAP=~/.claude/plugins/data/startup-framework-sf-marketplace/wiki-snapshots/<latest>
+SNAP=~/.claude/plugins/data/sf-sf-marketplace/wiki-snapshots/<latest>
 cp "$SNAP/identity.md" ~/.startup-framework/wiki/identity.md   # whatever the broken file is
 /sf:doctor
 ```
@@ -167,7 +167,7 @@ This happens if you skipped several `/sf:update`s and crossed the deprecation th
 If you have a snapshot from before you crossed the threshold:
 
 ```bash
-SNAP=~/.claude/plugins/data/startup-framework-sf-marketplace/wiki-snapshots/<old-snapshot>
+SNAP=~/.claude/plugins/data/sf-sf-marketplace/wiki-snapshots/<old-snapshot>
 # Manually inspect to confirm the page is at an intermediate schema
 grep '^schema_version:' "$SNAP/identity.md"
 # Restore the single page

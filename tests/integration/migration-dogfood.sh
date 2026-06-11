@@ -134,7 +134,7 @@ pass "captured pre-migration hash: $ORIGINAL_HASH"
 step "Step 1 — snapshot.sh creates pre-migration snapshot"
 
 SNAP_PATH="$(SF_WIKI_ROOT="$WIKI" CLAUDE_PLUGIN_DATA="$SNAPDIR" CLAUDE_PLUGIN_OPTION_SNAPSHOTRETAIN=3 \
-  "$REPO_ROOT/skills/sf-update/scripts/snapshot.sh" 1.0.0)"
+  "$REPO_ROOT/skills/update/scripts/snapshot.sh" 1.0.0)"
 
 if [[ -d "$SNAP_PATH" && -f "$SNAP_PATH/identity.md" ]]; then
   pass "snapshot created at $SNAP_PATH"
@@ -244,7 +244,7 @@ step "Step 5 — restore.sh --whole reverts wiki from snapshot"
 
 set +e
 RESTORE_OUT="$(SF_WIKI_ROOT="$WIKI" CLAUDE_PLUGIN_DATA="$SNAPDIR" \
-  "$REPO_ROOT/skills/sf-update/scripts/restore.sh" --whole "$SNAP_PATH" 2>&1)"
+  "$REPO_ROOT/skills/update/scripts/restore.sh" --whole "$SNAP_PATH" 2>&1)"
 RESTORE_RC=$?
 set -e
 

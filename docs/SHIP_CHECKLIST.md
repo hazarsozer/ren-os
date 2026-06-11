@@ -22,8 +22,8 @@ collides on duplicate test-module import names, so always run per-module:
 
 ```bash
 for m in hooks/wake-up scripts \
-         skills/sf-backup skills/sf-improve-skill \
-         skills/sf-install skills/sf-note skills/sf-recall skills/sf-wrap; do
+         skills/backup skills/improve-skill \
+         skills/install skills/note skills/recall skills/wrap; do
   ( cd "$m" && python3 -m pytest -q ) || echo "FAIL: $m"
 done
 ```
@@ -34,16 +34,16 @@ done
 Then the distribution shell suites + the version-compare self-test:
 
 ```bash
-bash skills/sf-doctor/scripts/tests/test_check_schemas.sh
-bash skills/sf-doctor/scripts/tests/test_check_plugins.sh
-bash skills/sf-update/scripts/tests/test_snapshot_inode_safety.sh
-bash skills/sf-update/scripts/version-compare.sh --self-test
+bash skills/doctor/scripts/tests/test_check_schemas.sh
+bash skills/doctor/scripts/tests/test_check_plugins.sh
+bash skills/update/scripts/tests/test_snapshot_inode_safety.sh
+bash skills/update/scripts/version-compare.sh --self-test
 ```
 
 Expected: every command exits 0; final lines report `N passed` or `N/N PASS`.
 
 > **Not pytest modules** (don't run `pytest` on these — it exits 4 "no tests collected"):
-> `skills/sf-bootstrap-project` and `skills/sf-interview` are validated by their
+> `skills/bootstrap-project` and `skills/interview` are validated by their
 > `eval/eval.json` fixtures, and `wiki-skeleton/` is a standalone lint, not a pytest suite.
 
 - ☐ all module pytest suites green
@@ -242,7 +242,7 @@ scripts/publish.sh
 
 # In a fresh directory or on the secondary device:
 /plugin marketplace add hazarsozer/sf-marketplace
-/plugin install startup-framework@sf-marketplace
+/plugin install sf@sf-marketplace
 /reload-plugins
 /sf:install
 ```
@@ -288,7 +288,7 @@ SF_WIKI_ROOT=/tmp/test-wiki bash tests/integration/migration-dogfood.sh
 Only after every box above is ☑.
 
 > ⚠️ **DATE FOOT-GUN — read before tagging.** `CHANGELOG.md`'s `## [1.0.0]` line is pre-stamped
-> **2026-05-29**. If you are tagging on any **later** day, **edit that date to today first** — otherwise
+> **2026-05-31**. If you are tagging on any **later** day, **edit that date to today first** — otherwise
 > `/sf:doctor`'s update-notification text (and `release.yml`'s CHANGELOG-date assertion) will carry a
 > wrong, past date. One line; easy to forget; checked again in the boxes below.
 
@@ -311,7 +311,7 @@ scripts/publish.sh             # builds + verifies; prints the exact push comman
 #   git -C <snapshot> push --force origin HEAD:main
 ```
 
-- ☐ `CHANGELOG.md`'s `## [1.0.0]` date == today's tag date (it's pre-stamped 2026-05-29 — **update it if the tag slips to a later day** so `/sf:doctor`'s notification text is accurate)
+- ☐ `CHANGELOG.md`'s `## [1.0.0]` date == today's tag date (it's pre-stamped 2026-05-31 — **update it if the tag slips to a later day** so `/sf:doctor`'s notification text is accurate)
 - ☐ snapshot built + all guards green
 - ☐ orphan commit force-pushed to `sf-marketplace` (single commit, no tags)
 - ☐ `/plugin marketplace update sf-marketplace` on a friend machine surfaces v1.0.0

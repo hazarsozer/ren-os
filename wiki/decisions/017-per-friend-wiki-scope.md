@@ -108,7 +108,7 @@ Concretely:
 
 1. **Wiki schema changes are versioned.** Each wiki page's frontmatter includes a `framework_version` or `schema_version` field. New framework versions know how to read older schemas.
 
-2. **Breaking changes require migration.** When the framework version bumps in a way that changes wiki schema, `/sf:install` (or a separate `/sf:migrate-wiki` command) walks the friend's existing wiki and migrates pages to the new schema. Old pages stay readable; new fields added with sensible defaults.
+2. **Breaking changes require migration.** When the framework version bumps in a way that changes wiki schema, `/sf:install` (or a separate `/sf:wiki-migration` command) walks the friend's existing wiki and migrates pages to the new schema. Old pages stay readable; new fields added with sensible defaults.
 
 3. **Deprecation period.** A field marked deprecated in framework version N stays readable through versions N+1 and N+2; only removed in N+3 (or later). Friends have time to migrate.
 

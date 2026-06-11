@@ -74,7 +74,7 @@ profiles:
 
   project:
     description: "Files stamped into wiki/projects/<project>/ by /sf:bootstrap-project"
-    # The per-project taxonomy lives in skills/sf-bootstrap-project/ (per ADR-014).
+    # The per-project taxonomy lives in skills/bootstrap-project/ (per ADR-014).
     # This profile is reserved for future shared per-project files. v1: empty.
     # When sf-bootstrap-project ships, its template set MAY be migrated here so
     # both consumers share a single manifest.

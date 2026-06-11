@@ -53,7 +53,7 @@
         "description": {"type": "string", "minLength": 10},
         "owner_module": {
           "type": "string",
-          "enum": ["sf-onboarding", "sf-lifecycle", "sf-feed", "sf-distribution", "universal"],
+          "enum": ["sf-onboarding", "sf-lifecycle", "sf-distribution", "universal"],
           "description": "Which build-team module owns the writer/template for this page type. 'universal' means friend-authored with no single owning module."
         },
         "adr_refs": {

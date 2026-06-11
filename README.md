@@ -54,7 +54,7 @@ snapshot-before-migrate and are always opt-in.
 
 ## Requirements
 
-- **Claude Code** ≥ 2.1.154 (run `claude --version`; update with `npm i -g @anthropic-ai/claude-code@latest` or `brew upgrade claude-code`).
+- **Claude Code** ≥ 1.0.33 (run `claude --version`; update with `npm i -g @anthropic-ai/claude-code@latest` or `brew upgrade claude-code`).
 - **`gh`** (GitHub CLI), authenticated (`gh auth status`) — used by `/sf:doctor`'s update check and `/sf:update` to read the marketplace. Optional unless you want update notifications.
 - **`python3`** (3.10+) — the wake-up hook and several skills are Python (standard library only).
 
@@ -66,14 +66,14 @@ snapshot-before-migrate and are always opt-in.
 
 ```text
 /plugin marketplace add hazarsozer/sf-marketplace
-/plugin install startup-framework@sf-marketplace
+/plugin install sf@sf-marketplace
 /reload-plugins
 /sf:install
 ```
 
 1. **`/plugin marketplace add hazarsozer/sf-marketplace`** — registers the private marketplace
    (ask the maintainer to add you as a read collaborator first).
-2. **`/plugin install startup-framework@sf-marketplace`** — installs the plugin.
+2. **`/plugin install sf@sf-marketplace`** — installs the plugin.
 3. **`/reload-plugins`** — activates it in the current session.
 4. **`/sf:install`** — runs the 7-stage onboarding: environment check → required plugins →
    conditional/optional plugins → identity → wiki skeleton → `/sf:doctor` verification →

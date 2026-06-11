@@ -79,7 +79,7 @@ jobs:
           while IFS= read -r f; do bash -n "$f"; done < <(find skills hooks -name '*.sh' -type f 2>/dev/null)
           echo "  OK: all shell scripts pass bash -n"
           # Semver self-test
-          bash skills/sf-update/scripts/version-compare.sh --self-test
+          bash skills/update/scripts/version-compare.sh --self-test
 
   release:
     name: create GitHub Release
@@ -122,17 +122,3 @@ jobs:
             --notes-file /tmp/changelog_excerpt.md \
             $PRERELEASE_FLAG
 
-      - name: Print Activity Feed announcement template
-        env:
-          TAG_VER: ${{ needs.preflight.outputs.tag-version }}
-          IS_RC: ${{ needs.preflight.outputs.is-rc }}
-        run: |
-          TAG="${GITHUB_REF#refs/tags/}"
-          NOW=$(date -u +'%Y-%m-%d %H:%M')
-          echo "Post this in your <handle>.log.md in the activity-feed repo:"
-          echo ""
-          if [[ "$IS_RC" == "true" ]]; then
-            echo "## [$NOW] release | <handle> | framework $TAG (release candidate) shipped — see CHANGELOG; dogfooding"
-          else
-            echo "## [$NOW] release | <handle> | framework $TAG stable shipped — see CHANGELOG"
-          fi

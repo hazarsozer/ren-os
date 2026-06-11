@@ -195,12 +195,12 @@ def validate_handle(value: str) -> str:
     The handle is load-bearing for filesystem paths and git commit messages, so a
     malformed value is a path-traversal vector (M2/L7). We reject rather than
     sanitize-and-fall-back: the handle is identity and must be correct, not silently
-    rewritten.
+    rewritten. Also caps length at 50 characters to bound path/commit-message growth.
     """
-    if not isinstance(value, str) or not HANDLE_RE.match(value):
+    if not isinstance(value, str) or len(value) > 50 or not HANDLE_RE.match(value):
         raise InvalidHandleError(
             f"handle {value!r} is invalid; it must match ^[a-z][a-z0-9-]*$ "
-            "(a lowercase letter, then lowercase letters/digits/hyphens). "
+            "(a lowercase letter, then lowercase letters/digits/hyphens), max 50 characters. "
             "Run /sf:interview to set a valid handle."
         )
     return value
@@ -265,17 +265,19 @@ def _parse_field_from_frontmatter(text: str, field: str) -> str | None:
     if not lines or lines[0].strip() != "---":
         return None
     prefix = f"{field}:"
+    found: str | None = None
     for line in lines[1:]:
         stripped = line.strip()
         if stripped == "---":
-            return None
-        if stripped.startswith(prefix):
+            return found  # closing fence reached
+        if found is None and stripped.startswith(prefix):
             value = stripped[len(prefix):].strip()
             if value.startswith('"') and value.endswith('"'):
                 value = value[1:-1]
             elif value.startswith("'") and value.endswith("'"):
                 value = value[1:-1]
-            return value or None
+            found = value or None
+    # No closing fence: the block is unterminated, so any match was in the body.
     return None
 
 

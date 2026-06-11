@@ -32,7 +32,7 @@ The Startup Framework's first ship. A private Claude Code framework for a friend
 
 - **6 curated plugins** — Superpowers, Skill Creator, claude-mem, Context Mode, context7, claude-md-management. One conditional plugin (Frontend Design). One documented-not-bundled (Ralph).
 - **Solo hierarchical wiki** — your design history, lives on your machine, optional self-sync via your own git remote.
-- **Schema-versioned wiki pages** — 16 page-types registered at schema v1. Future versions ship migrations; your wiki stays readable.
+- **Schema-versioned wiki pages** — 15 page-types registered at schema v1. Future versions ship migrations; your wiki stays readable.
 - **Self-improving skills** — `/sf:improve-skill` runs the Karpathy auto-research loop with four safety primitives (per ADR-012).
 - **One-command install** — `/sf:install` walks 7 stages in ~10 minutes.
 - **One-command verify** — `/sf:doctor` reports env + plugins + schemas + update + backup status in one screen.
@@ -42,7 +42,7 @@ The Startup Framework's first ship. A private Claude Code framework for a friend
 
 ```
 /plugin marketplace add <org>/sf-marketplace
-/plugin install startup-framework@sf-marketplace
+/plugin install sf@sf-marketplace
 /sf:install
 ```
 
