@@ -10,6 +10,18 @@
 
 ---
 
+## Status log
+
+- **2026-06-11 — F1 DONE + merged.** Discovered (via worktree detection) that Plan B (v1.0
+  remediation) was **already executed** — Phases 1–4, 36 reviewed commits — on the
+  `fix/v1-remediation` worktree, and never merged. The earlier grounding mis-read un-ticked
+  checkboxes on `feat/project-ingest` as "unstarted." Merged `fix/v1-remediation` →
+  `feat/project-ingest` (`9555a2d`, conflict-free); **454 unit + 30 integration tests green**,
+  `plugin validate --strict` ✔. F1's `/sf:` namespace fix + all correctness/security fixes are now on
+  the dev branch. **Remaining F1 = Phase 5 only** (re-publish, human-gated, no version bump).
+  **Lesson:** verify plan status across *all* branches/worktrees, never just checkbox state on the
+  current branch — apply this to Plan A / C1 before executing it.
+
 ## Thesis (recap)
 
 An **open-source second-brain OS for Claude Code**: a governable, compounding **wiki as the single
@@ -39,9 +51,10 @@ roadmap is that decomposition. The actual code lands via the per-slice plans nam
   `lib/sf_paths.py` are the shared infra.
 - **Namespace defect (confirmed):** `plugin.json` `name` is `startup-framework`, so shipped commands
   are `/startup-framework:sf-wrap`, **not** the documented `/sf:wrap`. Resolved in F1.
-- **Plan B — v1.0 remediation** (`docs/superpowers/plans/2026-05-31-v1-remediation.md`): written,
-  **0/108 executed**, **~80% still valid** under the pivot (correctness + namespace rename + doc
-  drift). Only Task 2.8 is wasted → folded into F1's positioning task.
+- **Plan B — v1.0 remediation** (`docs/superpowers/plans/2026-05-31-v1-remediation.md`): **EXECUTED**
+  (Phases 1–4) on `fix/v1-remediation`, **merged 2026-06-11** (`9555a2d`). The checkboxes in the plan
+  file were never ticked — which is why the initial grounding wrongly reported "0/108, unstarted."
+  Outcome report: `docs/superpowers/2026-05-31-v1-remediation-report.md`.
 - **Plan A — project-ingest** (`docs/superpowers/plans/2026-05-31-project-ingest.md`): written,
   **0/64 executed**, **fully pivot-aligned** — its `scan.py` is the host for the code-map (C2) and
   dependency-map (C5). The pivot *enhances* it; nothing is wasted.
@@ -54,9 +67,9 @@ roadmap is that decomposition. The actual code lands via the per-slice plans nam
 
 | ID | Slice | Pillar(s) | Source / target | Depends on | ADRs (file/amend) | Status |
 |----|-------|-----------|-----------------|------------|-------------------|--------|
-| **F1** | Foundation + rename | hygiene | Plan B (rescoped) + `2026-06-11-f1-foundation-rename.md` | — | resolve **013** (namespace=`sf`) | **Plan written — ready to execute** |
+| **F1** | Foundation + rename | hygiene | Plan B (executed) + `2026-06-11-f1-foundation-rename.md` | — | resolve **013** (namespace=`sf`) | ✅ **DONE — merged 2026-06-11** (`9555a2d`); Phase 5 publish deferred |
 | **A1** | Cross-cutting ADR pass | architecture | new (ADR writes) | F1 | new **cadence** ADR; new **git-write-back** ADR; amend **014/027** (page-types) | Not started |
-| **C1** | Project Ingest | P1 (moat) | Plan A (ready) | F1 | **032** (already in Plan A) | **Plan written — ready to execute** |
+| **C1** | Project Ingest | P1 (moat) | Plan A (ready) | F1 | **032** (already in Plan A) | ⚠️ **Verify true status across worktrees first** (per F1 lesson), then execute |
 | **C2** | Code-map context layer | P6 | new — built into C1's `scan.py` | C1 | amend **008** (token budget) | Not started |
 | **C3** | Compounding model | P4 | new — repositions `sf-wrap/note/recall` | F1 (+ A1) | amend **009** (scheduled vs manual), **014**, **027** | Not started |
 | **C4** | Cadence-as-glue | P3 (headline) | new skills | A1 | new **cadence** ADR; new **write-back** ADR | Not started |

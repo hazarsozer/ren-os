@@ -4,6 +4,19 @@
 > or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`)
 > syntax for tracking.
 
+> ## ✅ STATUS: ALREADY EXECUTED — SUPERSEDED (2026-06-11)
+> **F1 was already built before this plan doc was authored.** Plan B (`2026-05-31-v1-remediation.md`)
+> was executed Phases 1–4 on the `fix/v1-remediation` worktree (36 reviewed commits via
+> subagent-driven-development + security + Opus audit), then **merged into `feat/project-ingest` on
+> 2026-06-11** (`9555a2d`) — 454 unit + 30 integration tests green, `plugin validate --strict` ✔. The
+> `/sf:` namespace fix and all correctness/security fixes are live on the dev branch. Outcome report:
+> `docs/superpowers/2026-05-31-v1-remediation-report.md`.
+>
+> **Remaining:** Phase 5 only (re-publish — human-gated, **no version bump**). The DELTA-2 positioning
+> reframe below is now **optional/stale** (the manifests were already renamed + reframed solo-first;
+> its line-diffs no longer match) — fold it into the deferred product rebrand. This document is kept as
+> the historical re-scope record.
+
 **Goal:** Make the shipped v1.0 plugin correct, renamed to the working `/sf:` command namespace, and
 repositioned toward the second-brain-OS framing — the foundation every later rebuild slice builds on.
 
