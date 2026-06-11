@@ -29,6 +29,13 @@
   `plugin validate --strict` ✔. **ADR-033** supersedes ADR-013. This **completes F1's rename intent** —
   done before the first re-publish, so `/ren:` is the only public command surface users ever see.
 
+- **2026-06-11 — A1 DONE.** Filed **ADR-034: Cadence as Glue over Native Primitives** (net-new — the
+  framework had zero cadence ADRs). Binds the cadence architecture: no framework scheduler/daemon
+  (ADR-003); the `/loop`/Cron/`/goal`/Cloud-Routines ladder + decision matrix; git pull-model write-back
+  for cloud routines (ADR-026); the `ren-routine-init` + failure-footer + `routine-spec`-page-type glue
+  surface; plan-aware permission safety. **Unblocks C4** (the cadence build). The instincts/hot page-type
+  (Pillar 4) is deferred to C3's task 1.
+
 ## Thesis (recap)
 
 An **open-source second-brain OS for Claude Code**: a governable, compounding **wiki as the single
@@ -75,7 +82,7 @@ roadmap is that decomposition. The actual code lands via the per-slice plans nam
 | ID | Slice | Pillar(s) | Source / target | Depends on | ADRs (file/amend) | Status |
 |----|-------|-----------|-----------------|------------|-------------------|--------|
 | **F1** | Foundation + rename | hygiene | Plan B (executed) + `2026-06-11-f1-foundation-rename.md` | — | resolve **013** (namespace=`sf`) | ✅ **DONE — merged 2026-06-11** (`9555a2d`); Phase 5 publish deferred |
-| **A1** | Cross-cutting ADR pass | architecture | new (ADR writes) | F1 | new **cadence** ADR; new **git-write-back** ADR; amend **014/027** (page-types) | Not started |
+| **A1** | Cross-cutting ADR pass | architecture | new (ADR writes) | F1 | new **cadence** ADR; new **git-write-back** ADR; amend **014/027** (page-types) | ✅ **DONE 2026-06-11** — **ADR-034** (cadence-as-glue folds in write-back + `routine-spec`); instincts page-type → C3 task 1 |
 | **C1** | Project Ingest | P1 (moat) | Plan A (ready) | F1 | **032** (already in Plan A) | ⚠️ **Verify true status across worktrees first** (per F1 lesson), then execute |
 | **C2** | Code-map context layer | P6 | new — built into C1's `scan.py` | C1 | amend **008** (token budget) | Not started |
 | **C3** | Compounding model | P4 | new — repositions `sf-wrap/note/recall` | F1 (+ A1) | amend **009** (scheduled vs manual), **014**, **027** | Not started |
