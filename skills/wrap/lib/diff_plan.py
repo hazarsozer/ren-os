@@ -316,7 +316,7 @@ def compose_diff_plan(
     summary_line: str,
 ) -> DiffPlan:
     """
-    Compose the full DiffPlan for a /sf:wrap invocation.
+    Compose the full DiffPlan for a /ren:wrap invocation.
 
     Per references/wiki-page-mapping.md:
       - CONTEXT.md always rewritten (if active project)

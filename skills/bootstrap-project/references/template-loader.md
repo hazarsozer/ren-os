@@ -100,7 +100,7 @@ Triggered when the target root already contains some (or all) of the planned fil
 
 ## Why a single loader
 
-Two skills (sf-install Stage 5, sf-bootstrap-project) and one future skill (sf-install's `/sf:wiki-migration`) need the same write semantics. Diverging implementations cause subtle drift — additive-diff turning into overwrite, placeholder pattern changes, write-rule meanings drifting. One spec, one set of fixtures, one set of eval assertions.
+Two skills (sf-install Stage 5, sf-bootstrap-project) and one future skill (sf-install's `/ren:wiki-migration`) need the same write semantics. Diverging implementations cause subtle drift — additive-diff turning into overwrite, placeholder pattern changes, write-rule meanings drifting. One spec, one set of fixtures, one set of eval assertions.
 
 When the loader's contract changes, bump `wiki-skeleton/manifest.yaml`'s `schema_version` and document the change in this file's "Revision history" below.
 

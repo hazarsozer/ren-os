@@ -1,5 +1,5 @@
 ---
-title: "/sf:wrap signal-label → wiki-page diff-plan mapping"
+title: "/ren:wrap signal-label → wiki-page diff-plan mapping"
 type: skill-reference
 parent_skill: sf-wrap
 version: 0.1.0

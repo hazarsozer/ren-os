@@ -1,5 +1,5 @@
 """
-sf-backup library — internal implementation for /sf:backup.
+sf-backup library — internal implementation for /ren:backup.
 
 Per ADR-026: wiki-only backup; git push primary, tarball fallback. Plugin-
 internal state (claude-mem/Context Mode SQLites) explicitly out of scope.
@@ -250,7 +250,7 @@ def setup_remote(
             success=False,
             method="setup",
             path_or_remote=str(wiki_root),
-            message=f"Wiki at {wiki_root} is not a git repo. Run /sf:install to bootstrap.",
+            message=f"Wiki at {wiki_root} is not a git repo. Run /ren:install to bootstrap.",
             error="not-a-git-repo",
         )
 
@@ -286,7 +286,7 @@ def setup_remote(
         success=True,
         method="setup",
         path_or_remote=remote_url,
-        message=f"Remote {remote_name!r} {verb} to {remote_url}. Run /sf:backup to push.",
+        message=f"Remote {remote_name!r} {verb} to {remote_url}. Run /ren:backup to push.",
     )
 
 
@@ -485,7 +485,7 @@ def backup(
             success=False,
             method="skipped",
             path_or_remote=str(wiki_root),
-            message=f"Wiki at {wiki_root} is not a git repo. Run /sf:install to bootstrap.",
+            message=f"Wiki at {wiki_root} is not a git repo. Run /ren:install to bootstrap.",
             error="not-a-git-repo",
         )
 

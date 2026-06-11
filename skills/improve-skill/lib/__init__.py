@@ -1,5 +1,5 @@
 """
-sf-improve-skill library — internal implementation for /sf:improve-skill.
+sf-improve-skill library — internal implementation for /ren:improve-skill.
 
 Public entry point: `improve_skill(args: ImproveSkillArgs) -> ImproveSkillResult`.
 
@@ -131,7 +131,7 @@ def improve_skill(
     cwd: Path | None = None,
 ) -> ImproveSkillResult:
     """
-    Execute the /sf:improve-skill Karpathy loop.
+    Execute the /ren:improve-skill Karpathy loop.
 
     Per references/karpathy-loop.md + references/eval-runner.md. Composes
     preflight + git_mechanics + budget + eval_runner. The two LLM-dependent

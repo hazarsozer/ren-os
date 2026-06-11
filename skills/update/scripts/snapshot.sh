@@ -21,7 +21,7 @@ set -euo pipefail
 
 FROM_VER="${1:-unknown}"
 WIKI_ROOT="${SF_WIKI_ROOT:-${CLAUDE_PLUGIN_OPTION_WIKIROOT:-$HOME/.startup-framework/wiki}}"
-PLUGIN_DATA="${CLAUDE_PLUGIN_DATA:-$HOME/.claude/plugins/data/sf-sf-marketplace}"
+PLUGIN_DATA="${CLAUDE_PLUGIN_DATA:-$HOME/.claude/plugins/data/ren-ren-os}"
 SNAPSHOT_BASE="${PLUGIN_DATA}/wiki-snapshots"
 RETAIN="${CLAUDE_PLUGIN_OPTION_SNAPSHOTRETAIN:-3}"
 

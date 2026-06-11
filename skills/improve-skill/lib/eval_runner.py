@@ -115,7 +115,7 @@ def load_eval_spec(skill_path: Path) -> EvalSpec:
     if not isinstance(raw_tests, list):
         raise ValueError(
             f"{eval_path}: 'tests' must be a list per ADR-011. "
-            "Did pre-flight pass? Re-run with /sf:improve-skill pre-flight to surface the violation."
+            "Did pre-flight pass? Re-run with /ren:improve-skill pre-flight to surface the violation."
         )
 
     tests: list[EvalTest] = []

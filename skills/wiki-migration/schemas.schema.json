@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://startup-framework.local/schemas/schemas.schema.json",
   "title": "Schema-Version Registry",
-  "description": "JSON Schema for skills/wiki-migration/schemas.json (per ADR-027). Validates the canonical page-type registry the framework uses to compute schema drift in /sf:doctor and migration chains in /sf:update.",
+  "description": "JSON Schema for skills/wiki-migration/schemas.json (per ADR-027). Validates the canonical page-type registry the framework uses to compute schema drift in /ren:doctor and migration chains in /ren:update.",
   "type": "object",
   "required": ["framework_version", "page_types"],
   "additionalProperties": false,
@@ -68,7 +68,7 @@
             "pattern": "^[0-9]+-to-[0-9]+$",
             "description": "Migration directory basename (e.g. '1-to-2'). Each must exist as skills/wiki-migration/migrations/<page-type>-<basename>/."
           },
-          "description": "Ordered list of available migrations for this page type. /sf:update composes the chain from these. Element N takes schema N → N+1."
+          "description": "Ordered list of available migrations for this page type. /ren:update composes the chain from these. Element N takes schema N → N+1."
         }
       },
       "allOf": [

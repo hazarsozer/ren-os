@@ -1,7 +1,7 @@
 ---
 name: interview
 description: |
-  Use when the friend invokes /sf:interview, or when /sf:install Stage 4
+  Use when the friend invokes /ren:interview, or when /ren:install Stage 4
   needs to run the identity bootstrap. Conducts an AI-driven, ~17-18
   question interview across 5 sections (About you / Working style / Tech
   preferences / Opinions+non-goals / Contribution) and writes
@@ -46,17 +46,17 @@ references_on_demand:
 
 # sf-interview
 
-Friend's identity-bootstrap interview. Runs once at install, re-runnable anytime via `/sf:interview`. Per ADR-022.
+Friend's identity-bootstrap interview. Runs once at install, re-runnable anytime via `/ren:interview`. Per ADR-022.
 
 ## When to use this skill
 
-- Friend invokes `/sf:interview` (canonical trigger).
-- `/sf:install` Stage 4 invokes this skill as a sub-step.
+- Friend invokes `/ren:interview` (canonical trigger).
+- `/ren:install` Stage 4 invokes this skill as a sub-step.
 - Friend says "let's update my identity" or "I want to refresh my preferences" — confirm and run.
 
 ## When NOT to use this skill
 
-- The friend's wiki at `~/.startup-framework/wiki/` doesn't exist yet. Refuse and direct to `/sf:install` (Stage 5 creates the wiki skeleton; this skill writes inside it).
+- The friend's wiki at `~/.startup-framework/wiki/` doesn't exist yet. Refuse and direct to `/ren:install` (Stage 5 creates the wiki skeleton; this skill writes inside it).
 - The friend wants to edit ONE field. Suggest direct YAML edit of `~/.startup-framework/wiki/identity.md` — the interview is for full passes or section-by-section refreshes, not single-field churn.
 
 ## How to use this skill
@@ -82,7 +82,7 @@ Load `references/question-template.md` for the full question list. Five sections
 
 Per question, use the input strategy noted in `references/ask-user-question-pagination.md`. The strategies are: native AskUserQuestion (≤4 options), pagination (split into two prompts), category cascade (two-stage drill), combine (collapse two semantic axes into one), open-ended fallback (always-offered escape hatch on multi-select).
 
-**Handle prepopulation (Stage-4 invocation case):** when `/sf:install` Stage 4 runs this skill, the orchestrator has already collected a tentative handle in its Stage 3 mini-prompt. The install-state checkpoint surfaces it via `proposed_handle`. The interview pre-fills Q1's handle answer with that value and asks the friend to confirm or change.
+**Handle prepopulation (Stage-4 invocation case):** when `/ren:install` Stage 4 runs this skill, the orchestrator has already collected a tentative handle in its Stage 3 mini-prompt. The install-state checkpoint surfaces it via `proposed_handle`. The interview pre-fills Q1's handle answer with that value and asks the friend to confirm or change.
 
 **Skipping:** any question may be skipped. Record the question ID in the `skipped_questions` frontmatter list. Don't push skipped-question reminders; trust the friend.
 
@@ -99,7 +99,7 @@ Print a one-screen summary:
 ```
 ✓ identity.md written at ~/.startup-framework/wiki/identity.md
 
-Run /sf:interview anytime to refresh. Edit ~/.startup-framework/wiki/identity.md
+Run /ren:interview anytime to refresh. Edit ~/.startup-framework/wiki/identity.md
 directly for one-off field changes.
 ```
 

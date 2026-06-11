@@ -1,7 +1,7 @@
 """P3 pin: Stage 7 acknowledgment does NOT trigger any other slash command.
 
-Team-lead: "Default to Option 2 (manual /sf:install). The plugin's install hook
-does NOT auto-invoke /sf:install at PostInstall time — friend types the three
+Team-lead: "Default to Option 2 (manual /ren:install). The plugin's install hook
+does NOT auto-invoke /ren:install at PostInstall time — friend types the three
 explicit commands per ADR-019. Stage 7 walkthrough prints the tour but does not
 execute any of the listed slash commands."
 """

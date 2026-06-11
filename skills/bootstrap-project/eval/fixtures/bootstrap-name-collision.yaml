@@ -48,13 +48,13 @@ filesystem:
   - path: ~/.startup-framework/wiki/projects/sidecar-v2/CONTEXT.md
     kind: file
     content_summary: |
-      Updated 2026-06-14 by /sf:wrap; says "Implementing onboarding screen 3."
+      Updated 2026-06-14 by /ren:wrap; says "Implementing onboarding screen 3."
   - path: ~/.startup-framework/wiki/projects/sidecar-v2/index.md
     kind: file
   - path: ~/.startup-framework/wiki/projects/sidecar-v2/log.md
     kind: file
     content_summary: |
-      Init entry + several /sf:wrap entries over the past 2 weeks.
+      Init entry + several /ren:wrap entries over the past 2 weeks.
 
   - path: ~/.startup-framework/wiki/projects/sidecar-v2/research/.gitkeep
     kind: file

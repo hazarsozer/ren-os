@@ -1,5 +1,5 @@
 ---
-title: "/sf:wrap signal-threshold classifier criteria"
+title: "/ren:wrap signal-threshold classifier criteria"
 type: skill-reference
 parent_skill: sf-wrap
 version: 0.1.0
@@ -14,7 +14,7 @@ This document defines the criteria the classifier evaluates against a session tr
 
 ## The default label is `none`
 
-When in doubt, return `none`. The bias is conservative. A wiki page never written is recoverable next session (just invoke `/sf:wrap` again and re-evaluate). A wiki page written incorrectly is hard to retract gracefully (per ADR-021's "deletion is hard" reality).
+When in doubt, return `none`. The bias is conservative. A wiki page never written is recoverable next session (just invoke `/ren:wrap` again and re-evaluate). A wiki page written incorrectly is hard to retract gracefully (per ADR-021's "deletion is hard" reality).
 
 **Heuristic**: ask yourself "would the next session's wake-up be better off loading this?" If the answer is "maybe" or "not sure," return `none`. Only "yes, clearly" warrants a label.
 
@@ -128,10 +128,10 @@ When multi-labeling, treat each label independently in the diff plan. Don't conf
 
 The **default** classifier (`lib/classifier.py:classify()`) is a conservative
 DETERMINISTIC heuristic — **EXPERIMENTAL** (ADR-031 bike-method). It scans the
-combined transcript (session log + `/sf:note` pins) for the deliberate signal
+combined transcript (session log + `/ren:note` pins) for the deliberate signal
 phrases that the criteria above describe, with a hard bias to `none`:
 
-- **Pins dominate** — a friend who explicitly `/sf:note`-pinned something is
+- **Pins dominate** — a friend who explicitly `/ren:note`-pinned something is
   signalling intent, so a single deliberate keyword in a pin fires its label;
   the raw session log needs a full deliberate phrase.
 - It **never raises** — every failure mode degrades to `none`.

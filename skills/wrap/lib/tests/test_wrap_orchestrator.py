@@ -213,7 +213,7 @@ class TestRealDefaultClassifier:
 
     def test_real_default_classifier_decision_creates_page(self, wrap_workspace):
         """F2 closer: the DEFAULT path (no injected classifier) produces real
-        signal end-to-end. A /sf:note pin with a decision drives the real
+        signal end-to-end. A /ren:note pin with a decision drives the real
         deterministic classifier to create a decisions/ page — proving the
         default user-facing path is equivalent to the injected-fake tests."""
         repo, wiki = wrap_workspace

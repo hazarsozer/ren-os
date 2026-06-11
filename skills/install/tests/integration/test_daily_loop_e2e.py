@@ -3,16 +3,16 @@
 Covers the friend's first-day journey end-to-end against REAL peer
 implementations (lifecycle's `compose_wake_up_context`, `wrap`, `pin_note`).
 Install + Stage 4 interview still go through the InstallSimulator from #38
-(no real `/sf:install` orchestrator — that lives in SKILL.md prose, not Python).
+(no real `/ren:install` orchestrator — that lives in SKILL.md prose, not Python).
 
-Solo-first (ADR-031): the former step 6 (/sf:catch-up against a multi-friend
+Solo-first (ADR-031): the former step 6 (/ren:catch-up against a multi-friend
 Activity Feed) was removed with the feed module. The journey is now:
 
-    1. /sf:install         — fresh-machine fixture, 7 stages, checkpoint complete
-    2. /sf:interview       — Stage 4; identity.md written
-    3. /sf:wake-up         — REAL compose_wake_up_context against the installed wiki
-    4. /sf:note            — REAL pin_note captures a mid-session thought
-    5. /sf:wrap            — REAL wrap() with an injected classifier
+    1. /ren:install         — fresh-machine fixture, 7 stages, checkpoint complete
+    2. /ren:interview       — Stage 4; identity.md written
+    3. /ren:wake-up         — REAL compose_wake_up_context against the installed wiki
+    4. /ren:note            — REAL pin_note captures a mid-session thought
+    5. /ren:wrap            — REAL wrap() with an injected classifier
 
 End-assertion: wiki + identity are in steady-state shape.
 
@@ -137,7 +137,7 @@ def test_wake_up_returns_empty_when_wiki_absent(tmp_path: Path) -> None:
     )
 
 
-# ---- Step 4: /sf:note pins a mid-session note ------------------------------
+# ---- Step 4: /ren:note pins a mid-session note ------------------------------
 
 
 def _import_pin_note():
@@ -151,7 +151,7 @@ def _import_pin_note():
 def test_note_pin_writes_bullet_to_session_notes_file(
     installed_wiki: Path,
 ) -> None:
-    """A friend's mid-session /sf:note pins a bullet that /sf:wrap can read later."""
+    """A friend's mid-session /ren:note pins a bullet that /ren:wrap can read later."""
     pin_note, resolve_notes_path = _import_pin_note()
 
     notes_root = installed_wiki / ".session-notes"
@@ -168,7 +168,7 @@ def test_note_pin_writes_bullet_to_session_notes_file(
     assert "remember to check the rate-limit" in body
 
 
-# ---- Step 5: /sf:wrap end-to-end (real wrap + injected classifier) ---------
+# ---- Step 5: /ren:wrap end-to-end (real wrap + injected classifier) ---------
 
 
 def _import_wrap():

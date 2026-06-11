@@ -134,7 +134,7 @@ fi
 if [[ -n "${UPSTASH_CONTEXT7_API_KEY:-}" ]]; then
   emit "upstash-key" "ok" "set" ""
 else
-  emit "upstash-key" "warn" "not set" "→ context7 plugin will not work without it. /sf:install Stage 1 OAuth flow can generate it."
+  emit "upstash-key" "warn" "not set" "→ context7 plugin will not work without it. /ren:install Stage 1 OAuth flow can generate it."
 fi
 
 # ──────────────────────────────────────────────────────────────────────

@@ -1,5 +1,5 @@
 """
-sf-recall library — internal implementation for /sf:recall.
+sf-recall library — internal implementation for /ren:recall.
 
 Public entry: `recall(query, *, wiki_root, n_hits) -> RecallResult`.
 
@@ -280,7 +280,7 @@ def recall(
         ValueError: if the query is empty after whitespace strip.
     """
     if not query or not query.strip():
-        raise ValueError("Empty query. Usage: /sf:recall <query>")
+        raise ValueError("Empty query. Usage: /ren:recall <query>")
 
     wiki_hits, truncated = grep_wiki(wiki_root, query, n_hits=n_hits, now=now)
 

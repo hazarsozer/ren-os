@@ -30,5 +30,5 @@
     "opus": "claude-opus-4-5",
     "haiku": "claude-haiku-4-5"
   },
-  "_warning": "These are placeholder values for V1 scaffolding. BEFORE first plugin release, verify against Anthropic's current pricing page and update both pricing_usd_per_million_tokens AND valid_as_of. /sf:doctor warns when valid_as_of is >60 days stale."
+  "_warning": "These are placeholder values for V1 scaffolding. BEFORE first plugin release, verify against Anthropic's current pricing page and update both pricing_usd_per_million_tokens AND valid_as_of. /ren:doctor warns when valid_as_of is >60 days stale."
 }

@@ -1,12 +1,12 @@
 {
   "name": "sf-bootstrap-project",
-  "description": "Binary-assertion test suite for /sf:bootstrap-project. Eval loop runs each test as a simulated invocation against a fresh wiki fixture and verifies the assertions hold.",
+  "description": "Binary-assertion test suite for /ren:bootstrap-project. Eval loop runs each test as a simulated invocation against a fresh wiki fixture and verifies the assertions hold.",
   "schema_version": 1,
   "tests": [
     {
       "id": "fresh-bootstrap",
       "fixture": "fixtures/bootstrap-new-project.yaml",
-      "prompt": "/sf:bootstrap-project sidecar-v2 --title \"Sidecar V2\" --description \"Alcohol cut-back companion app, rebuilt on a stricter UX.\"",
+      "prompt": "/ren:bootstrap-project sidecar-v2 --title \"Sidecar V2\" --description \"Alcohol cut-back companion app, rebuilt on a stricter UX.\"",
       "expected_output_summary": "Sub-wiki at ~/.startup-framework/wiki/projects/sidecar-v2/ with full taxonomy and init log entry.",
       "trigger_test": true,
       "binary_assertions": [
@@ -27,7 +27,7 @@
     {
       "id": "name-collision",
       "fixture": "fixtures/bootstrap-name-collision.yaml",
-      "prompt": "/sf:bootstrap-project sidecar-v2",
+      "prompt": "/ren:bootstrap-project sidecar-v2",
       "expected_output_summary": "Skill detects existing target dir, switches to additive-diff mode, refuses to overwrite without explicit approval.",
       "trigger_test": true,
       "binary_assertions": [
@@ -41,7 +41,7 @@
     {
       "id": "kebab-case-validation",
       "fixture": "fixtures/bootstrap-new-project.yaml",
-      "prompt": "/sf:bootstrap-project SidecarV2",
+      "prompt": "/ren:bootstrap-project SidecarV2",
       "expected_output_summary": "Skill refuses non-kebab-case name and re-prompts.",
       "trigger_test": true,
       "binary_assertions": [
@@ -54,12 +54,12 @@
     {
       "id": "missing-master-wiki",
       "fixture": "fixtures/bootstrap-name-collision.yaml",
-      "prompt": "/sf:bootstrap-project foo",
-      "expected_output_summary": "When wiki/ master skeleton is absent, refuse and recommend /sf:install.",
+      "prompt": "/ren:bootstrap-project foo",
+      "expected_output_summary": "When wiki/ master skeleton is absent, refuse and recommend /ren:install.",
       "trigger_test": false,
       "binary_assertions": [
         "If ~/.startup-framework/wiki/index.md does NOT exist, the skill refuses",
-        "Refusal message names '/sf:install' as the remediation",
+        "Refusal message names '/ren:install' as the remediation",
         "No partial sub-wiki is created at wiki/projects/foo/"
       ]
     }

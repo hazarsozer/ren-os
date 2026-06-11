@@ -97,7 +97,7 @@ Stage 5 — Wiki at ~/.startup-framework/wiki/ already exists.
 
 - **identity.md exists but is malformed YAML** — Stage 5 doesn't try to repair it; the loader leaves it untouched. Stage 6 doctor surfaces the issue.
 - **A subdirectory exists but as a regular file with the same name** — refuse the run, surface the path conflict; suggest the friend rename the offending file.
-- **The friend's wiki was created by a NEWER framework version** — `skeleton_schema_version` in their existing files exceeds the current; the loader refuses additive writes and surfaces a migration hint pointing at `/sf:update`.
+- **The friend's wiki was created by a NEWER framework version** — `skeleton_schema_version` in their existing files exceeds the current; the loader refuses additive writes and surfaces a migration hint pointing at `/ren:update`.
 - **Loader errored mid-run** — partial writes stay in place per the no-rollback policy; checkpoint records `additive_changes_applied` up to the failure point; re-run resumes.
 
 ## Cross-references

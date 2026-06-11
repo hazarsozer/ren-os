@@ -319,7 +319,7 @@ class TestDiffContent:
 class TestAtomicityInvariant:
     def test_plan_carries_full_context_rewrite_text(self, wiki_root: Path, project_wiki: Path):
         """The DiffPlan exposes context_md_rewrite as a top-level field — used
-        by /sf:wrap step 10 (next-session pointer for the brief summary)."""
+        by /ren:wrap step 10 (next-session pointer for the brief summary)."""
         plan = compose_diff_plan(
             wiki_root=wiki_root,
             inputs=_inputs(active_project="sample"),

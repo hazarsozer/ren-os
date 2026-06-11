@@ -10,7 +10,7 @@ Per ADR-015 Stage 1 + team-lead pushback P1 (always-check). Cheap probes; the co
 | Claude auth | logged in | `claude auth status` |
 | Node.js | ≥ 22.5 (Context Mode requirement) | `node --version` |
 | git | installed | `git --version` |
-| GitHub CLI | installed AND authenticated (soft requirement; used by `/sf:doctor`'s update check) | `gh --version` + `gh auth status` |
+| GitHub CLI | installed AND authenticated (soft requirement; used by `/ren:doctor`'s update check) | `gh --version` + `gh auth status` |
 | `ANTHROPIC_API_KEY` | env var set | shell env lookup |
 | `UPSTASH_CONTEXT7_API_KEY` (or whatever context7 is using) | env var set | shell env lookup |
 
@@ -32,7 +32,7 @@ The orchestrator's stage-recheck table says `1: true`. Concretely:
        Fix: export ANTHROPIC_API_KEY=<your-key>
             (Get one at https://console.anthropic.com)
 
-   Once these are resolved, re-run /sf:install.
+   Once these are resolved, re-run /ren:install.
    ```
 
 5. If any check failed, the stage does NOT mark itself completed; the orchestrator exits with the "re-run to resume" message.
@@ -98,5 +98,5 @@ Append `1` to `state.completed_stages` if not already present.
 
 - ADR-015 Stage 1
 - team-lead pushback P1
-- ADR-031 (solo-first pivot) — Activity Feed removed; gh is now a soft requirement used by `/sf:doctor`'s update check
+- ADR-031 (solo-first pivot) — Activity Feed removed; gh is now a soft requirement used by `/ren:doctor`'s update check
 - ADR-006 (curated stack) — context7 + claude-md-management additions; Skill Creator's ANTHROPIC_API_KEY caveat

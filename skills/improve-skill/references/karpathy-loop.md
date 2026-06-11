@@ -77,7 +77,7 @@ This is the "auto-research" part: each iteration is a tiny experiment with a cle
 ## Operating example (interactive mode)
 
 ```
-$ /sf:improve-skill sf-bootstrap-project
+$ /ren:improve-skill sf-bootstrap-project
 
 Pre-flight:
   ✓ Skill found at skills/sf-bootstrap-project/SKILL.md
@@ -122,7 +122,7 @@ Done. 3 iterations, 0 reverts, $0.42 of API spend, 4m12s wall clock.
 ## Operating example (autonomous overnight)
 
 ```
-$ /sf:improve-skill sf-wrap --autonomous --max-iterations 15 --max-budget-usd 8.00
+$ /ren:improve-skill sf-wrap --autonomous --max-iterations 15 --max-budget-usd 8.00
 
 Pre-flight:
   ✓ Skill found

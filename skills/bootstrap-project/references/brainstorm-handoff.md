@@ -34,7 +34,7 @@ How do you want to fill these in?
   - `~/.startup-framework/wiki/projects/<name>/REQUIREMENTS.md`
   - `~/.startup-framework/wiki/projects/<name>/ROADMAP.md`
   - `~/.startup-framework/wiki/projects/<name>/CONTEXT.md`
-- Suggest the friend run `/sf:wrap` when they're done so the changes get a log entry.
+- Suggest the friend run `/ren:wrap` when they're done so the changes get a log entry.
 - Exit cleanly.
 
 ### B. Hand off to Superpowers' `brainstorming` skill
@@ -43,12 +43,12 @@ How do you want to fill these in?
 - Pass an opening context line like:
   > "Bootstrapping a new project: `<project_name>`. Help me populate PROJECT.md (purpose, users, success criteria, constraints) and a draft REQUIREMENTS.md (functional / non-functional / out-of-scope). The files exist as placeholders — they need real content."
 - Let the brainstorming skill run its own interview. It will write to PROJECT.md / REQUIREMENTS.md when done.
-- After it finishes, suggest `/sf:wrap` to log the consolidation.
+- After it finishes, suggest `/ren:wrap` to log the consolidation.
 
 ### C. Defer
 
 - Print the four paths (same as Option A) so the friend can find the files later.
-- Suggest: "When you're ready, run `/sf:bootstrap-project <name>` again — it'll detect the existing sub-wiki and offer additive-diff for any new template files in newer framework versions, but won't overwrite your in-progress content."
+- Suggest: "When you're ready, run `/ren:bootstrap-project <name>` again — it'll detect the existing sub-wiki and offer additive-diff for any new template files in newer framework versions, but won't overwrite your in-progress content."
 - Exit cleanly.
 
 ## What this skill should NOT do

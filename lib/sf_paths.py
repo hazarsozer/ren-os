@@ -70,7 +70,7 @@ def framework_version() -> str:
             try:
                 text = plugin_json.read_text(encoding="utf-8")
                 # Minimal JSON parse for "version": "..." — avoid pulling json dep
-                # for one field, since /sf:doctor and tests are perf-sensitive paths.
+                # for one field, since /ren:doctor and tests are perf-sensitive paths.
                 import re as _re
                 m = _re.search(r'"version"\s*:\s*"([^"]+)"', text)
                 if m:
@@ -143,7 +143,7 @@ class HandleNotConfiguredError(RuntimeError):
 
     Indicates onboarding's identity-bootstrap (Stage 4) hasn't run, OR the friend
     manually edited identity.md and broke the schema. Caller should surface a clear
-    message pointing the user at /sf:interview.
+    message pointing the user at /ren:interview.
     """
 
 
@@ -151,12 +151,12 @@ class InvalidHandleError(HandleNotConfiguredError):
     """Raised when a handle is present but malformed (doesn't match HANDLE_RE).
 
     A malformed handle is a path-traversal / malformed-commit-message risk (M2/L7): it
-    flows into filesystem paths and git commit messages. /sf:interview validates the
+    flows into filesystem paths and git commit messages. /ren:interview validates the
     pattern at input; we enforce it at every use so a hand-edited identity.md can't
     escape into a traversal value.
 
     Subclasses HandleNotConfiguredError so existing `except HandleNotConfiguredError`
-    handlers (sf-recall, sf-wrap) catch it with the same /sf:interview remediation.
+    handlers (sf-recall, sf-wrap) catch it with the same /ren:interview remediation.
     """
 
 
@@ -165,7 +165,7 @@ class SchemaVersionMismatchError(RuntimeError):
     this build expects (`EXPECTED_*_SCHEMA_VERSION`).
 
     Caller should surface to the user: "your wiki schema is at N but framework expects
-    M; run /sf:update to migrate" — per ADR-027 + distribution-2's coordination.
+    M; run /ren:update to migrate" — per ADR-027 + distribution-2's coordination.
 
     Attributes:
         path: the file with the mismatched version
@@ -179,13 +179,13 @@ class SchemaVersionMismatchError(RuntimeError):
         self.expected = expected
         super().__init__(
             f"{path} has schema_version={found}; this framework expects {expected}. "
-            "Run /sf:update to migrate."
+            "Run /ren:update to migrate."
         )
 
 
 HANDLE_RE = re.compile(r"^[a-z][a-z0-9-]*$")
 """The handle contract: a lowercase letter followed by lowercase letters, digits, and
-hyphens. Mirrors the pattern /sf:interview validates at input. Enforced at every use of
+hyphens. Mirrors the pattern /ren:interview validates at input. Enforced at every use of
 the handle (M2) so a hand-edited identity.md can't introduce a path-traversal value."""
 
 
@@ -201,7 +201,7 @@ def validate_handle(value: str) -> str:
         raise InvalidHandleError(
             f"handle {value!r} is invalid; it must match ^[a-z][a-z0-9-]*$ "
             "(a lowercase letter, then lowercase letters/digits/hyphens), max 50 characters. "
-            "Run /sf:interview to set a valid handle."
+            "Run /ren:interview to set a valid handle."
         )
     return value
 
@@ -225,7 +225,7 @@ def handle(*, strict_schema: bool = True) -> str:
     identity_md = wiki_path() / "identity.md"
     if not identity_md.exists():
         raise HandleNotConfiguredError(
-            f"{identity_md} does not exist. Run /sf:interview to bootstrap your identity."
+            f"{identity_md} does not exist. Run /ren:interview to bootstrap your identity."
         )
 
     text = identity_md.read_text(encoding="utf-8")
@@ -241,7 +241,7 @@ def handle(*, strict_schema: bool = True) -> str:
     if not parsed:
         raise HandleNotConfiguredError(
             f"{identity_md} has no `handle:` field in YAML frontmatter. "
-            "Run /sf:interview to repair, or hand-edit the frontmatter."
+            "Run /ren:interview to repair, or hand-edit the frontmatter."
         )
     # M2: enforce the handle format at use (path-safety), independent of strict_schema —
     # a malformed handle is dangerous regardless of the file's schema_version.

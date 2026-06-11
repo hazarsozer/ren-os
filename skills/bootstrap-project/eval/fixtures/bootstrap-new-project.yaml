@@ -1,4 +1,4 @@
-# Fixture: fresh project bootstrap from a friend who has completed /sf:install
+# Fixture: fresh project bootstrap from a friend who has completed /ren:install
 # and has a populated wiki/identity.md, but no projects yet.
 #
 # Consumed by eval.json test "fresh-bootstrap" (and "kebab-case-validation"
@@ -13,7 +13,7 @@ environment:
   home: /tmp/sf-eval-home
 
 filesystem:
-  # ~/.startup-framework/wiki/ exists and is populated by a prior /sf:install run.
+  # ~/.startup-framework/wiki/ exists and is populated by a prior /ren:install run.
   - path: ~/.startup-framework/wiki/index.md
     kind: file
     content_summary: |
@@ -25,7 +25,7 @@ filesystem:
     kind: file
     content_summary: |
       Master log with frontmatter and a single init entry from 2026-05-28
-      attributing wiki creation to /sf:install for handle 'hazar'.
+      attributing wiki creation to /ren:install for handle 'hazar'.
 
   - path: ~/.startup-framework/wiki/identity.md
     kind: file
@@ -55,7 +55,7 @@ filesystem:
       skipped_questions: []
     content_summary: |
       Markdown body with the standard 5 sections; all populated by a prior
-      /sf:interview run.
+      /ren:interview run.
 
   - path: ~/.startup-framework/wiki/research/
     kind: directory

@@ -4,7 +4,7 @@
 
 `AskUserQuestion` is Claude Code's built-in tool for showing the friend a small set of options. It enforces a hard cap of **4 options per question** for UX consistency. When the option space genuinely exceeds 4, the skill picks one of the patterns below.
 
-This doc is intentionally located inside `sf-interview/references/` for v1 because `/sf:interview` is the heaviest consumer (8 of its 18 questions hit the cap). When a second skill needs the patterns, lift the doc into a shared `skills/_shared/references/` location and update both references — the patterns themselves stay the same.
+This doc is intentionally located inside `sf-interview/references/` for v1 because `/ren:interview` is the heaviest consumer (8 of its 18 questions hit the cap). When a second skill needs the patterns, lift the doc into a shared `skills/_shared/references/` location and update both references — the patterns themselves stay the same.
 
 ## The four patterns
 
@@ -89,7 +89,7 @@ The fallback should be offered *alongside* any of the first three on multi-selec
 
 ## Choosing per question
 
-The mapping for `/sf:interview`'s 8 over-cap questions is in `references/question-template.md` — strategy field per question. When authoring a new skill that hits the cap, document the per-question choice the same way: type, strategy, options, default.
+The mapping for `/ren:interview`'s 8 over-cap questions is in `references/question-template.md` — strategy field per question. When authoring a new skill that hits the cap, document the per-question choice the same way: type, strategy, options, default.
 
 Decision flow:
 
@@ -115,4 +115,4 @@ Decision flow:
 
 ## Revision history
 
-- v1 (2026-05-28) — initial four-pattern catalog. Authored for `/sf:interview` per ADR-022's open question #1. Promoted to first-class reusable per team-lead's ask.
+- v1 (2026-05-28) — initial four-pattern catalog. Authored for `/ren:interview` per ADR-022's open question #1. Promoted to first-class reusable per team-lead's ask.

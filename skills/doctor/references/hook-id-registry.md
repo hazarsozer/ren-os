@@ -32,7 +32,7 @@ Behavior:
 | `command` contains `sf-wake-up.py` AND matcher in `{startup, "*", omitted}` | `✅ SessionStart (sf-wake-up.py, matcher: <m>, timeout: <s>s)` |
 | `command` matches but matcher is `compact`-only or similar | `⚠️ SessionStart matcher='<m>' — wake-up will not fire on fresh sessions` |
 | `command` missing but description sentinel found | `⚠️ SessionStart description matches but command path is wrong — check ${CLAUDE_PLUGIN_ROOT}/hooks/wake-up/sf-wake-up.py exists` |
-| Neither detector fires | `⚠️ SessionStart hook missing — run /sf:update or /reload-plugins` |
+| Neither detector fires | `⚠️ SessionStart hook missing — run /ren:update or /reload-plugins` |
 
 ### Why `sf-wake-up.py` instead of `hooks/wake-up`
 
@@ -78,11 +78,11 @@ For each file: parse YAML frontmatter, extract `schema_version`, `framework_vers
 - `${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json` — current installed version.
 - `gh api repos/<org>/<repo>/contents/.claude-plugin/plugin.json` — latest published version. `<org>/<repo>` parsed from `repository` field of the installed `plugin.json`.
 
-If user has `userConfig.rcChannel = true`: ALSO fetch from `<org>/sf-marketplace-rc`'s repo.
+If user has `userConfig.rcChannel = true`: ALSO fetch from `<org>/ren-os-rc`'s repo.
 
 ### When to update this
 
-- We change repo name from `sf-marketplace` to something else → update path in `check-update.sh` + here.
+- We change repo name from `ren-os` to something else → update path in `check-update.sh` + here.
 - We restructure marketplace.json layout → update the gh api path here.
 
 ---

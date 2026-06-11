@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-plugin-marketplace.json",
-  "name": "sf-marketplace",
-  "description": "Startup Framework — solo-first private distribution. Per-builder hierarchical wiki + curated plugin stack + self-improving skills.",
+  "name": "ren-os",
+  "description": "RenOS — a governable second-brain OS for Claude Code. Solo-first, fully local: a compounding wiki you own as your single source of truth + thin glue over native primitives.",
   "version": "1.0.0",
   "owner": {
     "name": "Hazar Sozer",
@@ -9,22 +9,22 @@
   },
   "plugins": [
     {
-      "name": "sf",
+      "name": "ren",
       "source": "./",
-      "description": "Per-builder hierarchical wiki + curated plugin stack + skill self-improvement. See README.md for the full feature surface.",
+      "description": "A governable second-brain OS for Claude Code: a compounding wiki (your single source of truth) + thin glue over native primitives (Routines, Memory, Agents). See README.md for the full feature surface.",
       "author": {
         "name": "Hazar Sozer",
         "email": "hsozer00@gmail.com"
       },
-      "homepage": "https://github.com/hazarsozer/sf-marketplace",
-      "repository": "https://github.com/hazarsozer/sf-marketplace",
+      "homepage": "https://github.com/hazarsozer/ren-os",
+      "repository": "https://github.com/hazarsozer/ren-os",
       "license": "MIT",
       "keywords": [
         "wiki",
         "memory",
+        "second-brain",
+        "agentic-os",
         "solo-builder",
-        "ideation",
-        "startup",
         "claude-code"
       ],
       "category": "productivity",

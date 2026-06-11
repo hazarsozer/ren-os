@@ -6,7 +6,7 @@ Format: dated bullet entries. Newest at top.
 
 ---
 
-_No learnings yet — skill is freshly authored. As friends run `/sf:interview` and surface friction or surprises, capture them here. Common categories worth watching:_
+_No learnings yet — skill is freshly authored. As friends run `/ren:interview` and surface friction or surprises, capture them here. Common categories worth watching:_
 
 - _Question wording that confused friends_
 - _AskUserQuestion cap mitigations that felt awkward in practice (cascade depth, pagination breaks)_

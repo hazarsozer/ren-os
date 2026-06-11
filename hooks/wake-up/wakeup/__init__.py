@@ -224,7 +224,7 @@ def compose_wake_up_context(
 
         context_md = _read_text_safe(project_dir / PROJECT_CONTEXT_FILENAME)
         if context_md:
-            sections.append("### Session pointer (CONTEXT.md from last /sf:wrap)")
+            sections.append("### Session pointer (CONTEXT.md from last /ren:wrap)")
             sections.append(truncate_text_to_tokens(context_md, PROJECT_CONTEXT_BUDGET))
 
         project_log_tail = read_log_tail(project_dir / PROJECT_LOG_FILENAME, n_entries=10)

@@ -2,12 +2,12 @@
 
 These tests pin the **contracts** sf-install consumes from peer skills. They're not unit tests of any Python implementation (sf-install is a SKILL.md, not a Python module) — they're executable specifications that:
 
-1. Walk the 7-stage `/sf:install` procedure stage-by-stage via a thin simulator.
+1. Walk the 7-stage `/ren:install` procedure stage-by-stage via a thin simulator.
 2. Exercise that procedure against fakes for `distribution` and `lifecycle`.
 3. Assert the procedure makes the right calls in the right order with the right arguments.
 4. **Fail loudly when a peer's real impl drifts from the documented API.**
 
-When a real Claude Code session runs `/sf:install`, the AI follows the steps in `skills/sf-install/SKILL.md` + the per-stage references. The AI's calls into `distribution`, `lifecycle` should match what the simulator does. If they don't, this harness is the canary.
+When a real Claude Code session runs `/ren:install`, the AI follows the steps in `skills/sf-install/SKILL.md` + the per-stage references. The AI's calls into `distribution`, `lifecycle` should match what the simulator does. If they don't, this harness is the canary.
 
 > Solo-first (ADR-031): the Activity Feed layer was removed. There is no `feed` fake and no joiner test — Stage 3 is conditional-plugins-only and Stage 4 writes only the local `wiki/identity.md`.
 

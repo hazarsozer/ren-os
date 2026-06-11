@@ -1,12 +1,12 @@
 {
   "name": "sf-note",
-  "description": "Binary-assertion test suite for /sf:note. Validates pin-append, session-id resolution, fallback, refusal on empty text.",
+  "description": "Binary-assertion test suite for /ren:note. Validates pin-append, session-id resolution, fallback, refusal on empty text.",
   "schema_version": 1,
   "framework_version": "1.0.0",
   "tests": [
     {
       "id": "basic-pin",
-      "prompt": "/sf:note Stripe webhook signing is HMAC-SHA256 not raw SHA256",
+      "prompt": "/ren:note Stripe webhook signing is HMAC-SHA256 not raw SHA256",
       "expected_output_summary": "Bullet appended to current session's notes file; user sees confirmation with path.",
       "trigger_test": true,
       "binary_assertions": [
@@ -18,7 +18,7 @@
     },
     {
       "id": "no-session-fallback",
-      "prompt": "/sf:note remember to check the rate limit on the auth endpoint",
+      "prompt": "/ren:note remember to check the rate limit on the auth endpoint",
       "expected_output_summary": "Skill detects no resolvable session id, falls back to unsessioned-notes.md.",
       "trigger_test": true,
       "binary_assertions": [
@@ -29,17 +29,17 @@
     },
     {
       "id": "empty-refused",
-      "prompt": "/sf:note ",
+      "prompt": "/ren:note ",
       "expected_output_summary": "Skill refuses with a usage prompt; no file written.",
       "trigger_test": true,
       "binary_assertions": [
         "No new file is created under wiki/.session-notes/",
-        "User-facing output mentions 'Empty text' or 'Usage: /sf:note' "
+        "User-facing output mentions 'Empty text' or 'Usage: /ren:note' "
       ]
     },
     {
       "id": "second-pin-appends",
-      "prompt": "/sf:note second pin in the same session",
+      "prompt": "/ren:note second pin in the same session",
       "expected_output_summary": "Appends to the existing file rather than overwriting or duplicating the header.",
       "trigger_test": true,
       "binary_assertions": [
@@ -52,12 +52,12 @@
   "non_triggers": [
     {
       "id": "wrap-not-note",
-      "prompt": "/sf:wrap",
+      "prompt": "/ren:wrap",
       "expected_outcome": "skill_not_activated"
     },
     {
       "id": "recall-not-note",
-      "prompt": "/sf:recall what did we decide about auth",
+      "prompt": "/ren:recall what did we decide about auth",
       "expected_outcome": "skill_not_activated"
     }
   ]

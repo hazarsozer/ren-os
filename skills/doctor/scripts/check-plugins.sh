@@ -50,7 +50,7 @@ if [[ -n "$SF_PLUGIN_DIR" ]]; then
   SF_PLUGIN_JSON_VER="$(grep -oE '"version"\s*:\s*"[^"]+"' "$SF_PLUGIN_DIR/.claude-plugin/plugin.json" | head -1 | sed 's/.*"\([^"]*\)"$/\1/')"
   emit "sf" "ok" "v${SF_PLUGIN_JSON_VER:-$SF_VERSION} (installed via ${SF_MARKETPLACE})" ""
 else
-  emit "sf" "error" "not found in plugin cache" "→ /plugin install sf@sf-marketplace"
+  emit "sf" "error" "not found in plugin cache" "→ /plugin install ren@ren-os"
 fi
 
 # ──────────────────────────────────────────────────────────────────────
@@ -131,7 +131,7 @@ if [[ -n "$SF_PLUGIN_DIR" && -f "$SF_PLUGIN_DIR/hooks/hooks.json" ]]; then
     # Description sentinel found but command path didn't match. Degraded green per registry.
     emit "hooks-sessionstart" "warn" "SessionStart description matches but command path is wrong" "→ Check \${CLAUDE_PLUGIN_ROOT}/hooks/wake-up/sf-wake-up.py exists"
   else
-    emit "hooks-sessionstart" "warn" "SessionStart hook missing (sf-wake-up not active)" "→ Run /sf:update which re-registers hooks, OR /reload-plugins"
+    emit "hooks-sessionstart" "warn" "SessionStart hook missing (sf-wake-up not active)" "→ Run /ren:update which re-registers hooks, OR /reload-plugins"
   fi
 else
   emit "hooks-sessionstart" "skip" "" "(plugin not installed; hooks check skipped)"
@@ -149,7 +149,7 @@ if [[ -d "$WIKI_ROOT" ]]; then
   fi
   emit "wiki" "ok" "${WIKI_ROOT} (${ENTRY_COUNT} entries, ${PROJECT_COUNT} projects)" ""
 else
-  emit "wiki" "error" "${WIKI_ROOT} not found" "→ Run /sf:install to bootstrap; or /sf:install --restore <wiki-remote-url> to recover"
+  emit "wiki" "error" "${WIKI_ROOT} not found" "→ Run /ren:install to bootstrap; or /ren:install --restore <wiki-remote-url> to recover"
 fi
 
 exit 0

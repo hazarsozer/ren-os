@@ -2,10 +2,10 @@
 name: note
 description: |
   Use when the friend wants to pin something mid-session for the eventual
-  /sf:wrap to consider promoting to the wiki. Triggers on the /sf:note
+  /ren:wrap to consider promoting to the wiki. Triggers on the /ren:note
   slash command followed by free-text. Cheap (single file append); useful
   when the friend knows "this is worth remembering" but doesn't want to
-  break flow with a full wrap. Per ADR-009: companion to /sf:wrap, not
+  break flow with a full wrap. Per ADR-009: companion to /ren:wrap, not
   a wrap itself.
 version: 0.1.0
 license: MIT
@@ -42,18 +42,18 @@ references_on_demand: []
 
 # sf-note
 
-Mid-session pin. The friend says "this is worth remembering for `/sf:wrap`." Skill appends the text as a timestamped bullet to a per-session file. `/sf:wrap` reads this file at session end (per its SKILL.md step 1) and may promote individual pins to the wiki if they meet the high-signal threshold.
+Mid-session pin. The friend says "this is worth remembering for `/ren:wrap`." Skill appends the text as a timestamped bullet to a per-session file. `/ren:wrap` reads this file at session end (per its SKILL.md step 1) and may promote individual pins to the wiki if they meet the high-signal threshold.
 
 ## When to use this skill
 
-- Friend invokes `/sf:note <text>` (canonical trigger; everything after the command name is the text)
+- Friend invokes `/ren:note <text>` (canonical trigger; everything after the command name is the text)
 - Friend says: "pin this", "save that for later", "remember <X>", "note for the wrap" — confirm the text once, then run
 
 ## When NOT to use this skill
 
-- Friend wants to consolidate the whole session now → `/sf:wrap`, not `/sf:note`
-- Friend wants to look up existing notes → `/sf:recall <query>`
-- Empty text after `/sf:note` → refuse with a brief prompt ("What should I pin?")
+- Friend wants to consolidate the whole session now → `/ren:wrap`, not `/ren:note`
+- Friend wants to look up existing notes → `/ren:recall <query>`
+- Empty text after `/ren:note` → refuse with a brief prompt ("What should I pin?")
 
 ## Behavior
 
@@ -70,9 +70,9 @@ Mid-session pin. The friend says "this is worth remembering for `/sf:wrap`." Ski
 
 ## What this skill does NOT do
 
-- Promote anything to the wiki proper. That's `/sf:wrap`'s job (with high-signal threshold filter).
+- Promote anything to the wiki proper. That's `/ren:wrap`'s job (with high-signal threshold filter).
 - Edit existing notes. Each invocation is append-only.
-- Sync to any remote. The notes file is local; if the friend wants their wiki backed up they use `/sf:backup`.
+- Sync to any remote. The notes file is local; if the friend wants their wiki backed up they use `/ren:backup`.
 - Write outside `wiki/.session-notes/`. The skill is scoped to that one directory.
 - Apply any privacy filter to the text. Per ADR-021, format constraint is the privacy mechanism — but ADR-021 applies to the **Activity Feed** terse format, not to local-only session notes. Notes are local; the friend writes whatever helps them remember.
 
@@ -80,7 +80,7 @@ Mid-session pin. The friend says "this is worth remembering for `/sf:wrap`." Ski
 
 | Failure | Behavior | User-visible |
 |---|---|---|
-| Empty text argument | Refuse, prompt for text | "What should I pin? Usage: /sf:note <text>" |
+| Empty text argument | Refuse, prompt for text | "What should I pin? Usage: /ren:note <text>" |
 | Notes directory unwritable | Surface error | "Couldn't write to <path>. Check permissions." |
 | Session-id resolution fails | Fall back to unsessioned-notes.md | "Pinned to unsessioned-notes.md (no active session detected)" |
 

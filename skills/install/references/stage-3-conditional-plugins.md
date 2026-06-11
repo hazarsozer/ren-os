@@ -32,7 +32,7 @@ Ralph (autonomous loop pattern) is documented but not auto-installed.
   When you have a long-running task that benefits from "loop until done"
   semantics, install it manually with:
     /plugin install ralph-loop@claude-plugins-official
-  Caveat: Ralph's Stop hook collides with /sf:wrap; if you adopt Ralph,
+  Caveat: Ralph's Stop hook collides with /ren:wrap; if you adopt Ralph,
   review ADR-009 to understand the trade-off.
 ```
 

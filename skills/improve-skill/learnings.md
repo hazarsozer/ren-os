@@ -8,7 +8,7 @@ date: 2026-05-28
 
 # sf-improve-skill — learnings
 
-Per ADR-011's optional pattern: this file accumulates lessons learned during the skill's evolution. The `/sf:improve-skill` loop (ADR-012) appends here when it discovers patterns. Friends running `/sf:improve-skill` normally don't see this file unless something surfaces a related issue.
+Per ADR-011's optional pattern: this file accumulates lessons learned during the skill's evolution. The `/ren:improve-skill` loop (ADR-012) appends here when it discovers patterns. Friends running `/ren:improve-skill` normally don't see this file unless something surfaces a related issue.
 
 > **For the team-wide discussion of the "validate against real contract instances" pattern**, see `docs/PATTERNS/test-against-real-contract-instances.md` (authored by onboarding-2 from the originating learnings here). The pattern doc is the **formulated discipline**; this learnings file carries the originating bug context (war story) and other per-skill notes.
 
@@ -34,7 +34,7 @@ Per ADR-011's optional pattern: this file accumulates lessons learned during the
 | Per-test assertions key | `assertions` | `binary_assertions` |
 | Assertion items | objects with `binary: true` field | unambiguous string statements |
 
-**Impact**: had this shipped, `/sf:improve-skill` would have rejected EVERY framework-shipped skill (sf-install, sf-interview, sf-bootstrap-project, sf-wrap) on pre-flight gate 2 — the loop would never run on any of our own skills. **The most-used skill across the framework would have been unusable on the most-shipped skills.**
+**Impact**: had this shipped, `/ren:improve-skill` would have rejected EVERY framework-shipped skill (sf-install, sf-interview, sf-bootstrap-project, sf-wrap) on pre-flight gate 2 — the loop would never run on any of our own skills. **The most-used skill across the framework would have been unusable on the most-shipped skills.**
 
 **How it was caught**: onboarding-2's `REVIEW.md` cross-team review pass. Their `inspect.signature`-against-real-symbols pattern + their contract-drift tests caught this exact class of bug before. (Earlier the same week, the same root cause produced the polymorphic-vs-split-feed-writer drift.)
 
@@ -61,9 +61,9 @@ Concrete techniques that make this load-bearing:
 
 **Two contract drifts this week with the same root cause**: this one (eval.json schema) and the polymorphic-vs-split feed writer. Both shipped through peer review; both required a coordination intervention. The principle above is the antidote.
 
-### 2026-05-28 — Reader/writer API asymmetry (from /sf:recall integration)
+### 2026-05-28 — Reader/writer API asymmetry (from /ren:recall integration)
 
-Pattern discovered while integrating with feed-2's API in /sf:recall. Documented here because it generalizes beyond the feed module.
+Pattern discovered while integrating with feed-2's API in /ren:recall. Documented here because it generalizes beyond the feed module.
 
 **The asymmetry**: paired read/write APIs against a stateful backend (git, database, distributed file) typically WANT different failure modes:
 
@@ -72,7 +72,7 @@ Pattern discovered while integrating with feed-2's API in /sf:recall. Documented
 | **Read** (e.g., `feed_read_tail`, `grep_wiki`) | Return empty on missing backend; only specific config errors raise | Reads are inherently safe to attempt; the worst outcome is "no results found." Forcing the caller to wrap every read in try/except for a "no data yet" state pollutes call sites without earning any safety. |
 | **Write** (e.g., `feed_write_session_end`, `commit_pending_changes`) | Explicit failure result (FeedWriteResult, BackupResult) WITH specific error categories | Writes have side effects; the caller MUST know whether the write happened and why-not. Categorical errors (e.g., `not-bootstrapped` vs `non-fast-forward`) drive distinct UX branches. |
 
-**Why this matters for `/sf:improve-skill`**: the eval_runner integration has a similar shape coming. `run_evals()` is logically a "read" (it queries the skill's current state against tests) but it ALSO writes (test fixtures may produce side effects, eval logs, etc.). When the run_evals execution layer lands, the API should:
+**Why this matters for `/ren:improve-skill`**: the eval_runner integration has a similar shape coming. `run_evals()` is logically a "read" (it queries the skill's current state against tests) but it ALSO writes (test fixtures may produce side effects, eval logs, etc.). When the run_evals execution layer lands, the API should:
 - Return EvalResult with `score=0.0, raw_output=<error>` for runtime failures (asymmetric-read-style: don't raise; let the loop continue with a revert)
 - Raise PreFlightError for setup failures (asymmetric-write-style: stop the loop entirely)
 
@@ -83,5 +83,5 @@ Pattern discovered while integrating with feed-2's API in /sf:recall. Documented
 - The Karpathy loop's "one change per iteration + revert on score drop" discipline is the load-bearing safety. Flags (`--max-iterations`, `--max-budget-usd`, shadow turn count) are bounds. Discipline is correctness.
 - `--max-turns` does NOT exist as a CC CLI flag in CC 2.1.154. See `references/cc-flag-watch.md` for the watch + ADR-012 amendment for the correction trail.
 - Inner sub-runs use `--bare --print --max-budget-usd $REMAINING` so CC enforces dollar cap at the sub-run level; our shadow tracker handles the outer loop's accumulation.
-- Budget tracking uses `references/model-pricing.json` (per-plugin-version bumps). Stale-pricing nag in /sf:doctor when `valid_as_of` > 60 days old.
+- Budget tracking uses `references/model-pricing.json` (per-plugin-version bumps). Stale-pricing nag in /ren:doctor when `valid_as_of` > 60 days old.
 - Git as memory: branch `improve/<skill>/<timestamp>`, one commit per iteration with metadata in commit body, revert via `git reset --hard HEAD~1`, squash-merge only on full success.

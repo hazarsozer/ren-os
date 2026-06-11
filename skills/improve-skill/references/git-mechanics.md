@@ -1,5 +1,5 @@
 ---
-title: "/sf:improve-skill git mechanics — branch, commit, revert, merge"
+title: "/ren:improve-skill git mechanics — branch, commit, revert, merge"
 type: skill-reference
 parent_skill: sf-improve-skill
 version: 0.1.0
@@ -41,7 +41,7 @@ def assert_working_tree_clean() -> None:
     if result.stdout.strip():
         raise PreFlightError(
             "Working tree has uncommitted changes. "
-            "Commit or stash before running /sf:improve-skill. "
+            "Commit or stash before running /ren:improve-skill. "
             "(We don't want to mix WIP with improve-loop commits.)"
         )
 ```
@@ -216,7 +216,7 @@ Why: the loop generates many commits (one per iteration). Pushing each one would
 
 ## Interaction with the user's existing git workflow
 
-`/sf:improve-skill` runs on the user's actual git repo (the framework's source repo). Considerations:
+`/ren:improve-skill` runs on the user's actual git repo (the framework's source repo). Considerations:
 - The improve branch is created from `--base-ref` (default `HEAD`). If the friend is on `main`, branch is created from `main`.
 - The friend's editor may show the improve branch in their branch picker. Naming convention (`improve/<skill>/<timestamp>`) makes them sortable + easy to bulk-delete (`git branch -D improve/<skill>/2026-05-*`).
 - If the friend uses worktrees, the improve branch lives in the same worktree they invoked from. No worktree management by the skill.

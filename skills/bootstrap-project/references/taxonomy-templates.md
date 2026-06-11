@@ -72,7 +72,7 @@ Right-now snapshot. Sections:
 
 Placeholders: `{{project_title}}`, `{{today}}`, `{{framework_version}}`.
 
-Update cadence: per session that has signal. Touched by `/sf:wrap` consolidate.
+Update cadence: per session that has signal. Touched by `/ren:wrap` consolidate.
 
 ### CONTEXT.md.tmpl
 
@@ -85,7 +85,7 @@ Placeholders: `{{project_title}}`, `{{today}}`, `{{framework_version}}`.
 
 Initial body: "Just bootstrapped; first session pending."
 
-Update cadence: per session. Effectively ephemeral; rewritten each `/sf:wrap`.
+Update cadence: per session. Effectively ephemeral; rewritten each `/ren:wrap`.
 
 ### index.md.tmpl
 
@@ -119,5 +119,5 @@ If a friend or future contributor wants to add one of these, the right path is: 
 
 - ADR-004 — wiki shape; project sub-wikis live under `wiki/projects/`
 - ADR-014 — full taxonomy spec
-- ADR-015 § "`/sf:bootstrap-project <name>` command" — onboarding-time spec for this skill
+- ADR-015 § "`/ren:bootstrap-project <name>` command" — onboarding-time spec for this skill
 - ADR-017 — load-bearing: no framework-developer content seeded

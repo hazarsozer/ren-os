@@ -3,7 +3,7 @@ name: bootstrap-project
 description: |
   Use when the friend wants to start a new project sub-wiki under
   ~/.startup-framework/wiki/projects/<project-name>/. Triggers on the
-  /sf:bootstrap-project slash command. Creates the full ADR-014 taxonomy
+  /ren:bootstrap-project slash command. Creates the full ADR-014 taxonomy
   (PROJECT.md, REQUIREMENTS.md, ROADMAP.md, STATE.md, CONTEXT.md, index.md,
   log.md + research/decisions/patterns/ subdirs) as empty placeholders,
   then hands off to either manual fill or Superpowers brainstorming.
@@ -47,25 +47,25 @@ references_on_demand:
 
 # sf-bootstrap-project
 
-Stamps the ADR-014 per-project sub-wiki taxonomy under the friend's local wiki at `~/.startup-framework/wiki/projects/<project-name>/`. Per ADR-015 §"`/sf:bootstrap-project <name>` command".
+Stamps the ADR-014 per-project sub-wiki taxonomy under the friend's local wiki at `~/.startup-framework/wiki/projects/<project-name>/`. Per ADR-015 §"`/ren:bootstrap-project <name>` command".
 
 ## When to use this skill
 
-- Friend invokes `/sf:bootstrap-project <project-name>` (the canonical trigger)
+- Friend invokes `/ren:bootstrap-project <project-name>` (the canonical trigger)
 - A friend says "I want to start a new project called X" — confirm with them, then run this skill
-- During `/sf:install` Stage 7 walkthrough, when introducing the daily-loop commands and the friend wants to see one work end-to-end
+- During `/ren:install` Stage 7 walkthrough, when introducing the daily-loop commands and the friend wants to see one work end-to-end
 
 ## When NOT to use this skill
 
 - The target project sub-wiki already exists at `wiki/projects/<project-name>/`. Refuse with a clear message and (if the friend confirms) offer to add only missing files via additive diff. Never overwrite.
-- The master wiki at `~/.startup-framework/wiki/` doesn't yet exist. That's `/sf:install` Stage 5's job, not this skill's. Tell the friend to run `/sf:install` first.
+- The master wiki at `~/.startup-framework/wiki/` doesn't yet exist. That's `/ren:install` Stage 5's job, not this skill's. Tell the friend to run `/ren:install` first.
 - The project name isn't kebab-case (`^[a-z][a-z0-9-]*$`). Re-prompt for a valid name.
 
 ## How to use this skill
 
 ### 1. Parse arguments
 
-Slash command: `/sf:bootstrap-project <project-name> [--description "<text>"] [--title "<text>"]`
+Slash command: `/ren:bootstrap-project <project-name> [--description "<text>"] [--title "<text>"]`
 
 - `<project-name>` (positional, required): kebab-case identifier. Becomes the directory name.
 - `--description "<text>"` (optional): one-paragraph blurb prepopulating PROJECT.md's intro. Default: blank placeholder.
@@ -73,7 +73,7 @@ Slash command: `/sf:bootstrap-project <project-name> [--description "<text>"] [-
 
 ### 2. Pre-flight checks
 
-- Verify `~/.startup-framework/wiki/` exists and contains `index.md` + `log.md`. If not, refuse and recommend `/sf:install`.
+- Verify `~/.startup-framework/wiki/` exists and contains `index.md` + `log.md`. If not, refuse and recommend `/ren:install`.
 - Verify `~/.startup-framework/wiki/projects/<project-name>/` does NOT exist. If it does, switch to additive-diff mode (load `references/template-loader.md` § "Additive-diff mode" and follow it).
 - Verify the project name matches the kebab-case regex.
 
@@ -81,7 +81,7 @@ Slash command: `/sf:bootstrap-project <project-name> [--description "<text>"] [-
 
 Read `~/.startup-framework/wiki/identity.md` frontmatter. Extract `handle:` (kebab-case string). Used for log attribution and authorship metadata.
 
-If `identity.md` doesn't exist (e.g. friend skipped `/sf:interview`): fall back to handle = "unknown" and emit a warning suggesting they run `/sf:interview` to populate it.
+If `identity.md` doesn't exist (e.g. friend skipped `/ren:interview`): fall back to handle = "unknown" and emit a warning suggesting they run `/ren:interview` to populate it.
 
 ### 4. Run the template loader
 
@@ -113,7 +113,7 @@ Append a single line to `~/.startup-framework/wiki/log.md`:
 ## [{{today}}] init | Project sub-wiki bootstrapped for <project_name>
 ```
 
-Both are additive; neither overwrites existing content. If the `## Projects` section header doesn't exist in `index.md`, refuse to guess — surface the issue, recommend re-running `/sf:install --redo-stage 5`.
+Both are additive; neither overwrites existing content. If the `## Projects` section header doesn't exist in `index.md`, refuse to guess — surface the issue, recommend re-running `/ren:install --redo-stage 5`.
 
 ### 6. Hand off
 
@@ -127,7 +127,7 @@ Print the four paths the friend will most likely want first: `PROJECT.md`, `REQU
 
 ## Anti-patterns
 
-- **Don't ask the friend to confirm every file write.** The skill is a stamp, not an interview. One confirm at the end is enough. The interview is `/sf:interview` (a different skill).
+- **Don't ask the friend to confirm every file write.** The skill is a stamp, not an interview. One confirm at the end is enough. The interview is `/ren:interview` (a different skill).
 - **Don't seed templates with framework-development examples.** Per ADR-017 the friend's wiki starts EMPTY. PROJECT.md gets a placeholder paragraph, not a citation of a real project we (the framework devs) shipped.
 - **Don't extend the taxonomy.** ADR-014 fixed the 5 + 2 + 3 taxonomy (5 top-level pages, 2 log/index, 3 subdirs). Adding more here drifts from the standard. If a new page is genuinely needed, file an ADR amendment first.
 

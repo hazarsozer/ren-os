@@ -1,14 +1,14 @@
 {
   "name": "sf-wrap",
-  "description": "Binary-assertion test suite for /sf:wrap. Each test provides a fixture session transcript + expected classifier label + expected wiki-page diff plan. Tests are run by /sf:improve-skill's Karpathy loop (per ADR-012) and by CI. Solo-first (ADR-031): the default classifier is a conservative deterministic heuristic and there is no Activity Feed write.",
+  "description": "Binary-assertion test suite for /ren:wrap. Each test provides a fixture session transcript + expected classifier label + expected wiki-page diff plan. Tests are run by /ren:improve-skill's Karpathy loop (per ADR-012) and by CI. Solo-first (ADR-031): the default classifier is a conservative deterministic heuristic and there is no Activity Feed write.",
   "schema_version": 1,
   "framework_version": "1.0.0",
-  "_status": "scaffold — fixtures pending; assertions are the testable goals as /sf:wrap implementation lands. Schema conforms to ADR-011 §eval.json schema.",
+  "_status": "scaffold — fixtures pending; assertions are the testable goals as /ren:wrap implementation lands. Schema conforms to ADR-011 §eval.json schema.",
   "tests": [
     {
       "id": "routine-debug-session-no-signal",
       "fixture": "fixtures/routine-debug.transcript.json",
-      "prompt": "/sf:wrap",
+      "prompt": "/ren:wrap",
       "expected_output_summary": "Classifier returns 'none'; zero wiki edits except CONTEXT.md rewrite + project log.md append.",
       "trigger_test": true,
       "binary_assertions": [
@@ -24,7 +24,7 @@
     {
       "id": "decision-session-creates-adr",
       "fixture": "fixtures/decision-postgres-over-mongo.transcript.json",
-      "prompt": "/sf:wrap",
+      "prompt": "/ren:wrap",
       "expected_output_summary": "Deterministic classifier fires 'decision' on a deliberate phrase; new file under decisions/; STATE.md updated; master log appended.",
       "trigger_test": true,
       "binary_assertions": [
@@ -38,8 +38,8 @@
     {
       "id": "pin-escalates-signal",
       "fixture": "fixtures/routine-log-with-decision-pin.transcript.json",
-      "prompt": "/sf:wrap",
-      "expected_output_summary": "Session log is routine, but a /sf:note pin records a decision; the deterministic classifier escalates (pins dominate) and creates a decisions page.",
+      "prompt": "/ren:wrap",
+      "expected_output_summary": "Session log is routine, but a /ren:note pin records a decision; the deterministic classifier escalates (pins dominate) and creates a decisions page.",
       "trigger_test": true,
       "binary_assertions": [
         "Classifier output 'labels' field contains 'decision' (escalated from the pinned note, not the routine log)",
@@ -50,7 +50,7 @@
     {
       "id": "wiki-write-failure-rollback",
       "fixture": "fixtures/wiki-write-fails-mid-batch.transcript.json",
-      "prompt": "/sf:wrap",
+      "prompt": "/ren:wrap",
       "expected_output_summary": "Mid-batch wiki write fails (simulated permission error); all wiki changes rolled back via git restore; user sees retry instructions.",
       "trigger_test": true,
       "binary_assertions": [
@@ -74,8 +74,8 @@
     }
   ],
   "_notes": [
-    "Fixtures under fixtures/ are populated incrementally as /sf:wrap implementation lands.",
+    "Fixtures under fixtures/ are populated incrementally as /ren:wrap implementation lands.",
     "Run via: uv run pytest skills/wrap/eval/ (TBD wiring).",
-    "These assertions are also the targets for /sf:improve-skill's Karpathy loop per ADR-012."
+    "These assertions are also the targets for /ren:improve-skill's Karpathy loop per ADR-012."
   ]
 }

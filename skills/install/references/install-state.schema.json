@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://startup-framework.dev/schemas/install-state.v1.json",
   "title": "sf-install checkpoint state",
-  "description": "Machine-local install state for /sf:install. Persisted at $XDG_STATE_HOME/sf/install-state.json. Authoritative source for resume protocol decisions.",
+  "description": "Machine-local install state for /ren:install. Persisted at $XDG_STATE_HOME/sf/install-state.json. Authoritative source for resume protocol decisions.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -41,7 +41,7 @@
         "maximum": 7
       },
       "uniqueItems": true,
-      "description": "Stages that have successfully completed at least once. Re-running /sf:install skips them unless they have always_recheck=true."
+      "description": "Stages that have successfully completed at least once. Re-running /ren:install skips them unless they have always_recheck=true."
     },
     "stage_artifacts": {
       "type": "object",
