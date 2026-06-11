@@ -22,6 +22,13 @@
   **Lesson:** verify plan status across *all* branches/worktrees, never just checkbox state on the
   current branch — apply this to Plan A / C1 before executing it.
 
+- **2026-06-11 — RenOS rebrand DONE** (`cbfc04c`). Named the product: **RenOS** (from 仁 *rén*,
+  humaneness — the human core the user brings; the OS is the engine over native muscle). Curated
+  `/sf:`→`/ren:` sweep (plugin `name: sf→ren`, displayName `RenOS`, repo/marketplace `ren-os`) on the
+  shipped surface; frozen history + the `~/.startup-framework/` data root left intact; 454+ tests green,
+  `plugin validate --strict` ✔. **ADR-033** supersedes ADR-013. This **completes F1's rename intent** —
+  done before the first re-publish, so `/ren:` is the only public command surface users ever see.
+
 ## Thesis (recap)
 
 An **open-source second-brain OS for Claude Code**: a governable, compounding **wiki as the single
@@ -116,16 +123,16 @@ subsystem-local decisions (5–7) are task 1 of their own slice.
 
 ---
 
-## Naming decisions
+## Naming decisions — ✅ RESOLVED 2026-06-11 (RenOS)
 
-- **Command namespace = `sf`** → `/sf:wrap`, `/sf:doctor`, … **(settled, executed in F1 via Plan B
-  Task 4.2).** Short, already documented everywhere, satisfies the spec's "namespace stays short."
-- **`displayName` = "Startup Framework"** → **kept for now.** F1 repositions only the *description /
-  keywords messaging* toward the second-brain-OS framing; it does **not** require a product name.
-- **Product / brand rebrand** (a "second-brain OS" product name, repo rename) → **DEFERRED, open.**
-  This is a branding call tied to the open-source launch, not a foundation blocker. Trigger a naming
-  brainstorm whenever desired; until then the interim identity is "Startup Framework — a governable
-  second-brain OS for Claude Code."
+- **Product = RenOS** (from 仁 *rén*, humaneness), **namespace = `ren`** (`/ren:wrap`, `/ren:doctor`, …),
+  **displayName `RenOS`**, **repo + marketplace = `ren-os`** (install `ren@ren-os`). Brand story in the
+  README header + ADR-033.
+- **Rebrand executed** (`cbfc04c`): curated `/sf:`→`/ren:` sweep on the shipped surface; frozen history +
+  the `~/.startup-framework/` data root left intact; 454+ tests green, `plugin validate --strict` ✔.
+  ADR-033 supersedes ADR-013. **Completes F1's rename intent.**
+- **Outward follow-ups (maintainer):** rename the GitHub repo `sf-marketplace → ren-os` (GitHub adds
+  redirects); the F1 Phase 5 re-publish then ships RenOS as the first public surface.
 
 ---
 
