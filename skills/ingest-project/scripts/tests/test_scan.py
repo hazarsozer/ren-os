@@ -102,3 +102,65 @@ def test_zero_commit_repo_falls_back_to_walk(tmp_path):
     _git_init(tmp_path)                 # init, do NOT commit
     rels = {str(p.relative_to(tmp_path)) for p in scan.enumerate_files(tmp_path)}
     assert "a.py" in rels              # uncommitted file still found via walk fallback
+
+
+# ---------------------------------------------------------------------------
+# Task 3: Stack detection
+# ---------------------------------------------------------------------------
+
+def test_stack_python_uv(tmp_path):
+    (tmp_path / "pyproject.toml").write_text(
+        "[project]\nname='x'\ndependencies=['fastapi']\n[tool.uv]\n"
+    )
+    (tmp_path / "uv.lock").write_text("# lock\n")
+    st = scan.detect_stack(tmp_path, scan.enumerate_files(tmp_path))
+    langs = {l["name"] for l in st["languages"]}
+    assert "Python" in langs
+    assert "uv" in st["package_managers"]
+    assert "fastapi" in st["frameworks"]
+    assert "pyproject.toml" in st["manifests"]
+
+
+def test_stack_typescript_npm(tmp_path):
+    (tmp_path / "package.json").write_text(
+        '{"name":"x","dependencies":{"next":"14","react":"18"}}'
+    )
+    (tmp_path / "package-lock.json").write_text("{}")
+    (tmp_path / "tsconfig.json").write_text("{}")
+    st = scan.detect_stack(tmp_path, scan.enumerate_files(tmp_path))
+    langs = {l["name"] for l in st["languages"]}
+    assert "TypeScript" in langs
+    assert "npm" in st["package_managers"]
+    assert "next" in st["frameworks"]
+    assert "react" in st["frameworks"]
+
+
+def test_stack_polyglot(tmp_path):
+    (tmp_path / "pyproject.toml").write_text("[project]\nname='x'\n")
+    (tmp_path / "Cargo.toml").write_text("[package]\nname='y'\n")
+    st = scan.detect_stack(tmp_path, scan.enumerate_files(tmp_path))
+    langs = {l["name"] for l in st["languages"]}
+    assert {"Python", "Rust"} <= langs
+
+
+def test_stack_unknown_is_empty_not_error(tmp_path):
+    (tmp_path / "notes.txt").write_text("hello\n")
+    st = scan.detect_stack(tmp_path, scan.enumerate_files(tmp_path))
+    assert st["languages"] == []
+    assert st["package_managers"] == []
+
+
+def test_stack_framework_hints_avoid_false_positives(tmp_path):
+    # guardrails-ai must NOT trip "rails"; a "reactive" mention must NOT trip
+    # "react"; next-auth must NOT trip "next" (anchored-hint regression guard).
+    (tmp_path / "pyproject.toml").write_text(
+        "[project]\nname='x'\ndependencies=['guardrails-ai','reactivex']\n"
+    )
+    (tmp_path / "package.json").write_text(
+        '{"name":"x","dependencies":{"next-auth":"4","torchlight":"1"}}'
+    )
+    st = scan.detect_stack(tmp_path, scan.enumerate_files(tmp_path))
+    assert "rails" not in st["frameworks"]
+    assert "react" not in st["frameworks"]
+    assert "next" not in st["frameworks"]
+    assert "pytorch" not in st["frameworks"]
