@@ -43,6 +43,10 @@ RECENCY_DAYS: Final[int] = 30
 
 DEFAULT_N_HITS: Final[int] = 10
 
+ROUTINE_STATE_FILENAME: Final[str] = "state.md"
+ROUTINE_RUNLOG_FILENAME: Final[str] = "run-log.md"
+DEFAULT_RUNLOG_TAIL: Final[int] = 10
+
 
 @dataclass(frozen=True)
 class RecallHit:
@@ -66,6 +70,16 @@ class RecallResult:
     @property
     def has_results(self) -> bool:
         return bool(self.wiki_hits)
+
+
+@dataclass(frozen=True)
+class RoutineState:
+    """A routine repo's cross-run memory trail, read at run start (ADR-034)."""
+
+    repo_root: Path
+    state_md: str        # full content of state.md ("" if missing)
+    run_log_tail: str    # last N run-log entries ("" if missing)
+    found: bool          # True if state.md or run-log.md existed on disk (fields may be "" if a file is unreadable)
 
 
 def tokenize_query(query: str) -> list[str]:
@@ -291,13 +305,63 @@ def recall(
     )
 
 
+def _safe_read(path: Path) -> str:
+    """Read a file; return "" on any error (mirrors grep_wiki's guard)."""
+    try:
+        return path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        logger.debug("could not read %s: %s", path, exc)
+        return ""
+
+
+def _runlog_tail(content: str, n_entries: int) -> str:
+    """Return the last n run-log entries (entries start with '## [')."""
+    entries: list[list[str]] = []
+    current: list[str] = []
+    for line in content.splitlines():
+        if line.startswith("## ["):
+            if current:
+                entries.append(current)
+            current = [line]
+        elif current:
+            current.append(line)
+    if current:
+        entries.append(current)
+    tail = entries[-n_entries:]
+    return "\n".join("\n".join(e) for e in tail).strip()
+
+
+def read_routine_state(repo_root: Path, *, runlog_tail: int = DEFAULT_RUNLOG_TAIL) -> RoutineState:
+    """
+    Read a routine repo's state.md + run-log.md (the cross-run memory trail).
+
+    Invoked by /ren:recall --routine <repo_root> at the start of a routine run
+    so a stateless cloud run knows what prior runs did (ADR-034).
+    """
+    state_path = repo_root / ROUTINE_STATE_FILENAME
+    runlog_path = repo_root / ROUTINE_RUNLOG_FILENAME
+    state_md = _safe_read(state_path)
+    runlog_content = _safe_read(runlog_path)
+    return RoutineState(
+        repo_root=repo_root,
+        state_md=state_md,
+        run_log_tail=_runlog_tail(runlog_content, runlog_tail) if runlog_content else "",
+        found=state_path.is_file() or runlog_path.is_file(),
+    )
+
+
 __all__ = [
     "STOP_WORDS",
     "KIND_MULTIPLIERS",
     "DEFAULT_N_HITS",
+    "DEFAULT_RUNLOG_TAIL",
+    "ROUTINE_STATE_FILENAME",
+    "ROUTINE_RUNLOG_FILENAME",
     "RecallHit",
     "RecallResult",
+    "RoutineState",
     "tokenize_query",
     "grep_wiki",
     "recall",
+    "read_routine_state",
 ]

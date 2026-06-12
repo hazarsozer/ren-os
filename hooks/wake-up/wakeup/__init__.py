@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from pathlib import Path
 from typing import Final
 
@@ -31,6 +32,7 @@ MASTER_LOG_FILENAME: Final[str] = "log.md"
 PROJECT_CONTEXT_FILENAME: Final[str] = "CONTEXT.md"
 PROJECT_INDEX_FILENAME: Final[str] = "index.md"
 PROJECT_LOG_FILENAME: Final[str] = "log.md"
+MASTER_ROUTINES_DIRNAME: Final[str] = "routines"
 
 # Token budget per ADR-008 (3-5K target; 5K hard cap)
 DEFAULT_MAX_TOKENS: Final[int] = 5_000
@@ -42,6 +44,7 @@ MASTER_LOG_BUDGET: Final[int] = 400
 PROJECT_INDEX_BUDGET: Final[int] = 600
 PROJECT_CONTEXT_BUDGET: Final[int] = 600
 PROJECT_LOG_BUDGET: Final[int] = 800
+ROUTINE_SPEC_BUDGET: Final[int] = 400
 
 
 def estimate_tokens(text: str) -> int:
@@ -166,6 +169,50 @@ def read_log_tail(log_path: Path, n_entries: int) -> str:
     return "\n".join("\n".join(e) for e in tail).strip()
 
 
+_ROUTINE_FM_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
+
+
+def _parse_routine_fields(content: str) -> dict[str, str]:
+    """Tiny dependency-free frontmatter field reader (no PyYAML at hook runtime)."""
+    m = _ROUTINE_FM_RE.match(content)
+    if not m:
+        return {}
+    fields: dict[str, str] = {}
+    for line in m.group(1).splitlines():
+        if ":" not in line or line.lstrip().startswith("#"):
+            continue
+        k, _, v = line.partition(":")
+        fields[k.strip()] = v.strip().strip('"').strip("'")
+    return fields
+
+
+def read_live_routines(wiki_root: Path) -> str:
+    """
+    Scan wiki/routines/ for routine-spec pages and format a one-line-per-routine
+    digest for the wake-up payload (ADR-034: surface which automations are live).
+    Returns "" if no routines/ dir or no routine-spec pages.
+    """
+    routines_dir = wiki_root / MASTER_ROUTINES_DIRNAME
+    if not routines_dir.is_dir():
+        return ""
+    try:
+        paths = sorted(routines_dir.glob("*.md"))
+    except OSError as exc:
+        logger.debug("could not scan routines dir %s: %s", routines_dir, exc)
+        return ""
+    rows: list[str] = []
+    for path in paths:
+        fm = _parse_routine_fields(_read_text_safe(path))
+        if fm.get("type") != "routine-spec":
+            continue
+        name = fm.get("name", path.stem)
+        trigger = fm.get("trigger_type", "?")
+        repo = fm.get("linked_repo", "?")
+        flag = " ⚠️ full-network" if fm.get("network_tier", "trusted") == "full" else ""
+        rows.append(f"- **{name}** · {trigger} · {repo}{flag}")
+    return "\n".join(rows)
+
+
 def compose_wake_up_context(
     *,
     cwd: Path,
@@ -212,6 +259,12 @@ def compose_wake_up_context(
         sections.append("### Recent master log")
         sections.append(truncate_text_to_tokens(master_log_tail, MASTER_LOG_BUDGET))
 
+    # 2b. Live automations (routine-specs) — ADR-034 (master-level, always shown)
+    live_routines = read_live_routines(wiki_root)
+    if live_routines:
+        sections.append("### Live automations (routine-specs)")
+        sections.append(truncate_text_to_tokens(live_routines, ROUTINE_SPEC_BUDGET))
+
     # 3. Project context (if in a project directory)
     project = detect_project(cwd, wiki_root, dev_root=dev_root)
     if project is not None:
@@ -249,12 +302,15 @@ __all__ = [
     "DEFAULT_DEV_ROOT_REL",
     "MASTER_INDEX_BUDGET",
     "MASTER_LOG_BUDGET",
+    "MASTER_ROUTINES_DIRNAME",
     "PROJECT_CONTEXT_BUDGET",
     "PROJECT_LOG_BUDGET",
+    "ROUTINE_SPEC_BUDGET",
     "estimate_tokens",
     "truncate_text_to_tokens",
     "resolve_dev_root",
     "detect_project",
     "read_log_tail",
+    "read_live_routines",
     "compose_wake_up_context",
 ]

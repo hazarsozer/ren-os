@@ -16,6 +16,9 @@ Cadence: monthly stable. Out-of-cycle PATCH releases only for security or broken
 
 ## [Unreleased]
 
+### Added
+- **Cadence-as-glue (C4, ADR-034):** `routine-spec` wiki page-type; `/ren:routine-init` (scaffolds a lean Cloud-Routine repo + writes the routine-spec page); `/ren:cadence` (decision-matrix router over /loop · Cron · /goal · Cloud Routines); `/ren:recall --routine` (reads a routine's state.md/run-log.md); `/ren:doctor` ROUTINES audits (network-tier + quota headroom); wake-up hook "Live automations" section.
+
 ### Changed
 - **Rebranded to RenOS** (from 仁 *rén*, humaneness) — command namespace `/sf:` → `/ren:`, plugin `name: sf → ren`, repo/marketplace `ren-os` (install `ren@ren-os`). Skill dirs unchanged. See ADR-033. No version bump — pre-first-republish, so `ren` / `/ren:` is the first public command surface anyone sees.
 - **Foundation merged** — the v1.0 remediation Phases 1–4 (Python correctness, doc/contract drift, security/privacy, and the `/sf:` namespace-defect fix) landed on the dev branch (`9555a2d`); 454+ tests green, `claude plugin validate --strict` ✔.
