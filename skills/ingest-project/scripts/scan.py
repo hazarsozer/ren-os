@@ -132,6 +132,107 @@ def enumerate_files(root: Path) -> list[Path]:
     return out
 
 
+# manifest filename → language. Order matters only for readability;
+# detection is set-based (seen_langs dedup below).
+_MANIFEST_LANG = {
+    "pyproject.toml": "Python",
+    "requirements.txt": "Python",
+    "setup.py": "Python",
+    "setup.cfg": "Python",
+    "Pipfile": "Python",
+    "package.json": "JavaScript",  # upgraded to TypeScript if tsconfig present
+    "Cargo.toml": "Rust",
+    "go.mod": "Go",
+    "pom.xml": "Java",
+    "build.gradle": "Java",
+    "build.gradle.kts": "Kotlin",
+    "Gemfile": "Ruby",
+    "composer.json": "PHP",
+    "pubspec.yaml": "Dart",
+}
+
+# lockfile / marker → package manager
+_PM_MARKERS = {
+    "uv.lock": "uv",
+    "poetry.lock": "poetry",
+    "Pipfile.lock": "pipenv",
+    "requirements.txt": "pip",
+    "package-lock.json": "npm",
+    "yarn.lock": "yarn",
+    "pnpm-lock.yaml": "pnpm",
+    "bun.lockb": "bun",
+    "Cargo.lock": "cargo",
+    "go.sum": "go modules",
+    "Gemfile.lock": "bundler",
+    "composer.lock": "composer",
+}
+
+# framework name → substrings that, if present in a manifest's text, imply it.
+# Loose single-word substrings cause false positives (e.g. "react" in
+# "reactive", "rails" in "guardrails-ai" — a real Python AI dep, "next" in
+# "next-auth", "torch" in "torchlight"), so the high-collision entries use
+# anchored/quoted forms — the same pattern the "spring" entry already follows.
+# Goal: fewer false positives, not fewer true positives.
+_FRAMEWORK_HINTS = {
+    "fastapi": ("fastapi",),
+    "django": ("django",),
+    "flask": ("flask",),
+    "pytorch": ("import torch", '"torch"', "'torch'", "torch>=", "torch==", "pytorch"),
+    "next": ('"next"', '"nextjs"', "next.js"),
+    "react": ('"react"', "'react'", "react-dom", "react-scripts"),
+    "vue": ('"vue"', "'vue'", "vue.js"),
+    "svelte": ("svelte",),
+    "express": ('"express"', "'express'"),
+    "spring": ("spring-boot", "springframework"),
+    "rails": ("rails/all", "rails/application", "gem 'rails'", 'gem "rails"'),
+    "laravel": ("laravel",),
+    "axum": ("axum",),
+    "actix": ("actix",),
+}
+
+
+def detect_stack(root: Path, files: list[Path]) -> dict:
+    """Detect languages, package managers, and frameworks from manifest presence
+    + a bounded substring scan of manifest contents. Read-only."""
+    names = {p.name for p in files}
+    manifests = sorted(n for n in names if n in _MANIFEST_LANG)
+
+    languages: list[dict] = []
+    seen_langs: set[str] = set()
+    for m in manifests:
+        lang = _MANIFEST_LANG[m]
+        # package.json → TypeScript if a tsconfig is present.
+        if m == "package.json" and "tsconfig.json" in names:
+            lang = "TypeScript"
+        if lang not in seen_langs:
+            seen_langs.add(lang)
+            languages.append({"name": lang, "evidence": m, "confidence": "high"})
+
+    package_managers = sorted({pm for marker, pm in _PM_MARKERS.items() if marker in names})
+
+    # Framework hints: read manifest texts (bounded by MAX_READ_BYTES already).
+    blob = ""
+    # dict.fromkeys dedups: a manifest already in `manifests` (e.g. pyproject.toml
+    # on a Python project) must not be read twice. (review-correction dedup fix)
+    for m in dict.fromkeys(manifests + ["package.json", "pyproject.toml"]):
+        fp = root / m
+        if fp.is_file() and _safe_size(fp):
+            try:
+                blob += "\n" + fp.read_text(encoding="utf-8", errors="replace").lower()
+            except OSError:
+                continue
+    frameworks = sorted(
+        fw for fw, hints in _FRAMEWORK_HINTS.items() if any(h in blob for h in hints)
+    )
+
+    return {
+        "languages": languages,
+        "package_managers": package_managers,
+        "frameworks": frameworks,
+        "manifests": manifests,
+    }
+
+
 def scan(path: str, *, depth: str = "standard") -> dict:
     """Scan a project directory and return the facts dict.
 
