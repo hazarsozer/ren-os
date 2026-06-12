@@ -47,6 +47,13 @@
   pages. No daemon (ADR-003); pull-model write-back (ADR-026).
   Plan: `docs/superpowers/plans/2026-06-11-c4-cadence-as-glue.md`.
 
+- **2026-06-12 — C1 DONE.** Project-ingest (brownfield onboarding) shipped on `feat/c1-project-ingest`:
+  `ingest-project` skill — read-only Python scanner (`scripts/scan.py`), extraction-spec + page-mapping
+  references, SKILL.md orchestration procedure, eval suite + 2 fixtures. ADR-032 filed. Wire-up:
+  README, CHANGELOG, wiki/index.md, wiki/log.md, roadmap all updated. 27 scanner tests green;
+  `claude plugin validate --strict` ✔; CI-parity schema gate ✔. No new page-types — reuses ADR-014's
+  existing `project-*` taxonomy (already registered in schemas.json). Plan: `docs/superpowers/plans/2026-05-31-project-ingest.md`.
+
 ## Thesis (recap)
 
 An **open-source second-brain OS for Claude Code**: a governable, compounding **wiki as the single
@@ -94,7 +101,7 @@ roadmap is that decomposition. The actual code lands via the per-slice plans nam
 |----|-------|-----------|-----------------|------------|-------------------|--------|
 | **F1** | Foundation + rename | hygiene | Plan B (executed) + `2026-06-11-f1-foundation-rename.md` | — | resolve **013** (namespace=`sf`) | ✅ **DONE — merged 2026-06-11** (`9555a2d`); Phase 5 publish deferred |
 | **A1** | Cross-cutting ADR pass | architecture | new (ADR writes) | F1 | new **cadence** ADR; new **git-write-back** ADR; amend **014/027** (page-types) | ✅ **DONE 2026-06-11** — **ADR-034** (cadence-as-glue folds in write-back + `routine-spec`); instincts page-type → C3 task 1 |
-| **C1** | Project Ingest | P1 (moat) | Plan A (ready) | F1 | **032** (already in Plan A) | ⚠️ **Verify true status across worktrees first** (per F1 lesson), then execute |
+| **C1** | Project Ingest | P1 (moat) | Plan A (ready) | F1 | **032** (already in Plan A) | ✅ **DONE 2026-06-12** — `ingest-project` skill + ADR-032 + full wire-up; plan `docs/superpowers/plans/2026-05-31-project-ingest.md` |
 | **C2** | Code-map context layer | P6 | new — built into C1's `scan.py` | C1 | amend **008** (token budget) | Not started |
 | **C3** | Compounding model | P4 | new — repositions `sf-wrap/note/recall` | F1 (+ A1) | amend **009** (scheduled vs manual), **014**, **027** | Not started |
 | **C4** | Cadence-as-glue | P3 (headline) | new skills | A1 | new **cadence** ADR; new **write-back** ADR | ✅ **DONE 2026-06-12** — `routine-spec` page-type + `/ren:routine-init` + `/ren:cadence` + recall/doctor/wake-up extensions; plan `docs/superpowers/plans/2026-06-11-c4-cadence-as-glue.md` |
