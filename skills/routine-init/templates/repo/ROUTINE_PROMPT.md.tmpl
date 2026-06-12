@@ -1,0 +1,29 @@
+# Routine prompt — {{routine_name}}
+
+> The prompt the scheduled run executes. Skill-as-routine-prompt convention (ADR-034):
+> one named /ren: skill, explicit order of operations, one pass, then exit.
+
+## Order of operations
+
+1. **Load memory.** Run `/ren:recall --routine .` to read `state.md` + `run-log.md` so you know what prior runs did.
+2. **Do the work.** Run `/ren:{{skill}}` exactly once. {{expected_output}}
+3. **Write back.** Append one entry to `run-log.md` (`## [<UTC timestamp>] <one-line summary>`) and update `state.md` if durable state changed. Then commit and push both:
+   ```
+   git add -A && git commit -m "routine {{routine_name}}: <summary>" && git push origin HEAD
+   ```
+   (Pull-model write-back per ADR-026 — the run pushes; the human pulls.)
+4. **Exit.** This is a SINGLE-PASS run. Do not start a `/loop`, do not schedule additional crons, do not iterate beyond the one pass above.
+
+## Secrets
+
+{{env_secrets_ref}} — available as environment variables. Use directly; do NOT look for a `.env`.
+
+## Failure handler (required — ADR-034)
+
+If this run fails for ANY reason — an error, an unmet precondition, or an empty result where output was expected — then BEFORE exiting, send an email via the Resend MCP tool `mcp__resend__send-email`:
+
+- **to:** {{failure_email}}
+- **subject:** `Routine {{routine_name}} FAILED`
+- **body:** the error message + the step it failed on.
+
+Headless runs fail silently by default; this footer is the only way you'll hear about a broken routine.
