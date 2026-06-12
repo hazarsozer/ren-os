@@ -24,6 +24,8 @@ contract:
   permissions:
     read:
       - "~/.startup-framework/wiki/**"
+      - "<routine-repo>/state.md"
+      - "<routine-repo>/run-log.md"
     write: []
     execute: []
   completion_conditions:
@@ -103,3 +105,7 @@ v2 swap-in path: when qmd adoption triggers per ADR-005, the grep core becomes a
 - ADR-005 (Wiki Retrieval Evolution) — defines the v1 grep → v2 qmd transition
 - ADR-009 (Consolidate via /wrap) §"Optional but recommended companion commands" — names this skill
 - `references/grep-strategy.md` — the scoring heuristic + snippet extraction logic
+
+## Reading routine state (`--routine <path>`)
+
+When invoked as `/ren:recall --routine <repo-path>` (no query), recall switches to **state-read mode** instead of grep: it reads that routine repo's `state.md` (full) and `run-log.md` (last 10 entries) via `read_routine_state()` and prints the cross-run memory trail. This is the call a Cloud Routine makes at run start (ADR-034) so a stateless run knows what prior runs did. Read-only, like the grep path. If neither file exists, it reports "no prior state" and exits cleanly.
