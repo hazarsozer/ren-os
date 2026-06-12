@@ -1,0 +1,24 @@
+# {{routine_name}} — cadence routine
+
+Lean repo for the RenOS cadence routine **{{routine_name}}** (ADR-034). This repo is the *muscle*: it carries only what this one routine needs. Do not add unrelated project context — it burns run budget.
+
+## What this routine does
+
+{{expected_output}}
+
+## How it runs
+
+Each scheduled run starts a fresh, stateless Claude Code session that clones this repo, reads this CLAUDE.md, and executes `ROUTINE_PROMPT.md`. The environment is destroyed after the run.
+
+## Secrets
+
+{{env_secrets_ref}}
+
+Secrets are provided by the cloud environment as environment variables. **Use them directly — do NOT search for a `.env` file.**
+
+## Cross-run memory
+
+- `state.md` — durable state carried between runs (read at start, updated at end).
+- `run-log.md` — append-only trail of what each run did.
+
+At run start, load the trail with `/ren:recall --routine .` before doing work.

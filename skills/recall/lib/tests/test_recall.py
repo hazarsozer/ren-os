@@ -300,3 +300,49 @@ class TestKindMultipliers:
             > KIND_MULTIPLIERS["patterns"]
             > KIND_MULTIPLIERS[".session-notes"]
         )
+
+
+class TestRoutineState:
+    def test_reads_state_and_runlog(self, tmp_path):
+        from ..__init__ import read_routine_state
+        (tmp_path / "state.md").write_text("# state\n\nlast run ok\n", encoding="utf-8")
+        (tmp_path / "run-log.md").write_text(
+            "# run log\n\n## [2026-06-10 08:00 UTC] ran\n## [2026-06-11 08:00 UTC] ran again\n",
+            encoding="utf-8",
+        )
+        rs = read_routine_state(tmp_path)
+        assert rs.found is True
+        assert "last run ok" in rs.state_md
+        assert "ran again" in rs.run_log_tail
+
+    def test_missing_files_not_found(self, tmp_path):
+        from ..__init__ import read_routine_state
+        rs = read_routine_state(tmp_path)
+        assert rs.found is False
+        assert rs.state_md == ""
+        assert rs.run_log_tail == ""
+
+    def test_runlog_tail_caps_entries(self, tmp_path):
+        from ..__init__ import read_routine_state
+        entries = "".join(f"## [2026-06-{d:02d} 08:00 UTC] run {d}\n" for d in range(1, 16))
+        (tmp_path / "run-log.md").write_text("# run log\n\n" + entries, encoding="utf-8")
+        rs = read_routine_state(tmp_path, runlog_tail=10)
+        assert rs.found is True
+        assert "run 15" in rs.run_log_tail        # newest kept
+        assert "run 6" in rs.run_log_tail       # oldest kept (boundary from both sides)
+        assert "run 5" not in rs.run_log_tail      # 15 entries, tail 10 → first 5 dropped
+
+    def test_only_state_exists(self, tmp_path):
+        from ..__init__ import read_routine_state
+        (tmp_path / "state.md").write_text("# state\n\nonly state here\n", encoding="utf-8")
+        rs = read_routine_state(tmp_path)
+        assert rs.found is True
+        assert "only state here" in rs.state_md
+        assert rs.run_log_tail == ""
+
+    def test_runlog_without_markers_yields_empty_tail(self, tmp_path):
+        from ..__init__ import read_routine_state
+        (tmp_path / "run-log.md").write_text("# run log\n\nfreeform text, no entry markers\n", encoding="utf-8")
+        rs = read_routine_state(tmp_path)
+        assert rs.found is True
+        assert rs.run_log_tail == ""

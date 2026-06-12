@@ -36,6 +36,17 @@
   surface; plan-aware permission safety. **Unblocks C4** (the cadence build). The instincts/hot page-type
   (Pillar 4) is deferred to C3's task 1.
 
+- **2026-06-12 — C4 DONE.** Cadence-as-glue capability shipped on `feat/c4-cadence-as-glue`:
+  `routine-spec` page-type registered in `schemas.json` + conformance harness; `/ren:routine-init`
+  scaffolds a lean Cloud-Routine repo (CLAUDE.md + ROUTINE_PROMPT.md with failure footer + single-pass
+  + env-var-sourcing conventions baked in, state.md, run-log.md) and writes the conformant
+  `routine-spec` wiki page; `/ren:cadence` routes across /loop · Cron · /goal · Cloud Routines via the
+  ADR-034 decision matrix; `/ren:recall --routine` reads a routine's state.md/run-log.md for
+  cross-run memory; `/ren:doctor` gained a ROUTINES section (network-tier + quota headroom, via
+  `check-routines.sh`); the wake-up hook surfaces a "Live automations" block listing `routine-spec`
+  pages. No daemon (ADR-003); pull-model write-back (ADR-026).
+  Plan: `docs/superpowers/plans/2026-06-11-c4-cadence-as-glue.md`.
+
 ## Thesis (recap)
 
 An **open-source second-brain OS for Claude Code**: a governable, compounding **wiki as the single
@@ -86,7 +97,7 @@ roadmap is that decomposition. The actual code lands via the per-slice plans nam
 | **C1** | Project Ingest | P1 (moat) | Plan A (ready) | F1 | **032** (already in Plan A) | ⚠️ **Verify true status across worktrees first** (per F1 lesson), then execute |
 | **C2** | Code-map context layer | P6 | new — built into C1's `scan.py` | C1 | amend **008** (token budget) | Not started |
 | **C3** | Compounding model | P4 | new — repositions `sf-wrap/note/recall` | F1 (+ A1) | amend **009** (scheduled vs manual), **014**, **027** | Not started |
-| **C4** | Cadence-as-glue | P3 (headline) | new skills | A1 | new **cadence** ADR; new **write-back** ADR | Not started |
+| **C4** | Cadence-as-glue | P3 (headline) | new skills | A1 | new **cadence** ADR; new **write-back** ADR | ✅ **DONE 2026-06-12** — `routine-spec` page-type + `/ren:routine-init` + `/ren:cadence` + recall/doctor/wake-up extensions; plan `docs/superpowers/plans/2026-06-11-c4-cadence-as-glue.md` |
 | **C5** | Self-improvement | P5 | extend `sf-improve-skill` | C2 (dep-map) | new **bike-method** ADR | Not started |
 | **H1** | Doctor extensions | glue | extend `sf-doctor` | F1 | — | Not started |
 | **H2** | Multi-agent glue + lightweight-skill tier + broadened onboarding | P2/glue | extend `sf-interview/install` + `CLAUDE.md` | A1 | amend **011** (lightweight tier) | Not started |

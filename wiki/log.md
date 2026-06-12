@@ -334,3 +334,13 @@ The framework gets its identity: **RenOS** — from **仁 (rén)**, the Confucia
 ## [2026-06-11] decision | ADR-034 — Cadence as Glue over Native Primitives
 
 Net-new binding cadence decision (the framework had **zero** cadence ADRs; ADR-008 is SessionStart-only) — the first roadmap slice **A1**. RenOS ships **no scheduler/daemon** (upholds ADR-003); cadence is thin glue over CC-native primitives: `/loop` (intra-session, keeps context, ≤3d), CronCreate/List/Delete (session-scoped, terminal 7d/desktop 3d, ~30min jitter), `/goal` (autonomous to a measurable exit criterion), Cloud Routines (machine-off; cron/API/GitHub triggers; network-tiered; quota Max 15/day). Decision matrix = use the lowest tier that fits. **Write-back:** local cadence writes the wiki directly; cloud routines write back via **git branch commits, pull-model** (reuses ADR-026) — wiki-as-MCP-listener **rejected** (would violate ADR-003; the boundary: a routine's `git push` is a child of the cloud session, the framework never *waits* on it). **Glue surface (C4 builds):** `ren-routine-init` lean-repo scaffold, skill-as-routine prompt, required failure-notification footer (Resend MCP), self-terminating + auto-compact-companion conventions, the `routine-spec` page-type (registered in C4 per ADR-027 to avoid count drift), `/ren:recall` reads `state.md` for cross-run memory. **Safety:** network-tier `/ren:doctor` audit, plan-aware permission posture (Auto Mode for team / manual allowlist for solo, ADR-031), the named agent-vs-code boundary. WATCH: Daemon/Coordinator mode (design-ready). Source: `wiki/research/nate-herk-cadence-automation.md`. **Unblocks roadmap slice C4.** The instincts/hot-capture page-type (Pillar 4) is deferred to C3's task 1.
+
+## [2026-06-12 05:31] build | C4 cadence-as-glue shipped
+
+Cadence glue layer (ADR-034) landed: `routine-spec` page-type registered
+(schemas.json + conformance); `/ren:routine-init` scaffolds a lean cloud-routine
+repo + writes the routine-spec page; `/ren:cadence` routes to the right primitive
+tier (/loop · Cron · /goal · Cloud Routines); `/ren:recall --routine` reads a
+routine's state.md/run-log.md; `/ren:doctor` gained ROUTINES audits (network-tier
++ quota headroom); the wake-up hook surfaces live automations. No daemon
+(ADR-003) — pull-model write-back (ADR-026).

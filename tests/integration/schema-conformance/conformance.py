@@ -69,6 +69,8 @@ REQUIRED_FIELDS_BY_TYPE: dict[str, set[str]] = {
     "project-log-entry": set(),
     "skill": {"name", "description"},  # per ADR-011 SKILL.md frontmatter convention
     "licenses": set(),
+    # C4 cadence (ADR-034): documents one live routine; surfaced by wake-up + doctor.
+    "routine-spec": {"name", "trigger_type", "linked_repo", "network_tier"},
 }
 
 # ──────────────────────────────────────────────────────────────────────
@@ -79,6 +81,7 @@ REQUIRED_FIELDS_BY_TYPE: dict[str, set[str]] = {
 SCAN_TARGETS = [
     ("wiki-skeleton templates", "wiki-skeleton/templates/**/*.md.tmpl", "strict"),
     ("bootstrap-project templates", "skills/bootstrap-project/templates/**/*.md.tmpl", "strict"),
+    ("routine-init wiki templates", "skills/routine-init/templates/wiki/**/*.md.tmpl", "strict"),
     # Framework-shipped SKILL.md files — declared `type: skill` get strict-scanned (per lifecycle-2
     # coord 2026-05-28). Files without `type:` declared are treated as free-form per ADR-027 opt-in
     # semantics; no failure penalty for not opting in.
