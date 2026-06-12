@@ -28,6 +28,7 @@ import argparse
 import fnmatch
 import json
 import os
+import re
 import subprocess
 import sys
 from collections import Counter
@@ -344,7 +345,7 @@ def collect_git_facts(root: Path) -> dict:
 
     # Zero-commit repo: `rev-parse --is-inside-work-tree` is "true" but there is no
     # HEAD yet, so rev-list/status would emit misleading facts (dirty=True from
-    # untracked-only). Report it honestly and return early. (Review: CRITICAL)
+    # untracked-only). Report it honestly and return early.
     head = _git(root, ["rev-parse", "--verify", "-q", "HEAD"])
     if head is None or not head.strip():
         facts["commit_count"] = 0
@@ -418,24 +419,137 @@ def collect_git_facts(root: Path) -> dict:
     return facts
 
 
-def scan(path: str, *, depth: str = "standard") -> dict:
-    """Scan a project directory and return the facts dict.
+_KEBAB_RE = re.compile(r"[^a-z0-9]+")
+SUBAGENT_FILE_THRESHOLD = 800
+SUBAGENT_LOC_THRESHOLD = 50_000
 
-    Never writes. Never raises on a readable-but-empty dir — returns
-    looks_like_project=false instead.
-    """
+
+def _kebabify(name: str) -> str:
+    s = _KEBAB_RE.sub("-", name.strip().lower()).strip("-")
+    return s or "project"
+
+
+def _read_small(path: Path) -> str:
+    if not path.is_file() or not _safe_size(path):
+        return ""
+    try:
+        return path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+
+
+def _manifest_name(root: Path, manifests: list[str]) -> str | None:
+    """Best-effort project name from a manifest. Bounded, tolerant."""
+    if "pyproject.toml" in manifests:
+        txt = _read_small(root / "pyproject.toml")
+        m = re.search(r'(?m)^\s*name\s*=\s*["\']([^"\']+)["\']', txt)
+        if m:
+            return m.group(1)
+    if "package.json" in manifests:
+        txt = _read_small(root / "package.json")
+        m = re.search(r'"name"\s*:\s*"([^"]+)"', txt)
+        if m:
+            return m.group(1)
+    if "Cargo.toml" in manifests:
+        txt = _read_small(root / "Cargo.toml")
+        m = re.search(r'(?m)^\s*name\s*=\s*["\']([^"\']+)["\']', txt)
+        if m:
+            return m.group(1)
+    return None
+
+
+def _build_name_candidates(root: Path, manifests: list[str]) -> dict:
+    dir_name = _kebabify(root.name)
+    manifest_name = _manifest_name(root, manifests)
+    chosen = _kebabify(manifest_name) if manifest_name else dir_name
+    return {
+        "dir": dir_name,
+        "manifest": _kebabify(manifest_name) if manifest_name else None,
+        "chosen": chosen,
+    }
+
+
+def _estimate_loc(files: list[Path]) -> int:
+    """Bounded line-count estimate over text-ish files (skips huge/binary)."""
+    total = 0
+    text_ext = (".py", ".js", ".ts", ".tsx", ".jsx", ".go", ".rs", ".java",
+                ".kt", ".rb", ".php", ".c", ".cpp", ".h", ".hpp", ".cs",
+                ".md", ".rst", ".toml", ".yaml", ".yml", ".json", ".sh")
+    for p in files:
+        if p.suffix.lower() not in text_ext:
+            continue
+        try:
+            with p.open("r", encoding="utf-8", errors="replace") as fh:
+                for _ in fh:
+                    total += 1
+        except OSError:
+            continue
+    return total
+
+
+def _build_size_signals(files: list[Path]) -> dict:
+    file_count = len(files)
+    loc = _estimate_loc(files)
+    return {
+        "file_count": file_count,
+        "loc_estimate": loc,
+        "recommend_subagents": file_count > SUBAGENT_FILE_THRESHOLD
+        or loc > SUBAGENT_LOC_THRESHOLD,
+    }
+
+
+def scan(path: str, *, depth: str = "standard") -> dict:
+    """Scan a project directory and return the facts dict. Never writes."""
     root = Path(path).expanduser().resolve()
     facts: dict = {
         "schema_version": SCHEMA_VERSION,
         "scanned_path": str(root),
         "looks_like_project": False,
-        "framework_version": _framework_version(),
         "warnings": [],
     }
     if not root.is_dir():
+        # Return a COMPLETE facts dict (all contract keys present) so the LLM
+        # consumer never KeyErrors on a bad path.
         facts["warnings"].append(f"path is not a directory: {root}")
+        facts["framework_version"] = _framework_version()
+        facts["name_candidates"] = {"dir": "", "manifest": None, "chosen": "project"}
+        facts["stack"] = {"languages": [], "package_managers": [],
+                          "frameworks": [], "manifests": []}
+        facts["tree_digest"] = {"depth_cap": TREE_DEPTH_CAP, "entry_count": 0,
+                                "truncated": False, "top_dirs": [], "notable_files": []}
+        facts["entry_points"] = []
+        facts["doc_inventory"] = []
+        facts["git"] = {"is_repo": False}
+        facts["size_signals"] = {"file_count": 0, "loc_estimate": 0,
+                                 "recommend_subagents": False}
         return facts
-    # Remaining sections are filled by later tasks.
+
+    files = enumerate_files(root)
+    stack = detect_stack(root, files)
+    git = collect_git_facts(root)
+    doc_inventory = build_doc_inventory(root, files)
+
+    has_manifest = bool(stack["manifests"])
+    has_readme = any(d["kind"] == "readme" for d in doc_inventory)
+    looks_like_project = has_manifest or git.get("is_repo", False) or has_readme
+
+    facts["looks_like_project"] = looks_like_project
+    facts["name_candidates"] = _build_name_candidates(root, stack["manifests"])
+    facts["stack"] = stack
+    facts["tree_digest"] = build_tree_digest(root, files)
+    facts["entry_points"] = detect_entry_points(root, files)
+    facts["doc_inventory"] = doc_inventory
+    facts["git"] = git
+    facts["size_signals"] = _build_size_signals(files)
+    facts["framework_version"] = _framework_version()
+
+    if not has_readme:
+        facts["warnings"].append("no README found")
+    if not git.get("is_repo", False):
+        facts["warnings"].append("not a git repository; timeline will be skipped")
+    if not has_manifest:
+        facts["warnings"].append("no recognized package manifest found")
+
     return facts
 
 
