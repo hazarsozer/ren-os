@@ -233,6 +233,87 @@ def detect_stack(root: Path, files: list[Path]) -> dict:
     }
 
 
+TREE_DEPTH_CAP = 4
+TREE_ENTRY_CAP = 500
+
+_ENTRY_POINT_CANDIDATES = (
+    "main.py", "src/main.py", "app.py", "src/app.py", "__main__.py",
+    "manage.py", "index.js", "src/index.js", "index.ts", "src/index.ts",
+    "main.go", "cmd/main.go", "src/main.rs", "src/lib.rs", "Main.java",
+)
+
+_DOC_PATTERNS = (
+    ("readme", ("readme.md", "readme.rst", "readme.txt", "readme")),
+    ("changelog", ("changelog.md", "changelog")),
+    ("contributing", ("contributing.md",)),
+)
+
+
+def build_tree_digest(root: Path, files: list[Path]) -> dict:
+    """Summarize the directory shape: top-level dirs, entry count, truncation."""
+    top_dirs: set[str] = set()
+    notable: set[str] = set()
+    truncated = False
+    for p in files:
+        rel = p.relative_to(root)
+        parts = rel.parts
+        if len(parts) > 1:
+            top_dirs.add(parts[0])
+        if len(parts) > TREE_DEPTH_CAP:
+            truncated = True
+        name = parts[-1]
+        if name in ("README.md", "pyproject.toml", "package.json", "Cargo.toml",
+                    "go.mod", "Makefile", "Dockerfile", "docker-compose.yml"):
+            notable.add(str(rel))
+    if len(files) > TREE_ENTRY_CAP:
+        truncated = True
+    return {
+        "depth_cap": TREE_DEPTH_CAP,
+        "entry_count": len(files),
+        "truncated": truncated,
+        "top_dirs": sorted(top_dirs),
+        "notable_files": sorted(notable),
+    }
+
+
+def detect_entry_points(root: Path, files: list[Path]) -> list[str]:
+    """Return entry-point paths (relative strings) that exist in the file list."""
+    rels = {str(p.relative_to(root)) for p in files}
+    return [c for c in _ENTRY_POINT_CANDIDATES if c in rels]
+
+
+def _doc_kind(rel: str) -> str | None:
+    """Classify a relative path string as a doc kind, or return None."""
+    low = rel.lower()
+    base = low.rsplit("/", 1)[-1]
+    if "/adr/" in "/" + low or "/decisions/" in "/" + low:
+        if low.endswith(".md"):
+            return "adr"
+    for kind, names in _DOC_PATTERNS:
+        if base in names:
+            return kind
+    if low.startswith("docs/") and low.endswith((".md", ".rst")):
+        return "doc"
+    return None
+
+
+def build_doc_inventory(root: Path, files: list[Path]) -> list[dict]:
+    """Return a sorted list of {path, kind, bytes} for recognised doc files."""
+    inv: list[dict] = []
+    for p in files:
+        rel = str(p.relative_to(root))
+        kind = _doc_kind(rel)
+        if kind is None:
+            continue
+        try:
+            size = p.stat().st_size
+        except OSError:
+            size = 0
+        inv.append({"path": rel, "kind": kind, "bytes": size})
+    inv.sort(key=lambda d: d["path"])
+    return inv
+
+
 def scan(path: str, *, depth: str = "standard") -> dict:
     """Scan a project directory and return the facts dict.
 
