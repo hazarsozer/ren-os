@@ -274,3 +274,47 @@ def test_git_facts_detached_head(tmp_path):
     g = scan.collect_git_facts(tmp_path)
     assert g["is_repo"] is True
     assert g["branch"] == ""              # detached HEAD -> no branch name
+
+
+# ---------------------------------------------------------------------------
+# Task 6: Full facts assembly (name candidates, size signals, looks_like_project)
+# ---------------------------------------------------------------------------
+
+def test_full_scan_python_project(tmp_path):
+    (tmp_path / "pyproject.toml").write_text("[project]\nname='my-app'\ndependencies=['flask']\n")
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "main.py").write_text("def main():\n    pass\n")
+    (tmp_path / "README.md").write_text("# My App\nDoes things.\n")
+    _git_init(tmp_path)
+    _git_commit_all(tmp_path, "init", when="2025-02-01T10:00:00")
+    facts = scan.scan(str(tmp_path))
+    assert facts["looks_like_project"] is True
+    assert facts["name_candidates"]["chosen"] == "my-app"
+    assert any(l["name"] == "Python" for l in facts["stack"]["languages"])
+    assert "flask" in facts["stack"]["frameworks"]
+    assert facts["git"]["is_repo"] is True
+    assert facts["size_signals"]["file_count"] >= 3
+    assert "src/main.py" in facts["entry_points"]
+
+
+def test_name_falls_back_to_dir_when_no_manifest_name(tmp_path):
+    proj = tmp_path / "cool-tool"
+    proj.mkdir()
+    (proj / "README.md").write_text("# Cool Tool\n")
+    facts = scan.scan(str(proj))
+    assert facts["looks_like_project"] is True   # README alone counts
+    assert facts["name_candidates"]["chosen"] == "cool-tool"
+
+
+def test_recommend_subagents_for_large_repo(tmp_path):
+    facts_small = scan.scan(str(tmp_path))
+    assert facts_small["looks_like_project"] is False
+    # size_signals present even on empty dir
+    assert facts_small["size_signals"]["recommend_subagents"] is False
+
+
+def test_recommend_subagents_true_when_file_count_exceeds_threshold():
+    fake_files = [Path(f"/fake/f{i}.py") for i in range(scan.SUBAGENT_FILE_THRESHOLD + 1)]
+    signals = scan._build_size_signals(fake_files)
+    assert signals["recommend_subagents"] is True
+    assert signals["file_count"] == scan.SUBAGENT_FILE_THRESHOLD + 1
