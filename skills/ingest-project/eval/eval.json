@@ -1,0 +1,101 @@
+{
+  "name": "ingest-project",
+  "description": "Binary-assertion test suite for /ren:ingest-project. Each test runs a simulated invocation against a fixture and verifies the assertions hold. Load-bearing: the user's project is never modified; writes are additive; no content is invented.",
+  "schema_version": 1,
+  "framework_version": "1.0.0",
+  "tests": [
+    {
+      "id": "ingest-happy-path",
+      "fixture": "fixtures/ingest-python-project.yaml",
+      "prompt": "/ren:ingest-project /home/tester/Dev/demo-api",
+      "expected_output_summary": "Scanner reads the python project read-only; the skill drafts a populated ADR-014 sub-wiki, previews once, and on approval writes it + registers it in the master wiki.",
+      "trigger_test": true,
+      "binary_assertions": [
+        "scripts/scan.py is invoked read-only against the project path before any write",
+        "Target directory wiki/projects/demo-api/ exists after the run",
+        "All 7 top-level files exist: PROJECT.md, REQUIREMENTS.md, ROADMAP.md, STATE.md, CONTEXT.md, index.md, log.md",
+        "All 3 subdirectories exist with .gitkeep markers: research/, decisions/, patterns/",
+        "PROJECT.md frontmatter has type: project-main and status: ingested",
+        "REQUIREMENTS.md frontmatter has type: project-requirements",
+        "ROADMAP.md frontmatter has type: project-roadmap",
+        "STATE.md frontmatter has type: project-state",
+        "CONTEXT.md frontmatter has type: project-context",
+        "index.md frontmatter has type: project-index",
+        "log.md frontmatter has type: project-log-entry",
+        "PROJECT.md names the detected stack (Python / FastAPI) drawn from the scanner facts, not invented",
+        "log.md contains at least one '## [<YYYY-MM>] backfill |' entry derived from the git timeline",
+        "log.md contains a '## [2026-05-31] init | Project sub-wiki ingested for demo-api' entry (simulated_date from fixture)",
+        "After the run, wiki/index.md contains exactly ONE bullet under '## Projects' linking to projects/demo-api/index.md (re-running adds no second — idempotent)",
+        "After the run, wiki/log.md contains exactly ONE 'init | Project sub-wiki ingested for demo-api' entry (idempotent)",
+        "Files written = 7 pages + 3 .gitkeep = 10; master wiki/index.md and wiki/log.md are edits, not new files",
+        "No file inside /home/tester/Dev/demo-api is created, modified, or deleted by the run (read-only invariant on the project)",
+        "A single approval gate is shown before any wiki file is written"
+      ]
+    },
+    {
+      "id": "ingest-name-collision-additive",
+      "fixture": "fixtures/ingest-name-collision.yaml",
+      "prompt": "/ren:ingest-project /home/tester/Dev/demo-api",
+      "expected_output_summary": "Sub-wiki already partially exists → additive-only: only missing pages are written, existing pages are never overwritten, master-wiki registration lines are idempotent.",
+      "trigger_test": true,
+      "binary_assertions": [
+        "Skill output mentions 'already exists' OR 'additive' in the user-facing message",
+        "Pre-existing pages PROJECT.md, index.md, log.md under wiki/projects/demo-api/ have unchanged modification times",
+        "Pre-existing .gitkeep files under research/, decisions/, patterns/ have unchanged modification times",
+        "Missing pages REQUIREMENTS.md, ROADMAP.md, STATE.md, CONTEXT.md ARE written",
+        "After the run, wiki/index.md does NOT gain a second projects/demo-api/ bullet (idempotent registration)",
+        "After the run, wiki/log.md does NOT gain a second 'init | Project sub-wiki ingested for demo-api' entry (idempotent)",
+        "No file inside /home/tester/Dev/demo-api is modified"
+      ]
+    },
+    {
+      "id": "ingest-no-master-wiki-refused",
+      "fixture": "fixtures/ingest-python-project.yaml",
+      "prompt": "/ren:ingest-project /home/tester/Dev/demo-api",
+      "expected_output_summary": "When the master wiki is absent, the skill activates then refuses before scanning and recommends /ren:install. (Override the fixture's wiki to absent when running this case.)",
+      "trigger_test": true,
+      "binary_assertions": [
+        "If wiki/index.md does NOT exist, the skill refuses before invoking scripts/scan.py",
+        "The refusal message names '/ren:install' as the remediation",
+        "No partial sub-wiki is created at wiki/projects/demo-api/"
+      ]
+    },
+    {
+      "id": "ingest-no-invention-on-thin-evidence",
+      "fixture": "fixtures/ingest-python-project.yaml",
+      "prompt": "/ren:ingest-project /home/tester/Dev/demo-api --depth light",
+      "expected_output_summary": "With light depth and a sparse README, sections lacking evidence keep placeholder markers rather than fabricated content.",
+      "trigger_test": false,
+      "binary_assertions": [
+        "REQUIREMENTS.md sections with no supporting evidence contain a '_TBD_' placeholder marker, not invented requirements",
+        "No fabricated feature, metric, date, or user-persona appears in any page that is not traceable to the scanner facts",
+        "PROJECT.md still records the factually-detected stack (Python / FastAPI)"
+      ]
+    }
+  ],
+  "non_triggers": [
+    {
+      "id": "bootstrap-not-ingest",
+      "prompt": "/ren:bootstrap-project brand-new-thing",
+      "expected_outcome": "skill_not_activated"
+    },
+    {
+      "id": "insights-not-ingest",
+      "prompt": "/ren:insights",
+      "expected_outcome": "skill_not_activated"
+    },
+    {
+      "id": "install-not-ingest",
+      "prompt": "/ren:install",
+      "expected_outcome": "skill_not_activated"
+    }
+  ],
+  "notes": [
+    "fixture: path to a YAML file under eval/fixtures/ describing the simulated environment.",
+    "trigger_test: when true, the eval harness also verifies SKILL.md's description activates on the prompt (ADR-012 Layer 1).",
+    "ingest-no-master-wiki-refused is trigger_test: true because the prompt is a valid /ren:ingest-project invocation that genuinely activates the skill; the refusal is post-activation Stage-1 behavior, not non-activation. Non-activation belongs in non_triggers.",
+    "All assertions are binary. The load-bearing ones: project dir unchanged (read-only invariant), writes additive-only, no content invented.",
+    "Date-robustness: the log-line date assertion matches '2026-05-31' because the fixture pins simulated_date: 2026-05-31. For other dates use date-agnostic substring 'init | Project sub-wiki ingested for demo-api'.",
+    "--depth deep may add decisions/ and research/ summary files; those are outside the v1 binary-eval scope and not asserted here."
+  ]
+}
