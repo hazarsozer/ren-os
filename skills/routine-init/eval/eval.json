@@ -1,0 +1,66 @@
+{
+  "name": "routine-init",
+  "description": "Binary-assertion suite for /ren:routine-init. Each test simulates a scaffold against a temp dest + wiki and verifies the files and refusals.",
+  "schema_version": 1,
+  "framework_version": "1.0.0",
+  "tests": [
+    {
+      "id": "scaffold-and-spec",
+      "prompt": "/ren:routine-init daily-digest --skill insights --trigger cron --repo https://github.com/u/daily-digest --schedule \"every day 8am\" --expected \"Yesterday's digest\" --secrets RESEND_API_KEY --failure-email me@example.com",
+      "expected_output_summary": "Lean repo + routine-spec page created; next-steps printed.",
+      "trigger_test": true,
+      "binary_assertions": [
+        "<dest>/daily-digest/ contains CLAUDE.md, ROUTINE_PROMPT.md, state.md, run-log.md",
+        "~/.startup-framework/wiki/routines/daily-digest.md exists and contains 'type: routine-spec'",
+        "The routine-spec page contains name, trigger_type, linked_repo, network_tier frontmatter keys",
+        "ROUTINE_PROMPT.md contains the substring 'mcp__resend__send-email'",
+        "ROUTINE_PROMPT.md contains the substring '/ren:recall --routine .'",
+        "ROUTINE_PROMPT.md contains the substring '/ren:insights'",
+        "Output prints a next-steps checklist mentioning 'Run-Now' (or 'Run Now') before scheduling"
+      ]
+    },
+    {
+      "id": "invalid-name-refused",
+      "prompt": "/ren:routine-init DailyDigest --skill insights --trigger cron --repo https://github.com/u/x",
+      "expected_output_summary": "Non-kebab name refused; nothing written.",
+      "trigger_test": true,
+      "binary_assertions": [
+        "User-facing output mentions 'kebab-case'",
+        "No directory named DailyDigest or dailydigest is created",
+        "No routine-spec page is written"
+      ]
+    },
+    {
+      "id": "full-tier-warns",
+      "prompt": "/ren:routine-init scraper --skill insights --trigger cron --repo https://github.com/u/scraper --tier full --schedule \"hourly\"",
+      "expected_output_summary": "Scaffolds a full-tier routine; the routine-spec page carries the full-tier safety note (which /ren:doctor later flags).",
+      "trigger_test": false,
+      "binary_assertions": [
+        "The scaffolded routine-spec page frontmatter has network_tier value 'full'",
+        "The scaffolded routine-spec page contains the substring 'prompt-injection exfiltration surface' (the full-tier safety note)"
+      ]
+    },
+    {
+      "id": "existing-target-refused",
+      "prompt": "/ren:routine-init daily-digest --skill insights --trigger cron --repo https://github.com/u/daily-digest",
+      "expected_output_summary": "When the repo dir or spec page already exists, refuse with no overwrite.",
+      "trigger_test": false,
+      "binary_assertions": [
+        "Output contains the substring 'Refusing to overwrite'",
+        "No pre-existing file under the target repo or the spec page has its content changed"
+      ]
+    }
+  ],
+  "non_triggers": [
+    {
+      "id": "loop-not-routine",
+      "prompt": "/loop every 5 minutes check the deploy",
+      "expected_outcome": "skill_not_activated"
+    },
+    {
+      "id": "recall-not-routine",
+      "prompt": "/ren:recall postgres decision",
+      "expected_outcome": "skill_not_activated"
+    }
+  ]
+}
