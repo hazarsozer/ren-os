@@ -18,6 +18,7 @@ Cadence: monthly stable. Out-of-cycle PATCH releases only for security or broken
 
 ### Added
 - **Cadence-as-glue (C4, ADR-034):** `routine-spec` wiki page-type; `/ren:routine-init` (scaffolds a lean Cloud-Routine repo + writes the routine-spec page); `/ren:cadence` (decision-matrix router over /loop · Cron · /goal · Cloud Routines); `/ren:recall --routine` (reads a routine's state.md/run-log.md); `/ren:doctor` ROUTINES audits (network-tier + quota headroom); wake-up hook "Live automations" section.
+- **`/ren:ingest-project` (C1, ADR-032):** brownfield onboarding — ingest an existing project into your wiki. A read-only scanner reads the repo (stack, docs, git history) and the skill drafts a populated ADR-014 sub-wiki, previews it once, and writes additively on approval. Never modifies the project's own files.
 
 ### Changed
 - **Rebranded to RenOS** (from 仁 *rén*, humaneness) — command namespace `/sf:` → `/ren:`, plugin `name: sf → ren`, repo/marketplace `ren-os` (install `ren@ren-os`). Skill dirs unchanged. See ADR-033. No version bump — pre-first-republish, so `ren` / `/ren:` is the first public command surface anyone sees.
