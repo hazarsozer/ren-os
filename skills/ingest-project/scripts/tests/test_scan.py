@@ -318,3 +318,77 @@ def test_recommend_subagents_true_when_file_count_exceeds_threshold():
     signals = scan._build_size_signals(fake_files)
     assert signals["recommend_subagents"] is True
     assert signals["file_count"] == scan.SUBAGENT_FILE_THRESHOLD + 1
+
+
+# ---------------------------------------------------------------------------
+# Task 2 deferred: force-added tracked secret still excluded by enumerate_files
+# ---------------------------------------------------------------------------
+
+def test_never_read_blocks_force_added_tracked_secret(tmp_path):
+    (tmp_path / ".env").write_text("SECRET=abc\n")
+    (tmp_path / ".gitignore").write_text("")            # do NOT ignore it
+    _git_init(tmp_path)
+    _git_commit_all(tmp_path, "oops tracked .env")
+    files = scan.enumerate_files(tmp_path)
+    assert not any(p.name == ".env" for p in files)     # excluded even though tracked
+
+
+# ---------------------------------------------------------------------------
+# Task 7: Read-only invariant + secret-skip property tests (LOAD-BEARING)
+# ---------------------------------------------------------------------------
+
+def _snapshot(root: Path) -> dict[str, tuple[int, float, str]]:
+    snap: dict[str, tuple[int, float, str]] = {}
+    for p in sorted(root.rglob("*")):
+        if ".git" not in p.parts and p.is_file():
+            st = p.stat()
+            data = p.read_bytes()
+            snap[str(p.relative_to(root))] = (
+                st.st_size, st.st_mtime, hashlib.sha256(data).hexdigest()
+            )
+    return snap
+
+
+def test_scan_mutates_nothing_in_project(tmp_path):
+    # Build a realistic repo, snapshot it, scan, snapshot again — byte-identical.
+    (tmp_path / "pyproject.toml").write_text("[project]\nname='x'\n")
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "main.py").write_text("def main():\n    pass\n")
+    (tmp_path / "README.md").write_text("# X\n")
+    _git_init(tmp_path)
+    _git_commit_all(tmp_path, "init", when="2025-02-01T10:00:00")
+    before = _snapshot(tmp_path)
+    scan.scan(str(tmp_path))
+    after = _snapshot(tmp_path)
+    assert before == after
+
+
+def test_secret_values_never_appear_in_facts(tmp_path):
+    secret = "FAKE_SECRET_sk_live_abc123XYZ"
+    (tmp_path / ".env").write_text(f"API_KEY={secret}\n")
+    (tmp_path / "config.pem").write_text(f"-----BEGIN KEY-----\n{secret}\n")
+    (tmp_path / "pyproject.toml").write_text("[project]\nname='x'\n")
+    (tmp_path / "README.md").write_text("# X\n")
+    facts = scan.scan(str(tmp_path))
+    blob = json.dumps(facts)
+    assert secret not in blob          # secret content never read → never emitted
+
+
+def test_subprocess_scan_writes_nothing_and_emits_json(tmp_path):
+    # Scan a real git repo via subprocess so the no-mutation check exercises the
+    # git path (`git status`/`git ls-files` touch .git/index). `_snapshot` excludes
+    # .git/, so git-index churn from those reads can't trip a false failure.
+    (tmp_path / "main.py").write_text("print(1)\n")
+    (tmp_path / "README.md").write_text("# demo\n")
+    _git_init(tmp_path)
+    _git_commit_all(tmp_path, "init")
+    before = _snapshot(tmp_path)
+    proc = subprocess.run(
+        [sys.executable, str(SCRIPTS_DIR / "scan.py"), str(tmp_path)],
+        capture_output=True, text=True, cwd=str(tmp_path),
+    )
+    after = _snapshot(tmp_path)
+    assert proc.returncode == 0, proc.stderr
+    parsed = json.loads(proc.stdout)   # stdout is valid JSON
+    assert parsed["schema_version"] == 1
+    assert before == after             # nothing created/modified/deleted
