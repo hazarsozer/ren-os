@@ -78,3 +78,44 @@ class TestScaffold:
         claude = (tmp_path / "repos" / "daily-digest" / "CLAUDE.md").read_text()
         assert ".env" in claude
         assert "do NOT" in claude   # explicit env-var sourcing
+
+
+class TestSpecPage:
+    def test_writes_routine_spec_page(self, tmp_path):
+        r = _run(tmp_path)
+        assert r.success, r.error
+        page = tmp_path / "wiki" / "routines" / "daily-digest.md"
+        assert page.is_file()
+        assert r.spec_page == page
+        content = page.read_text()
+        assert "type: routine-spec" in content
+        assert "schema_version: 1" in content
+        assert "daily-digest" in content
+        assert '"cron"' in content
+        assert '"trusted"' in content
+
+    def test_spec_page_has_required_fields(self, tmp_path):
+        r = _run(tmp_path)
+        content = (tmp_path / "wiki" / "routines" / "daily-digest.md").read_text()
+        for key in ("name:", "trigger_type:", "linked_repo:", "network_tier:"):
+            assert key in content
+        assert 'framework_version: "1.0.0"' in content
+
+    def test_refuses_existing_spec_page(self, tmp_path):
+        (tmp_path / "wiki" / "routines").mkdir(parents=True)
+        (tmp_path / "wiki" / "routines" / "daily-digest.md").write_text("x", encoding="utf-8")
+        r = _run(tmp_path)
+        assert not r.success and "routine-spec page" in r.error
+        # No partial repo created when the spec page already exists.
+        assert not (tmp_path / "repos" / "daily-digest").exists()
+
+    def test_wiki_template_missing_cleans_up(self, tmp_path):
+        # templates dir with repo/ present but the wiki/ template absent
+        fake_templates = tmp_path / "tmpl"
+        (fake_templates / "repo").mkdir(parents=True)
+        for f in ("CLAUDE.md", "ROUTINE_PROMPT.md", "state.md", "run-log.md"):
+            (fake_templates / "repo" / f"{f}.tmpl").write_text("{{routine_name}}", encoding="utf-8")
+        # intentionally no wiki/routine-spec.md.tmpl
+        r = _run(tmp_path, templates_dir=fake_templates)
+        assert not r.success and "Wiki-page write failed" in r.error
+        assert not (tmp_path / "repos" / "daily-digest").exists()

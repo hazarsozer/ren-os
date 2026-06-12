@@ -82,6 +82,9 @@ def routine_init(
     repo_dir = dest_dir / name
     if repo_dir.exists():
         return RoutineInitResult(False, error=f"Refusing to overwrite existing directory {repo_dir}.")
+    spec_page = wiki_root / "routines" / f"{name}.md"
+    if spec_page.exists():
+        return RoutineInitResult(False, error=f"Refusing to overwrite existing routine-spec page {spec_page}.")
 
     today = today or datetime.now(timezone.utc).strftime("%Y-%m-%d")
     # Render values for both the repo templates (this task) and the Task-3 wiki template (which reuses this dict).
@@ -116,9 +119,23 @@ def routine_init(
         logger.error("routine-init scaffold failed mid-write for %s: %s", name, exc)
         return RoutineInitResult(False, error=f"Scaffold failed mid-write: {exc}")
 
+    # ── write the routine-spec wiki page (the "report home" record) ──
+    try:
+        wiki_tmpl = templates_dir / "wiki" / "routine-spec.md.tmpl"
+        spec_page.parent.mkdir(parents=True, exist_ok=True)
+        spec_page.write_text(_render(wiki_tmpl.read_text(encoding="utf-8"), placeholders), encoding="utf-8")
+        written.append(spec_page)
+    except OSError as exc:
+        import shutil
+        shutil.rmtree(repo_dir, ignore_errors=True)
+        spec_page.unlink(missing_ok=True)
+        logger.error("routine-init wiki-page write failed for %s: %s", name, exc)
+        return RoutineInitResult(False, error=f"Wiki-page write failed: {exc}")
+
     return RoutineInitResult(
         success=True,
         repo_dir=repo_dir,
+        spec_page=spec_page,
         files_written=tuple(written),
     )
 
