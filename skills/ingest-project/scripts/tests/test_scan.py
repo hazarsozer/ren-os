@@ -164,3 +164,61 @@ def test_stack_framework_hints_avoid_false_positives(tmp_path):
     assert "react" not in st["frameworks"]
     assert "next" not in st["frameworks"]
     assert "pytorch" not in st["frameworks"]
+
+
+# ---------------------------------------------------------------------------
+# Task 4: Tree digest, entry points, doc inventory
+# ---------------------------------------------------------------------------
+
+def test_tree_digest_and_entry_points(tmp_path):
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "main.py").write_text("def main():\n    pass\n")
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_x.py").write_text("def test_x():\n    pass\n")
+    files = scan.enumerate_files(tmp_path)
+    td = scan.build_tree_digest(tmp_path, files)
+    assert "src" in td["top_dirs"]
+    assert "tests" in td["top_dirs"]
+    assert td["entry_count"] == len(files)
+    eps = scan.detect_entry_points(tmp_path, files)
+    assert "src/main.py" in eps
+
+
+def test_doc_inventory_classifies(tmp_path):
+    (tmp_path / "README.md").write_text("# Title\nbody\n")
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "adr").mkdir()
+    (tmp_path / "docs" / "adr" / "0001-foo.md").write_text("# ADR\n")
+    files = scan.enumerate_files(tmp_path)
+    inv = scan.build_doc_inventory(tmp_path, files)
+    kinds = {d["kind"] for d in inv}
+    paths = {d["path"] for d in inv}
+    assert "readme" in kinds
+    assert "README.md" in paths
+    assert "adr" in kinds
+    assert any(d["path"] == "README.md" and d["bytes"] > 0 for d in inv)
+    assert inv == sorted(inv, key=lambda d: d["path"])
+
+
+def test_tree_digest_truncated_by_depth(tmp_path):
+    deep = tmp_path / "a" / "b" / "c" / "d"          # file 5 parts deep > TREE_DEPTH_CAP=4
+    deep.mkdir(parents=True)
+    (deep / "f.py").write_text("x")
+    td = scan.build_tree_digest(tmp_path, scan.enumerate_files(tmp_path))
+    assert td["truncated"] is True
+
+
+def test_tree_digest_notable_files(tmp_path):
+    (tmp_path / "README.md").write_text("hi")
+    (tmp_path / "Makefile").write_text("all:")
+    td = scan.build_tree_digest(tmp_path, scan.enumerate_files(tmp_path))
+    assert "README.md" in td["notable_files"] and "Makefile" in td["notable_files"]
+    assert td["truncated"] is False
+
+
+def test_tree_digest_entry_cap_boundary(tmp_path):
+    # synthetic file list (no real I/O) pins 500=not-truncated, 501=truncated
+    files_500 = [tmp_path / f"f{i}.py" for i in range(500)]
+    files_501 = [tmp_path / f"f{i}.py" for i in range(501)]
+    assert scan.build_tree_digest(tmp_path, files_500)["truncated"] is False
+    assert scan.build_tree_digest(tmp_path, files_501)["truncated"] is True
