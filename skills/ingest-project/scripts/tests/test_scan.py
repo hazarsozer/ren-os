@@ -222,3 +222,55 @@ def test_tree_digest_entry_cap_boundary(tmp_path):
     files_501 = [tmp_path / f"f{i}.py" for i in range(501)]
     assert scan.build_tree_digest(tmp_path, files_500)["truncated"] is False
     assert scan.build_tree_digest(tmp_path, files_501)["truncated"] is True
+
+
+# ---------------------------------------------------------------------------
+# Task 5: Git facts
+# ---------------------------------------------------------------------------
+
+def test_git_facts_non_repo(tmp_path):
+    (tmp_path / "x.py").write_text("1\n")
+    g = scan.collect_git_facts(tmp_path)
+    assert g == {"is_repo": False}
+
+
+def test_git_facts_repo_with_commits_and_tag(tmp_path):
+    (tmp_path / "a.py").write_text("1\n")
+    _git_init(tmp_path)
+    _git_commit_all(tmp_path, "feat: first", when="2025-01-10T12:00:00")
+    (tmp_path / "b.py").write_text("2\n")
+    _git_commit_all(tmp_path, "feat: second", when="2025-03-15T12:00:00")
+    subprocess.run(["git", "tag", "v1.0"], cwd=tmp_path, check=True)
+    g = scan.collect_git_facts(tmp_path)
+    assert g["is_repo"] is True
+    assert g["commit_count"] == 2
+    months = {b["month"] for b in g["timeline"]}
+    assert "2025-01" in months and "2025-03" in months
+    tag_names = {t["name"] for t in g["tags"]}
+    assert "v1.0" in tag_names
+    assert g["recent"]                       # at least one recent commit
+    assert g["branch"]                        # some branch name
+    assert g["dirty"] is False                # clean working tree after commit
+
+
+def test_git_facts_zero_commit_repo(tmp_path):
+    (tmp_path / "a.py").write_text("1\n")
+    _git_init(tmp_path)                 # no commit
+    g = scan.collect_git_facts(tmp_path)
+    assert g["is_repo"] is True
+    assert g["commit_count"] == 0
+    assert g["no_commits"] is True
+    assert g["dirty"] is False         # untracked-only is NOT "dirty" here
+
+
+def test_git_facts_detached_head(tmp_path):
+    (tmp_path / "a.py").write_text("1\n")
+    _git_init(tmp_path); _git_commit_all(tmp_path, "first")
+    (tmp_path / "b.py").write_text("2\n"); _git_commit_all(tmp_path, "second")
+    first = subprocess.run(["git", "rev-parse", "HEAD~1"], cwd=tmp_path,
+                           capture_output=True, text=True).stdout.strip()
+    subprocess.run(["git", "checkout", first], cwd=tmp_path,
+                   capture_output=True)   # detach
+    g = scan.collect_git_facts(tmp_path)
+    assert g["is_repo"] is True
+    assert g["branch"] == ""              # detached HEAD -> no branch name

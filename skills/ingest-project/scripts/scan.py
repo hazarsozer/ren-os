@@ -30,6 +30,7 @@ import json
 import os
 import subprocess
 import sys
+from collections import Counter
 from pathlib import Path
 
 SCHEMA_VERSION = 1
@@ -312,6 +313,109 @@ def build_doc_inventory(root: Path, files: list[Path]) -> list[dict]:
         inv.append({"path": rel, "kind": kind, "bytes": size})
     inv.sort(key=lambda d: d["path"])
     return inv
+
+
+GIT_TIMEOUT = 30
+RECENT_COMMITS = 10
+
+
+def _git(root: Path, args: list[str]) -> str | None:
+    """Run a read-only git command; return stdout text or None on any failure."""
+    try:
+        proc = subprocess.run(
+            ["git"] + args, cwd=str(root),
+            capture_output=True, timeout=GIT_TIMEOUT,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if proc.returncode != 0:
+        return None
+    return proc.stdout.decode("utf-8", errors="replace")
+
+
+def collect_git_facts(root: Path) -> dict:
+    """Collect bounded, read-only git history facts. Monthly timeline buckets;
+    tags annotated; recent commits capped. Returns {'is_repo': False} for non-repos."""
+    inside = _git(root, ["rev-parse", "--is-inside-work-tree"])
+    if inside is None or inside.strip() != "true":
+        return {"is_repo": False}
+
+    facts: dict = {"is_repo": True}
+
+    # Zero-commit repo: `rev-parse --is-inside-work-tree` is "true" but there is no
+    # HEAD yet, so rev-list/status would emit misleading facts (dirty=True from
+    # untracked-only). Report it honestly and return early. (Review: CRITICAL)
+    head = _git(root, ["rev-parse", "--verify", "-q", "HEAD"])
+    if head is None or not head.strip():
+        facts["commit_count"] = 0
+        facts["branch"] = (_git(root, ["symbolic-ref", "--short", "-q", "HEAD"]) or "").strip()
+        facts["dirty"] = False
+        facts["first_commit"] = ""
+        facts["last_commit"] = ""
+        facts["timeline"] = []
+        facts["tags"] = []
+        facts["recent"] = []
+        facts["no_commits"] = True
+        return facts
+
+    count = _git(root, ["rev-list", "--count", "HEAD"])
+    facts["commit_count"] = int(count.strip()) if count and count.strip().isdigit() else 0
+
+    branch = _git(root, ["symbolic-ref", "--short", "HEAD"])
+    if branch is None:
+        # detached HEAD: abbrev-ref returns "HEAD" — treat as no branch
+        branch = _git(root, ["rev-parse", "--abbrev-ref", "HEAD"])
+        if branch and branch.strip() == "HEAD":
+            branch = ""
+    facts["branch"] = branch.strip() if branch else ""
+
+    dirty = _git(root, ["status", "--porcelain"])
+    facts["dirty"] = bool(dirty and dirty.strip())
+
+    # First/last commit dates (ISO short).
+    first = _git(root, ["log", "--reverse", "--date=format:%Y-%m-%d",
+                        "--pretty=%ad", "--max-parents=0"])
+    facts["first_commit"] = first.splitlines()[0].strip() if first and first.strip() else ""
+    last = _git(root, ["log", "-1", "--date=format:%Y-%m-%d", "--pretty=%ad"])
+    facts["last_commit"] = last.strip() if last else ""
+
+    # Monthly timeline buckets (single algorithm, per spec §7).
+    months_out = _git(root, ["log", "--date=format:%Y-%m", "--pretty=%ad"])
+    bucket: Counter = Counter()
+    if months_out:
+        for line in months_out.splitlines():
+            m = line.strip()
+            if m:
+                bucket[m] += 1
+    facts["timeline"] = [
+        {"month": mth, "count": cnt} for mth, cnt in sorted(bucket.items())
+    ]
+
+    # Tags with their commit date (annotated into the timeline by the LLM later).
+    tags_out = _git(root, ["tag", "--sort=creatordate",
+                           "--format=%(refname:short)\t%(creatordate:short)"])
+    tags: list[dict] = []
+    if tags_out:
+        for line in tags_out.splitlines():
+            if "\t" in line:
+                nm, dt = line.split("\t", 1)
+                if nm.strip():
+                    tags.append({"name": nm.strip(), "date": dt.strip()})
+    facts["tags"] = tags
+
+    # Recent commits (capped).
+    recent_out = _git(root, [
+        "log", f"-{RECENT_COMMITS}", "--date=format:%Y-%m-%d", "--pretty=%ad\t%s",
+    ])
+    recent: list[dict] = []
+    if recent_out:
+        for line in recent_out.splitlines():
+            if "\t" in line:
+                dt, subj = line.split("\t", 1)
+                recent.append({"date": dt.strip(), "subject": subj.strip()[:120]})
+    facts["recent"] = recent
+
+    return facts
 
 
 def scan(path: str, *, depth: str = "standard") -> dict:
