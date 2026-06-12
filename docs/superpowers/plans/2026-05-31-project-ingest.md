@@ -95,6 +95,18 @@ def test_git_facts_zero_commit_repo(tmp_path):
 - **SKILL.md contract paths:** note that the `~/.startup-framework/...` paths in the `contract:` block are illustrative; the real path is `wiki_path()` (mirrors bootstrap).
 - **Log wording:** use the eval-pinned `## [<today>] init | Project sub-wiki ingested for <name>` consistently in `page-mapping.md` (fix the one example reading "ingested from existing project").
 
+### C8 — post-RenOS naming reconciliation (authoritative; plan + design spec both predate F1/RenOS)
+
+This plan and `docs/superpowers/specs/2026-05-31-project-ingest-design.md` were authored **2026-05-31**, before **F1** (skill-dir rename — dropped the `sf-` prefix) and the **RenOS rebrand** (ADR-033: `/sf:`→`/ren:`, plugin `name: ren`). Apply these renames **everywhere** — in every task body below, in the design spec when you read it, and in every directory / file / string you create:
+
+- **Skill directory:** `skills/sf-ingest-project/` → **`skills/ingest-project/`**. Bare verb, matching all 14 current siblings (`backup, bootstrap-project, cadence, doctor, improve-skill, insights, install, interview, note, recall, routine-init, update, wiki-migration, wrap`).
+- **Command / frontmatter:** `/sf:ingest-project` → **`/ren:ingest-project`**. The plugin `name` is `ren` (`.claude-plugin/plugin.json`); the `/ren:<verb>` invocation derives from the skill's `name:` frontmatter alone, so SKILL.md frontmatter is **`name: ingest-project`** (bare, exactly like `name: routine-init`). The "no `commands/` file" rule (§ Command registration, Task 10) still holds.
+- **Sibling references:** `sf-bootstrap-project`→`bootstrap-project`, `sf-insights`→`insights`, `sf-install`→`install`, `sf-wrap`→`wrap`. The C2 template path is **`skills/bootstrap-project/templates/*.tmpl`**.
+- **Per-module test command** (supersedes the one in § Conventions): `( cd skills/ingest-project && python3 -m pytest scripts/tests/ -q )`.
+- **NOT renamed by the rebrand — keep verbatim:** `lib/sf_paths.py` and its `framework_version()` / `wiki_path()` / `handle()`, plus the `~/.startup-framework/` data root (the rebrand left shared infra + data root intact). C1's `from lib.sf_paths import framework_version` and the `parents[3]` plugin-root walk are **correct as-is** for `skills/ingest-project/scripts/scan.py` (scripts→ingest-project→skills→plugin-root). Do **not** "fix" `sf_paths`.
+- **Working branch:** `feat/c1-project-ingest` (off the post-C4-merge `feat/project-ingest`); the plan header's "Branch: feat/project-ingest" is the integration target, not the working branch.
+- **Real dated writes** (Task 12 — CHANGELOG `[Unreleased]`, `wiki/log.md`, `wiki/index.md`): use the **actual current date** and `/ren:ingest-project`. The example `## [2026-05-31] build | sf-ingest-project … shipped behind ADR-032` is illustrative — use today + `ingest-project`. **Eval-fixture-internal** pinned strings (the `demo-api` log/index lines in C4 / Task 11) stay exactly as the eval specifies — they run in the fixture's simulated environment, not the real calendar.
+
 ---
 
 ## Conventions for the implementer (read once)

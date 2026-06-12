@@ -344,3 +344,12 @@ tier (/loop · Cron · /goal · Cloud Routines); `/ren:recall --routine` reads a
 routine's state.md/run-log.md; `/ren:doctor` gained ROUTINES audits (network-tier
 + quota headroom); the wake-up hook surfaces live automations. No daemon
 (ADR-003) — pull-model write-back (ADR-026).
+
+## [2026-06-12] build | ingest-project (brownfield ingest) shipped behind ADR-032
+
+Added `/ren:ingest-project`: read-only scanner (`scripts/scan.py`) + LLM drafting
+of a populated ADR-014 sub-wiki, one approval gate, additive writes. Closes the
+ADR-015 brownfield onboarding gap. Spec + plan under docs/superpowers/.
+`bootstrap-project` (greenfield) and `ingest-project` (brownfield) are now the
+paired onboarding entry points. No new page-types — reuses ADR-014's existing
+`project-*` taxonomy already registered in schemas.json.

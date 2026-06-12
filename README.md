@@ -101,6 +101,7 @@ snapshot-before-migrate and are always opt-in.
 Helpers:
 
 - **`/ren:bootstrap-project <name>`** — scaffolds a project sub-wiki.
+- **`/ren:ingest-project [path]`** — brownfield counterpart to `/ren:bootstrap-project`: reads an existing project (read-only), drafts a populated sub-wiki from its README/stack/git history, previews it, and writes on your approval.
 - **`/ren:insights`** — read-only: mines your local session history for what's working / what's
   slowing you down (`--days N`, `--project <name>`).
 - **`/ren:doctor --permissions`** — read-only audit of the tool-keys on your ring (keys ≠ instructions).
@@ -131,6 +132,7 @@ By default your wiki lives at `~/.startup-framework/wiki/`. You can move it via 
 | `/ren:wrap` | End-of-session consolidation into your wiki (only when there's real signal) |
 | `/ren:insights` | Read-only insights from your local Claude Code session history (`--days`, `--project`) |
 | `/ren:bootstrap-project <name>` | Create a project sub-wiki |
+| `/ren:ingest-project [path]` | Brownfield ingest — read-only scan, populated sub-wiki draft, writes on approval |
 
 (Plus an automatic SessionStart wake-up hook — you never invoke it directly.)
 
