@@ -1,6 +1,6 @@
 ---
 name: doctor
-description: Use when the user runs /ren:doctor (or when /ren:install Stage 6 invokes it) to verify the framework is correctly installed and operating. Composes a four-section report (ENVIRONMENT, PLUGINS, SCHEMA VERSIONS, FRAMEWORK UPDATE) plus a BACKUP section, runs read-only checks in parallel, and surfaces remediation paths for any failures. Never writes to the wiki.
+description: Use when the user runs /ren:doctor (or when /ren:install Stage 6 invokes it) to verify the framework is correctly installed and operating. Composes a six-section report (ENVIRONMENT, PLUGINS, SCHEMA VERSIONS, FRAMEWORK UPDATE, BACKUP, ROUTINES), runs read-only checks in parallel, and surfaces remediation paths for any failures. Never writes to the wiki.
 version: 0.1.0
 license: MIT
 type: skill
@@ -10,7 +10,7 @@ owner_module: sf-distribution
 
 contract:
   required_outputs:
-    - "A human-readable report with five sections (ENVIRONMENT, PLUGINS, SCHEMA VERSIONS, FRAMEWORK UPDATE, BACKUP) plus a final summary line"
+    - "A human-readable report with six sections (ENVIRONMENT, PLUGINS, SCHEMA VERSIONS, FRAMEWORK UPDATE, BACKUP, ROUTINES) plus a final summary line"
     - "With --permissions: a standalone read-only 'KEYS ON YOUR RING' audit (MCP servers by name+transport, allow/deny/ask tallies, broad-grant flags, plugins + hooks) that NEVER prints a secret/env/token/header value"
     - "With --json: machine-readable JSON of the same status sections + summary"
     - "Exit code 0 when no blocker (❌) is present; exit 1 only on a blocker"
@@ -33,10 +33,11 @@ contract:
       - "scripts/check-schemas.sh"
       - "scripts/check-update.sh"
       - "scripts/check-backup.sh"
+      - "scripts/check-routines.sh"
       - "scripts/check-permissions.sh"
       - "gh (read-only: gh api repos/<org>/ren-os/contents/.claude-plugin/marketplace.json)"
   completion_conditions:
-    - "All five status sections rendered (or a crashed check-script degraded to a per-section failure note without crashing the report)"
+    - "All six status sections rendered (or a crashed check-script degraded to a per-section failure note without crashing the report)"
     - "Run is side-effect-free: nothing under the wiki or settings is created, modified, or deleted"
     - "With --permissions: no secret/env/token/header value appears anywhere in the output"
   output_paths: []
@@ -62,12 +63,12 @@ Per ADR-010 (the original promise) + ADR-015 Stage 6 (the install touchpoint) + 
 | `--install-mode` | Skip FRAMEWORK UPDATE check (just-installed; nothing to compare) |
 | `--post-update` | Skip marketplace fetch; assume version is current (called from `/ren:update`) |
 | `--json` | Emit machine-readable JSON instead of the human-readable report |
-| `--section <name>` | Run only one section: `env` / `plugins` / `schemas` / `update` / `backup` |
+| `--section <name>` | Run only one section: `env` / `plugins` / `schemas` / `update` / `backup` / `routines` |
 | `--permissions` | Run the standalone read-only **permission audit** ("KEYS ON YOUR RING") instead of the status sections — enumerates MCP servers (name + transport + granted tool-keys), tallies `permissions.{allow,deny,ask}`, flags broad grants (bare `Bash`, `mcp__*`), and lists enabled plugins + hooks. Never prints secret/env values. See § Permission audit. |
 
 ## How it works
 
-Four scripts run in parallel (read-only):
+Six scripts run in parallel (read-only):
 
 | Script | Section | Side effects |
 |---|---|---|
@@ -76,6 +77,7 @@ Four scripts run in parallel (read-only):
 | `scripts/check-schemas.sh` | SCHEMA VERSIONS | None — reads `schemas.json` + scans wiki YAML frontmatter |
 | `scripts/check-update.sh` | FRAMEWORK UPDATE | Network read — `gh api` fetches marketplace.json from `<org>/ren-os` |
 | `scripts/check-backup.sh` | BACKUP | None — reads `.git/config` of `wikiRoot` for remote, last commit time |
+| `scripts/check-routines.sh` | ROUTINES | None — reads `wiki/routines/*.md` frontmatter (network tier + cron count vs plan cap) |
 
 The skill body (`SKILL.md`) is the renderer + parallel-fanout orchestrator. Each script outputs a structured fragment; the skill composes the human-readable report.
 
@@ -113,6 +115,10 @@ $ /ren:doctor
 ▶ BACKUP
   Wiki git remote:  ⚠️  not configured
                        → Recommend:  /ren:backup --setup <your-private-repo-url>
+
+▶ ROUTINES  (per ADR-034)
+  Network tiers:   ✅ 2 routine(s), none on 'full' tier
+  Quota headroom:  2/15 scheduled (max cap)
 
 All systems go.
 
@@ -177,9 +183,10 @@ If `gh api` is rate-limited or offline:
 ## Eval
 
 Binary assertions in `eval.json` validate:
-- Output contains all five section headers (ENVIRONMENT, PLUGINS, SCHEMA VERSIONS, FRAMEWORK UPDATE, BACKUP)
+- Output contains all six section headers (ENVIRONMENT, PLUGINS, SCHEMA VERSIONS, FRAMEWORK UPDATE, BACKUP, ROUTINES)
 - `--install-mode` skips FRAMEWORK UPDATE
 - `--json` output is valid JSON conforming to the `--json` output schema specified in `reference.md` § "`--json` output schema"
 - Crashing any check-script does NOT cause the skill to crash
 - `--permissions` lists every configured MCP server by name + transport, tallies `allow`/`deny`/`ask`, and flags broad grants (bare `Bash`, `mcp__*`)
 - the permission audit NEVER prints secret/env/token values (backed by the hermetic fake-token-absence test) and tolerates all-absent config while exiting `0`
+- ROUTINES flags any routine on the `full` network tier and surfaces defined-cron-routines vs the plan cap; skips cleanly when no `wiki/routines/` exists
