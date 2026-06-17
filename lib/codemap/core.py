@@ -12,6 +12,7 @@ from lib import sf_paths  # noqa: E402
 from lib.codemap.adapter_leanctx import run_leanctx  # noqa: E402
 from lib.codemap.digest import render_digest  # noqa: E402
 from lib.codemap.model import CodeMap, Symbol  # noqa: E402
+from lib.codemap.sources import enumerate_source_files  # noqa: E402
 from lib.codemap.staleness import hash_files, is_stale  # noqa: E402
 
 
@@ -49,12 +50,11 @@ def generate(project_root: Path, *, project_name: str) -> CodeMap:
     """Build the code-map for project_root; write the .md digest + .json sidecar."""
     project_root = Path(project_root).resolve()
     symbols = run_leanctx(project_root)
-    files = sorted({s.file for s in symbols})
     cm = CodeMap(
         project_path=str(project_root),
         generated_at=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         git_commit=_git_commit(project_root),
-        file_hashes=hash_files(project_root, files),
+        file_hashes=hash_files(project_root, enumerate_source_files(project_root)),
         symbols=tuple(symbols),
     )
     out = sf_paths.code_map_path(project_name)

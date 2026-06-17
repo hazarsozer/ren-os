@@ -1,7 +1,6 @@
 """The only lean-ctx-aware unit. Per-file `lean-ctx read -m signatures` (text) -> Symbol[]."""
 from __future__ import annotations
 
-import os
 import re
 import subprocess
 import sys
@@ -9,12 +8,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from lib.codemap.model import Symbol  # noqa: E402
+from lib.codemap.sources import enumerate_source_files  # noqa: E402
 
 LEANCTX_BIN = "lean-ctx"
 TIMEOUT = 60
-SOURCE_GLOBS = ("*.py", "*.js", "*.ts", "*.tsx", "*.jsx", "*.go", "*.rs", "*.java")
-SKIP_DIRS = {".git", "node_modules", ".venv", "venv", "__pycache__", "dist",
-             "build", "target", "vendor", ".next", ".mypy_cache", ".pytest_cache"}
 
 # A lean-ctx `-m signatures` line, e.g. "fn pub framework_version() → str @L49-82"
 # or "class pub Foo @L1-40" or indented "  fn __init__(self) → None @L5-9".
@@ -47,15 +44,6 @@ def _symbols_from_signatures(text: str, file_rel: str) -> list[Symbol]:
     return out
 
 
-def _iter_source_files(project_root: Path):
-    for dirpath, dirnames, filenames in os.walk(project_root):
-        dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS]
-        for fn in filenames:
-            p = Path(dirpath) / fn
-            if any(p.match(g) for g in SOURCE_GLOBS):
-                yield p
-
-
 def run_leanctx(project_root: Path) -> list[Symbol]:
     """Per-file `lean-ctx read -m signatures` over project_root -> Symbol[].
 
@@ -64,7 +52,8 @@ def run_leanctx(project_root: Path) -> list[Symbol]:
     """
     project_root = Path(project_root).resolve()
     symbols: list[Symbol] = []
-    for fp in _iter_source_files(project_root):
+    for rel in enumerate_source_files(project_root):
+        fp = project_root / rel
         try:
             proc = subprocess.run([LEANCTX_BIN, "read", str(fp), "-m", "signatures"],
                                   capture_output=True, timeout=TIMEOUT)
@@ -74,6 +63,5 @@ def run_leanctx(project_root: Path) -> list[Symbol]:
             continue  # one slow file shouldn't fail the whole map
         if proc.returncode != 0:
             continue  # skip a file lean-ctx can't parse; don't abort the whole map
-        rel = str(fp.relative_to(project_root))
         symbols.extend(_symbols_from_signatures(proc.stdout.decode("utf-8", errors="replace"), rel))
     return symbols
