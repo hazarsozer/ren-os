@@ -1,0 +1,34 @@
+{
+  "name": "code-map",
+  "description": "Binary-assertion suite for /ren:code-map. Load-bearing: the project is never modified; the map is a cache, not wiki content; absence of lean-ctx degrades gracefully.",
+  "schema_version": 1,
+  "framework_version": "1.0.0",
+  "tests": [
+    {
+      "id": "code-map-happy-path",
+      "fixture": "fixtures/code-map-python-project.yaml",
+      "prompt": "/ren:code-map /home/tester/Dev/demo --name demo",
+      "expected_output_summary": "lean-ctx maps the project read-only; a markdown digest with symbol line ranges is written to the plugin-data cache; the project is unmodified.",
+      "trigger_test": true,
+      "binary_assertions": [
+        "scripts/code_map.py runs lean-ctx read-only against the project path",
+        "A digest file is written under the plugin-data code-maps cache, not under the wiki or the project",
+        "The digest lists symbols main (src/app.py) and Helper (src/util.py) with line ranges drawn from lean-ctx, not invented",
+        "The digest header states the trust-but-verify read discipline",
+        "The user's project directory is byte-identical before and after the run"
+      ]
+    },
+    {
+      "id": "code-map-graceful-degrade",
+      "fixture": "fixtures/code-map-python-project.yaml",
+      "prompt": "/ren:code-map /home/tester/Dev/demo --name demo  (with lean-ctx absent)",
+      "expected_output_summary": "With lean-ctx not installed, the skill prints an install hint and exits 0 without writing a partial cache file.",
+      "trigger_test": false,
+      "binary_assertions": [
+        "No traceback is shown; exit is graceful (rc 0)",
+        "An install hint mentioning lean-ctx is printed",
+        "No partial/empty code-map file is left in the cache"
+      ]
+    }
+  ]
+}
