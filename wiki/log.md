@@ -353,3 +353,15 @@ ADR-015 brownfield onboarding gap. Spec + plan under docs/superpowers/.
 `bootstrap-project` (greenfield) and `ingest-project` (brownfield) are now the
 paired onboarding entry points. No new page-types — reuses ADR-014's existing
 `project-*` taxonomy already registered in schemas.json.
+
+## [2026-06-17] build | C2 code-map context layer shipped
+
+Added `lib/codemap/` (engine-agnostic core: models, adapter_leanctx, digest,
+staleness, sources) + `/ren:code-map` skill. lean-ctx adopted as CLI engine
+(per-file `read -m signatures`); regenerable cache under
+`${CLAUDE_PLUGIN_DATA}/code-maps/`; staleness detection with STALE banner;
+load-on-demand only — never in wake-up injection (ADR-008). Ingest Stage-6 seeds
+the code-map when lean-ctx is available (graceful-degrade otherwise).
+`/ren:doctor` gained a CODE-MAP check. ADR-035 filed; ADR-002/008 amended.
+Auto/cadence refresh + the dependency-graph (call-graph layer) deferred to C5.
+Plan: `docs/superpowers/plans/2026-06-17-c2-code-map.md`.

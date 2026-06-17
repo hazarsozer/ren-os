@@ -17,6 +17,7 @@ Cadence: monthly stable. Out-of-cycle PATCH releases only for security or broken
 ## [Unreleased]
 
 ### Added
+- **`/ren:code-map` (C2, ADR-035):** code-map context layer — adopts the lean-ctx CLI (per-file `read -m signatures`) to generate a regenerable symbol→line-range digest; cache stored under plugin-data, never in the wiki or user's repo; staleness detection with STALE banner; load-on-demand only (never in wake-up injection per ADR-008). Ingest Stage 6 seeds the map when lean-ctx is available (graceful-degrade). ADR-035 filed; ADR-002/008 amended; `/ren:doctor` CODE-MAP check added.
 - **Cadence-as-glue (C4, ADR-034):** `routine-spec` wiki page-type; `/ren:routine-init` (scaffolds a lean Cloud-Routine repo + writes the routine-spec page); `/ren:cadence` (decision-matrix router over /loop · Cron · /goal · Cloud Routines); `/ren:recall --routine` (reads a routine's state.md/run-log.md); `/ren:doctor` ROUTINES audits (network-tier + quota headroom); wake-up hook "Live automations" section.
 - **`/ren:ingest-project` (C1, ADR-032):** brownfield onboarding — ingest an existing project into your wiki. A read-only scanner reads the repo (stack, docs, git history) and the skill drafts a populated ADR-014 sub-wiki, previews it once, and writes additively on approval. Never modifies the project's own files.
 

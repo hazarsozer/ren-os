@@ -133,6 +133,7 @@ By default your wiki lives at `~/.startup-framework/wiki/`. You can move it via 
 | `/ren:insights` | Read-only insights from your local Claude Code session history (`--days`, `--project`) |
 | `/ren:bootstrap-project <name>` | Create a project sub-wiki |
 | `/ren:ingest-project [path]` | Brownfield ingest — read-only scan, populated sub-wiki draft, writes on approval |
+| `/ren:code-map` | Read-only symbol→line-range code-map via lean-ctx; load-on-demand, regenerable cache. |
 
 (Plus an automatic SessionStart wake-up hook — you never invoke it directly.)
 
