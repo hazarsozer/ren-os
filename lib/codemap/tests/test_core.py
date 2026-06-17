@@ -33,3 +33,14 @@ def test_generate_writes_sidecar_and_check_staleness(monkeypatch, tmp_path):
     assert core.check_staleness("demo", tmp_path).stale is False
     (tmp_path / "a.py").write_text("def f():\n    return 2\n")
     assert core.check_staleness("demo", tmp_path).changed == ("a.py",)
+
+
+def test_generate_then_fresh_with_symbolless_file(monkeypatch, tmp_path):
+    # A source file with no symbols (e.g. __init__.py) must NOT make a fresh map stale.
+    (tmp_path / "a.py").write_text("def f():\n    return 1\n")
+    (tmp_path / "__init__.py").write_text("")               # source file, no symbols
+    monkeypatch.setattr(core, "run_leanctx",
+                        lambda root: [Symbol("f", "function", "a.py", 1, 2, "def f()")])
+    monkeypatch.setattr(core.sf_paths, "code_map_path", lambda name: tmp_path / "demo.md")
+    core.generate(tmp_path, project_name="demo")
+    assert core.check_staleness("demo", tmp_path).stale is False   # was True before the fix
