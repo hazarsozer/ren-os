@@ -8,6 +8,7 @@ affects-components: [memory, wiki, hooks, session-start, install]
 relates-to: [004-wiki-design-hierarchical, 005-wiki-retrieval-evolution, 009-consolidate-wrap, 010-hook-ordering]
 amendments:
   - "2026-05-28 (verified): SessionStart hook conversation-layer injection mechanism confirmed via `hookSpecificOutput.additionalContext` field (per `https://code.claude.com/docs/en/hooks-guide`). Validation triangulates three independent sources: (1) official docs explicitly describe injection as 'system reminder' (Claude reads as plain text — NOT system-prompt prefix); (2) Claude Code ships `--exclude-dynamic-system-prompt-sections` as a first-party CLI flag implementing the same architecture (moving per-machine sections from system prompt into the first user message specifically 'to improve cross-user prompt-cache reuse'); (3) empirical observation — the very session in which this ADR was being verified contains `<system-reminder>SessionStart hook additional context: ...</system-reminder>` rendered from another plugin's hook, exactly the documented mechanism in action. Cache-preservation experimental verification (§2 of the lifecycle plan: 20-30 sessions across arms A/B/C measuring `cache_read_input_tokens` distributions) deferred pending arm runs; documentation gate cleared. See `hooks/wake-up/CC_API_NOTES.md` for the full verification trail with verbatim source quotes."
+  - "2026-06-17 (C2 / ADR-035): the code-map digest is load-on-demand only — it is NEVER injected as part of the SessionStart wake-up context. A single pointer line in the project wiki (e.g. 'Code map: /ren:code-map') is permitted; the digest content itself is not. This preserves the 3–5K SessionStart token budget. Cross-reference: ADR-035 (Code-Map Context Layer) § Decision §8."
 ---
 
 # ADR-008: Wake-Up Hook — Preserves Prompt Cache, Loads Wiki Into Conversation Layer
@@ -136,6 +137,23 @@ The hook calls a `wake_up_context(cwd, master_wiki_path)` function that returns 
 **Considered shape**: claude-mem already has SessionStart hook + auto-context-injection. Just use that for wiki content too.
 
 **Why rejected**: claude-mem injects observations it captured, not deliberately-curated team knowledge. The wiki is a different layer (per ADR-002). Conflating the two would either dilute claude-mem's signal or under-serve the wiki layer. Different tools, different concerns.
+
+## Amendment — 2026-06-17: code-map is load-on-demand, never in wake-up (ADR-035)
+
+The C2 code-map layer (ADR-035) is explicitly **not** part of the SessionStart injection. The digest
+stored under `${CLAUDE_PLUGIN_DATA}/code-maps/` can be many tens of thousands of tokens for a
+medium-sized project — injecting it would violate the 3–5K budget this ADR establishes and defeat
+the token-efficiency north star.
+
+**What is permitted:** a single pointer line in the project wiki context (e.g., "Code map:
+`/ren:code-map`"). The agent reads this pointer and knows to invoke `/ren:code-map` when it needs to
+navigate the codebase. The digest content itself is never injected at session start.
+
+**Load path:** the agent invokes `/ren:code-map` on demand during the session. The skill reads the
+digest from the cache, surfaces any staleness banner, and returns the symbol index for the agent to
+use.
+
+Cross-reference: ADR-035 (Code-Map Context Layer) § Decision §8 (Load-on-demand invariant).
 
 ## References
 
