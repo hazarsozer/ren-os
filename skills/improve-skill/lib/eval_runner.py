@@ -23,10 +23,11 @@ from __future__ import annotations
 
 import json
 import logging
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
-from .types import EvalResult
+from .types import ApiUsage, EvalResult
 
 logger = logging.getLogger(__name__)
 
@@ -293,7 +294,82 @@ def empty_eval_result(reason: str = "") -> EvalResult:
 
 
 # ---------------------------------------------------------------------------
-# Main entry — honest fail-fast pending a configured eval backend (EXPERIMENTAL)
+# LLM judge model constant
+# ---------------------------------------------------------------------------
+
+JUDGE_MODEL = "haiku"
+
+
+# ---------------------------------------------------------------------------
+# judge_assertion — single TRUE/FALSE call via the LLM judge
+# ---------------------------------------------------------------------------
+
+
+def _judge_prompt(output_text: str, assertion: str) -> str:
+    return (
+        "Given the following skill output, is the statement TRUE or FALSE?\n"
+        "Reply with exactly TRUE or FALSE and nothing else.\n\n"
+        f"--- OUTPUT ---\n{output_text}\n--- END OUTPUT ---\n\n"
+        f"STATEMENT: {assertion}"
+    )
+
+
+def judge_assertion(
+    output_text: str,
+    assertion: str,
+    *,
+    timeout_seconds: int = 120,
+    _runner=None,
+) -> tuple[bool, ApiUsage]:
+    """
+    Ask the LLM judge whether `assertion` holds for `output_text`.
+
+    Args:
+        output_text: The skill's output to evaluate.
+        assertion: A natural-language statement to verify as TRUE/FALSE.
+        timeout_seconds: Per-call timeout passed to the runner.
+        _runner: Callable matching claude_cli.run_print's signature. Defaults
+            to claude_cli.run_print. Tests inject a fake.
+
+    Returns:
+        (verdict, usage) where verdict is True if the judge replied "TRUE".
+    """
+    from .claude_cli import run_print
+    runner = _runner or run_print
+    # SPIKE: non-bare — --bare skips auth (SPIKE_FINDINGS.md §2)
+    run = runner(
+        _judge_prompt(output_text, assertion),
+        bare=False,
+        model=JUDGE_MODEL,
+        timeout_seconds=timeout_seconds,
+    )
+    verdict = run.output_text.strip().upper().startswith("TRUE")
+    return verdict, run.usage
+
+
+# ---------------------------------------------------------------------------
+# Internal helpers
+# ---------------------------------------------------------------------------
+
+
+def _add(a: ApiUsage, b: ApiUsage) -> ApiUsage:
+    return ApiUsage(
+        a.input_tokens + b.input_tokens,
+        a.output_tokens + b.output_tokens,
+        a.cache_read_input_tokens + b.cache_read_input_tokens,
+        a.cache_creation_input_tokens + b.cache_creation_input_tokens,
+    )
+
+
+def _majority(votes) -> bool:
+    votes = list(votes)
+    if not votes:
+        return False
+    return sum(1 for v in votes if v) * 2 > len(votes)
+
+
+# ---------------------------------------------------------------------------
+# Main entry — own LLM-judge backend
 # ---------------------------------------------------------------------------
 
 
@@ -303,49 +379,126 @@ def run_evals(
     eval_subset_ids: list[str] | None = None,
     timeout_seconds: int = 300,
     cwd: Path | None = None,
+    eval_runs: int = 1,
+    skills_root: Path | str | None = None,
+    _runner=None,
 ) -> EvalResult:
     """
     Execute the skill's eval suite and return scored results.
 
-    V1 STATUS: the eval-backed self-improvement loop is EXPERIMENTAL — it
-    requires a configured eval backend, which is one of:
-      (a) Subprocess wrapper around Skill Creator's `run_eval.py` (default plan
-          per `references/eval-runner.md`), OR
-      (b) Reimplementation against the same eval.json schema with our own
-          LLM-judge invocation.
-
-    Both paths are documented in the design doc; neither is yet wired here
-    because the integration choice depends on whether Skill Creator's runner
-    output format is stable for our parser. Rather than crash on a bare
-    `NotImplementedError`, this default path raises the TYPED
-    `EvalBackendNotConfiguredError` so the orchestrator can catch it and exit
-    honestly with `ExitReason.REQUIRES_CONFIGURED_BACKEND`.
-
-    The pure-logic helpers above (`load_eval_spec`, `filter_tests_by_ids`,
-    `compute_total_assertions`, `make_failing_assertion_id`,
-    `parse_failing_assertion_id`, `empty_eval_result`) are real and tested
-    — they ship as load-bearing primitives the actual run_evals() will
-    compose with once a backend is configured.
+    Uses the own LLM-judge backend (see SPIKE_FINDINGS.md). Each test is run
+    via eval_sandbox, and each assertion is judged via judge_assertion.
 
     Args:
-        skill_name: The target skill.
+        skill_name: The target skill (directory under skills_root).
         eval_subset_ids: If set, run only these test IDs.
-        timeout_seconds: Per-test timeout (default 300s = 5 minutes).
-        cwd: Working directory (default: current).
+        timeout_seconds: Per-skill-run timeout in seconds.
+        cwd: Unused (sandbox overrides cwd). Kept for interface compat.
+        eval_runs: Number of runs per test (majority vote when > 1).
+        skills_root: Root of the skills directory. Defaults to Path("skills").
+        _runner: Callable matching claude_cli.run_print. Defaults to
+            claude_cli.run_print (requires `claude` on PATH). Tests inject a fake.
 
     Returns:
         EvalResult.
 
     Raises:
-        EvalBackendNotConfiguredError: always, on the default path — the
-            eval-backed loop is EXPERIMENTAL and requires a configured backend.
+        EvalBackendNotConfiguredError: when `_runner` is None and `claude` is
+            not on PATH — the eval backend is unavailable.
     """
-    raise EvalBackendNotConfiguredError(
-        "run_evals() requires a configured eval backend — the eval-backed "
-        "self-improvement loop is EXPERIMENTAL. See references/eval-runner.md "
-        "§'Integration with Skill Creator' for the two design paths; the "
-        "pure-logic helpers in lib/eval_runner.py (load_eval_spec, "
-        "filter_tests_by_ids, compute_total_assertions, make_/parse_failing_"
-        "assertion_id, empty_eval_result) are real and ship as composable "
-        "primitives. Inject a working eval_runner to exercise the loop."
+    from .claude_cli import run_print
+    from .sandbox import eval_sandbox
+
+    runner = _runner
+    if runner is None:
+        if shutil.which("claude") is None:
+            raise EvalBackendNotConfiguredError(
+                "run_evals() requires a configured eval backend — the eval-backed "
+                "self-improvement loop is EXPERIMENTAL. `claude` is not on PATH. "
+                "See references/eval-runner.md "
+                "§'Integration with Skill Creator' for the two design paths; the "
+                "pure-logic helpers in lib/eval_runner.py (load_eval_spec, "
+                "filter_tests_by_ids, compute_total_assertions, make_/parse_failing_"
+                "assertion_id, empty_eval_result) are real and ship as composable "
+                "primitives. Inject a working eval_runner to exercise the loop."
+            )
+        runner = run_print
+
+    root = Path(skills_root) if skills_root else Path("skills")
+    spec = load_eval_spec(root / skill_name)
+    spec = filter_tests_by_ids(spec, eval_subset_ids)
+    total = compute_total_assertions(spec)
+    if total == 0:
+        return empty_eval_result("no tests after subset filter")
+
+    passed = 0
+    failing: list[str] = []
+    usage = ApiUsage(0, 0)
+
+    def _run_skill(prompt: str):
+        with eval_sandbox() as sb:
+            return runner(
+                prompt,
+                bare=False,
+                detect_activation=True,
+                timeout_seconds=timeout_seconds,
+                cwd=sb.cwd,
+                env=sb.env,
+            )
+
+    for test in spec.tests:
+        runs = [_run_skill(test.prompt) for _ in range(max(1, eval_runs))]
+        for r in runs:
+            usage = _add(usage, r.usage)
+
+        # Treat a timed-out or errored run as all-fail for its assertions (+trigger)
+        if any(r.timed_out or r.is_error for r in runs):
+            for i in range(len(test.binary_assertions)):
+                failing.append(make_failing_assertion_id(test.id, i))
+            if test.trigger_test:
+                failing.append(make_failing_assertion_id(test.id, len(test.binary_assertions)))
+            continue
+
+        activated = _majority(
+            r.activated and (skill_name in r.activated) for r in runs
+        )
+        if test.trigger_test:
+            if activated:
+                passed += 1
+            else:
+                failing.append(make_failing_assertion_id(test.id, len(test.binary_assertions)))
+
+        output = runs[0].output_text
+        for i, assertion in enumerate(test.binary_assertions):
+            votes = []
+            for _ in range(max(1, eval_runs)):
+                ok, ju = judge_assertion(output, assertion, _runner=runner)
+                usage = _add(usage, ju)
+                votes.append(ok)
+            if _majority(votes):
+                passed += 1
+            else:
+                failing.append(make_failing_assertion_id(test.id, i))
+
+    for nt in spec.non_triggers:
+        with eval_sandbox() as sb:
+            r = runner(
+                nt.prompt,
+                bare=False,
+                detect_activation=True,
+                timeout_seconds=timeout_seconds,
+                cwd=sb.cwd,
+                env=sb.env,
+            )
+        usage = _add(usage, r.usage)
+        if skill_name not in (r.activated or ()):
+            passed += 1
+
+    return EvalResult(
+        score=passed / total,
+        passed=passed,
+        total=total,
+        failing_assertion_ids=tuple(failing),
+        raw_output="",
+        usage=usage,
     )
