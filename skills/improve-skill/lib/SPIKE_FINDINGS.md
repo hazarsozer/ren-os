@@ -41,3 +41,27 @@
 
 - **Cheap authed `--bare`:** test whether `ANTHROPIC_API_KEY` (or an explicit `CLAUDE_CODE_OAUTH_TOKEN`) lets `--bare` authenticate — that would make the *judge* calls cheap (no skill needed). The skill-run still needs non-bare.
 - **Skip global `CLAUDE.md` while keeping skills + auth:** investigate a flag/setting; would cut the dominant context cost.
+
+## Live proof outcome (2026-06-19)
+
+Ran a bounded live proof (real `claude`, sonnet, 2 sandboxed activation probes):
+
+1. **Activation-detection parser bug — FOUND + FIXED (`c3712b2`).** The real `--output-format stream-json`
+   shape nests the `Skill` tool_use inside an `assistant` message's `content[]`
+   (`{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Skill","input":{"skill":"<n>"}}]}}`),
+   not at the top level. `_activated_from_stream` parsed only top-level `tool_use`, so it returned `()` even
+   when a Skill activated. Fixed + unit-tested against the recorded real event. Activation detection (which
+   `run_evals`'s trigger/non-trigger scoring depends on) now works.
+2. **Skill-loading limitation (FOLLOW-UP — keeps the loop EXPERIMENTAL).** A nested `claude --print` from the
+   empty `/tmp` sandbox CWD loads **no plugin skills** ("no recall skill available"), so `run_evals` cannot
+   exercise the target skill there. From a **plugin-active CWD** (the worktree) skills DO load (a `Skill`
+   tool_use fired). So the eval sandbox must run skill-runs from a plugin-active CWD (or install/point at the
+   target skill) before the end-to-end loop can score a real skill. Until solved, the live loop cannot improve
+   a real skill — the bike-method EXPERIMENTAL gate stays, now with a concrete reason.
+3. **Cost/behavior note.** Even with an empty-wiki sandbox, non-bare nested calls carry heavy context (global
+   `~/.claude/CLAUDE.md` + installed plugin: ~105K cache-read + ~30K cache-create per call), and a single
+   skill-run can fan out into sub-agents — real eval-loop cost is non-trivial.
+
+**Verdict:** the eval-runner MECHANISM is now correct (parser fixed, verified offline). The end-to-end live
+loop is gated on the skill-loading follow-up. Merge C5a (wiring + fixes); the supervised proof + the
+skill-loading fix are the next step before any autonomy.

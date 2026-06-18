@@ -45,6 +45,14 @@ _No runs yet. Log entries here; remove EXPERIMENTAL banner after ≥3 clean runs
 
 `--eval-runs > 1` re-runs the LLM judge N times against the same `runs[0].output_text` (the first skill invocation's output), so majority voting reduces judge variance only — a C5b follow-up is needed to re-run the skill itself N times and judge each run independently for true skill-run variance measurement; the default `--eval-runs 1` is unaffected.
 
+### 2026-06-19 — Live proof: activation parser fixed; eval skill-loading is a follow-up
+
+The C5a live proof found + fixed a real bug (activation detection didn't parse the nested
+`assistant.message.content[].tool_use` shape — `c3712b2`). It also showed a nested `claude --print` from the
+empty `/tmp` eval sandbox loads **no plugin skills**, so `run_evals` cannot exercise a real target skill until
+the sandbox runs from a plugin-active CWD (or installs the skill) — a follow-up that keeps the loop
+EXPERIMENTAL. See `lib/SPIKE_FINDINGS.md` § "Live proof outcome (2026-06-19)".
+
 ### 2026-05-29 — sf-improve-skill's own `eval/` is intentionally empty for V1 (eval deferred)
 
 `skills/sf-improve-skill/eval/` ships **empty on purpose**. This skill improves *other* skills via the Karpathy loop, and every framework-shipped skill it operates on has a real, ADR-011-conformant `eval.json` (sf-install, sf-interview, sf-bootstrap-project, sf-wrap, sf-backup, sf-note, sf-recall — all pinned in `lib/tests/test_preflight.py::CANONICAL_EVAL_FIXTURES`). So the **capability works**; only *self-application* (improve-skill improving itself) is deferred.
