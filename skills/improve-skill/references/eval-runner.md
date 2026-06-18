@@ -121,9 +121,19 @@ Skill Creator ships its own eval runner (`scripts/run_eval.py` per ADR-006's ado
 1. **Adopt Skill Creator's runner directly.** Invoke it as a subprocess; parse its output into our `EvalResult`. Pros: zero reinvention; their format is the canonical compatibility surface. Cons: subprocess overhead per iteration; output parsing brittleness if their format evolves.
 2. **Reimplement against the same eval.json schema.** Use our own LLM-judge invocation. Pros: tight integration with our budget tracker (we sum the judge's usage directly); avoid subprocess overhead. Cons: schema drift between our runner + theirs is now possible.
 
-**V1 decision** (subject to revision): start with path 1 (adopt). Wrapper at `lib/eval_runner.py` will shell out to `claude --bare --print` invoking Skill Creator's run_eval, capture the JSON output, and adapt to `EvalResult`. If subprocess overhead becomes painful or output format breaks, switch to path 2.
+**V1 decision (revised 2026-06-18, C5a): path 2 — our own LLM-judge.** Rationale: no dependency on
+Skill Creator's internal script surface; direct budget integration (judge token usage is summed
+directly into the orchestrator's budget accounting); we own `eval.json`'s schema. The Phase-0
+spike (`SPIKE_FINDINGS.md`) also confirmed that `--bare` skips auth (all authenticated calls must
+be non-bare), making the "shell out to Skill Creator's `run_eval.py` via `--bare`" approach
+non-viable without additional credential handling. Path 1 is therefore rejected.
 
 The wrapper isolates the choice — anything OUTSIDE `lib/eval_runner.py` sees only the `run_evals()` contract; we can swap implementations transparently.
+
+**`--bare` auth note (from SPIKE_FINDINGS.md):** `--bare` skips the credential store → "Not
+logged in". All authenticated sub-calls (judge + change-proposer) must run **non-bare**. The
+`bare` parameter in `claude_cli.run_print` is retained but defaults effectively to non-bare for
+any authenticated call. Document that `bare=True` will NOT authenticate.
 
 ## `--eval-subset` semantics
 
