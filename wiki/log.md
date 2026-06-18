@@ -365,3 +365,24 @@ the code-map when lean-ctx is available (graceful-degrade otherwise).
 `/ren:doctor` gained a CODE-MAP check. ADR-035 filed; ADR-002/008 amended.
 Auto/cadence refresh + the dependency-graph (call-graph layer) deferred to C5.
 Plan: `docs/superpowers/plans/2026-06-17-c2-code-map.md`.
+
+## [2026-06-18] build | C5a self-improvement eval backend wired + earned-autonomy gate (ADR-036)
+
+Wired the eval backend for `/ren:improve-skill`: `run_evals()` now scores binary
+assertions via the framework's own LLM-judge path. The loop runs when `claude` +
+a credential are present (non-bare); exits cleanly via `requires_configured_backend`
+(now meaning *backend unavailable*, not *backend not yet wired*) when either is
+absent. `--eval-runs N` flag added (default 1; majority-binarized scoring when N>1).
+
+**ADR-036 (Bike-Method / Earned Autonomy)** governs the autonomy posture: interactive
+is the default; `--autonomous` requires `--max-iterations` + `--max-budget-usd` (the
+pre-flight ceiling check already enforces this); the EXPERIMENTAL banner stays until
+≥3 logged clean supervised runs are recorded in `skills/improve-skill/learnings.md`.
+No new code for the gate — it is a posture + existing pre-flight + a manual log.
+
+Wire-up: SKILL.md banner reworded + `--eval-runs N` flag added; `learnings.md` gained
+spike findings + supervised-run log placeholder; README Capabilities note updated;
+CHANGELOG C5a entry added; wiki/index.md gained ADR-036 entry + improve-skill C5a
+sub-bullet; roadmap C5 row updated (C5a ✅ DONE; C5b dep/call-graph + auto-refresh
+remaining). Full gate: pytest green (1 skipped ok); `claude plugin validate --strict`
+✔; schema CI-parity ✔. Plan: `docs/superpowers/plans/2026-06-18-c5a-self-improvement-loop.md`.
