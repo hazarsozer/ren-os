@@ -39,7 +39,15 @@ def _usage_from(obj: dict) -> ApiUsage:
 
 def _activated_from_stream(raw: str) -> tuple[str, ...]:
     """Parse a stream-json transcript for Skill activation events.
-    Event shape confirmed by the spike (SPIKE_FINDINGS.md §activation)."""
+
+    Real event shape (recorded from live claude --output-format stream-json):
+    Skill tool_use blocks are NESTED inside assistant message content[], NOT at
+    the top level.  Each JSONL line looks like:
+        {"type": "assistant", "message": {"content": [{"type": "tool_use",
+            "name": "Skill", "input": {"skill": "<name>"}, ...}]}}
+
+    A defensive fallback also handles a hypothetical top-level tool_use shape.
+    """
     names: list[str] = []
     for line in raw.splitlines():
         line = line.strip()
@@ -49,11 +57,24 @@ def _activated_from_stream(raw: str) -> tuple[str, ...]:
             ev = json.loads(line)
         except json.JSONDecodeError:
             continue
-        # Spike-confirmed shape: a tool_use event for the Skill tool carries the skill name.
-        if ev.get("type") == "tool_use" and ev.get("name") == "Skill":
-            skill = (ev.get("input") or {}).get("name") or (ev.get("input") or {}).get("skill")
+
+        # Primary path: nested inside assistant.message.content[].
+        if ev.get("type") == "assistant":
+            content = ev.get("message", {}).get("content", [])
+            for item in content:
+                if item.get("type") == "tool_use" and item.get("name") == "Skill":
+                    inp = item.get("input") or {}
+                    skill = inp.get("skill") or inp.get("name")
+                    if skill:
+                        names.append(str(skill))
+
+        # Fallback: hypothetical top-level tool_use shape (defensive).
+        elif ev.get("type") == "tool_use" and ev.get("name") == "Skill":
+            inp = ev.get("input") or {}
+            skill = inp.get("skill") or inp.get("name")
             if skill:
                 names.append(str(skill))
+
     return tuple(names)
 
 
