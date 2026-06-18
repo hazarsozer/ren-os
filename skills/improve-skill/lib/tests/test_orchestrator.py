@@ -320,22 +320,23 @@ class TestDefaultEvalRunnerRequiresBackend:
 
 class TestDefaultProposerNotImplemented:
     def test_no_proposer_exits_no_improvement_possible(self, tmp_skill_repo: Path):
-        """With a WORKING (injected) eval runner but no proposer, the default
-        proposer raises NotImplementedError → orchestrator catches it and exits
-        cleanly with NO_IMPROVEMENT_POSSIBLE.
+        """With a WORKING (injected) eval runner and a proposer that raises
+        NotImplementedError, the orchestrator catches it and exits cleanly with
+        NO_IMPROVEMENT_POSSIBLE.
 
-        The injected runner is load-bearing here: now that the DEFAULT eval
-        runner fail-fasts with EvalBackendNotConfiguredError at baseline, the
-        proposer branch is only reachable when a working runner is supplied. The
-        runner returns a non-perfect score (0.5) so baseline doesn't all-pass and
-        the loop body (hence the default proposer) is actually exercised."""
+        Updated for Task 6: the default proposer is now real (it subprocesses
+        claude), so we inject an explicit NotImplementedError-raising stub to
+        exercise this orchestrator catch path without touching the network."""
         runner = MagicMock(return_value=_make_eval_result(0.5, total=2, failing=("t1:1",)))
+
+        def _not_impl(*args, **kwargs):
+            raise NotImplementedError("stub")
 
         result = improve_skill(
             _basic_args(),
             skills_root=tmp_skill_repo / "skills",
             eval_runner=runner,
-            change_proposer=None,  # use default (stubbed → NotImplementedError)
+            change_proposer=_not_impl,
             cwd=tmp_skill_repo,
         )
 
@@ -461,3 +462,36 @@ class TestImmutabilityInvariants:
         )
         with pytest.raises(Exception):
             result.final_score = 0.0  # type: ignore[misc]
+
+
+# ---------------------------------------------------------------------------
+# Task 6: _default_change_proposer unit tests
+# ---------------------------------------------------------------------------
+
+
+class TestProposer:
+    def _spec(self):
+        return EvalSpec(name="wrap", tests=(EvalTest(id="t1", prompt="p", binary_assertions=("a",)),))
+
+    def test_proposer_parses_change(self):
+        from ..claude_cli import ClaudeRun
+        from ..types import BudgetState
+        from ..__init__ import _default_change_proposer
+
+        payload = json.dumps({"target_file": "SKILL.md", "unified_diff": "--- a\n+++ b\n",
+                              "summary": "clarify step", "rationale": "why"})
+        fake = lambda prompt, **k: ClaudeRun(payload, ApiUsage(100, 50))
+        change, usage, turns = _default_change_proposer(self._spec(), ("t1:0",),
+                                                        BudgetState(max_budget_usd=5.0), _runner=fake)
+        assert isinstance(change, ProposedChange)
+        assert change.target_file == "SKILL.md"
+        assert usage.output_tokens == 50 and turns == 1
+
+    def test_proposer_raises_on_garbage(self):
+        from ..claude_cli import ClaudeRun
+        from ..types import BudgetState, ProposerError
+        from ..__init__ import _default_change_proposer
+
+        fake = lambda prompt, **k: ClaudeRun("I cannot help with that.", ApiUsage(10, 3))
+        with pytest.raises(ProposerError):
+            _default_change_proposer(self._spec(), ("t1:0",), BudgetState(max_budget_usd=5.0), _runner=fake)
