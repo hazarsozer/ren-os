@@ -491,7 +491,10 @@ def run_evals(
                 env=sb.env,
             )
         usage = _add(usage, r.usage)
-        if skill_name not in (r.activated or ()):
+        if r.timed_out or r.is_error:
+            # Cannot verify non-activation on a failed run; treat as fail.
+            pass
+        elif skill_name not in (r.activated or ()):
             passed += 1
 
     return EvalResult(
