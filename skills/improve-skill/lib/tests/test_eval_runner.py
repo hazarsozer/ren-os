@@ -48,6 +48,7 @@ CANONICAL_SKILL_DIRS = [
     REPO_ROOT / "skills" / "interview",
     REPO_ROOT / "skills" / "bootstrap-project",
     REPO_ROOT / "skills" / "wrap",
+    REPO_ROOT / "skills" / "improve-skill",
 ]
 
 
