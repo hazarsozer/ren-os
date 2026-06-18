@@ -1,0 +1,26 @@
+{
+  "name": "improve-skill",
+  "_status": "minimal — activation + refusal assertions only (C5a). Loop-behavioral assertions deferred (recursive).",
+  "tests": [
+    {
+      "id": "activates-on-improve-request",
+      "prompt": "/ren:improve-skill wrap",
+      "binary_assertions": [
+        "The response begins the improve-skill pre-flight or names the wrap skill as the target."
+      ],
+      "trigger_test": true
+    },
+    {
+      "id": "refuses-missing-skill",
+      "prompt": "/ren:improve-skill this-skill-does-not-exist",
+      "binary_assertions": [
+        "The response refuses because the target skill does not exist.",
+        "The response does NOT create a git branch."
+      ],
+      "trigger_test": true
+    }
+  ],
+  "non_triggers": [
+    { "id": "plain-question", "prompt": "What time is it in Istanbul?", "expected_outcome": "skill_not_activated" }
+  ]
+}
