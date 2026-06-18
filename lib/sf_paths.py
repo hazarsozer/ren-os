@@ -95,6 +95,30 @@ Matches `schemas.json#page_types["identity"].current`. handle() asserts against 
 so a schema bump surfaces as a clear error instead of a silent parse."""
 
 
+PLUGIN_DATA_ENV = "CLAUDE_PLUGIN_DATA"
+# Mirrors the fallback the update/snapshot shell scripts already use.
+DEFAULT_PLUGIN_DATA = Path.home() / ".claude" / "plugins" / "data" / "ren-ren-os"
+
+
+def plugin_data_dir() -> Path:
+    """Return the plugin-data dir for regenerable artifacts (snapshots, code-maps).
+
+    Honors CLAUDE_PLUGIN_DATA; falls back to the same path the shell scripts use.
+    """
+    override = os.environ.get(PLUGIN_DATA_ENV, "").strip()
+    return Path(override).expanduser() if override else DEFAULT_PLUGIN_DATA
+
+
+def code_map_cache_dir() -> Path:
+    """Directory holding regenerable per-project code-maps."""
+    return plugin_data_dir() / "code-maps"
+
+
+def code_map_path(project_name: str) -> Path:
+    """Cache file path for one project's code-map (kebab project name)."""
+    return code_map_cache_dir() / f"{project_name}.md"
+
+
 def framework_root() -> Path:
     """Return the framework root directory.
 
@@ -311,6 +335,11 @@ __all__ = [
     "FRAMEWORK_VERSION",
     "framework_version",
     "EXPECTED_IDENTITY_SCHEMA_VERSION",
+    "PLUGIN_DATA_ENV",
+    "DEFAULT_PLUGIN_DATA",
+    "plugin_data_dir",
+    "code_map_cache_dir",
+    "code_map_path",
     "framework_root",
     "wiki_path",
     "HANDLE_RE",
