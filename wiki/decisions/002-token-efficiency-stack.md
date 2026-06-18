@@ -7,6 +7,7 @@ references-pages: [claude-mem, context-mode, memory-architecture-alternatives, n
 amendments:
   - "2026-05-28: added lean-ctx as Option E in Alternatives Considered + sunset-review triggers"
   - "2026-05-28: scope clarification — wiki is PER-FRIEND-MACHINE (personal deliberate synthesis), not a shared/team artifact. Inter-Claude messaging if any happens via Agent Mail (see ADR-018), not via shared wiki state."
+  - "2026-06-17: lean-ctx adopted NARROWLY as the code-map engine (C2 / ADR-035). The adopted capability is its AST-backed `read -m signatures` CLI mode for symbol→line-range extraction — explicitly distinct from the still-open question of replacing claude-mem with lean-ctx's knowledge-graph memory layer (that remains an existing sunset-review trigger above). New stack burden: a Rust binary (`cargo install lean-ctx`) in the install path, plus a commitment to lean-ctx's per-file CLI surface (version-pinned). See ADR-035 for the full decision, escape hatch, and sunset triggers specific to the code-map use case."
 affects-components: [memory, hooks, install, onboarding]
 supersedes: none
 ---
@@ -132,6 +133,24 @@ The first three are **all active in v1**. qmd is a v2 upgrade path that doesn't 
 - Context Mode's ELv2 SaaS restriction is theoretical at the friend-group level for v1; not an active blocker
 
 **Future swap triggers**: see sunset-review conditions above (added in this same amendment). Architecturally, lean-ctx is a worthy swap candidate; its risks are about timing not direction.
+
+## Amendment — 2026-06-17: lean-ctx narrowly adopted for code-map (ADR-035)
+
+lean-ctx is now part of the stack in a **narrow, code-map-only role**: its `read -m signatures` CLI
+mode extracts AST-backed symbol→line-range data per source file. This is the C2 / ADR-035 decision.
+
+**This is distinct from the still-open ADR-002 question** of whether lean-ctx's knowledge-graph
+memory layer might eventually replace claude-mem for cross-session continuity. That evaluation
+remains deferred; the sunset-review triggers above (added 2026-05-28) govern it.
+
+**New stack burden from this amendment:**
+- A Rust binary (`cargo install lean-ctx`) added to the RenOS install path — surfaced in `/ren:doctor`.
+- Commitment to lean-ctx's per-file CLI surface (version-pinned at v3.8.x at adoption).
+- lean-ctx is a young, fast-moving project (4 months old at adoption, daily releases) → the named
+  escape hatch is universal-ctags behind the same adapter interface (see ADR-035 § Sunset triggers).
+
+Cross-reference: ADR-035 (Code-Map Context Layer) owns the full decision, alternatives, and sunset
+triggers for this use case.
 
 ## References
 

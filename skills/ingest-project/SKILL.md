@@ -223,6 +223,16 @@ Suggest the builder skim `PROJECT.md` to verify the top-level description, then
 run `/ren:wrap` at the end of their next session to keep `STATE.md` and
 `CONTEXT.md` current.
 
+### Code-map seeding (additive; graceful)
+
+After the four key paths, build the project's code-map so the builder starts with
+a navigation index:
+
+- If `lean-ctx` is available, run `/ren:code-map "<project-path>" --name <name>`
+  (writes only to the plugin-data cache — the project + wiki are untouched).
+- If `lean-ctx` is absent, print one line: "Code-map skipped (lean-ctx not
+  installed); run /ren:code-map later." Never fail ingest over this.
+
 ## Edge cases
 
 | Situation | Behavior |
