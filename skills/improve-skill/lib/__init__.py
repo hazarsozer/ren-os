@@ -20,6 +20,7 @@ from .types import (
     LoopState,
     PreFlightError,
     ProposedChange,
+    ProposerError,
 )
 from .preflight import (
     pre_flight_check,
@@ -48,6 +49,7 @@ __all__ = [
 ]
 
 
+import json
 import time
 from pathlib import Path
 from typing import Callable
@@ -105,20 +107,47 @@ def _default_eval_runner(skill_name: str, subset_ids: "list[str] | None") -> "Ev
     return run_evals(skill_name, eval_subset_ids=subset_ids)
 
 
+def _proposer_prompt(spec: EvalSpec, failing_ids: tuple[str, ...]) -> str:
+    return (
+        f"You are improving the skill '{spec.name}'. Its eval binary-assertions that are "
+        f"FAILING (as <test-id>:<index>): {list(failing_ids)}.\n"
+        "Propose ONE change to SKILL.md or a references/ file that fixes at least one of "
+        "these WITHOUT regressing the others. Output ONLY JSON with keys: "
+        '{"target_file","unified_diff","summary","rationale"}.'
+    )
+
+
 def _default_change_proposer(
     spec: EvalSpec,
     failing_ids: tuple[str, ...],
     budget: BudgetState,
+    *,
+    _runner=None,
 ) -> "tuple[ProposedChange, ApiUsage, int]":
     """
-    Default: STUBBED. Real implementation subprocesses claude --bare --print
-    with the propose-one-change prompt (per references/karpathy-loop.md §3).
+    Subprocess `claude --print` (non-bare) with the propose-one-change prompt.
+    Parses JSON {target_file, unified_diff, summary, rationale} from output.
+    Raises ProposerError on empty or unparseable output.
     """
-    raise NotImplementedError(
-        "Default change-proposer not yet wired. Inject a custom proposer for "
-        "unit testing; the production proposer (subprocess `claude --bare "
-        "--print`) lands when LLM-sub-run integration is settled."
-    )
+    from .claude_cli import run_print
+    runner = _runner or run_print
+    run = runner(_proposer_prompt(spec, failing_ids), bare=False,
+                 max_budget_usd=budget.remaining_usd)  # non-bare: --bare skips auth
+    text = run.output_text.strip()
+    start, end = text.find("{"), text.rfind("}")
+    if start == -1 or end == -1:
+        raise ProposerError(f"No JSON object in proposer output: {text[:160]!r}")
+    try:
+        data = json.loads(text[start:end + 1])
+        change = ProposedChange(
+            target_file=str(data["target_file"]),
+            unified_diff=str(data["unified_diff"]),
+            summary=str(data.get("summary", "proposed change")),
+            rationale=str(data.get("rationale", "")),
+        )
+    except (json.JSONDecodeError, KeyError) as exc:
+        raise ProposerError(f"Malformed proposer JSON: {exc}") from exc
+    return change, run.usage, 1
 
 
 def improve_skill(
@@ -251,6 +280,11 @@ def improve_skill(
         except NotImplementedError:
             # The default proposer raises; if no custom proposer was injected,
             # we exit cleanly with no-improvement-possible.
+            exit_reason = ExitReason.NO_IMPROVEMENT_POSSIBLE
+            break
+        except ProposerError:
+            # The real proposer returned unparseable output — treat as a skipped
+            # iteration and exit with no-improvement-possible.
             exit_reason = ExitReason.NO_IMPROVEMENT_POSSIBLE
             break
 
