@@ -26,6 +26,7 @@ from pathlib import Path
 import pytest
 
 from ..eval_runner import run_evals
+from ..types import ApiUsage
 
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
@@ -72,8 +73,8 @@ def test_live_smoke_run_evals_on_real_skill():
         skills_root=REPO_ROOT / "skills",
     )
 
-    # Basic assertions: result is structured correctly
+    # Basic assertions: result is a valid EvalResult with real fields
     assert result is not None
-    assert hasattr(result, "skill_name")
-    assert result.skill_name == skill_name
-    assert hasattr(result, "exit_reason")
+    assert 0.0 <= result.score <= 1.0
+    assert result.total >= 1
+    assert isinstance(result.usage, ApiUsage)

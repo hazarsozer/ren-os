@@ -496,6 +496,46 @@ class TestProposer:
         with pytest.raises(ProposerError):
             _default_change_proposer(self._spec(), ("t1:0",), BudgetState(max_budget_usd=5.0), _runner=fake)
 
+    def test_proposer_prompt_contains_skill_md_content(self, tmp_path: Path, monkeypatch):
+        """Fix 2: proposer prompt must embed the target skill's SKILL.md so the model
+        can emit a correct unified diff against files it was actually shown."""
+        from ..claude_cli import ClaudeRun
+        from ..types import BudgetState
+        from ..__init__ import _default_change_proposer, _read_skill_md
+
+        # Write a minimal SKILL.md under skills/<name>/SKILL.md
+        skill_name = "wrap"
+        skill_md_content = "# wrap skill\nThis is the current SKILL.md content.\n"
+        skill_dir = tmp_path / "skills" / skill_name
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text(skill_md_content, encoding="utf-8")
+
+        captured_prompts: list[str] = []
+
+        def fake_runner(prompt: str, **k) -> ClaudeRun:
+            captured_prompts.append(prompt)
+            payload = json.dumps({
+                "target_file": "SKILL.md",
+                "unified_diff": "--- a\n+++ b\n",
+                "summary": "fix",
+                "rationale": "why",
+            })
+            return ClaudeRun(payload, ApiUsage(100, 50))
+
+        spec = EvalSpec(name=skill_name, tests=(EvalTest(id="t1", prompt="p", binary_assertions=("a",)),))
+
+        # Monkeypatch Path("skills") so the reader finds our tmp_path
+        monkeypatch.chdir(tmp_path)
+
+        _default_change_proposer(spec, ("t1:0",), BudgetState(max_budget_usd=5.0), _runner=fake_runner)
+
+        assert len(captured_prompts) == 1
+        prompt = captured_prompts[0]
+        # The SKILL.md text must appear verbatim in the prompt sent to the model
+        assert "This is the current SKILL.md content." in prompt, (
+            f"Proposer prompt did not embed SKILL.md content. Prompt: {prompt[:300]!r}"
+        )
+
 
 # ---------------------------------------------------------------------------
 # Task 7: end-to-end loop integration — budget + ProposerError skip + eval-runs
