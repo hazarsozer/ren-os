@@ -49,6 +49,7 @@ class ImproveSkillArgs:
     dry_run: bool = False
     eval_subset_path: str | None = None
     bare: bool = True  # passed to inner sub-runs
+    eval_runs: int = 1
 
 
 @dataclass(frozen=True)
@@ -99,6 +100,7 @@ class EvalResult:
     total: int
     failing_assertion_ids: tuple[str, ...]
     raw_output: str = ""  # stdout/stderr capture; for diagnostics on errors
+    usage: ApiUsage = field(default_factory=lambda: ApiUsage(0, 0))
 
     @property
     def all_pass(self) -> bool:
@@ -182,5 +184,12 @@ class ImproveSkillResult:
 
 class PreFlightError(Exception):
     """Raised by lib/preflight.py when a pre-flight check fails."""
+
+    pass
+
+
+class ProposerError(Exception):
+    """Raised by the change-proposer when claude returns no parseable change.
+    The orchestrator treats it as a skipped iteration, not a fatal stop."""
 
     pass
