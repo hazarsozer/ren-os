@@ -495,3 +495,112 @@ class TestProposer:
         fake = lambda prompt, **k: ClaudeRun("I cannot help with that.", ApiUsage(10, 3))
         with pytest.raises(ProposerError):
             _default_change_proposer(self._spec(), ("t1:0",), BudgetState(max_budget_usd=5.0), _runner=fake)
+
+
+# ---------------------------------------------------------------------------
+# Task 7: end-to-end loop integration — budget + ProposerError skip + eval-runs
+# ---------------------------------------------------------------------------
+
+
+class TestEndToEndLoop:
+    def _lib_module(self):
+        """Return the actual module object that owns improve_skill (may be lib or lib.__init__)."""
+        import sys
+        return sys.modules.get("lib.__init__") or sys.modules["lib"]
+
+    def test_loop_improves_fixture_skill_end_to_end(self, tmp_skill_repo: Path, monkeypatch):
+        """Baseline 0.5 → proposer proposes change → re-eval 1.0 → all_assertions_pass.
+        Verifies: (a) budget advanced from eval usage, (b) proposer returns clean change."""
+        from ..eval_runner import EvalSpec, EvalTest
+        _lib = self._lib_module()
+
+        scores = iter([
+            EvalResult(0.5, 1, 2, ("t1:0",), usage=ApiUsage(30, 10)),
+            EvalResult(1.0, 2, 2, (), usage=ApiUsage(30, 10)),
+        ])
+        fake_eval = lambda name, ids: next(scores)
+        fake_prop = lambda spec, failing, budget: (
+            ProposedChange("SKILL.md", "--- a\n+++ b\n", "fix", "why"),
+            ApiUsage(100, 40),
+            1,
+        )
+
+        monkeypatch.setattr(_lib, "create_improve_branch", lambda *a, **k: "improve/wrap/ts")
+        monkeypatch.setattr(_lib, "commit_iteration", lambda *a, **k: "deadbeef")
+        monkeypatch.setattr(_lib, "apply_proposed_change", lambda *a, **k: None)
+        monkeypatch.setattr(_lib, "amend_iteration_metadata", lambda *a, **k: None)
+        monkeypatch.setattr(_lib, "squash_merge_on_success", lambda *a, **k: "cafef00d")
+        monkeypatch.setattr(_lib, "pre_flight_check", lambda *a, **k: None)
+        monkeypatch.setattr(
+            _lib, "load_eval_spec",
+            lambda d: EvalSpec(name="wrap", tests=(EvalTest("t1", "p", ("a", "b")),)),
+        )
+
+        args = ImproveSkillArgs(skill_name="wrap", max_iterations=3, max_budget_usd=5.0)
+        res = improve_skill(args, eval_runner=fake_eval, change_proposer=fake_prop, cwd=tmp_skill_repo)
+        assert res.exit_reason.value == "all_assertions_pass"
+        assert res.total_usd_spent > 0  # budget advanced from proposer AND eval usage
+
+    def test_proposer_error_skips_iteration_and_retries(self, tmp_skill_repo: Path, monkeypatch):
+        """ProposerError on iterations 1 and 2 → skip; on iteration 3 → success."""
+        from ..eval_runner import EvalSpec, EvalTest
+        from ..types import ProposerError as PE
+        _lib = self._lib_module()
+
+        call_count = [0]
+
+        def fake_prop(spec, failing, budget):
+            call_count[0] += 1
+            if call_count[0] < 3:
+                raise PE("transient failure")
+            return (ProposedChange("SKILL.md", "--- a\n+++ b\n", "fix", "why"), ApiUsage(100, 40), 1)
+
+        monkeypatch.setattr(_lib, "create_improve_branch", lambda *a, **k: "improve/wrap/ts")
+        monkeypatch.setattr(_lib, "commit_iteration", lambda *a, **k: "deadbeef")
+        monkeypatch.setattr(_lib, "apply_proposed_change", lambda *a, **k: None)
+        monkeypatch.setattr(_lib, "amend_iteration_metadata", lambda *a, **k: None)
+        monkeypatch.setattr(_lib, "squash_merge_on_success", lambda *a, **k: "cafef00d")
+        monkeypatch.setattr(_lib, "pre_flight_check", lambda *a, **k: None)
+        monkeypatch.setattr(
+            _lib, "load_eval_spec",
+            lambda d: EvalSpec(name="wrap", tests=(EvalTest("t1", "p", ("a", "b")),)),
+        )
+
+        # eval returns 1.0 on third proposer call (after 2 skips, third call succeeds)
+        eval_results = iter([
+            EvalResult(0.5, 1, 2, ("t1:0",), usage=ApiUsage(10, 5)),  # baseline
+            EvalResult(1.0, 2, 2, (), usage=ApiUsage(10, 5)),           # after 3rd propose
+        ])
+
+        def fake_eval_seq(name, ids):
+            return next(eval_results)
+
+        args = ImproveSkillArgs(skill_name="wrap", max_iterations=5, max_budget_usd=5.0)
+        res = improve_skill(args, eval_runner=fake_eval_seq, change_proposer=fake_prop, cwd=tmp_skill_repo)
+        # skipped 2 ProposerError iterations, then succeeded on 3rd
+        assert res.exit_reason.value == "all_assertions_pass"
+
+    def test_three_consecutive_proposer_errors_exits(self, tmp_skill_repo: Path, monkeypatch):
+        """3 consecutive ProposerErrors → NO_IMPROVEMENT_POSSIBLE (not infinite loop)."""
+        from ..eval_runner import EvalSpec, EvalTest
+        from ..types import ProposerError as PE
+        _lib = self._lib_module()
+
+        def fake_prop(spec, failing, budget):
+            raise PE("always fails")
+
+        monkeypatch.setattr(_lib, "create_improve_branch", lambda *a, **k: "improve/wrap/ts")
+        monkeypatch.setattr(_lib, "commit_iteration", lambda *a, **k: "deadbeef")
+        monkeypatch.setattr(_lib, "apply_proposed_change", lambda *a, **k: None)
+        monkeypatch.setattr(_lib, "amend_iteration_metadata", lambda *a, **k: None)
+        monkeypatch.setattr(_lib, "squash_merge_on_success", lambda *a, **k: "cafef00d")
+        monkeypatch.setattr(_lib, "pre_flight_check", lambda *a, **k: None)
+        monkeypatch.setattr(
+            _lib, "load_eval_spec",
+            lambda d: EvalSpec(name="wrap", tests=(EvalTest("t1", "p", ("a", "b")),)),
+        )
+
+        fake_eval = lambda name, ids: EvalResult(0.5, 1, 2, ("t1:0",), usage=ApiUsage(10, 5))
+        args = ImproveSkillArgs(skill_name="wrap", max_iterations=10, max_budget_usd=5.0)
+        res = improve_skill(args, eval_runner=fake_eval, change_proposer=fake_prop, cwd=tmp_skill_repo)
+        assert res.exit_reason == ExitReason.NO_IMPROVEMENT_POSSIBLE
