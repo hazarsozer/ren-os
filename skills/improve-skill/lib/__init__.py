@@ -118,10 +118,30 @@ def _default_eval_runner(
     )
 
 
-def _proposer_prompt(spec: EvalSpec, failing_ids: tuple[str, ...]) -> str:
+_SKILL_MD_EMBED_LIMIT = 8000  # chars; keeps prompt cost bounded
+
+
+def _read_skill_md(skill_name: str) -> str:
+    """Read the target skill's SKILL.md (repo-root-relative). Returns empty string if missing."""
+    skill_md_path = Path("skills") / skill_name / "SKILL.md"
+    try:
+        text = skill_md_path.read_text(encoding="utf-8")
+        if len(text) > _SKILL_MD_EMBED_LIMIT:
+            text = text[:_SKILL_MD_EMBED_LIMIT] + "\n... [truncated]"
+        return text
+    except FileNotFoundError:
+        return ""
+
+
+def _proposer_prompt(spec: EvalSpec, failing_ids: tuple[str, ...], skill_content: str = "") -> str:
+    content_section = (
+        f"\n\nCURRENT SKILL.md CONTENTS:\n```\n{skill_content}\n```"
+        if skill_content
+        else "\n\n(SKILL.md not found — propose additions as new content)"
+    )
     return (
-        f"You are improving the skill '{spec.name}'. Its eval binary-assertions that are "
-        f"FAILING (as <test-id>:<index>): {list(failing_ids)}.\n"
+        f"You are improving the skill '{spec.name}'.{content_section}\n\n"
+        f"Eval binary-assertions that are FAILING (as <test-id>:<index>): {list(failing_ids)}.\n"
         "Propose ONE change to SKILL.md or a references/ file that fixes at least one of "
         "these WITHOUT regressing the others. Output ONLY JSON with keys: "
         '{"target_file","unified_diff","summary","rationale"}.'
@@ -137,12 +157,14 @@ def _default_change_proposer(
 ) -> "tuple[ProposedChange, ApiUsage, int]":
     """
     Subprocess `claude --print` (non-bare) with the propose-one-change prompt.
+    Embeds the target skill's SKILL.md so the model can emit a correct unified diff.
     Parses JSON {target_file, unified_diff, summary, rationale} from output.
     Raises ProposerError on empty or unparseable output.
     """
     from .claude_cli import run_print
     runner = _runner or run_print
-    run = runner(_proposer_prompt(spec, failing_ids), bare=False,
+    skill_content = _read_skill_md(spec.name)
+    run = runner(_proposer_prompt(spec, failing_ids, skill_content), bare=False,
                  max_budget_usd=budget.remaining_usd)  # non-bare: --bare skips auth
     text = run.output_text.strip()
     start, end = text.find("{"), text.rfind("}")
