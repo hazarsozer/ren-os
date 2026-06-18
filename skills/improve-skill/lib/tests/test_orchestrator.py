@@ -252,11 +252,18 @@ class TestBudgetExhaustion:
 
 
 class TestDefaultEvalRunnerRequiresBackend:
-    def test_default_eval_runner_exits_requires_configured_backend(self, tmp_skill_repo: Path):
+    def test_default_eval_runner_exits_requires_configured_backend(
+        self, tmp_skill_repo: Path, monkeypatch
+    ):
         """DEFAULT path (no injected eval_runner): the baseline eval raises the
         typed EvalBackendNotConfiguredError, which the orchestrator catches and
         converts into a clean REQUIRES_CONFIGURED_BACKEND exit. This is the F2b
         fix — the default path must fail HONESTLY, not crash. No exception escapes."""
+        import types
+        from .. import eval_runner as _er
+        # Patch only eval_runner's shutil reference — preflight still sees real shutil.which
+        fake_shutil = types.SimpleNamespace(which=lambda _: None)
+        monkeypatch.setattr(_er, "shutil", fake_shutil)
         proposer = MagicMock()  # must never be reached — baseline fails first
 
         result = improve_skill(
