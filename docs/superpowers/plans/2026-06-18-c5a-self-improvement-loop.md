@@ -12,6 +12,7 @@
 
 - **Stdlib + pytest only** for `skills/improve-skill/lib/`. No new runtime dependencies. PEP 8, type annotations on all signatures, frozen dataclasses (dotfiles `python/coding-style.md`).
 - **All `claude` invocation goes through `lib/claude_cli.py`.** No other module shells `claude` directly. Unit tests mock `claude_cli`; only Task 1 (spike) and Task 9 (live smoke) invoke the real binary.
+- **SPIKE correction (2026-06-18, see `skills/improve-skill/lib/SPIKE_FINDINGS.md`):** `--bare` skips the credential store, so all *authenticated* calls (skill-run, judge, proposer) are **non-bare** — auth then needs no user action. Cost is controlled via `--model` (Haiku judge) + the empty-wiki sandbox + `--max-budget-usd`. The live proof (Task 9) is bounded: small-eval target skill, `--max-budget-usd ≈ $2`, `--max-iterations ≈ 3`, and it **measures + records real cost** (fall back to a lighter eval if prohibitive).
 - **Spike gates the build (Task 1).** If activation can't be detected or side-effects can't be contained, STOP and return to the maintainer. Tasks 2+ use the invocation surface the spike records in `SPIKE_FINDINGS.md`.
 - **Bike-method:** autonomous mode keeps requiring BOTH `--max-iterations` and `--max-budget-usd` (pre-flight, already built). The EXPERIMENTAL posture stays; no trust-tracking code is added.
 - **Eval determinism:** judge runs at temperature 0; the skill-run defaults to a single run, `--eval-runs N` opts into majority-binarized scoring.
@@ -174,6 +175,9 @@ Expected: FAIL (`ModuleNotFoundError: ...claude_cli`).
 Invocation surface confirmed by the Phase-0 spike (see SPIKE_FINDINGS.md). If the
 spike recorded different flags/JSON paths than the defaults below, update this file
 to match and note it in SPIKE_FINDINGS.md.
+
+SPIKE 2026-06-18: `--bare` does NOT authenticate (it skips the credential store) — every
+authenticated call must be non-bare. `bare=True` is retained only for unauthenticated/local use.
 """
 from __future__ import annotations
 
@@ -192,6 +196,7 @@ class ClaudeRun:
     activated: tuple[str, ...] = ()
     raw: str = ""
     timed_out: bool = False
+    is_error: bool = False   # SPIKE: claude JSON carries is_error; treat True as a failed run
 
 
 def _usage_from(obj: dict) -> ApiUsage:
@@ -262,7 +267,8 @@ def run_print(
         obj = json.loads(raw)
     except json.JSONDecodeError:
         return ClaudeRun(output_text=raw.strip(), usage=ApiUsage(0, 0), raw=raw)
-    return ClaudeRun(output_text=str(obj.get("result", "")).strip(), usage=_usage_from(obj), raw=raw)
+    return ClaudeRun(output_text=str(obj.get("result", "")).strip(), usage=_usage_from(obj),
+                     raw=raw, is_error=bool(obj.get("is_error", False)))
 
 
 def _last_result(raw: str) -> tuple[str, ApiUsage]:
@@ -551,8 +557,8 @@ def _judge_prompt(output_text: str, assertion: str) -> str:
 def judge_assertion(output_text, assertion, *, timeout_seconds=120, _runner=None):
     from .claude_cli import run_print
     runner = _runner or run_print
-    run = runner(_judge_prompt(output_text, assertion), bare=True, model=JUDGE_MODEL,
-                 timeout_seconds=timeout_seconds)
+    run = runner(_judge_prompt(output_text, assertion), bare=False, model=JUDGE_MODEL,
+                 timeout_seconds=timeout_seconds)  # SPIKE: non-bare — --bare skips auth
     verdict = run.output_text.strip().upper().startswith("TRUE")
     return verdict, run.usage
 
@@ -718,8 +724,8 @@ def _default_change_proposer(spec, failing_ids, budget, *, _runner=None):
     from .claude_cli import run_print
     from .types import ApiUsage, ProposedChange, ProposerError
     runner = _runner or run_print
-    run = runner(_proposer_prompt(spec, failing_ids), bare=True,
-                 max_budget_usd=budget.remaining_usd)
+    run = runner(_proposer_prompt(spec, failing_ids), bare=False,
+                 max_budget_usd=budget.remaining_usd)  # SPIKE: non-bare — --bare skips auth
     text = run.output_text.strip()
     start, end = text.find("{"), text.rfind("}")
     if start == -1 or end == -1:
