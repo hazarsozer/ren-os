@@ -367,6 +367,11 @@ class TestEmptyEvalResult:
         result = empty_eval_result("subset filtered to zero tests")
         assert "subset" in result.raw_output
 
+    def test_eval_result_has_default_usage(self):
+        from ..types import ApiUsage
+        r = empty_eval_result()
+        assert r.usage == ApiUsage(0, 0)
+
 
 # ---------------------------------------------------------------------------
 # run_evals — honest fail-fast (EXPERIMENTAL: requires a configured backend)
