@@ -47,6 +47,8 @@ No new modules, no new dataclasses, no schema changes. `ImproveSkillArgs.eval_ru
 
 ## Task 0: Spike — confirm the worktree's *edited* skill loads from a plugin-active CWD
 
+> **SUPERSEDED 2026-06-19 — folded into Task 3 (Step 1b).** The automated nested-`claude` spike was sandbox-denied (the same nested-`claude` friction prior sessions logged). Per maintainer decision, Tasks 1–2 build on the C5a live-proof's confirmed evidence that worktree skills load, and the remaining *edited-version* question moves to **Task 3 Step 1b**, run interactively where nested `claude` works cleanly. This section is retained for context; do **not** execute it as a standalone task.
+
 **Why first:** the C5a live-proof established that plugin skills load from a plugin-active CWD but **NOT** from the empty `/tmp` sandbox (SPIKE_FINDINGS.md §"Live proof outcome"). The remaining unknown that gates the whole design: does a nested `claude` run from the **worktree root** load the *worktree's own edited* skill, or an installed copy elsewhere? If the worktree copy loads → Tasks 1–2 as written. If only an installed copy loads → STOP and re-plan Tasks 1–2 for an install/symlink mechanism.
 
 **Files:**
@@ -398,6 +400,14 @@ EOF
 ```
 
 Choose the skill with the smallest positive total (do **not** pick `improve-skill` itself — self-application is deferred per learnings.md). Record the chosen `<skill>`.
+
+- [ ] **Step 1b: Edited-version check (the folded Task-0 spike).** Confirm the loop will score the *worktree's* skill (with iteration edits), not an installed/stale copy. Run interactively (your terminal, `!`-prefix), bounded:
+
+  1. Append one line to `skills/<skill>/SKILL.md` instructing the skill to end its reply with the exact token `WTLOAD_OK_8842`.
+  2. From the worktree root, trigger it once:
+     `T=$(mktemp -d); mkdir -p "$T/w" "$T/p"; env -C "$PWD" SF_WIKI_ROOT="$T/w" CLAUDE_PLUGIN_DATA="$T/p" timeout 240 claude --print --output-format stream-json --verbose --max-budget-usd 1.00 "<prompt that triggers <skill>>" 2>&1 | grep -c WTLOAD_OK_8842; rm -rf "$T"`
+  3. `git checkout -- skills/<skill>/SKILL.md` to revert the marker.
+  4. **Result ≥ 1 → the worktree's edited skill loads; the C5b premise holds — proceed.** `0` → the loader is using an installed/stale copy: STOP and re-plan Task 1 cycle B around an install/symlink mechanism before the loop is correct.
 
 - [ ] **Step 2: Run the bounded, interactive proof** from the worktree root:
 
