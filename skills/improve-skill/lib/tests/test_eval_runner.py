@@ -525,20 +525,27 @@ class TestRunEvalsBackend:
         assert res.score == 0.5
 
     def test_run_evals_runs_skill_from_plugin_root_cwd(self, tmp_path):
+        # A non-trigger is included so BOTH skill-run call sites in run_evals run:
+        # the _run_skill helper (for the regular test) and the non-trigger loop.
         skills_root = _write_eval(tmp_path, "wrap",
-            [{"id": "t1", "prompt": "p", "binary_assertions": ["a"]}])
-        seen = {}
+            [{"id": "t1", "prompt": "p", "binary_assertions": ["a"]}],
+            non_triggers=[{"id": "nt1", "prompt": "off-topic"}])
+        skill_run_cwds = []
 
         def recording_runner(prompt, *, bare, model=None, detect_activation=False,
                              max_budget_usd=None, timeout_seconds=300, cwd=None, env=None):
             if detect_activation:                       # a skill-run
-                seen["cwd"] = cwd
+                skill_run_cwds.append(cwd)
                 return ClaudeRun("DONE", ApiUsage(20, 5), activated=("wrap",))
             return ClaudeRun("TRUE", ApiUsage(8, 1))    # a judge call
 
         run_evals("wrap", skills_root=skills_root, _runner=recording_runner)
-        # plugin-active CWD = the repo/worktree root = parent of skills/
-        assert Path(seen["cwd"]).resolve() == tmp_path.resolve()
+        # Both the regular-test run and the non-trigger run happened.
+        assert len(skill_run_cwds) == 2
+        # plugin-active CWD = the repo/worktree root = parent of skills/.
+        # Every skill-run (both call sites) must run from the plugin root.
+        for cwd in skill_run_cwds:
+            assert Path(cwd).resolve() == tmp_path.resolve()
 
     def test_non_trigger_timeout_does_not_inflate_passed(self, tmp_path):
         """A non-trigger run that times out must not count as passed."""
