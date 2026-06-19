@@ -524,6 +524,22 @@ class TestRunEvalsBackend:
         assert res.passed == 1
         assert res.score == 0.5
 
+    def test_run_evals_runs_skill_from_plugin_root_cwd(self, tmp_path):
+        skills_root = _write_eval(tmp_path, "wrap",
+            [{"id": "t1", "prompt": "p", "binary_assertions": ["a"]}])
+        seen = {}
+
+        def recording_runner(prompt, *, bare, model=None, detect_activation=False,
+                             max_budget_usd=None, timeout_seconds=300, cwd=None, env=None):
+            if detect_activation:                       # a skill-run
+                seen["cwd"] = cwd
+                return ClaudeRun("DONE", ApiUsage(20, 5), activated=("wrap",))
+            return ClaudeRun("TRUE", ApiUsage(8, 1))    # a judge call
+
+        run_evals("wrap", skills_root=skills_root, _runner=recording_runner)
+        # plugin-active CWD = the repo/worktree root = parent of skills/
+        assert Path(seen["cwd"]).resolve() == tmp_path.resolve()
+
     def test_non_trigger_timeout_does_not_inflate_passed(self, tmp_path):
         """A non-trigger run that times out must not count as passed."""
         skills_root = _write_eval(
