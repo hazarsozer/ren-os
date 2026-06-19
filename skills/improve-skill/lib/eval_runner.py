@@ -425,6 +425,11 @@ def run_evals(
         runner = run_print
 
     root = Path(skills_root) if skills_root else Path("skills")
+    # Plugin-active CWD: the worktree root (parent of skills/) so the nested
+    # `claude` loads the worktree's own — possibly mid-iteration-edited — skill.
+    # Writes stay redirected to the sandbox tmp tree (eval_sandbox env), so the
+    # real wiki/plugin-data are untouched. (C5b skill-loading fix; SPIKE_FINDINGS.)
+    plugin_root = root.resolve().parent
     spec = load_eval_spec(root / skill_name)
     spec = filter_tests_by_ids(spec, eval_subset_ids)
     total = compute_total_assertions(spec)
@@ -436,7 +441,7 @@ def run_evals(
     usage = ApiUsage(0, 0)
 
     def _run_skill(prompt: str):
-        with eval_sandbox() as sb:
+        with eval_sandbox(skill_cwd=plugin_root) as sb:
             return runner(
                 prompt,
                 bare=False,
@@ -481,7 +486,7 @@ def run_evals(
                 failing.append(make_failing_assertion_id(test.id, i))
 
     for nt in spec.non_triggers:
-        with eval_sandbox() as sb:
+        with eval_sandbox(skill_cwd=plugin_root) as sb:
             r = runner(
                 nt.prompt,
                 bare=False,
