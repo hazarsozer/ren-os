@@ -568,3 +568,40 @@ class TestRunEvalsBackend:
         assert res.total == 2
         assert res.passed == 1
         assert res.score == 0.5
+
+
+class _VaryingRunner:
+    """Skill-runs return successive `outputs`; judge returns TRUE iff the judged
+    output contains 'GOOD'. Lets a test distinguish 'judge each run' from the old
+    'judge runs[0] only'."""
+    def __init__(self, outputs, activated=("wrap",)):
+        self.outputs = list(outputs)
+        self.activated = activated
+        self._i = 0
+
+    def __call__(self, prompt, *, bare, model=None, detect_activation=False,
+                 max_budget_usd=None, timeout_seconds=300, cwd=None, env=None):
+        if detect_activation:                       # a skill-run
+            out = self.outputs[self._i]
+            self._i += 1
+            return ClaudeRun(out, ApiUsage(20, 5), activated=self.activated)
+        return ClaudeRun("TRUE" if "GOOD" in prompt else "FALSE", ApiUsage(8, 1))
+
+
+class TestEvalRunsVariance:
+    def test_eval_runs_judges_each_run_not_just_first(self, tmp_path):
+        # runs[0]='BAD' DISAGREES with the GOOD majority. Old code (judge runs[0]
+        # x3) -> [F,F,F] -> FAIL. New code (judge each run) -> [F,T,T] -> PASS.
+        skills_root = _write_eval(tmp_path, "wrap",
+            [{"id": "t1", "prompt": "p", "binary_assertions": ["output is acceptable"]}])
+        fake = _VaryingRunner(outputs=["BAD", "GOOD", "GOOD"])
+        res = run_evals("wrap", skills_root=skills_root, _runner=fake, eval_runs=3)
+        assert res.total == 1 and res.passed == 1 and res.score == 1.0
+
+    def test_eval_runs_majority_fail_when_runs_disagree(self, tmp_path):
+        # runs[0]='GOOD' but majority is BAD. Old -> [T,T,T] PASS; new -> [T,F,F] FAIL.
+        skills_root = _write_eval(tmp_path, "wrap",
+            [{"id": "t1", "prompt": "p", "binary_assertions": ["output is acceptable"]}])
+        fake = _VaryingRunner(outputs=["GOOD", "BAD", "BAD"])
+        res = run_evals("wrap", skills_root=skills_root, _runner=fake, eval_runs=3)
+        assert res.passed == 0 and res.failing_assertion_ids == ("t1:0",)

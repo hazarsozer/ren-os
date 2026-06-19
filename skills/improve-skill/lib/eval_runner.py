@@ -394,7 +394,8 @@ def run_evals(
         eval_subset_ids: If set, run only these test IDs.
         timeout_seconds: Per-skill-run timeout in seconds.
         cwd: Unused (sandbox overrides cwd). Kept for interface compat.
-        eval_runs: Number of runs per test (majority vote when > 1).
+        eval_runs: Number of skill-runs per test; each run's own output is judged
+            and the per-assertion verdict is a majority across the N runs.
         skills_root: Root of the skills directory. Defaults to Path("skills").
         _runner: Callable matching claude_cli.run_print. Defaults to
             claude_cli.run_print (requires `claude` on PATH). Tests inject a fake.
@@ -473,11 +474,12 @@ def run_evals(
             else:
                 failing.append(make_failing_assertion_id(test.id, len(test.binary_assertions)))
 
-        output = runs[0].output_text
+        # Judge each run's OWN output once, majority across the N runs (true
+        # skill-run variance). NOT runs[0] re-judged N times. (C5b variance fix.)
         for i, assertion in enumerate(test.binary_assertions):
             votes = []
-            for _ in range(max(1, eval_runs)):
-                ok, ju = judge_assertion(output, assertion, _runner=runner)
+            for r in runs:
+                ok, ju = judge_assertion(r.output_text, assertion, _runner=runner)
                 usage = _add(usage, ju)
                 votes.append(ok)
             if _majority(votes):
