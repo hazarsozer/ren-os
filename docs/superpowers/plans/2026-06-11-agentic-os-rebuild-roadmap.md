@@ -54,6 +54,14 @@
   `claude plugin validate --strict` ✔; CI-parity schema gate ✔. No new page-types — reuses ADR-014's
   existing `project-*` taxonomy (already registered in schemas.json). Plan: `docs/superpowers/plans/2026-05-31-project-ingest.md`.
 
+- **2026-06-18 — C5a DONE.** Eval backend wired for `/ren:improve-skill` on `feat/c5a-self-improvement-loop`:
+  `run_evals()` scores binary assertions via own LLM-judge; `--eval-runs N` flag (default 1, majority-binarized
+  when N>1); exits cleanly via `requires_configured_backend` when backend unavailable. **ADR-036** filed
+  (bike-method/earned-autonomy): interactive default; `--autonomous` requires `--max-iterations` +
+  `--max-budget-usd`; EXPERIMENTAL until ≥3 logged clean supervised runs. SKILL.md banner reworded;
+  `learnings.md` updated (spike findings + supervised-run log placeholder); README/CHANGELOG/wiki wire-up.
+  **C5b (dep/call-graph + auto-refresh) remains.** Gate: pytest green; `plugin validate --strict` ✔; schema CI ✔.
+
 - **2026-06-17 — C2 DONE.** Code-map context layer shipped on `feat/c2-code-map`: `lib/codemap/`
   (engine-agnostic core: models, adapter_leanctx, digest, staleness, sources) + `/ren:code-map`
   skill. lean-ctx adopted as CLI engine (per-file `read -m signatures`) — the spike confirmed no
@@ -117,7 +125,8 @@ roadmap is that decomposition. The actual code lands via the per-slice plans nam
 | **C2** | Code-map context layer | P6 | new — built into C1's `scan.py` | C1 | amend **008** (token budget) | ✅ **DONE 2026-06-17** — `lib/codemap/` + `/ren:code-map` + lean-ctx adopt + ADR-035 + ADR-002/008 amend + doctor check + ingest seeding; plan `docs/superpowers/plans/2026-06-17-c2-code-map.md` |
 | **C3** | Compounding model | P4 | new — repositions `sf-wrap/note/recall` | F1 (+ A1) | amend **009** (scheduled vs manual), **014**, **027** | Not started |
 | **C4** | Cadence-as-glue | P3 (headline) | new skills | A1 | new **cadence** ADR; new **write-back** ADR | ✅ **DONE 2026-06-12** — `routine-spec` page-type + `/ren:routine-init` + `/ren:cadence` + recall/doctor/wake-up extensions; plan `docs/superpowers/plans/2026-06-11-c4-cadence-as-glue.md` |
-| **C5** | Self-improvement | P5 | extend `sf-improve-skill` | C2 (dep-map) | new **bike-method** ADR | Not started |
+| **C5a** | Self-improvement — eval backend + earned autonomy | P5 | extend `sf-improve-skill` | C2 | new **ADR-036** (bike-method/earned-autonomy) | ✅ **DONE 2026-06-18** — eval backend wired; `--eval-runs N`; ADR-036 earned-autonomy gate; SKILL banner + learnings + wire-up |
+| **C5b** | Self-improvement — dep/call-graph + auto-refresh | P5 | extend `sf-improve-skill` | C5a | — | Not started |
 | **H1** | Doctor extensions | glue | extend `sf-doctor` | F1 | — | Not started |
 | **H2** | Multi-agent glue + lightweight-skill tier + broadened onboarding | P2/glue | extend `sf-interview/install` + `CLAUDE.md` | A1 | amend **011** (lightweight tier) | Not started |
 
@@ -126,8 +135,8 @@ roadmap is that decomposition. The actual code lands via the per-slice plans nam
 ## Critical path to "ready soon"
 
 ```
-F1 ──► A1 ──► C4              (foundation → shared ADRs → the headline cadence capability)
-  └──► C1 ──► C2 ──► C5       (populated brain → code-map → self-improvement)
+F1 ──► A1 ──► C4                  (foundation → shared ADRs → the headline cadence capability)
+  └──► C1 ──► C2 ──► C5a ──► C5b (populated brain → code-map → self-improvement backend → dep/call-graph)
        C3, H1, H2  = depth build-out, scheduled after the path clears
 ```
 

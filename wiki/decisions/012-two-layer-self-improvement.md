@@ -5,10 +5,11 @@ date: 2026-05-28
 sunset-review: 2026-11-28
 references-pages: [simon-scrapes-self-improving-skills, skill-creator, py-harness-engineering, llm-wiki-pattern, ralph]
 affects-components: [skills, eval, improvement-loops]
-relates-to: [006-curated-stack, 011-skill-schema, 015-onboarding]
+relates-to: [006-curated-stack, 011-skill-schema, 015-onboarding, 036-bike-method-earned-autonomy]
 amendments:
   - "2026-05-28: added native Claude Code safety primitives subsection — `--max-turns`, `--max-budget-usd`, `--bare` flags are CC-built-in mechanisms `/sf:improve-skill` should leverage alongside `--max-iterations` for autonomous-mode safety bounds. Discovered via official-docs-validation pass against Claude Code CLI reference."
   - "2026-05-28 (correction): `--max-turns` documented in the prior amendment does NOT exist as a CLI flag in Claude Code `2.1.154` (verified empirically against `claude --help`, `claude agents --help`, `claude project --help`, `claude doctor --help` — all null results). The prior amendment scanned the wrong doc surface. Adjusted `/sf:improve-skill` autonomous-mode pre-flight requirement to two flags: `--max-iterations` (our framework cap; canonical) + `--max-budget-usd` (CC-native; print-mode only for inner sub-runs). Shadow turn-tracking via response-count summation is the belt-and-suspenders fallback for non-print contexts. `--bare` and `--max-budget-usd` confirmed as documented. See `hooks/wake-up/CC_API_NOTES.md` §11 + §12 + Appendix A for the full verification trail (verbatim `claude --help` receipts). Re-check `--max-turns` availability on each CC release; if it returns, restore the three-flag requirement."
+  - "2026-06-18 (C5a): the Layer-2 eval backend is now WIRED. `run_evals()` invokes a real LLM-judge via own implementation (path 2 — our own LLM-judge, chosen over Skill Creator adoption / path 1); see `skills/improve-skill/references/eval-runner.md` revision and `SPIKE_FINDINGS.md` for the Phase-0 findings that drove the choice (no dependency on Skill Creator's internal script surface; direct budget integration; we own `eval.json`'s schema). The earned-autonomy posture — EXPERIMENTAL banner until ≥3 logged clean supervised runs; `--autonomous` always requires both `--max-iterations` and `--max-budget-usd` — is formalized in ADR-036."
 ---
 
 # ADR-012: Two-Layer Self-Improvement — L1 Description via Skill Creator + L2 Body via Karpathy Loop

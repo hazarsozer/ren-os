@@ -14,6 +14,45 @@ Per ADR-011's optional pattern: this file accumulates lessons learned during the
 
 ## Open log
 
+### 2026-06-18 — C5a spike findings: activation-detection surface + cost gate
+
+**Context.** C5a wired the eval backend (own LLM-judge path). The spike confirmed:
+
+1. **`claude` activation-detection surface.** The eval runner detects a non-bare invocation by
+   checking for the `claude` binary on PATH + the presence of a credential (environment variable
+   or credential-store entry). This is the reliable detection surface: `claude --version` is a
+   cheap probe; if it returns a version string AND a credential is resolvable, the backend is
+   live. If either check fails, `requires_configured_backend` is the exit. The `--bare` flag to
+   inner sub-runs explicitly bypasses plugin/hook/CLAUDE.md overhead — it does NOT bypass auth.
+
+2. **Cost gate.** A single non-bare Opus call (the LLM-judge path for binary assertion scoring)
+   costs approximately **$0.36** at current pricing (model-pricing.json `valid_as_of` date governs
+   when the nag fires in `/ren:doctor`). `--eval-runs 3` with Opus costs roughly $1.08/iteration
+   for the eval step alone; the `--max-budget-usd` ceiling is therefore meaningful even for small
+   iteration counts. Recommend starting with N=1 (default) until a supervised run baseline exists.
+
+**Downgrade gate (ADR-036 §3).** The EXPERIMENTAL banner comes down when ≥3 clean supervised runs
+are logged below. Each entry: skill name, iteration count, final score (before→after), revert count,
+approximate cost, date.
+
+#### Supervised run log (ADR-036 downgrade gate)
+
+_No runs yet. Log entries here; remove EXPERIMENTAL banner after ≥3 clean runs._
+
+---
+
+### 2026-06-18 — Known limitation: `--eval-runs > 1` measures judge variance, not skill-run variance
+
+`--eval-runs > 1` re-runs the LLM judge N times against the same `runs[0].output_text` (the first skill invocation's output), so majority voting reduces judge variance only — a C5b follow-up is needed to re-run the skill itself N times and judge each run independently for true skill-run variance measurement; the default `--eval-runs 1` is unaffected.
+
+### 2026-06-19 — Live proof: activation parser fixed; eval skill-loading is a follow-up
+
+The C5a live proof found + fixed a real bug (activation detection didn't parse the nested
+`assistant.message.content[].tool_use` shape — `c3712b2`). It also showed a nested `claude --print` from the
+empty `/tmp` eval sandbox loads **no plugin skills**, so `run_evals` cannot exercise a real target skill until
+the sandbox runs from a plugin-active CWD (or installs the skill) — a follow-up that keeps the loop
+EXPERIMENTAL. See `lib/SPIKE_FINDINGS.md` § "Live proof outcome (2026-06-19)".
+
 ### 2026-05-29 — sf-improve-skill's own `eval/` is intentionally empty for V1 (eval deferred)
 
 `skills/sf-improve-skill/eval/` ships **empty on purpose**. This skill improves *other* skills via the Karpathy loop, and every framework-shipped skill it operates on has a real, ADR-011-conformant `eval.json` (sf-install, sf-interview, sf-bootstrap-project, sf-wrap, sf-backup, sf-note, sf-recall — all pinned in `lib/tests/test_preflight.py::CANONICAL_EVAL_FIXTURES`). So the **capability works**; only *self-application* (improve-skill improving itself) is deferred.

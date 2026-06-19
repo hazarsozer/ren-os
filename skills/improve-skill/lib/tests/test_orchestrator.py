@@ -252,11 +252,18 @@ class TestBudgetExhaustion:
 
 
 class TestDefaultEvalRunnerRequiresBackend:
-    def test_default_eval_runner_exits_requires_configured_backend(self, tmp_skill_repo: Path):
+    def test_default_eval_runner_exits_requires_configured_backend(
+        self, tmp_skill_repo: Path, monkeypatch
+    ):
         """DEFAULT path (no injected eval_runner): the baseline eval raises the
         typed EvalBackendNotConfiguredError, which the orchestrator catches and
         converts into a clean REQUIRES_CONFIGURED_BACKEND exit. This is the F2b
         fix — the default path must fail HONESTLY, not crash. No exception escapes."""
+        import types
+        from .. import eval_runner as _er
+        # Patch only eval_runner's shutil reference — preflight still sees real shutil.which
+        fake_shutil = types.SimpleNamespace(which=lambda _: None)
+        monkeypatch.setattr(_er, "shutil", fake_shutil)
         proposer = MagicMock()  # must never be reached — baseline fails first
 
         result = improve_skill(
@@ -313,22 +320,23 @@ class TestDefaultEvalRunnerRequiresBackend:
 
 class TestDefaultProposerNotImplemented:
     def test_no_proposer_exits_no_improvement_possible(self, tmp_skill_repo: Path):
-        """With a WORKING (injected) eval runner but no proposer, the default
-        proposer raises NotImplementedError → orchestrator catches it and exits
-        cleanly with NO_IMPROVEMENT_POSSIBLE.
+        """With a WORKING (injected) eval runner and a proposer that raises
+        NotImplementedError, the orchestrator catches it and exits cleanly with
+        NO_IMPROVEMENT_POSSIBLE.
 
-        The injected runner is load-bearing here: now that the DEFAULT eval
-        runner fail-fasts with EvalBackendNotConfiguredError at baseline, the
-        proposer branch is only reachable when a working runner is supplied. The
-        runner returns a non-perfect score (0.5) so baseline doesn't all-pass and
-        the loop body (hence the default proposer) is actually exercised."""
+        Updated for Task 6: the default proposer is now real (it subprocesses
+        claude), so we inject an explicit NotImplementedError-raising stub to
+        exercise this orchestrator catch path without touching the network."""
         runner = MagicMock(return_value=_make_eval_result(0.5, total=2, failing=("t1:1",)))
+
+        def _not_impl(*args, **kwargs):
+            raise NotImplementedError("stub")
 
         result = improve_skill(
             _basic_args(),
             skills_root=tmp_skill_repo / "skills",
             eval_runner=runner,
-            change_proposer=None,  # use default (stubbed → NotImplementedError)
+            change_proposer=_not_impl,
             cwd=tmp_skill_repo,
         )
 
@@ -454,3 +462,185 @@ class TestImmutabilityInvariants:
         )
         with pytest.raises(Exception):
             result.final_score = 0.0  # type: ignore[misc]
+
+
+# ---------------------------------------------------------------------------
+# Task 6: _default_change_proposer unit tests
+# ---------------------------------------------------------------------------
+
+
+class TestProposer:
+    def _spec(self):
+        return EvalSpec(name="wrap", tests=(EvalTest(id="t1", prompt="p", binary_assertions=("a",)),))
+
+    def test_proposer_parses_change(self):
+        from ..claude_cli import ClaudeRun
+        from ..types import BudgetState
+        from ..__init__ import _default_change_proposer
+
+        payload = json.dumps({"target_file": "SKILL.md", "unified_diff": "--- a\n+++ b\n",
+                              "summary": "clarify step", "rationale": "why"})
+        fake = lambda prompt, **k: ClaudeRun(payload, ApiUsage(100, 50))
+        change, usage, turns = _default_change_proposer(self._spec(), ("t1:0",),
+                                                        BudgetState(max_budget_usd=5.0), _runner=fake)
+        assert isinstance(change, ProposedChange)
+        assert change.target_file == "SKILL.md"
+        assert usage.output_tokens == 50 and turns == 1
+
+    def test_proposer_raises_on_garbage(self):
+        from ..claude_cli import ClaudeRun
+        from ..types import BudgetState, ProposerError
+        from ..__init__ import _default_change_proposer
+
+        fake = lambda prompt, **k: ClaudeRun("I cannot help with that.", ApiUsage(10, 3))
+        with pytest.raises(ProposerError):
+            _default_change_proposer(self._spec(), ("t1:0",), BudgetState(max_budget_usd=5.0), _runner=fake)
+
+    def test_proposer_prompt_contains_skill_md_content(self, tmp_path: Path, monkeypatch):
+        """Fix 2: proposer prompt must embed the target skill's SKILL.md so the model
+        can emit a correct unified diff against files it was actually shown."""
+        from ..claude_cli import ClaudeRun
+        from ..types import BudgetState
+        from ..__init__ import _default_change_proposer, _read_skill_md
+
+        # Write a minimal SKILL.md under skills/<name>/SKILL.md
+        skill_name = "wrap"
+        skill_md_content = "# wrap skill\nThis is the current SKILL.md content.\n"
+        skill_dir = tmp_path / "skills" / skill_name
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text(skill_md_content, encoding="utf-8")
+
+        captured_prompts: list[str] = []
+
+        def fake_runner(prompt: str, **k) -> ClaudeRun:
+            captured_prompts.append(prompt)
+            payload = json.dumps({
+                "target_file": "SKILL.md",
+                "unified_diff": "--- a\n+++ b\n",
+                "summary": "fix",
+                "rationale": "why",
+            })
+            return ClaudeRun(payload, ApiUsage(100, 50))
+
+        spec = EvalSpec(name=skill_name, tests=(EvalTest(id="t1", prompt="p", binary_assertions=("a",)),))
+
+        # Monkeypatch Path("skills") so the reader finds our tmp_path
+        monkeypatch.chdir(tmp_path)
+
+        _default_change_proposer(spec, ("t1:0",), BudgetState(max_budget_usd=5.0), _runner=fake_runner)
+
+        assert len(captured_prompts) == 1
+        prompt = captured_prompts[0]
+        # The SKILL.md text must appear verbatim in the prompt sent to the model
+        assert "This is the current SKILL.md content." in prompt, (
+            f"Proposer prompt did not embed SKILL.md content. Prompt: {prompt[:300]!r}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Task 7: end-to-end loop integration — budget + ProposerError skip + eval-runs
+# ---------------------------------------------------------------------------
+
+
+class TestEndToEndLoop:
+    def _lib_module(self):
+        """Return the actual module object that owns improve_skill (may be lib or lib.__init__)."""
+        import sys
+        return sys.modules.get("lib.__init__") or sys.modules["lib"]
+
+    def test_loop_improves_fixture_skill_end_to_end(self, tmp_skill_repo: Path, monkeypatch):
+        """Baseline 0.5 → proposer proposes change → re-eval 1.0 → all_assertions_pass.
+        Verifies: (a) budget advanced from eval usage, (b) proposer returns clean change."""
+        from ..eval_runner import EvalSpec, EvalTest
+        _lib = self._lib_module()
+
+        scores = iter([
+            EvalResult(0.5, 1, 2, ("t1:0",), usage=ApiUsage(30, 10)),
+            EvalResult(1.0, 2, 2, (), usage=ApiUsage(30, 10)),
+        ])
+        fake_eval = lambda name, ids: next(scores)
+        fake_prop = lambda spec, failing, budget: (
+            ProposedChange("SKILL.md", "--- a\n+++ b\n", "fix", "why"),
+            ApiUsage(100, 40),
+            1,
+        )
+
+        monkeypatch.setattr(_lib, "create_improve_branch", lambda *a, **k: "improve/wrap/ts")
+        monkeypatch.setattr(_lib, "commit_iteration", lambda *a, **k: "deadbeef")
+        monkeypatch.setattr(_lib, "apply_proposed_change", lambda *a, **k: None)
+        monkeypatch.setattr(_lib, "amend_iteration_metadata", lambda *a, **k: None)
+        monkeypatch.setattr(_lib, "squash_merge_on_success", lambda *a, **k: "cafef00d")
+        monkeypatch.setattr(_lib, "pre_flight_check", lambda *a, **k: None)
+        monkeypatch.setattr(
+            _lib, "load_eval_spec",
+            lambda d: EvalSpec(name="wrap", tests=(EvalTest("t1", "p", ("a", "b")),)),
+        )
+
+        args = ImproveSkillArgs(skill_name="wrap", max_iterations=3, max_budget_usd=5.0)
+        res = improve_skill(args, eval_runner=fake_eval, change_proposer=fake_prop, cwd=tmp_skill_repo)
+        assert res.exit_reason.value == "all_assertions_pass"
+        assert res.total_usd_spent > 0  # budget advanced from proposer AND eval usage
+
+    def test_proposer_error_skips_iteration_and_retries(self, tmp_skill_repo: Path, monkeypatch):
+        """ProposerError on iterations 1 and 2 → skip; on iteration 3 → success."""
+        from ..eval_runner import EvalSpec, EvalTest
+        from ..types import ProposerError as PE
+        _lib = self._lib_module()
+
+        call_count = [0]
+
+        def fake_prop(spec, failing, budget):
+            call_count[0] += 1
+            if call_count[0] < 3:
+                raise PE("transient failure")
+            return (ProposedChange("SKILL.md", "--- a\n+++ b\n", "fix", "why"), ApiUsage(100, 40), 1)
+
+        monkeypatch.setattr(_lib, "create_improve_branch", lambda *a, **k: "improve/wrap/ts")
+        monkeypatch.setattr(_lib, "commit_iteration", lambda *a, **k: "deadbeef")
+        monkeypatch.setattr(_lib, "apply_proposed_change", lambda *a, **k: None)
+        monkeypatch.setattr(_lib, "amend_iteration_metadata", lambda *a, **k: None)
+        monkeypatch.setattr(_lib, "squash_merge_on_success", lambda *a, **k: "cafef00d")
+        monkeypatch.setattr(_lib, "pre_flight_check", lambda *a, **k: None)
+        monkeypatch.setattr(
+            _lib, "load_eval_spec",
+            lambda d: EvalSpec(name="wrap", tests=(EvalTest("t1", "p", ("a", "b")),)),
+        )
+
+        # eval returns 1.0 on third proposer call (after 2 skips, third call succeeds)
+        eval_results = iter([
+            EvalResult(0.5, 1, 2, ("t1:0",), usage=ApiUsage(10, 5)),  # baseline
+            EvalResult(1.0, 2, 2, (), usage=ApiUsage(10, 5)),           # after 3rd propose
+        ])
+
+        def fake_eval_seq(name, ids):
+            return next(eval_results)
+
+        args = ImproveSkillArgs(skill_name="wrap", max_iterations=5, max_budget_usd=5.0)
+        res = improve_skill(args, eval_runner=fake_eval_seq, change_proposer=fake_prop, cwd=tmp_skill_repo)
+        # skipped 2 ProposerError iterations, then succeeded on 3rd
+        assert res.exit_reason.value == "all_assertions_pass"
+
+    def test_three_consecutive_proposer_errors_exits(self, tmp_skill_repo: Path, monkeypatch):
+        """3 consecutive ProposerErrors → NO_IMPROVEMENT_POSSIBLE (not infinite loop)."""
+        from ..eval_runner import EvalSpec, EvalTest
+        from ..types import ProposerError as PE
+        _lib = self._lib_module()
+
+        def fake_prop(spec, failing, budget):
+            raise PE("always fails")
+
+        monkeypatch.setattr(_lib, "create_improve_branch", lambda *a, **k: "improve/wrap/ts")
+        monkeypatch.setattr(_lib, "commit_iteration", lambda *a, **k: "deadbeef")
+        monkeypatch.setattr(_lib, "apply_proposed_change", lambda *a, **k: None)
+        monkeypatch.setattr(_lib, "amend_iteration_metadata", lambda *a, **k: None)
+        monkeypatch.setattr(_lib, "squash_merge_on_success", lambda *a, **k: "cafef00d")
+        monkeypatch.setattr(_lib, "pre_flight_check", lambda *a, **k: None)
+        monkeypatch.setattr(
+            _lib, "load_eval_spec",
+            lambda d: EvalSpec(name="wrap", tests=(EvalTest("t1", "p", ("a", "b")),)),
+        )
+
+        fake_eval = lambda name, ids: EvalResult(0.5, 1, 2, ("t1:0",), usage=ApiUsage(10, 5))
+        args = ImproveSkillArgs(skill_name="wrap", max_iterations=10, max_budget_usd=5.0)
+        res = improve_skill(args, eval_runner=fake_eval, change_proposer=fake_prop, cwd=tmp_skill_repo)
+        assert res.exit_reason == ExitReason.NO_IMPROVEMENT_POSSIBLE

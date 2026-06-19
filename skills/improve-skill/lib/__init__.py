@@ -20,6 +20,7 @@ from .types import (
     LoopState,
     PreFlightError,
     ProposedChange,
+    ProposerError,
 )
 from .preflight import (
     pre_flight_check,
@@ -48,6 +49,7 @@ __all__ = [
 ]
 
 
+import json
 import time
 from pathlib import Path
 from typing import Callable
@@ -98,27 +100,87 @@ ChangeProposer = Callable[
 EvalRunner = Callable[[str, "list[str] | None"], "EvalResult"]
 
 
-def _default_eval_runner(skill_name: str, subset_ids: "list[str] | None") -> "EvalResult":
+def _default_eval_runner(
+    skill_name: str,
+    subset_ids: "list[str] | None",
+    *,
+    eval_runs: int = 1,
+    skills_root: "Path | None" = None,
+) -> "EvalResult":
     """Default: defer to run_evals (raises EvalBackendNotConfiguredError until a
     backend is configured; the orchestrator catches it for an honest exit)."""
     from .eval_runner import run_evals
-    return run_evals(skill_name, eval_subset_ids=subset_ids)
+    return run_evals(
+        skill_name,
+        eval_subset_ids=subset_ids,
+        eval_runs=eval_runs,
+        skills_root=skills_root,
+    )
+
+
+_SKILL_MD_EMBED_LIMIT = 8000  # chars; keeps prompt cost bounded
+
+
+def _read_skill_md(skill_name: str) -> str:
+    """Read the target skill's SKILL.md (repo-root-relative). Returns empty string if missing."""
+    skill_md_path = Path("skills") / skill_name / "SKILL.md"
+    try:
+        text = skill_md_path.read_text(encoding="utf-8")
+        if len(text) > _SKILL_MD_EMBED_LIMIT:
+            text = text[:_SKILL_MD_EMBED_LIMIT] + "\n... [truncated]"
+        return text
+    except FileNotFoundError:
+        return ""
+
+
+def _proposer_prompt(spec: EvalSpec, failing_ids: tuple[str, ...], skill_content: str = "") -> str:
+    content_section = (
+        f"\n\nCURRENT SKILL.md CONTENTS:\n```\n{skill_content}\n```"
+        if skill_content
+        else "\n\n(SKILL.md not found — propose additions as new content)"
+    )
+    return (
+        f"You are improving the skill '{spec.name}'.{content_section}\n\n"
+        f"Eval binary-assertions that are FAILING (as <test-id>:<index>): {list(failing_ids)}.\n"
+        "Propose ONE change to SKILL.md or a references/ file that fixes at least one of "
+        "these WITHOUT regressing the others. Output ONLY JSON with keys: "
+        '{"target_file","unified_diff","summary","rationale"}.'
+    )
 
 
 def _default_change_proposer(
     spec: EvalSpec,
     failing_ids: tuple[str, ...],
     budget: BudgetState,
+    *,
+    _runner=None,
 ) -> "tuple[ProposedChange, ApiUsage, int]":
     """
-    Default: STUBBED. Real implementation subprocesses claude --bare --print
-    with the propose-one-change prompt (per references/karpathy-loop.md §3).
+    Subprocess `claude --print` (non-bare) with the propose-one-change prompt.
+    Embeds the target skill's SKILL.md so the model can emit a correct unified diff.
+    Parses JSON {target_file, unified_diff, summary, rationale} from output.
+    Raises ProposerError on empty or unparseable output.
     """
-    raise NotImplementedError(
-        "Default change-proposer not yet wired. Inject a custom proposer for "
-        "unit testing; the production proposer (subprocess `claude --bare "
-        "--print`) lands when LLM-sub-run integration is settled."
-    )
+    from .claude_cli import run_print
+    runner = _runner or run_print
+    skill_content = _read_skill_md(spec.name)
+    run = runner(_proposer_prompt(spec, failing_ids, skill_content), bare=False,
+                 max_budget_usd=budget.remaining_usd)  # non-bare: --bare skips auth
+    text = run.output_text.strip()
+    start, end = text.find("{"), text.rfind("}")
+    if start == -1 or end == -1:
+        raise ProposerError(f"No JSON object in proposer output: {text[:160]!r}")
+    try:
+        data = json.loads(text[start:end + 1])
+        change = ProposedChange(
+            target_file=str(data["target_file"]),
+            unified_diff=str(data["unified_diff"]),
+            summary=str(data.get("summary", "proposed change")),
+            rationale=str(data.get("rationale", "")),
+        )
+    except (json.JSONDecodeError, KeyError) as exc:
+        raise ProposerError(f"Malformed proposer JSON: {exc}") from exc
+    return change, run.usage, 1
 
 
 def improve_skill(
@@ -172,7 +234,11 @@ def improve_skill(
         spec = filter_tests_by_ids(spec, subset_ids)
 
     # --- Baseline eval ---
-    runner = eval_runner or _default_eval_runner
+    runner = eval_runner or (
+        lambda s, ids: _default_eval_runner(
+            s, ids, eval_runs=args.eval_runs, skills_root=skills_root_resolved
+        )
+    )
     proposer = change_proposer or _default_change_proposer
 
     try:
@@ -223,6 +289,9 @@ def improve_skill(
         max_turns_shadow=args.max_turns_shadow,
         shadow_turns=0,
     )
+    # Advance budget for the baseline eval's API usage (turns_used=0 — baseline is scoring,
+    # not a Claude sub-run; it still consumes tokens via the LLM-judge path).
+    budget = advance_budget(budget, baseline.usage, model=table.default_model, table=table, turns_used=0)
     branch_name = create_improve_branch(
         args.skill_name,
         prefix=args.branch_prefix,
@@ -237,6 +306,7 @@ def improve_skill(
     exit_reason = ExitReason.MAX_ITERATIONS_REACHED  # default; overridden below
     max_iter = args.max_iterations if args.max_iterations is not None else 1
     last_failing_ids = baseline.failing_assertion_ids
+    consecutive_proposer_errors = 0
 
     for iteration in range(1, max_iter + 1):
         # Budget gate before each iteration
@@ -248,11 +318,21 @@ def improve_skill(
         # Propose one change (LLM sub-run; injected for testability)
         try:
             proposed, usage, turns_used = proposer(spec, last_failing_ids, budget)
+            consecutive_proposer_errors = 0
         except NotImplementedError:
             # The default proposer raises; if no custom proposer was injected,
             # we exit cleanly with no-improvement-possible.
             exit_reason = ExitReason.NO_IMPROVEMENT_POSSIBLE
             break
+        except ProposerError:
+            # The real proposer returned unparseable output — skip this iteration
+            # and try a different angle. Cap at 3 consecutive failures to avoid
+            # burning budget on a stuck proposer.
+            consecutive_proposer_errors += 1
+            if consecutive_proposer_errors >= 3:
+                exit_reason = ExitReason.NO_IMPROVEMENT_POSSIBLE
+                break
+            continue
 
         # Advance budget BEFORE applying (the API call happened regardless)
         budget = advance_budget(budget, usage, model=table.default_model, table=table, turns_used=turns_used)
@@ -284,6 +364,15 @@ def improve_skill(
         except Exception:  # noqa: BLE001 — defensive; treat any eval failure as score=0
             new_score = 0.0
             new_result = None
+
+        # Advance budget from re-eval usage
+        budget = advance_budget(
+            budget,
+            new_result.usage if new_result else ApiUsage(0, 0),
+            model=table.default_model,
+            table=table,
+            turns_used=0,
+        )
 
         # Keep/revert decision
         if new_score < current_score:
