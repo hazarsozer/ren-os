@@ -61,16 +61,17 @@ references_on_demand:
 
 Layer-2 skill self-improvement per ADR-012. The mechanical realization of Karpathy's "auto-research" pattern applied to a skill's `SKILL.md` body and references. Layer 1 (description optimization for activation reliability) is the Skill Creator's territory; this skill does not touch the description.
 
-> ⚠️ **EXPERIMENTAL — the eval-backed loop requires a configured eval backend.**
-> The Karpathy loop scores each iteration by running the target skill's
-> `eval/eval.json` through an eval backend (Skill Creator's `run_eval` wrapper,
-> or our own LLM-judge path — see `references/eval-runner.md`). That backend is
-> **not yet wired**. Until it is, the **default path fails honestly**: it exits
-> immediately and cleanly with exit reason `requires_configured_backend` (no
-> crash, no branch created, no exception). The full loop is reachable today only
-> by injecting a working `eval_runner` (as the unit tests do). This is the
-> "bike-method" honest default — a deterministic proposer can't meaningfully
-> self-improve a skill, so we don't pretend the default path works.
+> ⚠️ **EXPERIMENTAL — the eval backend is wired (own LLM-judge); autonomy is still earned per ADR-036.**
+> The Karpathy loop scores each iteration by running the target skill's `eval/eval.json`
+> through our own LLM-judge (`references/eval-runner.md`). **The backend is wired:**
+> the loop runs when `claude` + a credential are present (non-bare invocation). When
+> the backend is unavailable (bare context, missing credential, or no `claude` binary),
+> the skill exits immediately and cleanly with exit reason `requires_configured_backend`
+> (no crash, no branch created, no exception) — the same honest default as before, now
+> meaning *backend unavailable* rather than *backend not yet wired*. **Autonomy is still
+> earned:** `--autonomous` requires `--max-iterations N` + `--max-budget-usd X` (pre-flight
+> refuses otherwise), and the EXPERIMENTAL banner stays until ≥3 logged clean supervised
+> runs prove the loop in production (ADR-036 §3).
 
 ## When to use this skill
 
@@ -112,6 +113,7 @@ Layer-2 skill self-improvement per ADR-012. The mechanical realization of Karpat
 | `--dry-run` | false | Compose ONE proposed change, show the diff, exit without committing |
 | `--eval-subset PATH` | full eval | Run a subset of `eval/eval.json` (useful for partial improvements) |
 | `--bare` | true (inner) | Pass `--bare` to inner sub-runs (skip plugin/hook/CLAUDE.md overhead in change-proposal context) |
+| `--eval-runs N` | 1 | Run the eval suite N times per iteration; score is binarized by majority vote when N>1 (odd N recommended) |
 
 ## Pre-flight check (mandatory)
 
@@ -190,7 +192,7 @@ See `references/git-mechanics.md` for branch / commit / revert / merge details. 
 
 | Failure | Behavior | User-visible |
 |---|---|---|
-| Eval backend not configured (default path, EXPERIMENTAL) | Exit immediately + cleanly; no branch; no exception | "Requires a configured eval backend (EXPERIMENTAL)." → exit reason `requires_configured_backend` |
+| Eval backend unavailable (bare context / missing credential / no `claude` binary) | Exit immediately + cleanly; no branch; no exception | "Eval backend unavailable." → exit reason `requires_configured_backend` |
 | Skill not found | Refuse to start | "Skill `<name>` not found. Run `/skill-creator` to bootstrap." |
 | `eval/eval.json` missing or malformed | Refuse to start | Pointer to ADR-011 schema |
 | Initial eval run errors (not assertion failure — actual test framework error) | Refuse to start | "Fix your evals first." |

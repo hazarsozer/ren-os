@@ -48,6 +48,7 @@ CANONICAL_SKILL_DIRS = [
     REPO_ROOT / "skills" / "interview",
     REPO_ROOT / "skills" / "bootstrap-project",
     REPO_ROOT / "skills" / "wrap",
+    REPO_ROOT / "skills" / "improve-skill",
 ]
 
 
@@ -367,6 +368,11 @@ class TestEmptyEvalResult:
         result = empty_eval_result("subset filtered to zero tests")
         assert "subset" in result.raw_output
 
+    def test_eval_result_has_default_usage(self):
+        from ..types import ApiUsage
+        r = empty_eval_result()
+        assert r.usage == ApiUsage(0, 0)
+
 
 # ---------------------------------------------------------------------------
 # run_evals — honest fail-fast (EXPERIMENTAL: requires a configured backend)
@@ -374,7 +380,9 @@ class TestEmptyEvalResult:
 
 
 class TestRunEvalsRequiresBackend:
-    def test_raises_eval_backend_not_configured(self):
+    def test_raises_eval_backend_not_configured(self, monkeypatch):
+        import shutil
+        monkeypatch.setattr(shutil, "which", lambda _: None)
         with pytest.raises(EvalBackendNotConfiguredError, match="configured eval backend"):
             run_evals("sf-wrap")
 
@@ -383,14 +391,157 @@ class TestRunEvalsRequiresBackend:
         still treat it as a runtime failure."""
         assert issubclass(EvalBackendNotConfiguredError, RuntimeError)
 
-    def test_message_flags_experimental(self):
-        try:
+    def test_message_flags_experimental(self, monkeypatch):
+        import shutil
+        monkeypatch.setattr(shutil, "which", lambda _: None)
+        with pytest.raises(EvalBackendNotConfiguredError) as exc:
             run_evals("sf-wrap")
-        except EvalBackendNotConfiguredError as exc:
-            assert "EXPERIMENTAL" in str(exc)
+        assert "EXPERIMENTAL" in str(exc.value)
 
-    def test_message_references_design_doc(self):
-        try:
+    def test_message_references_design_doc(self, monkeypatch):
+        import shutil
+        monkeypatch.setattr(shutil, "which", lambda _: None)
+        with pytest.raises(EvalBackendNotConfiguredError) as exc:
             run_evals("sf-wrap")
-        except EvalBackendNotConfiguredError as exc:
-            assert "references/eval-runner.md" in str(exc)
+        assert "references/eval-runner.md" in str(exc.value)
+
+
+# ---------------------------------------------------------------------------
+# run_evals — real backend (own LLM-judge, injected runner)
+# ---------------------------------------------------------------------------
+
+from ..claude_cli import ClaudeRun
+from ..types import ApiUsage
+
+
+class _FakeRunner:
+    """Mimics claude_cli.run_print. Maps a prompt-substring -> ClaudeRun."""
+    def __init__(self, skill_text="DONE", activated=("wrap",), judge_true=True,
+                 is_error=False):
+        self.skill_text = skill_text
+        self.activated = activated
+        self.judge_true = judge_true
+        self.is_error = is_error
+        self.calls = []
+
+    def __call__(self, prompt, *, bare, model=None, detect_activation=False,
+                 max_budget_usd=None, timeout_seconds=300, cwd=None, env=None):
+        self.calls.append({"prompt": prompt, "bare": bare, "detect_activation": detect_activation})
+        if detect_activation:  # a skill-run
+            return ClaudeRun(self.skill_text, ApiUsage(20, 5), activated=self.activated,
+                             is_error=self.is_error)
+        # a judge call: answer TRUE/FALSE
+        return ClaudeRun("TRUE" if self.judge_true else "FALSE", ApiUsage(8, 1))
+
+
+def _write_eval(tmp_path, name, tests, non_triggers=None):
+    d = tmp_path / "skills" / name / "eval"
+    d.mkdir(parents=True)
+    import json as _j
+    (d / "eval.json").write_text(_j.dumps({"name": name, "tests": tests, "non_triggers": non_triggers or []}))
+    return tmp_path / "skills"
+
+
+class TestRunEvalsBackend:
+    def test_all_pass_when_judge_true_and_activated(self, tmp_path):
+        skills_root = _write_eval(tmp_path, "wrap",
+            [{"id": "t1", "prompt": "p", "binary_assertions": ["a", "b"], "trigger_test": True}])
+        fake = _FakeRunner(activated=("wrap",), judge_true=True)
+        res = run_evals("wrap", skills_root=skills_root, _runner=fake)
+        assert res.total == 3          # 2 assertions + 1 trigger-activation
+        assert res.passed == 3
+        assert res.score == 1.0
+        assert res.usage.output_tokens > 0   # usage aggregated
+
+    def test_failing_assertion_recorded(self, tmp_path):
+        skills_root = _write_eval(tmp_path, "wrap",
+            [{"id": "t1", "prompt": "p", "binary_assertions": ["a"]}])
+        fake = _FakeRunner(judge_true=False)
+        res = run_evals("wrap", skills_root=skills_root, _runner=fake)
+        assert res.score == 0.0
+        assert res.failing_assertion_ids == ("t1:0",)
+
+    def test_non_trigger_fails_when_skill_activates(self, tmp_path):
+        skills_root = _write_eval(tmp_path, "wrap",
+            [{"id": "t1", "prompt": "p", "binary_assertions": ["a"]}],
+            non_triggers=[{"id": "nt1", "prompt": "off-topic"}])
+        fake = _FakeRunner(activated=("wrap",), judge_true=True)  # wrongly activates on the non-trigger too
+        res = run_evals("wrap", skills_root=skills_root, _runner=fake)
+        # 1 assertion (pass) + 1 non-trigger (fail: it activated) = 1/2
+        assert res.total == 2 and res.passed == 1
+
+    def test_timeout_scores_zero(self, tmp_path):
+        skills_root = _write_eval(tmp_path, "wrap",
+            [{"id": "t1", "prompt": "p", "binary_assertions": ["a"]}])
+        def timed_out_runner(prompt, *, detect_activation=False, **k):
+            return ClaudeRun("", ApiUsage(0, 0), timed_out=True)
+        res = run_evals("wrap", skills_root=skills_root, _runner=timed_out_runner)
+        assert res.score == 0.0
+
+    def test_is_error_scores_zero(self, tmp_path):
+        """is_error=True on a skill-run (e.g. auth/API error) is treated like a timeout."""
+        skills_root = _write_eval(tmp_path, "wrap",
+            [{"id": "t1", "prompt": "p", "binary_assertions": ["a"]}])
+        fake = _FakeRunner(is_error=True)
+        res = run_evals("wrap", skills_root=skills_root, _runner=fake)
+        assert res.score == 0.0
+
+    def test_backend_absent_raises(self, tmp_path, monkeypatch):
+        skills_root = _write_eval(tmp_path, "wrap",
+            [{"id": "t1", "prompt": "p", "binary_assertions": ["a"]}])
+        import shutil
+        monkeypatch.setattr(shutil, "which", lambda _: None)  # no claude on PATH
+        with pytest.raises(EvalBackendNotConfiguredError):
+            run_evals("wrap", skills_root=skills_root)  # default runner, no binary
+
+    def test_non_trigger_error_does_not_inflate_passed(self, tmp_path):
+        """A non-trigger run that returns is_error=True must not count as passed."""
+        skills_root = _write_eval(
+            tmp_path, "wrap",
+            [{"id": "t1", "prompt": "p", "binary_assertions": ["a"]}],
+            non_triggers=[{"id": "nt1", "prompt": "off-topic"}],
+        )
+        # judge_true=True passes the assertion; skill does NOT activate on the
+        # regular test (activated=() so trigger logic stays neutral here).
+        # For the non-trigger run, is_error=True simulates a failed invocation.
+        call_index = [0]
+
+        def mixed_runner(prompt, *, detect_activation=False, **kwargs):
+            call_index[0] += 1
+            if detect_activation:
+                # First skill-run (regular test): success, not activated
+                # Second skill-run (non-trigger): is_error=True
+                if call_index[0] == 1:
+                    return ClaudeRun("DONE", ApiUsage(20, 5), activated=())
+                return ClaudeRun("", ApiUsage(0, 0), is_error=True)
+            # judge call: assertion passes
+            return ClaudeRun("TRUE", ApiUsage(8, 1))
+
+        res = run_evals("wrap", skills_root=skills_root, _runner=mixed_runner)
+        # total = 1 assertion + 1 non-trigger = 2
+        # passed = 1 (assertion) + 0 (non-trigger errored, not credited) = 1
+        assert res.total == 2
+        assert res.passed == 1
+        assert res.score == 0.5
+
+    def test_non_trigger_timeout_does_not_inflate_passed(self, tmp_path):
+        """A non-trigger run that times out must not count as passed."""
+        skills_root = _write_eval(
+            tmp_path, "wrap",
+            [{"id": "t1", "prompt": "p", "binary_assertions": ["a"]}],
+            non_triggers=[{"id": "nt1", "prompt": "off-topic"}],
+        )
+        call_index = [0]
+
+        def mixed_runner(prompt, *, detect_activation=False, **kwargs):
+            call_index[0] += 1
+            if detect_activation:
+                if call_index[0] == 1:
+                    return ClaudeRun("DONE", ApiUsage(20, 5), activated=())
+                return ClaudeRun("", ApiUsage(0, 0), timed_out=True)
+            return ClaudeRun("TRUE", ApiUsage(8, 1))
+
+        res = run_evals("wrap", skills_root=skills_root, _runner=mixed_runner)
+        assert res.total == 2
+        assert res.passed == 1
+        assert res.score == 0.5

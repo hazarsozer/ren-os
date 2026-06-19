@@ -46,8 +46,11 @@ what your tools *can do* can't quietly drift apart.
 The framework's own skills (`/ren:wrap`, `/ren:recall`, `/ren:note`, `/ren:improve-skill`, …) ship with
 execution contracts and binary evals. Two of them — `/ren:wrap`'s signal classifier and
 `/ren:improve-skill` — are marked **EXPERIMENTAL** on purpose: the **bike-method** of earned trust.
-The training wheels stay on (a conservative deterministic default for `/ren:wrap`; an honest
-"requires a configured backend" for `/ren:improve-skill`) until real runs prove the autonomy out.
+The training wheels stay on (a conservative deterministic default for `/ren:wrap`; a wired but
+autonomy-gated eval loop for `/ren:improve-skill`) until real supervised runs prove the autonomy out.
+`/ren:improve-skill` now runs against a real LLM-judge backend; `--autonomous` mode requires hard
+ceilings (`--max-iterations` + `--max-budget-usd`) and the EXPERIMENTAL label lifts only after
+≥3 logged clean supervised runs (ADR-036).
 
 ### Cadence — a deterministic daily loop
 
