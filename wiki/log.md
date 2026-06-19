@@ -386,3 +386,20 @@ CHANGELOG C5a entry added; wiki/index.md gained ADR-036 entry + improve-skill C5
 sub-bullet; roadmap C5 row updated (C5a ✅ DONE; C5b dep/call-graph + auto-refresh
 remaining). Full gate: pytest green (1 skipped ok); `claude plugin validate --strict`
 ✔; schema CI-parity ✔. Plan: `docs/superpowers/plans/2026-06-18-c5a-self-improvement-loop.md`.
+
+## [2026-06-19] build | C5b self-improvement loop completion shipped (code); live proof deferred
+
+C5b landed on `feat/c5b-loop-completion`: the eval sandbox now runs skill-runs from
+the plugin-active worktree root (`eval_sandbox(skill_cwd=...)` + `plugin_root`
+derivation in `run_evals`), so `run_evals` can score a real skill (not a sandboxed
+no-skill shell). `--eval-runs N` now judges each of the N skill-runs' own output
+independently and takes the majority — true skill-run variance (not judge-re-run
+variance). Unit-tested (mocked) + reviewed; 172 tests passing, 1 skipped.
+
+**Live supervised proof DEFERRED.** Run 1 of ≥3 toward the ADR-036 downgrade gate
+could not be completed in-session: nested `claude` is sandbox-blocked (permission
+wall). The proof must run in a normal terminal. The supervised-run log in
+`learnings.md` is still empty; the EXPERIMENTAL banner stays until ≥3 clean runs.
+
+C5 fully decomposed: C5a (eval backend + earned-autonomy gate) ✅ DONE;
+C5b (loop completion) ✅ DONE (code); C5c (dep/call-graph + auto-refresh) remains.
