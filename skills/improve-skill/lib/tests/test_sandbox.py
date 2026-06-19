@@ -102,3 +102,20 @@ def test_isolation_property_sandbox_leaves_real_tree_untouched(tmp_path: Path):
             os.environ["CLAUDE_PLUGIN_DATA"] = old_plugin_data
         elif "CLAUDE_PLUGIN_DATA" in os.environ:
             del os.environ["CLAUDE_PLUGIN_DATA"]
+
+
+def test_sandbox_uses_skill_cwd_when_given(tmp_path: Path):
+    plugin_root = tmp_path / "repo"
+    plugin_root.mkdir()
+    with eval_sandbox(skill_cwd=plugin_root) as sb:
+        assert sb.cwd == plugin_root              # runs from the plugin-active dir
+        assert Path(sb.wiki_root).is_dir()         # writes still redirected to tmp
+        assert sb.env["SF_WIKI_ROOT"] == str(sb.wiki_root)
+        tmp_wiki = sb.wiki_root
+    assert not Path(tmp_wiki).exists()             # tmp torn down
+    assert plugin_root.exists()                    # plugin dir NEVER torn down
+
+
+def test_sandbox_defaults_to_tmp_cwd_when_no_skill_cwd():
+    with eval_sandbox() as sb:
+        assert sb.cwd == sb.wiki_root.parent        # legacy: cwd is the tmp root
