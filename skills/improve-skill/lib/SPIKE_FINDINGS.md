@@ -65,3 +65,7 @@ Ran a bounded live proof (real `claude`, sonnet, 2 sandboxed activation probes):
 **Verdict:** the eval-runner MECHANISM is now correct (parser fixed, verified offline). The end-to-end live
 loop is gated on the skill-loading follow-up. Merge C5a (wiring + fixes); the supervised proof + the
 skill-loading fix are the next step before any autonomy.
+
+## C5b skill-loading fix (2026-06-19)
+
+The standalone skill-loading spike (a nested `claude` probe from the worktree) was sandbox-denied in-session, so it was folded into a deferred supervised proof. The fix was implemented on the strength of the C5a live-proof's confirmed finding that plugin skills load from a plugin-active CWD: `run_evals` now runs skill-runs from the worktree root (`plugin_root = Path(skills_root).resolve().parent`) via `eval_sandbox(skill_cwd=...)`, while wiki/plugin-data writes stay redirected to tmp. The remaining open question — does the worktree's *edited* skill load (vs. an installed copy)? — is deferred to the supervised proof (plan Task 3 Step 1b: a marker-token check) before the loop's autonomy gate comes down.

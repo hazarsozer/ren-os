@@ -41,9 +41,9 @@ _No runs yet. Log entries here; remove EXPERIMENTAL banner after ≥3 clean runs
 
 ---
 
-### 2026-06-18 — Known limitation: `--eval-runs > 1` measures judge variance, not skill-run variance
+### 2026-06-18 — RESOLVED in C5b: `--eval-runs > 1` now measures true skill-run variance
 
-`--eval-runs > 1` re-runs the LLM judge N times against the same `runs[0].output_text` (the first skill invocation's output), so majority voting reduces judge variance only — a C5b follow-up is needed to re-run the skill itself N times and judge each run independently for true skill-run variance measurement; the default `--eval-runs 1` is unaffected.
+Originally `--eval-runs > 1` re-ran the LLM judge N times against the same `runs[0].output_text`, so majority voting reduced judge variance only. **Fixed in C5b (2026-06-19):** `run_evals` now judges each of the N skill-runs' own output once and takes the majority across runs — real skill-run variance. The default `--eval-runs 1` is unchanged.
 
 ### 2026-06-19 — Live proof: activation parser fixed; eval skill-loading is a follow-up
 
@@ -52,6 +52,10 @@ The C5a live proof found + fixed a real bug (activation detection didn't parse t
 empty `/tmp` eval sandbox loads **no plugin skills**, so `run_evals` cannot exercise a real target skill until
 the sandbox runs from a plugin-active CWD (or installs the skill) — a follow-up that keeps the loop
 EXPERIMENTAL. See `lib/SPIKE_FINDINGS.md` § "Live proof outcome (2026-06-19)".
+
+### 2026-06-19 — C5b: skill-loading fix shipped (code); live proof deferred
+
+The skill-loading follow-up flagged above is FIXED in code (C5b): `run_evals` now runs each skill-run from the plugin-active worktree root (`eval_sandbox(skill_cwd=...)` + a `plugin_root` derivation in `run_evals`), so a real skill loads and scores. Also fixed: `--eval-runs N` now judges each run's own output (true skill-run variance). Unit-tested (mocked) + reviewed (172 passing). The end-to-end **live** supervised proof (a real `/ren:improve-skill` run) is **deferred** — nested `claude` is sandbox-blocked in-session and must run in a normal terminal. The loop stays EXPERIMENTAL until ≥3 clean supervised runs are logged (ADR-036 §3); the supervised-run log below is still empty.
 
 ### 2026-05-29 — sf-improve-skill's own `eval/` is intentionally empty for V1 (eval deferred)
 
