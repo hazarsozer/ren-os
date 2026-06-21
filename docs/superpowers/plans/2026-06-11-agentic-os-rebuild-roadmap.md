@@ -60,7 +60,18 @@
   (bike-method/earned-autonomy): interactive default; `--autonomous` requires `--max-iterations` +
   `--max-budget-usd`; EXPERIMENTAL until ≥3 logged clean supervised runs. SKILL.md banner reworded;
   `learnings.md` updated (spike findings + supervised-run log placeholder); README/CHANGELOG/wiki wire-up.
-  **C5b (loop completion: skill-loading fix + eval-run variance + supervised proof) followed; C5c (dep/call-graph + auto-refresh) remains.** Gate: pytest green; `plugin validate --strict` ✔; schema CI ✔.
+  **C5b (loop completion) followed; C5c (dep/call-graph + auto-refresh) followed.** Gate: pytest green; `plugin validate --strict` ✔; schema CI ✔.
+
+- **2026-06-21 — C5c DONE.** Dependency-map + auto-refresh shipped on `feat/c5c-dep-graph`:
+  `lib/codemap/deps.py` (stdlib-ast module-import graph; resolves absolute + relative imports; never raises);
+  `CodeMap.dependencies` + `depends_on()`/`dependents_of()` queries; sidecar persistence (backward-compatible);
+  `core.load_fresh()` on-demand auto-refresh (no daemon, per ADR-008); `/ren:code-map --deps` renders
+  the dep graph; `skills/improve-skill/lib/impact.py` (`dependency_footprint` → `ImpactReport`).
+  **Symbol-level call-graph deferred** — lean-ctx's graph DB is class-only with no usable edges
+  (finding recorded in `lib/codemap/SPIKE_FINDINGS.md`); a true function→function call-graph exceeds
+  the adopted tooling. Module-import graph delivers the Pillar-5 dep-map need.
+  **C5 chain complete: C5a ✅ C5b ✅ C5c ✅.** Gate: codemap 28 tests, improve-skill 175+1skip;
+  `claude plugin validate --strict` ✔. Plan: `docs/superpowers/plans/2026-06-21-c5c-dep-graph.md`.
 
 - **2026-06-17 — C2 DONE.** Code-map context layer shipped on `feat/c2-code-map`: `lib/codemap/`
   (engine-agnostic core: models, adapter_leanctx, digest, staleness, sources) + `/ren:code-map`
@@ -127,7 +138,7 @@ roadmap is that decomposition. The actual code lands via the per-slice plans nam
 | **C4** | Cadence-as-glue | P3 (headline) | new skills | A1 | new **cadence** ADR; new **write-back** ADR | ✅ **DONE 2026-06-12** — `routine-spec` page-type + `/ren:routine-init` + `/ren:cadence` + recall/doctor/wake-up extensions; plan `docs/superpowers/plans/2026-06-11-c4-cadence-as-glue.md` |
 | **C5a** | Self-improvement — eval backend + earned autonomy | P5 | extend `sf-improve-skill` | C2 | new **ADR-036** (bike-method/earned-autonomy) | ✅ **DONE 2026-06-18** — eval backend wired; `--eval-runs N`; ADR-036 earned-autonomy gate; SKILL banner + learnings + wire-up |
 | **C5b** | Self-improvement — loop completion (skill-loading fix + eval-run variance) | P5 | extend `sf-improve-skill` | C5a | — | ✅ **DONE (code) 2026-06-19** — eval sandbox runs skill-runs from the plugin-active worktree root (real skills load); `--eval-runs N` judges each run's own output; unit-tested + reviewed (172 passing). **Live supervised proof DEFERRED** (run 1 of ≥3 toward ADR-036; nested-`claude` sandbox-blocked in-session). Plan: `docs/superpowers/plans/2026-06-19-c5b-loop-completion.md` |
-| **C5c** | Self-improvement — dep/call-graph + auto-refresh | P6 | extend `sf-improve-skill` + `lib/codemap/` | C5b, C2 | — | Not started |
+| **C5c** | Self-improvement — dep/call-graph + auto-refresh | P6 | extend `sf-improve-skill` + `lib/codemap/` | C5b, C2 | — | ✅ **DONE 2026-06-21** — dependency-map (module import graph via ast) + `load_fresh` auto-refresh + `/ren:code-map --deps` + improve-skill impact surface; symbol call-graph deferred (lean-ctx graph DB is class-only, no usable edges); plan `docs/superpowers/plans/2026-06-21-c5c-dep-graph.md` |
 | **H1** | Doctor extensions | glue | extend `sf-doctor` | F1 | — | ✅ **DONE 2026-06-21** — `/ren:doctor` +CONTEXT & TOKEN ECONOMICS +WIKI HEALTH (7→9 sections); plan `docs/superpowers/plans/2026-06-21-h1-doctor-extensions.md` |
 | **H2** | Multi-agent glue + lightweight-skill tier + broadened onboarding | P2/glue | extend `sf-interview/install` + `CLAUDE.md` | A1 | amend **011** (lightweight tier) | Not started |
 
@@ -137,8 +148,8 @@ roadmap is that decomposition. The actual code lands via the per-slice plans nam
 
 ```
 F1 ──► A1 ──► C4                  (foundation → shared ADRs → the headline cadence capability)
-  └──► C1 ──► C2 ──► C5a ──► C5b ──► C5c (populated brain → code-map → self-improvement backend → loop completion → dep/call-graph)
-       C3, H1, H2  = depth build-out, scheduled after the path clears
+  └──► C1 ──► C2 ──► C5a ──► C5b ──► C5c ✅  (populated brain → code-map → self-improvement backend → loop completion → dep/call-graph)
+       C3, H1 ✅, H2  = depth build-out, scheduled after the path clears
 ```
 
 - **F1 is the universal unblocker** — every new skill inherits the `sf` namespace; do it before
