@@ -21,3 +21,13 @@ def test_codemap_holds_symbols_and_hashes():
 def test_stale_report_truthiness():
     assert bool(StaleReport(stale=True, changed=("a.py",), added=(), deleted=())) is True
     assert bool(StaleReport(stale=False, changed=(), added=(), deleted=())) is False
+
+
+def test_dependencies_default_empty_and_queries():
+    from lib.codemap.model import CodeMap, depends_on, dependents_of
+    cm = CodeMap(project_path="/p", generated_at="t", git_commit="", file_hashes={}, symbols=(),
+                 dependencies={"a.py": ("b.py",), "c.py": ("b.py",)})
+    assert depends_on(cm, "a.py") == ("b.py",)
+    assert dependents_of(cm, "b.py") == ("a.py", "c.py")
+    cm2 = CodeMap(project_path="/p", generated_at="t", git_commit="", file_hashes={}, symbols=())
+    assert cm2.dependencies == {}  # backward-compatible default
