@@ -8,7 +8,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 from lib import sf_paths  # noqa: E402
-from lib.codemap import check_staleness, generate, load_cached  # noqa: E402
+from lib.codemap import check_staleness, generate, load_cached, load_fresh  # noqa: E402
 from lib.codemap.adapter_leanctx import EngineUnavailable  # noqa: E402
 
 INSTALL_HINT = ("lean-ctx is not installed — the code-map needs it. "
@@ -20,8 +20,22 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("path", nargs="?", default=".")
     ap.add_argument("--name", required=True, help="kebab project name (cache key)")
     ap.add_argument("--refresh", action="store_true", help="regenerate even if a cache exists")
+    ap.add_argument("--deps", action="store_true",
+                    help="show the module dependency graph (auto-refreshes if stale)")
     args = ap.parse_args(argv)
     project_root = Path(args.path)
+
+    if args.deps:
+        cm = load_fresh(args.name, project_root)
+        if cm is None:
+            print(INSTALL_HINT + " Run /ren:code-map first.")
+            return 0
+        edges = sum(len(v) for v in cm.dependencies.values())
+        files = len(cm.dependencies)
+        print(f"DEPENDENCIES ({edges} edges across {files} files) — auto-refreshed")
+        for src in sorted(cm.dependencies):
+            print(f"  {src} → {', '.join(sorted(cm.dependencies[src]))}")
+        return 0
 
     # Cache exists and not refreshing -> surface staleness instead of regenerating.
     if not args.refresh and load_cached(args.name) is not None:

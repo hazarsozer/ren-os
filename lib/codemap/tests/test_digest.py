@@ -23,3 +23,18 @@ def test_digest_groups_by_file_with_line_ranges():
     assert "## pkg/a.py" in out and "## pkg/b.py" in out
     assert "alpha" in out and "L10-20" in out
     assert "Beta" in out and "L1-40" in out
+
+
+def test_digest_dependencies_section_rendered():
+    cm = CodeMap(project_path="/p/demo", generated_at="2026-06-17T12:00:00Z",
+                 git_commit="abc1234", file_hashes={},
+                 symbols=(),
+                 dependencies={"a.py": ("b.py",)})
+    out = render_digest(cm)
+    assert "## Dependencies" in out
+    assert "a.py → b.py" in out
+
+
+def test_digest_no_dependencies_section_when_empty():
+    out = render_digest(_map())  # _map() has no dependencies
+    assert "## Dependencies" not in out
