@@ -27,6 +27,16 @@ def test_footprint_reports_deps_and_dependents():
     assert rep.dependents == ("skills/y/lib/b.py",)
 
 
-def test_footprint_excludes_target_set_and_is_empty_safe():
+def test_footprint_excludes_target_files_on_both_sides():
+    # a <-> b mutual import; both in the target set, so each cancels out of both
+    # result tuples. This genuinely exercises the `-= set(target_files)` lines —
+    # deleting them would make this test fail.
+    deps = {"a.py": ("b.py",), "b.py": ("a.py",)}
+    rep = dependency_footprint({"a.py", "b.py"}, deps)
+    assert rep.dependencies == ()   # b.py is a dep of a.py but b.py is in the target set -> excluded
+    assert rep.dependents == ()     # a.py imports b.py but a.py is in the target set -> excluded
+
+
+def test_footprint_empty_graph_is_safe():
     rep = dependency_footprint({"skills/x/lib/a.py"}, {})
     assert rep.dependencies == () and rep.dependents == ()

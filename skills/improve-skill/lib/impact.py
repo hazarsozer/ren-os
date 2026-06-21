@@ -12,8 +12,8 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class ImpactReport:
-    dependencies: tuple   # what the target imports (outgoing), minus the target set
-    dependents: tuple     # what imports the target (incoming), minus the target set
+    dependencies: tuple[str, ...]   # what the target imports (outgoing), minus the target set
+    dependents: tuple[str, ...]     # what imports the target (incoming), minus the target set
 
 
 def dependency_footprint(target_files: set, dependencies: dict) -> ImpactReport:
