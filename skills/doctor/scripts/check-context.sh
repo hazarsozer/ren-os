@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # check-context.sh — sf-doctor CONTEXT & TOKEN ECONOMICS section. READ-ONLY.
 # Output: KEY|STATUS|VALUE|HINT  (STATUS ∈ ok|warn|skip)
+# Full doctor STATUS vocabulary is ok|warn|skip|error; this script never emits `error` — every input is optional.
 set -uo pipefail
 PLUGIN_DIR="${SF_PLUGIN_DIR:-${CLAUDE_PLUGIN_ROOT:-.}}"
 PROJECT_CLAUDE_MD="${CLAUDE_PROJECT_CLAUDE_MD:-./CLAUDE.md}"
@@ -17,7 +18,7 @@ def linecount(p):
 def parse_fm(p):
     try:
         with open(p, encoding="utf-8") as f: t = f.read(8192)
-    except OSError: return {}
+    except (OSError, ValueError): return {}  # ValueError covers UnicodeDecodeError on non-UTF-8 bytes
     m = re.match(r"^---\s*\n(.*?)\n---\s*\n", t, re.DOTALL)
     if not m: return {}
     fm = {}
@@ -30,7 +31,8 @@ def parse_fm(p):
 cj = os.path.join(home, ".claude.json"); mcp = plugins = None
 if os.path.isfile(cj):
     try:
-        d = json.load(open(cj)); mcp = len(d.get("mcpServers", {})); plugins = len(d.get("enabledPlugins", {}))
+        with open(cj) as f: d = json.load(f)
+        mcp = len(d.get("mcpServers", {})); plugins = len(d.get("enabledPlugins", {}))
     except Exception: pass
 emit("mcp_servers", "ok" if mcp is not None else "skip", mcp if mcp is not None else "(no ~/.claude.json)",
      "keys ≠ instructions — audit with /ren:doctor --permissions" if mcp else "")
@@ -60,7 +62,8 @@ for key, path in (("claude_md_global", os.path.join(home, ".claude", "CLAUDE.md"
 # ── auto-mode safety posture ──
 settings = os.path.join(home, ".claude", "settings.json"); mode = None
 if os.path.isfile(settings):
-    try: mode = (json.load(open(settings)).get("permissions", {}) or {}).get("defaultMode")
+    try:
+        with open(settings) as f: mode = (json.load(f).get("permissions", {}) or {}).get("defaultMode")
     except Exception: pass
 if mode in ("bypassPermissions", "acceptEdits"):
     emit("auto_mode", "warn", mode, "broad auto-accept is the default — confirms are skipped; scope keys deliberately")
