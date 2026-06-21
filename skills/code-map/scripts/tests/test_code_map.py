@@ -38,3 +38,25 @@ def test_reports_stale_when_cache_exists(monkeypatch, capsys, tmp_path):
     rc = cli.main([str(tmp_path), "--name", "demo"])         # no --refresh
     assert rc == 0
     assert "STALE" in capsys.readouterr().out
+
+
+def test_deps_flag_shows_dependency_graph(monkeypatch, capsys, tmp_path):
+    import types
+    cm = types.SimpleNamespace(
+        dependencies={"a.py": ("b.py", "c.py")},
+        symbols=(),
+    )
+    monkeypatch.setattr(cli, "load_fresh", lambda name, root: cm)
+    rc = cli.main([str(tmp_path), "--name", "t", "--deps"])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "DEPENDENCIES" in out
+    assert "a.py" in out and "b.py" in out
+
+
+def test_deps_flag_graceful_when_no_cache(monkeypatch, capsys, tmp_path):
+    monkeypatch.setattr(cli, "load_fresh", lambda name, root: None)
+    rc = cli.main([str(tmp_path), "--name", "t", "--deps"])
+    assert rc == 0
+    out = capsys.readouterr().out.lower()
+    assert "lean-ctx" in out or "run" in out

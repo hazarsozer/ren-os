@@ -22,8 +22,9 @@ references_on_demand: []
 Generates a regenerable symbol→file:line-range digest of a project.
 
 ## When to use
-- Builder runs `/ren:code-map [path] --name <kebab> [--refresh]`.
+- Builder runs `/ren:code-map [path] --name <kebab> [--refresh] [--deps]`.
 - Builder says "build a code index for this project", "map the symbols", "refresh the code-map".
+- Add `--deps` to print the module dependency graph (auto-refreshes stale cache; shows `src → dep1, dep2` per file).
 
 ## Procedure
 1. Resolve project path (default cwd) and `--name` (kebab; reuse the project's wiki name).
