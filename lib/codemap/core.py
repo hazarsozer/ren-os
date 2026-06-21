@@ -10,6 +10,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from lib import sf_paths  # noqa: E402
 from lib.codemap.adapter_leanctx import run_leanctx  # noqa: E402
+from lib.codemap.deps import extract_dependencies  # noqa: E402
 from lib.codemap.digest import render_digest  # noqa: E402
 from lib.codemap.model import CodeMap, Symbol  # noqa: E402
 from lib.codemap.sources import enumerate_source_files  # noqa: E402
@@ -36,6 +37,7 @@ def _serialize(cm: CodeMap) -> str:
         "project_path": cm.project_path, "generated_at": cm.generated_at,
         "git_commit": cm.git_commit, "file_hashes": cm.file_hashes,
         "symbols": [s.__dict__ for s in cm.symbols],
+        "dependencies": {k: list(v) for k, v in cm.dependencies.items()},
     }, indent=2)
 
 
@@ -43,19 +45,22 @@ def _deserialize(text: str) -> CodeMap:
     d = json.loads(text)
     return CodeMap(project_path=d["project_path"], generated_at=d["generated_at"],
                    git_commit=d.get("git_commit", ""), file_hashes=d.get("file_hashes", {}),
-                   symbols=tuple(Symbol(**s) for s in d.get("symbols", [])))
+                   symbols=tuple(Symbol(**s) for s in d.get("symbols", [])),
+                   dependencies={k: tuple(v) for k, v in d.get("dependencies", {}).items()})
 
 
 def generate(project_root: Path, *, project_name: str) -> CodeMap:
     """Build the code-map for project_root; write the .md digest + .json sidecar."""
     project_root = Path(project_root).resolve()
     symbols = run_leanctx(project_root)
+    sources = enumerate_source_files(project_root)
     cm = CodeMap(
         project_path=str(project_root),
         generated_at=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         git_commit=_git_commit(project_root),
-        file_hashes=hash_files(project_root, enumerate_source_files(project_root)),
+        file_hashes=hash_files(project_root, sources),
         symbols=tuple(symbols),
+        dependencies=extract_dependencies(project_root, sources),
     )
     out = sf_paths.code_map_path(project_name)
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -80,3 +85,14 @@ def check_staleness(project_name: str, project_root) -> "StaleReport | None":
     """StaleReport for a cached map vs the current project, or None if no cache."""
     cm = load_cached_map(project_name)
     return is_stale(cm, Path(project_root)) if cm else None
+
+
+def load_fresh(project_name: str, project_root) -> "CodeMap | None":
+    """Return a non-stale CodeMap, regenerating the cache if it drifted (trust-but-verify).
+    On-demand only — never scheduled or injected at wake-up (ADR-008/ADR-035)."""
+    cm = load_cached_map(project_name)
+    if cm is None:
+        return None
+    if is_stale(cm, Path(project_root)):
+        return generate(Path(project_root), project_name=project_name)
+    return cm
