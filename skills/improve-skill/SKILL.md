@@ -117,7 +117,7 @@ Layer-2 skill self-improvement per ADR-012. The mechanical realization of Karpat
 
 ## Pre-flight check (mandatory)
 
-The loop may surface the target skill's dependency footprint (its `lib/` dependencies + dependents) via `impact.dependency_footprint` over the project code-map, so the operator sees the blast radius before iterating.
+The loop may surface the target skill's dependency footprint (its `lib/` dependencies + dependents) via `impact.dependency_footprint(target_files, code_map.dependencies)`, so the operator sees the blast radius before iterating.
 
 Before the first iteration:
 
