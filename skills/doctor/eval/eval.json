@@ -1,21 +1,8 @@
 {
   "name": "sf-doctor",
-  "description": "Binary-assertion suite for /ren:doctor. Covers the five always-on status sections, install-mode skipping, and the standalone read-only permission audit (--permissions, 'KEYS ON YOUR RING'). The permission-audit assertions are concretely backed by the hermetic scripts/tests/test_check_permissions.sh (which seeds fake tokens and asserts they never appear in the output).",
+  "description": "Binary-assertion suite for /ren:doctor. Covers the nine status sections, install-mode skipping, and the standalone read-only permission audit (--permissions, 'KEYS ON YOUR RING'). The permission-audit assertions are concretely backed by the hermetic scripts/tests/test_check_permissions.sh (which seeds fake tokens and asserts they never appear in the output).",
   "schema_version": 1,
   "tests": [
-    {
-      "id": "full-report-sections",
-      "fixture": "scripts/tests (hermetic; check-* scripts run read-only)",
-      "prompt": "/ren:doctor",
-      "expected_output_summary": "Five sections render; a final summary line; read-only throughout.",
-      "trigger_test": true,
-      "binary_assertions": [
-        "Output contains all five section headers: ENVIRONMENT, PLUGINS, SCHEMA VERSIONS, FRAMEWORK UPDATE, BACKUP",
-        "A crashing or timed-out check-script degrades to a per-section failure note and does NOT crash the overall report",
-        "The run is side-effect-free: nothing under the wiki or settings is written",
-        "Exit code is 0 when no blocker (❌) is present"
-      ]
-    },
     {
       "id": "install-mode-skips-update",
       "fixture": "scripts/tests (hermetic)",
@@ -42,6 +29,44 @@
         "No secret/env/token/header value is ever printed: a seeded fake token present in an MCP server's env, in an http server's headers, and in a project server's env is ABSENT from the output",
         "All inputs absent (no ~/.claude.json, no settings.json, no settings.local.json) still renders a clean empty report and exits 0",
         "The audit performs no writes and no network calls"
+      ]
+    },
+    {
+      "id": "context-section",
+      "fixture": "scripts/tests/test_check_context.sh (hermetic)",
+      "prompt": "/ren:doctor --section context",
+      "expected_output_summary": "Only the CONTEXT & TOKEN ECONOMICS section renders; no other sections appear.",
+      "trigger_test": true,
+      "binary_assertions": [
+        "Output contains the section header 'CONTEXT & TOKEN ECONOMICS'",
+        "No other section headers (ENVIRONMENT, PLUGINS, SCHEMA VERSIONS, FRAMEWORK UPDATE, BACKUP, ROUTINES, CODE-MAP, WIKI HEALTH) appear in the output",
+        "The auto_mode check never prints a secret or token value even when settings.json is present"
+      ]
+    },
+    {
+      "id": "wiki-health-section",
+      "fixture": "scripts/tests/test_check_wiki_health.sh (hermetic)",
+      "prompt": "/ren:doctor --section wiki-health",
+      "expected_output_summary": "Only the WIKI HEALTH section renders; no other sections appear.",
+      "trigger_test": true,
+      "binary_assertions": [
+        "Output contains the section header 'WIKI HEALTH'",
+        "No other section headers (ENVIRONMENT, PLUGINS, SCHEMA VERSIONS, FRAMEWORK UPDATE, BACKUP, ROUTINES, CODE-MAP, CONTEXT & TOKEN ECONOMICS) appear in the output",
+        "Output ends with a health_score summary line (e.g. '0 issue(s) across N pages' or 'N issue(s) across N pages')"
+      ]
+    },
+    {
+      "id": "full-report-nine-sections",
+      "fixture": "scripts/tests (hermetic; check-* scripts run read-only)",
+      "prompt": "/ren:doctor",
+      "expected_output_summary": "All nine sections render; a final summary line; read-only throughout.",
+      "trigger_test": true,
+      "binary_assertions": [
+        "Output contains all nine section headers: ENVIRONMENT, PLUGINS, SCHEMA VERSIONS, FRAMEWORK UPDATE, BACKUP, ROUTINES, CODE-MAP, CONTEXT & TOKEN ECONOMICS, WIKI HEALTH",
+        "A crashing or timed-out check-script degrades to a per-section failure note and does NOT crash the overall report",
+        "The run is side-effect-free: nothing under the wiki or settings is written",
+        "Exit code is 0 when no blocker (❌) is present",
+        "The auto_mode line in CONTEXT & TOKEN ECONOMICS never prints a secret or token value"
       ]
     }
   ]
