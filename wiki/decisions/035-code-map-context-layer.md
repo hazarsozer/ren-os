@@ -230,3 +230,40 @@ implementations for JS/TS/Go etc. as the user's projects diversify.
 - ADR-003 (No-Daemon Rule) — CLI-only use of lean-ctx; `lean-ctx serve` excluded
 - ADR-008 (Wake-Up Hook) — code-map is load-on-demand, never in SessionStart injection; see amendment
 - ADR-032 (Project Ingest) — read-only-project discipline inherited by the code-map
+
+---
+
+## Amendment — 2026-06-21 (C5c: dependency-map realized)
+
+The "C5-ready" consequence noted above (§ Consequences → Easier) is realized in C5c.
+
+**What shipped:**
+- The dependency-map layer is implemented as a **stdlib-`ast` module-level import graph** in
+  `lib/codemap/deps.py` — engine-agnostic, zero external dependencies, read-only, never raises.
+  This is deliberately **not** the lean-ctx graph DB (see finding below).
+- `CodeMap.dependencies` persists the graph in the existing cache sidecar (backward-compatible;
+  no schema migration required).
+- `core.load_fresh()` provides on-demand auto-refresh when the cache is stale — no daemon, no
+  wake-up injection (ADR-008 preserved).
+
+**lean-ctx graph DB finding (recorded, not adopted):**
+The C5c spike (`lib/codemap/SPIKE_FINDINGS.md`) confirmed that lean-ctx's knowledge-graph layer
+is **class-only** — it exposes class→member and class→class relationships but has no
+function→function call edges. A true symbol-level call-graph cannot be built on the current
+lean-ctx graph DB.
+
+**Symbol-level call-graph: explicitly deferred.**
+Function→function call-graph analysis would require a different tool (e.g., a custom
+tree-sitter pass, pycallgraph, or a dedicated Python call-graph library). This exceeds
+the scope of the adopted tooling and is not blocked by this ADR — it is a future layer if
+the need is demonstrated. The module-import graph delivers the Pillar-5 dependency-map
+need as scoped.
+
+**Self-improvement impact surface:**
+`skills/improve-skill/lib/impact.py` (`dependency_footprint` → `ImpactReport`) consumes the
+dependency graph for read-only impact awareness in the Karpathy loop. It is stdlib-only and
+decoupled from `lib.codemap` to avoid a `lib` package-name collision. This is additive only —
+no change to the code-map's engine, storage, or staleness logic.
+
+This amendment is additive. ADR-035's status, engine choice, storage architecture, staleness
+discipline, and all other decisions remain unchanged.

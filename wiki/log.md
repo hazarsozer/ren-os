@@ -427,3 +427,33 @@ ROUTINES section. Both scripts are strictly read-only and side-effect-free.
 Gate: 2 hermetic shell test files added (context 12/12, wiki-health 8/8; full doctor
 suite 8/8 green); `eval.json` reconciled to nine sections; `claude plugin validate
 --strict` ✔. Plan: `docs/superpowers/plans/2026-06-21-h1-doctor-extensions.md`.
+
+## [2026-06-21] build | C5c dependency-map + auto-refresh shipped; C5 chain complete
+
+`lib/codemap/deps.py` adds a stdlib-`ast` **module-level import dependency graph**
+(`{src: (deps,…)}`): resolves absolute + relative imports (incl. bare `from . import
+x`); never raises — unparseable / non-UTF-8 / missing / non-Python files produce no
+edges. `CodeMap.dependencies` field + `depends_on()` / `dependents_of()` query
+methods; persisted in the existing cache sidecar (backward-compatible zero-migration).
+
+`core.load_fresh()` provides **on-demand auto-refresh**: regenerates the cache when
+stale at consumption time. No daemon, no wake-up injection — load-on-demand only,
+consistent with ADR-008. `/ren:code-map --deps` renders the dependency graph
+(auto-refreshes); the digest gains a `## Dependencies` section.
+
+`skills/improve-skill/lib/impact.py` — `dependency_footprint(target_files,
+dependencies)` → `ImpactReport` (target's dependents + dependencies) — read-only
+impact awareness for the self-improvement loop. stdlib-only; deliberately decoupled
+from `lib.codemap` to avoid a `lib` package-name collision.
+
+**Symbol-level call-graph (function→function) explicitly deferred.** The spike
+(`lib/codemap/SPIKE_FINDINGS.md`) found that lean-ctx's graph DB is class-only — no
+usable function→function edges. A true call-graph would require a different tool
+(e.g. pycallgraph, custom tree-sitter pass) and exceeds the adopted tooling scope.
+Module-import graph delivers the Pillar-5 dependency-map need as scoped.
+
+No new ADR, no new page-type, no schema change. Tests: codemap 28, improve-skill
+175 + 1 skip; `claude plugin validate --strict` ✔.
+
+**C5 chain complete: C5a ✅ (eval backend) · C5b ✅ (loop completion) · C5c ✅ (dep-map + auto-refresh).**
+Plan: `docs/superpowers/plans/2026-06-21-c5c-dep-graph.md`.
