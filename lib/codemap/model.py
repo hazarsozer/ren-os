@@ -1,7 +1,7 @@
 """Code-map data contract. Engine-agnostic; nothing here imports lean-ctx."""
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass(frozen=True)
@@ -21,6 +21,7 @@ class CodeMap:
     git_commit: str            # short hash, or "" when not a repo
     file_hashes: dict          # {project-relative path: sha256-hex}
     symbols: tuple             # tuple[Symbol, ...]
+    dependencies: dict = field(default_factory=dict)  # {src_rel: tuple[dst_rel,...]}
 
 
 @dataclass(frozen=True)
@@ -32,3 +33,13 @@ class StaleReport:
 
     def __bool__(self) -> bool:
         return self.stale
+
+
+def depends_on(cm: "CodeMap", file: str) -> tuple:
+    """Direct dependencies of `file` (its import targets)."""
+    return tuple(cm.dependencies.get(file, ()))
+
+
+def dependents_of(cm: "CodeMap", file: str) -> tuple:
+    """Files that import `file` (reverse edges)."""
+    return tuple(sorted(src for src, dsts in cm.dependencies.items() if file in dsts))
