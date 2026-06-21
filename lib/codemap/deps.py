@@ -29,17 +29,35 @@ def _resolve_absolute(dotted: str, index: dict) -> str | None:
     return None
 
 
-def _resolve_relative(node: ast.ImportFrom, importer_rel: str, present: set) -> str | None:
-    """Directory-relative resolution for `from . / .. import` (handles hyphenated dirs)."""
+def _relative_pkg(importer_rel: str, level: int) -> Path:
+    """The package directory a relative import resolves against (level 1 = same dir)."""
     pkg = Path(importer_rel).parent
-    for _ in range(node.level - 1):           # level 1 = same dir; each extra level goes up
+    for _ in range(level - 1):                 # each extra level goes up one dir
         pkg = pkg.parent
-    sub = Path(*node.module.split(".")) if node.module else Path()
+    return pkg
+
+
+def _relative_candidate(pkg: Path, sub: Path, present: set) -> str | None:
+    """Match `pkg/sub.py` or `pkg/sub/__init__.py` against in-project files."""
     for cand in (f"{(pkg / sub)}.py", f"{(pkg / sub / '__init__')}.py"):
         cand = cand.replace("\\", "/")
         if cand in present:
             return cand
     return None
+
+
+def _resolve_relative(node: ast.ImportFrom, importer_rel: str, present: set) -> list:
+    """Directory-relative resolution for `from . / .. import` (handles hyphenated dirs).
+
+    Covers both `from .mod import X` (node.module set) and the bare-name form
+    `from . import a, b` (node.module None → each alias is a sibling module).
+    """
+    pkg = _relative_pkg(importer_rel, node.level)
+    if node.module:
+        hit = _relative_candidate(pkg, Path(*node.module.split(".")), present)
+        return [hit] if hit else []
+    hits = [_relative_candidate(pkg, Path(a.name), present) for a in node.names]
+    return [h for h in hits if h]
 
 
 def extract_dependencies(project_root: Path, rel_files: list[str]) -> dict:
@@ -61,10 +79,12 @@ def extract_dependencies(project_root: Path, rel_files: list[str]) -> dict:
                     if hit:
                         targets.add(hit)
             elif isinstance(node, ast.ImportFrom):
-                hit = (_resolve_relative(node, rel, present) if node.level
-                       else _resolve_absolute(node.module or "", index))
-                if hit:
-                    targets.add(hit)
+                if node.level:
+                    targets.update(_resolve_relative(node, rel, present))
+                else:
+                    hit = _resolve_absolute(node.module or "", index)
+                    if hit:
+                        targets.add(hit)
         targets.discard(rel)
         if targets:
             deps[rel] = tuple(sorted(targets))

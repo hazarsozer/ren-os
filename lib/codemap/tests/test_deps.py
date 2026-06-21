@@ -25,6 +25,13 @@ def test_relative_import_in_hyphenated_skill_dir(tmp_path):
     deps = extract_dependencies(tmp_path, rels)
     assert deps["skills/improve-skill/lib/preflight.py"] == ("skills/improve-skill/lib/types.py",)
 
+def test_bare_relative_from_import(tmp_path):
+    _w(tmp_path, "skills/improve-skill/lib/types.py", "class A: ...\n")
+    _w(tmp_path, "skills/improve-skill/lib/preflight.py", "from . import types\n")
+    rels = ["skills/improve-skill/lib/types.py", "skills/improve-skill/lib/preflight.py"]
+    deps = extract_dependencies(tmp_path, rels)
+    assert deps["skills/improve-skill/lib/preflight.py"] == ("skills/improve-skill/lib/types.py",)
+
 def test_unparseable_and_nonpy_and_external_yield_no_edges(tmp_path):
     _w(tmp_path, "broken.py", "def (:\n")          # SyntaxError
     _w(tmp_path, "data.json", "{}\n")               # non-py
