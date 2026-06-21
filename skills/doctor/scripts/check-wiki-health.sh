@@ -28,7 +28,8 @@ for p in md_files:
         with open(p, encoding="utf-8", errors="replace") as f: text = f.read()
     except OSError: continue
     rel = os.path.relpath(p, wiki_root)
-    if text.count("\n") + 1 > PAGE_LINE_WARN: heavy.append(f"{rel}:{text.count(chr(10))+1}L")
+    nlines = len(text.splitlines())
+    if nlines > PAGE_LINE_WARN: heavy.append(f"{rel}:{nlines}L")
     # stale
     upd = fm_field(text[:8192], "updated") or fm_field(text[:8192], "created")
     if upd:
@@ -44,7 +45,7 @@ for p in md_files:
         if not os.path.isfile(os.path.normpath(os.path.join(os.path.dirname(p), tgt))): dead.append(f"{rel}→{tgt}")
 
 def line(key, items, noun):
-    emit(key, "warn" if items else "ok", f"{len(items)}  ({', '.join(items[:5])}{'…' if len(items)>5 else ''})" if items else f"0 {noun}")
+    emit(key, "warn" if items else "ok", f"{len(items)} ({', '.join(items[:5])}{'…' if len(items)>5 else ''})" if items else f"0 {noun}")
 line("dead_links", dead, "dead links"); line("stale_pages", stale, f"pages > {STALE_DAYS}d"); line("heavy_pages", heavy, f"pages > {PAGE_LINE_WARN}L")
 issues = len(dead) + len(stale) + len(heavy)
 emit("health_score", "ok" if issues == 0 else ("warn" if issues <= 5 else "error"),

@@ -29,6 +29,6 @@ grep -Eq '^health_score\|(warn|error)\|' <<<"$OUT" && pass "emits a score" || fa
 echo "▶ Scenario B — no wiki → skip, exit 0"
 OUT2="$(CLAUDE_PLUGIN_OPTION_WIKIROOT="$W/nonexistent" bash "$CHECK" 2>&1)"; RC2=$?
 [ "$RC2" = "0" ] && pass "exits 0 without wiki" || fail "exit $RC2"
-grep -q '^health_score|skip' <<<"$OUT2" && pass "no wiki → skip" || fail "no-wiki skip"
+grep -Fq 'health_score|skip' <<<"$OUT2" && pass "no wiki → skip" || fail "no-wiki skip"
 
 echo ""; echo "wiki-health: $PASS passed, $FAIL failed"; [ "$FAIL" = "0" ]
