@@ -23,4 +23,10 @@ def render_digest(code_map: CodeMap) -> str:
         for s in group:
             parts.append(f"- `{s.name}` ({s.kind}) L{s.start_line}-{s.end_line} — {s.signature}\n")
         parts.append("\n")
+    if code_map.dependencies:
+        parts.append("## Dependencies\n\n")
+        for src in sorted(code_map.dependencies):
+            deps = ", ".join(sorted(code_map.dependencies[src]))
+            parts.append(f"- {src} → {deps}\n")
+        parts.append("\n")
     return "".join(parts)
