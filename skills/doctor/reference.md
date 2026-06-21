@@ -183,6 +183,74 @@ Tarball line only present if any tarballs exist; otherwise that line is omitted.
 
 ---
 
+## Section 8 — CONTEXT & TOKEN ECONOMICS
+
+Script: `scripts/check-context.sh`  
+Fragment format: `KEY|STATUS|VALUE|HINT` (STATUS ∈ `ok|warn|skip`)
+
+```
+▶ CONTEXT & TOKEN ECONOMICS
+  MCP servers:       {icon} {count | (no ~/.claude.json)}  [{hint}]
+  Enabled plugins:   {icon} {count}
+  Framework skills:  {icon} {count}
+  Skill size lint:   {icon} {ok-summary | offender-list}  [{hint}]
+  CLAUDE.md global:  {icon} {N lines | (none)}  [{hint}]
+  CLAUDE.md project: {icon} {N lines | (none)}  [{hint}]
+  Auto-mode safety:  {icon} {mode-name}  [{hint}]
+```
+
+Fragment keys:
+
+| Key | ok condition | warn condition | skip condition |
+|---|---|---|---|
+| `mcp_servers` | `~/.claude.json` present and readable | — | file absent |
+| `enabled_plugins` | `~/.claude.json` present and readable | — | file absent |
+| `framework_skills` | at least one `SKILL.md` found under `skills/` | — | none found |
+| `skill_size_lint` | all skills < 500L + complete frontmatter | any skill ≥ 500L or missing frontmatter field | — |
+| `claude_md_global` | `~/.claude/CLAUDE.md` ≤ 200 lines | `~/.claude/CLAUDE.md` > 200 lines | file absent |
+| `claude_md_project` | `./CLAUDE.md` ≤ 200 lines | `./CLAUDE.md` > 200 lines | file absent |
+| `auto_mode` | mode is `default` / `null` / other non-broad value | mode is `bypassPermissions` or `acceptEdits` | settings.json absent |
+
+**Security invariant:** `auto_mode` prints only the mode name string. It NEVER prints an env value, token, or credential from `settings.json`.
+
+Status → icon: `ok→✅  warn→⚠️  skip→·(dim)  error→❌`
+
+---
+
+## Section 9 — WIKI HEALTH
+
+Script: `scripts/check-wiki-health.sh`  
+Fragment format: `KEY|STATUS|VALUE|HINT` (STATUS ∈ `ok|warn|error|skip`)
+
+```
+▶ WIKI HEALTH
+  Dead links:   {icon} {N dead links | 0 dead links}
+  Stale pages:  {icon} {N (rel:days, …) | 0 pages > 90d}
+  Heavy pages:  {icon} {N (rel:lines, …) | 0 pages > 500L}
+  Health score: {icon} {N issue(s) across M pages}
+```
+
+Fragment keys:
+
+| Key | ok condition | warn condition | error condition | skip condition |
+|---|---|---|---|---|
+| `dead_links` | 0 dead links | ≥ 1 dead link | — | — |
+| `stale_pages` | 0 stale pages | ≥ 1 page > 90d without update | — | — |
+| `heavy_pages` | 0 heavy pages | ≥ 1 page > 500L | — | — |
+| `health_score` | 0 total issues | 1–5 total issues | > 5 total issues | wiki directory absent |
+
+The `health_score` fragment is always last and summarises the entire section. When STATUS is `skip`, render the entire section as a single dim line:
+
+```
+▶ WIKI HEALTH  · (no wiki — run /ren:install to bootstrap)
+```
+
+Staleness threshold: 90 days (from `updated:` or `created:` frontmatter field).  
+Heavy-page threshold: 500 lines.  
+Dead-link check covers `[[wikilink]]` and relative `](path.md)` references; absolute `http://` / `https://` links are skipped.
+
+---
+
 ## Final line
 
 After all sections, one of:
@@ -211,7 +279,28 @@ The `--json` mode emits this shape (canonical schema; no separate schema file sh
     "plugins": {...},
     "schema_versions": {...},
     "framework_update": {...},
-    "backup": {...}
+    "backup": {...},
+    "context": {
+      "status": "ok|warn|skip",
+      "checks": [
+        {"key": "mcp_servers", "status": "ok|warn|skip", "value": "3", "hint": ""},
+        {"key": "enabled_plugins", "status": "ok|warn|skip", "value": "4", "hint": ""},
+        {"key": "framework_skills", "status": "ok|warn|skip", "value": "8", "hint": ""},
+        {"key": "skill_size_lint", "status": "ok|warn", "value": "all skills < 500L + complete frontmatter", "hint": ""},
+        {"key": "claude_md_global", "status": "ok|warn|skip", "value": "142 lines", "hint": ""},
+        {"key": "claude_md_project", "status": "ok|warn|skip", "value": "312 lines", "hint": "token-heavy; loaded every session — trim or move detail into skills"},
+        {"key": "auto_mode", "status": "ok|warn|skip", "value": "default", "hint": ""}
+      ]
+    },
+    "wiki_health": {
+      "status": "ok|warn|error|skip",
+      "checks": [
+        {"key": "dead_links", "status": "ok|warn", "value": "0 dead links", "hint": ""},
+        {"key": "stale_pages", "status": "ok|warn", "value": "0 pages > 90d", "hint": ""},
+        {"key": "heavy_pages", "status": "ok|warn", "value": "0 pages > 500L", "hint": ""},
+        {"key": "health_score", "status": "ok|warn|error|skip", "value": "0 issue(s) across 47 pages", "hint": "GOOD"}
+      ]
+    }
   },
   "summary": {
     "status": "all-green|warnings|blockers",
@@ -234,3 +323,13 @@ Fixtures:
 - `tests/golden/no-backup-remote/` — wiki has no git remote
 - `tests/golden/install-mode/` — `--install-mode` skips update section
 - `tests/golden/network-failure/` — gh api unreachable, doctor still renders cleanly
+
+---
+
+## § Deferred
+
+The following scope was explicitly cut from H1 to keep the slice shippable:
+
+- **Stable-ID rehydration for `--json` context + wiki_health:** The `--json` schema for `context` and `wiki_health` emits raw fragment keys. A future version should assign stable `id` fields to every check (matching the `key` values above) so downstream consumers can key on IDs rather than array position or label strings.
+
+- **MCP-vs-CLI scope for `check-context.sh`:** The script currently reads `~/.claude.json` for MCP-server and plugin counts. It does NOT distinguish between MCP-native tools and tools exposed via the CLI plugin mechanism. A future version should enumerate the two sources separately (`mcp_servers_global`, `mcp_servers_project`) so the CONTEXT section can surface per-project overrides. Deferred because it requires parsing `projects.*.mcpServers` and cross-referencing `enabledPlugins`, which adds complexity without blocking the core health signal.
