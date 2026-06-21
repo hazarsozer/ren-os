@@ -30,9 +30,18 @@ grep -q '^claude_md_project|skip' <<<"$OUT" && pass "absent project CLAUDE.md �
 grep -Eq '^auto_mode\|warn\|' <<<"$OUT" && pass "warns bypassPermissions default" || fail "auto_mode"
 
 echo "▶ Scenario B — all absent → clean, exit 0"
-EMPTY="$(mktemp -d)"; trap 'rm -rf "$FX" "$EMPTY"' EXIT
+EMPTY="$(mktemp -d)"; trap 'rm -rf "$FX" "$EMPTY" "${BAD:-}"' EXIT
 OUT2="$(SF_PLUGIN_DIR="$EMPTY" HOME="$EMPTY" CLAUDE_PROJECT_CLAUDE_MD="$EMPTY/none" bash "$CHECK" 2>&1)"; RC2=$?
 [ "$RC2" = "0" ] && pass "exits 0 with empty env" || fail "empty exit $RC2"
 grep -q '^auto_mode|ok' <<<"$OUT2" && pass "no settings → auto_mode ok (safe default)" || fail "auto_mode empty"
+
+echo "▶ Scenario C — non-UTF-8 byte in SKILL.md frontmatter → still exits 0"
+BAD="$(mktemp -d)"; trap 'rm -rf "$FX" "$EMPTY" "$BAD"' EXIT
+mkdir -p "$BAD/skills/garbled/"
+# Frontmatter delimiters present, but a raw 0xFF byte inside breaks strict UTF-8 decoding.
+{ printf '%s\n' '---' 'name: garbled'; printf 'description: \xff bad byte\n'; printf '%s\n' 'version: 0.1.0' '---' body; } > "$BAD/skills/garbled/SKILL.md"
+OUT3="$(SF_PLUGIN_DIR="$BAD" HOME="$BAD" CLAUDE_PROJECT_CLAUDE_MD="$BAD/none" bash "$CHECK" 2>&1)"; RC3=$?
+[ "$RC3" = "0" ] && pass "exits 0 despite non-UTF-8 SKILL.md" || fail "non-utf8 exit $RC3"
+grep -q '^framework_skills|ok|1' <<<"$OUT3" && pass "still counts the garbled skill" || fail "framework_skills non-utf8"
 
 echo ""; echo "context: $PASS passed, $FAIL failed"; [ "$FAIL" = "0" ]
