@@ -403,3 +403,27 @@ wall). The proof must run in a normal terminal. The supervised-run log in
 
 C5 fully decomposed: C5a (eval backend + earned-autonomy gate) ✅ DONE;
 C5b (loop completion) ✅ DONE (code); C5c (dep/call-graph + auto-refresh) remains.
+
+## [2026-06-21] build | H1 doctor extensions shipped — /ren:doctor 7→9 sections
+
+`/ren:doctor` gains two new read-only report sections, bringing the total from seven
+to nine:
+
+**CONTEXT & TOKEN ECONOMICS** (`check-context.sh`) — counts MCP servers, enabled
+plugins, and framework skills; flags token-heavy `CLAUDE.md` files (>200 lines);
+lints skill-size (SKILL.md >500 lines or missing name/description/version
+frontmatter); warns when `permissions.defaultMode` is `bypassPermissions` or
+`acceptEdits` (auto-mode safety posture).
+
+**WIKI HEALTH** (`check-wiki-health.sh`) — reports dead links (`[[wikilinks]]` +
+relative `.md` links), stale pages (frontmatter `updated:` >90 days), token-heavy
+pages (>500 lines), and an aggregate health score.
+
+Scope cut (intentional, documented in the plan and reference.md § Deferred):
+stable-ID-rehydration flag and MCP-vs-CLI audit deferred — speculative static
+analysis judged premature; network-tier audits already covered by the existing
+ROUTINES section. Both scripts are strictly read-only and side-effect-free.
+
+Gate: 2 hermetic shell test files added (context 12/12, wiki-health 8/8; full doctor
+suite 8/8 green); `eval.json` reconciled to nine sections; `claude plugin validate
+--strict` ✔. Plan: `docs/superpowers/plans/2026-06-21-h1-doctor-extensions.md`.
