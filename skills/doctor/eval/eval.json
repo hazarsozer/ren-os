@@ -43,6 +43,41 @@
         "All inputs absent (no ~/.claude.json, no settings.json, no settings.local.json) still renders a clean empty report and exits 0",
         "The audit performs no writes and no network calls"
       ]
+    },
+    {
+      "id": "context-section",
+      "fixture": "scripts/tests/test_check_context.sh (hermetic)",
+      "prompt": "/ren:doctor --section context",
+      "expected_output_summary": "Only the CONTEXT & TOKEN ECONOMICS section renders; no other sections appear.",
+      "trigger_test": true,
+      "binary_assertions": [
+        "Output contains the section header 'CONTEXT & TOKEN ECONOMICS'",
+        "No other section headers (ENVIRONMENT, PLUGINS, SCHEMA VERSIONS, FRAMEWORK UPDATE, BACKUP, ROUTINES, CODE-MAP, WIKI HEALTH) appear in the output",
+        "The auto_mode check never prints a secret or token value even when settings.json is present"
+      ]
+    },
+    {
+      "id": "wiki-health-section",
+      "fixture": "scripts/tests/test_check_wiki_health.sh (hermetic)",
+      "prompt": "/ren:doctor --section wiki-health",
+      "expected_output_summary": "Only the WIKI HEALTH section renders; no other sections appear.",
+      "trigger_test": true,
+      "binary_assertions": [
+        "Output contains the section header 'WIKI HEALTH'",
+        "No other section headers (ENVIRONMENT, PLUGINS, SCHEMA VERSIONS, FRAMEWORK UPDATE, BACKUP, ROUTINES, CODE-MAP, CONTEXT & TOKEN ECONOMICS) appear in the output",
+        "Output ends with a health_score summary line (e.g. '0 issue(s) across N pages' or 'N issue(s) across N pages')"
+      ]
+    },
+    {
+      "id": "full-report-nine-sections",
+      "fixture": "scripts/tests (hermetic; check-* scripts run read-only)",
+      "prompt": "/ren:doctor",
+      "expected_output_summary": "All nine section headers appear in the report.",
+      "trigger_test": true,
+      "binary_assertions": [
+        "Output contains all nine section headers: ENVIRONMENT, PLUGINS, SCHEMA VERSIONS, FRAMEWORK UPDATE, BACKUP, ROUTINES, CODE-MAP, CONTEXT & TOKEN ECONOMICS, WIKI HEALTH",
+        "The auto_mode line in CONTEXT & TOKEN ECONOMICS never prints a secret or token value"
+      ]
     }
   ]
 }
