@@ -26,7 +26,8 @@ PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-}"
 if [[ -z "$PLUGIN_ROOT" ]]; then
   # Fallback for testing outside CC: try to find via cache
   if [[ -d "$HOME/.claude/plugins/cache" ]]; then
-    PLUGIN_ROOT="$(find "$HOME/.claude/plugins/cache" -name "plugin.json" -path "*/startup-framework/*" 2>/dev/null | head -1 | xargs -r dirname | xargs -r dirname)"
+    # TODO(phase-5): verify the installed cache-dir name against a real ren@ren-os install (ADR-030); ren-os is a best-guess post-rebrand (was startup-framework).
+    PLUGIN_ROOT="$(find "$HOME/.claude/plugins/cache" -name "plugin.json" -path "*/ren-os/*" 2>/dev/null | head -1 | xargs -r dirname | xargs -r dirname)"
   fi
 fi
 
