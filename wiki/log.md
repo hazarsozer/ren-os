@@ -482,3 +482,14 @@ The first of the parked video-ingest improvements (the cheapest/lowest-risk pair
 - **A4 — reference exemplar (`--reference PATH`, opt-in).** `eval_runner.load_reference_exemplar` (bounded to 4 KB, graceful on missing/non-UTF-8) threads a "what good looks like" artifact into the judge prompt via `reference_text` (default `None` → prompt unchanged) through `_judge_prompt` → `judge_assertion` → `run_evals`; `ImproveSkillArgs.reference` added.
 
 TDD: 10 new tests (6 eval-runner + 4 preflight); improve-skill 190 + 1 skip; `claude plugin validate --strict` ✔. ADR-036 amended (2026-06-27). Still parked: A1+A2 (anti-Goodhart locked-scorer + cross-model critic) and B1/C2 (page-type batch with C3).
+
+---
+
+## 2026-06-27 — A1+A2: anti-Goodhart eval trust (locked scorer + cross-model critic)
+
+The high-value second pair of the parked video-ingest menu, built on `feat/eval-trust-a1a2` off `feat/project-ingest` (design spec `docs/superpowers/specs/2026-06-27-eval-trust-a1a2-design.md`). This is the slice the A3+A4 entry deferred — it **changes the judge trust model**, so it got its own deliberate ADR-036 amendment. The default single-judge scoring path stays byte-for-byte unchanged.
+
+- **A1 — locked scorer (edit-lock), always-on.** `scorer_lock.diff_targets_locked_path` parses a proposed diff's headers + declared `target_file` and refuses anything that writes the skill's own `eval/` rubric or escapes its directory; `apply_proposed_change` raises `ScorerTamperError` **before** any `git apply`. The orchestrator treats a rejection like a `ProposerError` (skip + count toward the 3-consecutive cap), so a proposer that keeps clawing at `eval/` exits cleanly. Behavior-preserving — no legitimate run touches `eval/`. Decision: edit-lock only, *not* read-isolation (assertions ARE the spec here; a proposer sandbox is cost without much gain).
+- **A2 — cross-model critic (`--critic-model`), opt-in final gate.** After a run reaches all-pass, a *different* model re-scores once (`eval_runs=1`) before squash-merge. `select_judge` routes `codex`/`gpt*`/`o*` to the `codex` CLI (cross-vendor — genuine OpenAI-vs-Anthropic diversity) and everything else to `claude --model`; `judge_model`/`judge_runner` are threaded separately from the skill runner so only the JUDGE switches. Agree → squash-merge (`confirmed`); dispute → keep branch for human review (`critic-flagged`), never destroy work; backend absent → ship WITHOUT confirmation (explicit, never silent). Gemini excluded (CLI no longer supported); codex token usage not budget-tracked (documented gap).
+
+TDD: 34 new tests (13 scorer-lock, 7 orchestrator [2 edit-lock skip + 5 critic-gate], 9 eval-runner [4 judge-threading + 5 select-judge], 5 codex-cli); improve-skill **224 + 1 skip**; `claude plugin validate --strict` ✔. ADR-036 second amendment (2026-06-27). Still parked: B1/C2 (page-type batch with C3), C1 (optional path-guard).
