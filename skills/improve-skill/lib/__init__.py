@@ -74,6 +74,7 @@ from .git_mechanics import (
     revert_last_iteration,
     squash_merge_on_success,
 )
+from .scorer_lock import ScorerTamperError, diff_targets_locked_path
 from .types import (
     ApiUsage,
     BudgetState,
@@ -318,7 +319,6 @@ def improve_skill(
         # Propose one change (LLM sub-run; injected for testability)
         try:
             proposed, usage, turns_used = proposer(spec, last_failing_ids, budget)
-            consecutive_proposer_errors = 0
         except NotImplementedError:
             # The default proposer raises; if no custom proposer was injected,
             # we exit cleanly with no-improvement-possible.
@@ -337,8 +337,26 @@ def improve_skill(
         # Advance budget BEFORE applying (the API call happened regardless)
         budget = advance_budget(budget, usage, model=table.default_model, table=table, turns_used=turns_used)
 
-        # Apply change to filesystem + commit
-        apply_proposed_change(proposed, skills_root=skills_root_resolved, cwd=cwd)
+        # Apply change to filesystem + commit. The A1 edit-lock refuses any diff
+        # that targets the skill's own scorer (eval/) or escapes its directory — an
+        # anti-Goodhart guard. A rejection is a skipped iteration, counted toward the
+        # SAME consecutive-skip cap as a ProposerError, so a stuck/tampering proposer
+        # exits cleanly instead of looping. (The counter resets only once a real,
+        # applicable change lands — below.)
+        try:
+            apply_proposed_change(
+                proposed,
+                skill_name=args.skill_name,
+                skills_root=skills_root_resolved,
+                cwd=cwd,
+            )
+        except ScorerTamperError:
+            consecutive_proposer_errors += 1
+            if consecutive_proposer_errors >= 3:
+                exit_reason = ExitReason.NO_IMPROVEMENT_POSSIBLE
+                break
+            continue
+        consecutive_proposer_errors = 0  # a real, applicable change landed
         commit_sha = commit_iteration(
             iteration,
             proposed.summary,
@@ -467,6 +485,7 @@ def _eval_subset_ids_from_args(args: ImproveSkillArgs) -> "list[str] | None":
 def apply_proposed_change(
     change: ProposedChange,
     *,
+    skill_name: str,
     skills_root: Path,
     cwd: Path | None = None,
 ) -> None:
@@ -477,16 +496,29 @@ def apply_proposed_change(
     skills/<skill-name>/<target_file>. We run `git apply` from the wiki root
     (or `cwd`) so the diff resolves correctly.
 
+    A1 edit-lock: before applying, refuse any diff that targets the skill's own
+    scorer (`eval/`) or escapes its directory. This is the single choke point
+    every applied change passes through, so the rubric stays immutable from the
+    loop's perspective (anti-Goodhart) — the guard runs BEFORE any git apply, so
+    a tampering diff writes nothing.
+
     Args:
         change: The ProposedChange to apply.
+        skill_name: The skill being improved (scopes the edit-lock).
         skills_root: Skills directory root.
         cwd: Working directory for the git command. Default: current.
 
     Raises:
+        ScorerTamperError: if the diff targets the locked scorer or escapes the
+            skill directory (raised before any write).
         subprocess.CalledProcessError if git apply fails (caller should
         revert the iteration's commit).
     """
     import subprocess
+
+    locked = diff_targets_locked_path(change.unified_diff, change.target_file, skill_name)
+    if locked is not None:
+        raise ScorerTamperError(locked)
 
     # `git apply` reads the diff from stdin
     subprocess.run(
