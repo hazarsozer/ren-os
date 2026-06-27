@@ -163,6 +163,26 @@
       "owner_module": "sf-cadence",
       "adr_refs": ["ADR-034", "ADR-027"],
       "migrations": []
+    },
+    "instincts": {
+      "current": 1,
+      "supported_from": 1,
+      "deprecated_below": null,
+      "path_pattern": "{wiki/instincts.md,wiki/projects/<name>/instincts.md}",
+      "description": "Hot-tier compounding memory (C3a, ADR-037): append-only typed instincts (worked | avoid | dont-repeat), routed project-default / master on --global. Captured by /ren:note --instinct; surfaced by /ren:recall --instincts. The governed hot->curated promotion/dedup sweep is C3b (deferred, proposal-diff-gated per ADR-031).",
+      "owner_module": "sf-lifecycle",
+      "adr_refs": ["ADR-037", "ADR-009", "ADR-014", "ADR-027"],
+      "migrations": []
+    },
+    "experiment-log": {
+      "current": 1,
+      "supported_from": 1,
+      "deprecated_below": null,
+      "path_pattern": "wiki/projects/<name>/experiment-log.md",
+      "description": "Forward-declared (B1, ADR-037 page-type batch per ADR-027 'decide together'): a persistent log of improvement experiments — {change, score_before, score_after, disposition: kept|reverted, iteration, ts}. Shape decided now; NO writer yet (future B1 slice; the /ren:improve-skill loop will fill it). Zero instances today, so no doctor drift.",
+      "owner_module": "sf-lifecycle",
+      "adr_refs": ["ADR-037", "ADR-027", "ADR-012"],
+      "migrations": []
     }
   }
 }

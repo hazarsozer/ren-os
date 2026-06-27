@@ -346,3 +346,36 @@ class TestRoutineState:
         rs = read_routine_state(tmp_path)
         assert rs.found is True
         assert rs.run_log_tail == ""
+
+
+class TestInstinctsFilter:
+    """C3a — recall --instincts restricts results to type: instincts pages."""
+
+    def _wiki(self, tmp_path: Path) -> Path:
+        wiki = tmp_path / "wiki"
+        (wiki / "decisions").mkdir(parents=True)
+        (wiki / "instincts.md").write_text(
+            "---\ntype: instincts\nschema_version: 1\nscope: global\n---\n\n"
+            "# Instincts — Global\n\n- **[worked]** 2026-06-28 — alpha beta gamma\n",
+            encoding="utf-8",
+        )
+        (wiki / "decisions" / "001-x.md").write_text(
+            "---\ntitle: Decision X\ntype: decision\n---\n\n# Decision X\n\nalpha beta in the body.\n",
+            encoding="utf-8",
+        )
+        return wiki
+
+    def test_instincts_only_returns_only_instincts(self, tmp_path: Path):
+        from ..__init__ import recall
+        wiki = self._wiki(tmp_path)
+        res = recall("alpha", wiki_root=wiki, instincts_only=True)
+        assert res.has_results
+        assert all(h.relative_path.endswith("instincts.md") for h in res.wiki_hits)
+
+    def test_default_search_includes_instincts_and_others(self, tmp_path: Path):
+        from ..__init__ import recall
+        wiki = self._wiki(tmp_path)
+        res = recall("alpha", wiki_root=wiki)
+        rels = {h.relative_path for h in res.wiki_hits}
+        assert any(r.endswith("instincts.md") for r in rels)
+        assert any("decisions" in r for r in rels)

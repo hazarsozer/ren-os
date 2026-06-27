@@ -50,6 +50,7 @@ Solo-first (ADR-031): recall searches the local wiki only. The former cross-frie
 
 - Friend invokes `/ren:recall <query>` (canonical trigger; everything after the command name is the query)
 - Friend says: "what do we know about X", "did we decide on Y", "recall <topic>", "remind me about <pattern>" — confirm the query once, then run
+- Friend invokes `/ren:recall --instincts <query>` to restrict results to the hot-tier `instincts.md` pages (C3a) — "what did I learn about X", "any don't-repeats on Y"
 
 ## When NOT to use this skill
 
@@ -105,6 +106,10 @@ v2 swap-in path: when qmd adoption triggers per ADR-005, the grep core becomes a
 - ADR-005 (Wiki Retrieval Evolution) — defines the v1 grep → v2 qmd transition
 - ADR-009 (Consolidate via /wrap) §"Optional but recommended companion commands" — names this skill
 - `references/grep-strategy.md` — the scoring heuristic + snippet extraction logic
+
+## Filtering to instincts (`--instincts`, C3a)
+
+When invoked as `/ren:recall --instincts <query>`, recall runs the normal grep but keeps only pages whose frontmatter declares `type: instincts` (the hot-tier `instincts.md` at master + project levels). Same ranking, same read-only contract — just scoped to durable instincts. Backed by `recall(query, *, wiki_root, instincts_only=True)` / `grep_wiki(..., instincts_only=True)`; instincts pages are already in the default search too (this only narrows). See ADR-037 + `docs/superpowers/specs/2026-06-28-c3a-instincts-design.md`.
 
 ## Reading routine state (`--routine <path>`)
 

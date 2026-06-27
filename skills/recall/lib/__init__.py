@@ -105,6 +105,13 @@ def _classify_kind(rel_path: str) -> float:
 
 _TITLE_RE = re.compile(r"^title:\s*[\"']?(.+?)[\"']?\s*$", re.MULTILINE)
 _HEADING_RE = re.compile(r"^#{1,6}\s+(.+)$", re.MULTILINE)
+_INSTINCTS_TYPE_RE = re.compile(r"^type:\s*instincts\s*$", re.MULTILINE)
+
+
+def _is_instincts_page(content: str) -> bool:
+    """True if the file's frontmatter declares `type: instincts` (C3a hot tier)."""
+    # Frontmatter sits at the top; scan only the head to avoid body false-positives.
+    return bool(_INSTINCTS_TYPE_RE.search(content[:500]))
 
 
 def _token_pattern(token: str) -> re.Pattern[str]:
@@ -208,6 +215,7 @@ def grep_wiki(
     *,
     n_hits: int = DEFAULT_N_HITS,
     now: datetime | None = None,
+    instincts_only: bool = False,
 ) -> tuple[tuple[RecallHit, ...], bool]:
     """
     Grep a wiki root for `query` per the v1 strategy.
@@ -236,6 +244,9 @@ def grep_wiki(
             content = path.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError) as exc:
             logger.warning("Skipping unreadable file %s: %s", path, exc)
+            continue
+
+        if instincts_only and not _is_instincts_page(content):
             continue
 
         score, match_line = _score_file(content, tokens)
@@ -277,6 +288,7 @@ def recall(
     wiki_root: Path,
     n_hits: int = DEFAULT_N_HITS,
     now: datetime | None = None,
+    instincts_only: bool = False,
 ) -> RecallResult:
     """
     Top-level entry point. Walks the wiki and returns ranked hits.
@@ -296,7 +308,9 @@ def recall(
     if not query or not query.strip():
         raise ValueError("Empty query. Usage: /ren:recall <query>")
 
-    wiki_hits, truncated = grep_wiki(wiki_root, query, n_hits=n_hits, now=now)
+    wiki_hits, truncated = grep_wiki(
+        wiki_root, query, n_hits=n_hits, now=now, instincts_only=instincts_only
+    )
 
     return RecallResult(
         query=query.strip(),
