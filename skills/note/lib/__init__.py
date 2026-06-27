@@ -147,6 +147,125 @@ def pin_note(
     return PinResult(success=True, path=target, appended_line=bullet, error=None)
 
 
+# ---------------------------------------------------------------------------
+# C3a — instincts hot tier (durable, hierarchically-routed memory)
+# ---------------------------------------------------------------------------
+
+INSTINCT_KINDS: Final = ("worked", "avoid", "dont-repeat")
+INSTINCT_DATE_FORMAT: Final = "%Y-%m-%d"  # date-only; recall ranks by file mtime
+
+
+@dataclass(frozen=True)
+class InstinctResult:
+    """Result of a /ren:note --instinct invocation."""
+
+    success: bool
+    path: Path | None
+    scope: str               # "project" | "global" (the scope actually used)
+    appended_line: str
+    fell_back_to_global: bool = False  # True when project was requested but none was resolvable
+    error: str | None = None
+
+
+def instinct_scope(*, use_global: bool, project_slug: str | None) -> str:
+    """Resolve the routing scope: global on the flag, or when no project is known."""
+    return "global" if (use_global or not project_slug) else "project"
+
+
+def resolve_instinct_path(*, scope: str, project_slug: str | None, wiki_root: Path) -> Path:
+    """
+    Resolve the instincts.md target.
+
+    project + a slug → `<wiki_root>/projects/<slug>/instincts.md`
+    otherwise        → `<wiki_root>/instincts.md` (master/global)
+    """
+    if scope == "project" and project_slug:
+        return wiki_root / "projects" / project_slug / "instincts.md"
+    return wiki_root / "instincts.md"
+
+
+def format_instinct_bullet(kind: str, text: str, *, now: datetime | None = None) -> str:
+    """Format one instinct entry: `- **[kind]** YYYY-MM-DD — text` (trailing newline)."""
+    d = (now or datetime.now(timezone.utc)).strftime(INSTINCT_DATE_FORMAT)
+    safe_text = text.replace("\n", "\\n").rstrip()
+    return f"- **[{kind}]** {d} — {safe_text}\n"
+
+
+def _instinct_template(
+    *, scope: str, project_slug: str | None, framework_version: str, now: datetime | None = None
+) -> str:
+    """Frontmatter + header for a freshly-created instincts.md (page-type `instincts`, schema 1)."""
+    d = (now or datetime.now(timezone.utc)).strftime(INSTINCT_DATE_FORMAT)
+    title = f"Instincts — {project_slug}" if (scope == "project" and project_slug) else "Instincts — Global"
+    return (
+        "---\n"
+        "type: instincts\n"
+        "schema_version: 1\n"
+        f'framework_version: "{framework_version}"\n'
+        f"scope: {scope}\n"
+        f"updated: {d}\n"
+        "---\n\n"
+        f"# {title}\n\n"
+        "Append-only hot-tier memory. Each entry is **[kind]** date — text. "
+        "Kinds: worked | avoid | dont-repeat.\n\n"
+    )
+
+
+def pin_instinct(
+    kind: str,
+    text: str,
+    *,
+    wiki_root: Path,
+    project_slug: str | None,
+    use_global: bool,
+    framework_version: str,
+    now: datetime | None = None,
+) -> InstinctResult:
+    """
+    Append a typed instinct to the routed instincts.md (creating it from the
+    template on first write). Pure-filesystem; the caller resolves wiki_root,
+    project_slug, and framework_version (the SKILL.md layer, via lib.sf_paths).
+    """
+    if kind not in INSTINCT_KINDS:
+        return InstinctResult(
+            success=False, path=None, scope="", appended_line="",
+            error=f"Invalid kind {kind!r}. Use one of: {', '.join(INSTINCT_KINDS)}",
+        )
+    stripped = text.strip()
+    if not stripped:
+        return InstinctResult(
+            success=False, path=None, scope="", appended_line="",
+            error="Empty text. Usage: /ren:note --instinct <kind> <text>",
+        )
+
+    scope = instinct_scope(use_global=use_global, project_slug=project_slug)
+    fell_back = (not use_global) and (not project_slug)
+    target = resolve_instinct_path(scope=scope, project_slug=project_slug, wiki_root=wiki_root)
+    bullet = format_instinct_bullet(kind, stripped, now=now)
+
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if not target.exists():
+            header = _instinct_template(
+                scope=scope, project_slug=project_slug,
+                framework_version=framework_version, now=now,
+            )
+            target.write_text(header + bullet, encoding="utf-8")
+        else:
+            with target.open("a", encoding="utf-8") as fh:
+                fh.write(bullet)
+    except OSError as exc:
+        return InstinctResult(
+            success=False, path=target, scope=scope, appended_line=bullet,
+            fell_back_to_global=fell_back, error=f"Could not write to {target}: {exc}",
+        )
+
+    return InstinctResult(
+        success=True, path=target, scope=scope, appended_line=bullet,
+        fell_back_to_global=fell_back, error=None,
+    )
+
+
 __all__ = [
     "DEFAULT_NOTES_DIRNAME",
     "UNSESSIONED_FILENAME",
@@ -155,4 +274,11 @@ __all__ = [
     "resolve_notes_path",
     "format_bullet",
     "pin_note",
+    # C3a — instincts hot tier
+    "INSTINCT_KINDS",
+    "InstinctResult",
+    "instinct_scope",
+    "resolve_instinct_path",
+    "format_instinct_bullet",
+    "pin_instinct",
 ]
