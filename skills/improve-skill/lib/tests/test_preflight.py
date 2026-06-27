@@ -377,3 +377,63 @@ class TestImproveSkillArgs:
         args = ImproveSkillArgs(skill_name="x")
         with pytest.raises(Exception):  # FrozenInstanceError
             args.autonomous = True  # type: ignore[misc]
+
+
+# --- _refuse_if_lightweight (ADR-011 lightweight-tier amendment) -----------
+
+
+class TestLightweightRefusal:
+    """A `tier: lightweight` skill has no eval surface and is not self-improvable
+    (ADR-011 lightweight-tier amendment, 2026-06-27): the Karpathy loop refuses it
+    early with an actionable message instead of the generic 'eval.json not found'."""
+
+    def _make_skill(self, root: Path, name: str, frontmatter: str) -> Path:
+        skill_dir = root / "skills" / name
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text(frontmatter, encoding="utf-8")
+        return skill_dir
+
+    def test_lightweight_skill_refused(self, tmp_path: Path):
+        from ..preflight import _refuse_if_lightweight
+        skill_dir = self._make_skill(
+            tmp_path,
+            "quick-prompt",
+            "---\nname: quick-prompt\ndescription: a prompt\ntier: lightweight\n---\n\n# Quick\n",
+        )
+        with pytest.raises(PreFlightError, match="lightweight"):
+            _refuse_if_lightweight(skill_dir)
+
+    def test_lightweight_message_is_actionable(self, tmp_path: Path):
+        from ..preflight import _refuse_if_lightweight
+        skill_dir = self._make_skill(
+            tmp_path,
+            "lw",
+            "---\nname: lw\ndescription: d\ntier: lightweight\n---\n\n# LW\n",
+        )
+        with pytest.raises(PreFlightError, match="promote"):
+            _refuse_if_lightweight(skill_dir)
+
+    def test_standard_skill_not_refused(self, tmp_path: Path):
+        from ..preflight import _refuse_if_lightweight
+        skill_dir = self._make_skill(
+            tmp_path,
+            "real-skill",
+            "---\nname: real-skill\ndescription: d\nversion: 1.0.0\n---\n\n# Real\n",
+        )
+        _refuse_if_lightweight(skill_dir)  # no raise
+
+    def test_tier_standard_explicit_not_refused(self, tmp_path: Path):
+        from ..preflight import _refuse_if_lightweight
+        skill_dir = self._make_skill(
+            tmp_path,
+            "explicit-standard",
+            "---\nname: explicit-standard\ndescription: d\ntier: standard\n---\n\n# X\n",
+        )
+        _refuse_if_lightweight(skill_dir)  # no raise
+
+    def test_missing_skill_md_not_refused(self, tmp_path: Path):
+        """No SKILL.md → no-op (Gate 1 owns existence; tier is unreadable → standard)."""
+        from ..preflight import _refuse_if_lightweight
+        skill_dir = tmp_path / "skills" / "bare"
+        skill_dir.mkdir(parents=True)
+        _refuse_if_lightweight(skill_dir)  # no raise

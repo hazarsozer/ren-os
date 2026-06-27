@@ -3,6 +3,7 @@ sf-improve-skill pre-flight checks.
 
 Six gates that must pass before the Karpathy loop starts:
   1. Target skill exists
+  1b. Not a lightweight-tier skill (no eval surface → not self-improvable; ADR-011 amendment)
   2. eval/eval.json parseable
   3. Working tree clean
   4. Autonomous-mode safety (if --autonomous: max-iterations AND max-budget-usd set)
@@ -20,6 +21,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -62,6 +64,11 @@ def pre_flight_check(
 
     # Gate 1 — target skill exists
     _validate_skill_exists(skill_path)
+
+    # Gate 1b — lightweight-tier skills have no eval surface and are not self-improvable
+    # (ADR-011 lightweight-tier amendment). Refuse here, before the eval-file gate, so the
+    # message is "not self-improvable" rather than the generic "eval.json not found".
+    _refuse_if_lightweight(skill_path)
 
     # Gate 2 — eval.json parseable + has binary assertions
     _validate_eval_file(skill_path)
@@ -147,6 +154,47 @@ def _validate_skill_exists(skill_path: Path) -> None:
     if not skill_md.is_file():
         raise PreFlightError(
             f"{skill_md} not found. /ren:improve-skill needs an existing SKILL.md to work on."
+        )
+
+
+def _read_tier(skill_md: Path) -> str | None:
+    """Parse the `tier:` frontmatter value from a SKILL.md.
+
+    Returns the tier (e.g. "lightweight") or None if absent/unreadable. Never
+    raises — an unreadable or frontmatter-less SKILL.md is treated as having no
+    tier (i.e. a standard skill), leaving the downstream gates in charge.
+    """
+    try:
+        text = skill_md.read_text(encoding="utf-8")
+    except (OSError, ValueError):  # ValueError covers UnicodeDecodeError on non-UTF-8 bytes
+        return None
+    m = re.match(r"^---\s*\n(.*?)\n---\s*\n", text, re.DOTALL)
+    if not m:
+        return None
+    for line in m.group(1).splitlines():
+        if line.lstrip().startswith("#") or ":" not in line:
+            continue
+        key, _, val = line.partition(":")
+        if key.strip() == "tier":
+            return val.strip().strip('"').strip("'")
+    return None
+
+
+def _refuse_if_lightweight(skill_path: Path) -> None:
+    """
+    Gate 1b: refuse lightweight-tier skills — they are not self-improvable.
+
+    Per the ADR-011 lightweight-tier amendment (2026-06-27), a `tier: lightweight`
+    skill ships with no eval/eval.json surface ("a prompt you don't want to
+    retype"). The Karpathy loop has nothing to score against, so refuse early with
+    an actionable message. No-op for standard skills (the default).
+    """
+    if _read_tier(skill_path / SKILL_MD_FILE) == "lightweight":
+        raise PreFlightError(
+            f"'{skill_path.name}' is a lightweight-tier skill and cannot be self-improved: "
+            "it has no eval surface for the loop to score against. To make it improvable, "
+            "promote it to a standard skill — remove `tier: lightweight` and add "
+            "eval/eval.json per ADR-011."
         )
 
 

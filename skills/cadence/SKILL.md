@@ -53,6 +53,7 @@ The cadence router. Answers "what's the right way to make this recur?" with the 
 ## When NOT to use
 
 - The friend already knows the tier and just wants to scaffold a cloud routine → `/ren:routine-init` directly.
+- The question is how to *split work across agents* (sub-agent vs parallel team vs dynamic workflow), not how to schedule it → see `references/agent-orchestration.md`.
 
 ## Behavior
 
@@ -84,3 +85,4 @@ The cadence router. Answers "what's the right way to make this recur?" with the 
 
 - `references/cadence-matrix.md` — the primitive ladder + the decision matrix (ADR-034 §1).
 - `references/conventions.md` — self-terminating, auto-compact companion cron, failure footer, measurable exit, env-var sourcing, off-peak, terminal-vs-desktop cron + jitter.
+- `references/agent-orchestration.md` — the **other axis**: how to *decompose* work across agents (quick-ask → skill → sub-agent → agent-team → /goal → dynamic-workflow) + model-routing (Haiku workers, 3–5 concurrent cap). Cadence picks *when* it runs; this picks *how it fans out*.

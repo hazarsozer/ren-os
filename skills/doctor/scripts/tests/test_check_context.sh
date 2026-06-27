@@ -44,4 +44,19 @@ OUT3="$(SF_PLUGIN_DIR="$BAD" HOME="$BAD" CLAUDE_PROJECT_CLAUDE_MD="$BAD/none" ba
 [ "$RC3" = "0" ] && pass "exits 0 despite non-UTF-8 SKILL.md" || fail "non-utf8 exit $RC3"
 grep -q '^framework_skills|ok|1' <<<"$OUT3" && pass "still counts the garbled skill" || fail "framework_skills non-utf8"
 
+echo "▶ Scenario D — tier:lightweight skills exempt from the version requirement"
+LW="$(mktemp -d)"; trap 'rm -rf "$FX" "$EMPTY" "$BAD" "$LW"' EXIT
+mkdir -p "$LW/skills/quickprompt/"
+{ echo "---"; echo "name: quickprompt"; echo "description: a prompt you do not want to retype"; echo "tier: lightweight"; echo "---"; echo body; } > "$LW/skills/quickprompt/SKILL.md"   # no version — allowed for lightweight
+OUT4="$(SF_PLUGIN_DIR="$LW" HOME="$LW" CLAUDE_PROJECT_CLAUDE_MD="$LW/none" bash "$CHECK" 2>&1)"; RC4=$?
+[ "$RC4" = "0" ] && pass "exits 0" || fail "lightweight exit $RC4"
+grep -q '^skill_size_lint|ok' <<<"$OUT4" && pass "lightweight exempt from version → lint ok" || fail "skill_size_lint: $(grep '^skill_size_lint' <<<"$OUT4")"
+
+echo "▶ Scenario E — lightweight floor: name+description still required"
+mkdir -p "$LW/skills/noDesc/"
+{ echo "---"; echo "name: noDesc"; echo "tier: lightweight"; echo "---"; echo body; } > "$LW/skills/noDesc/SKILL.md"   # missing description even for lightweight
+OUT5="$(SF_PLUGIN_DIR="$LW" HOME="$LW" CLAUDE_PROJECT_CLAUDE_MD="$LW/none" bash "$CHECK" 2>&1)"
+grep -Eq '^skill_size_lint\|warn\|' <<<"$OUT5" && pass "lightweight missing description → warn" || fail "skill_size_lint floor: $(grep '^skill_size_lint' <<<"$OUT5")"
+grep -q 'noDesc:missing\[description\]' <<<"$OUT5" && pass "names the missing description" || fail "no missing-description offender"
+
 echo ""; echo "context: $PASS passed, $FAIL failed"; [ "$FAIL" = "0" ]

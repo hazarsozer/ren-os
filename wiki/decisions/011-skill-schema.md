@@ -221,3 +221,25 @@ This is the progressive-disclosure mechanic: SKILL.md stays under 200 lines; dee
 - ADR-006 (Curated Stack) — adopts Skill Creator which expects compatible eval.json format
 - ADR-012 (Two-Layer Self-Improvement) — uses this schema's eval/ directory + learnings.md
 - ADR-014 (Project Sub-Wiki Taxonomy) — output_paths contract field ties to project output consolidation
+
+---
+
+## Amendment — 2026-06-27: Lightweight skill tier (H2)
+
+The positioning pivot (`wiki/research/new-angles-for-the-os.md`) wants skills to also cover "a prompt you don't want to retype" — a personal or glue skill that exists purely to save typing. The original decision's *"Now impossible: shipping a skill without an eval / without an execution contract"* is the right bar for **production** skills but too heavy for that use, so this amendment adds an explicit, additive carve-out.
+
+**Decision:** an optional `tier:` SKILL.md frontmatter field, additive and backward-compatible.
+
+- `tier: standard` — **the default** (also implied when `tier:` is absent). The full ADR-011 contract above applies: frontmatter + execution `contract` + `eval/eval.json`.
+- `tier: lightweight` — `SKILL.md` with `name` + `description` + a prompt body, nothing else required. **No** `eval/eval.json`, **no** execution `contract`; `version`/`license` optional.
+
+**Rules for `tier: lightweight`:**
+
+1. **Not self-improvable.** `/ren:improve-skill` refuses a lightweight skill (`skills/improve-skill/lib/preflight.py` → `_refuse_if_lightweight`, Gate 1b, *before* the eval-file gate) — it has no eval surface for the Karpathy loop to score against. The refusal message points to the promotion path.
+2. **Lint-exempt.** `/ren:doctor`'s skill-size lint (`skills/doctor/scripts/check-context.sh`, H1) requires only `name` + `description` for lightweight skills (vs `name`/`description`/`version` for standard). Oversize warnings still apply to everyone.
+3. **Promotion path.** Add `eval/eval.json` (+ a contract) and drop `tier: lightweight` → the skill becomes `standard` and self-improvable. By intent there is no auto-demotion.
+4. **Framework-shipped skills stay `standard`.** This tier lowers the bar for the *personal / glue* skills a builder writes for themselves; it does **not** relax what the framework itself ships. The "Now impossible" clause above still governs production skills.
+
+**Why additive, not a schema-version bump:** `tier:` is a `SKILL.md` frontmatter convention, not a wiki page-type (ADR-027) — no `schemas.json` change, no migration. A skill with no `tier:` is unchanged; removing the field reverts to standard.
+
+**Implements:** roadmap H2 task 1.
