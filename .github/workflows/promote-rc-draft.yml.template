@@ -1,11 +1,11 @@
 # promote-rc-draft.yml.template — DEPRECATED (2026-05-29)
 #
 # This template described the OLD RC→stable promotion: a GitHub Action that rsync'd a
-# `plugins/` subtree from sf-marketplace-rc into sf-marketplace and opened a draft PR.
+# `plugins/` subtree from ren-os-rc into ren-os and opened a draft PR.
 #
 # It no longer applies. Under the Crucible one-repo + orphan-publish model (ADR-019):
 #   * There is no `plugins/` subdir — the shippable tree IS the repo root.
-#   * sf-marketplace / sf-marketplace-rc each hold a single force-pushed ORPHAN commit,
+#   * ren-os / ren-os-rc each hold a single force-pushed ORPHAN commit,
 #     not a PR-mergeable history. There is nothing to open a PR against.
 #
 # Promotion is now a one-liner the maintainer runs from the private dev repo:

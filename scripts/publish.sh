@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 #
-# publish.sh — build a clean, allowlisted ORPHAN snapshot of the Startup Framework
-# and stage it for publication to the private sf-marketplace repo (per ADR-019).
+# publish.sh — build a clean, allowlisted ORPHAN snapshot of the RenOS
+# and stage it for publication to the private ren-os repo (per ADR-019).
 #
 # WHY ORPHAN-PUBLISH (the security boundary):
 #   This dev repo is PRIVATE and keeps everything — full history, wiki/, raw/,
 #   REVIEW*.md, maintainer docs, tags. None of that may ever reach friends, who are
-#   read-only collaborators on sf-marketplace. A plain `git push` of this repo would
+#   read-only collaborators on ren-os. A plain `git push` of this repo would
 #   leak the whole product brain via history. So instead we build a FRESH single
 #   commit containing ONLY the shippable allowlist and push THAT (force) to
-#   sf-marketplace. Friends get one commit, zero history, zero wiki.
+#   ren-os. Friends get one commit, zero history, zero wiki.
 #
 # This script NEVER pushes. It builds + validates the snapshot, then PRINTS the exact
 # push commands for the maintainer to run by hand. Outward-facing action stays human.
@@ -17,7 +17,7 @@
 # Usage:
 #   scripts/publish.sh [--channel stable|rc] [--version X.Y.Z] [--dry-run]
 #
-#   --channel   stable (default) → sf-marketplace ; rc → sf-marketplace-rc
+#   --channel   stable (default) → ren-os ; rc → ren-os-rc
 #   --version   assert plugin.json#version equals this (else abort). Optional.
 #   --dry-run   build + run ALL guards, then clean up. No commit, no push commands.
 #               Reusable as a pre-tag gate (see docs/SHIP_CHECKLIST.md §5).
@@ -36,8 +36,8 @@ set -euo pipefail
 # Constants
 # ──────────────────────────────────────────────────────────────────────
 GITHUB_OWNER="hazarsozer"
-STABLE_REPO="sf-marketplace"
-RC_REPO="sf-marketplace-rc"
+STABLE_REPO="ren-os"
+RC_REPO="ren-os-rc"
 # Author identity for the orphan release — derived from the maintainer's git
 # config so it matches a GitHub-verified email and links to their profile.
 # (A hardcoded address that isn't on the GitHub account renders as unlinked text.)
