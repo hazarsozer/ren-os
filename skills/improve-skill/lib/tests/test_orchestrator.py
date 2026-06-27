@@ -644,3 +644,161 @@ class TestEndToEndLoop:
         args = ImproveSkillArgs(skill_name="wrap", max_iterations=10, max_budget_usd=5.0)
         res = improve_skill(args, eval_runner=fake_eval, change_proposer=fake_prop, cwd=tmp_skill_repo)
         assert res.exit_reason == ExitReason.NO_IMPROVEMENT_POSSIBLE
+
+    def test_scorer_tamper_skips_iteration_and_retries(self, tmp_skill_repo: Path, monkeypatch):
+        """A1: apply raises ScorerTamperError on iters 1-2 (proposer tried to edit eval/),
+        then a clean apply on iter 3 → success. The tamper is skipped, not applied."""
+        from ..eval_runner import EvalSpec, EvalTest
+        from ..scorer_lock import ScorerTamperError
+        _lib = self._lib_module()
+
+        fake_prop = lambda spec, failing, budget: (
+            ProposedChange("eval/eval.json", "--- a\n+++ b\n", "fix", "why"),
+            ApiUsage(100, 40),
+            1,
+        )
+        apply_calls = [0]
+
+        def fake_apply(*a, **k):
+            apply_calls[0] += 1
+            if apply_calls[0] < 3:
+                raise ScorerTamperError("eval/eval.json")
+            return None
+
+        monkeypatch.setattr(_lib, "create_improve_branch", lambda *a, **k: "improve/wrap/ts")
+        monkeypatch.setattr(_lib, "commit_iteration", lambda *a, **k: "deadbeef")
+        monkeypatch.setattr(_lib, "apply_proposed_change", fake_apply)
+        monkeypatch.setattr(_lib, "amend_iteration_metadata", lambda *a, **k: None)
+        monkeypatch.setattr(_lib, "squash_merge_on_success", lambda *a, **k: "cafef00d")
+        monkeypatch.setattr(_lib, "pre_flight_check", lambda *a, **k: None)
+        monkeypatch.setattr(
+            _lib, "load_eval_spec",
+            lambda d: EvalSpec(name="wrap", tests=(EvalTest("t1", "p", ("a", "b")),)),
+        )
+
+        eval_results = iter([
+            EvalResult(0.5, 1, 2, ("t1:0",), usage=ApiUsage(10, 5)),  # baseline
+            EvalResult(1.0, 2, 2, (), usage=ApiUsage(10, 5)),           # after the clean apply
+        ])
+        fake_eval = lambda name, ids: next(eval_results)
+
+        args = ImproveSkillArgs(skill_name="wrap", max_iterations=5, max_budget_usd=5.0)
+        res = improve_skill(args, eval_runner=fake_eval, change_proposer=fake_prop, cwd=tmp_skill_repo)
+        assert res.exit_reason.value == "all_assertions_pass"
+        assert apply_calls[0] == 3  # two rejected, one applied
+
+    def test_three_consecutive_scorer_tampers_exit(self, tmp_skill_repo: Path, monkeypatch):
+        """A1: a proposer that keeps targeting eval/ → 3 consecutive ScorerTamperError
+        → NO_IMPROVEMENT_POSSIBLE via the existing consecutive-skip cap (no infinite loop)."""
+        from ..eval_runner import EvalSpec, EvalTest
+        from ..scorer_lock import ScorerTamperError
+        _lib = self._lib_module()
+
+        fake_prop = lambda spec, failing, budget: (
+            ProposedChange("eval/eval.json", "--- a\n+++ b\n", "sneaky", "game the score"),
+            ApiUsage(100, 40),
+            1,
+        )
+
+        def fake_apply(*a, **k):
+            raise ScorerTamperError("eval/eval.json")
+
+        monkeypatch.setattr(_lib, "create_improve_branch", lambda *a, **k: "improve/wrap/ts")
+        monkeypatch.setattr(_lib, "commit_iteration", lambda *a, **k: "deadbeef")
+        monkeypatch.setattr(_lib, "apply_proposed_change", fake_apply)
+        monkeypatch.setattr(_lib, "amend_iteration_metadata", lambda *a, **k: None)
+        monkeypatch.setattr(_lib, "squash_merge_on_success", lambda *a, **k: "cafef00d")
+        monkeypatch.setattr(_lib, "pre_flight_check", lambda *a, **k: None)
+        monkeypatch.setattr(
+            _lib, "load_eval_spec",
+            lambda d: EvalSpec(name="wrap", tests=(EvalTest("t1", "p", ("a", "b")),)),
+        )
+
+        fake_eval = lambda name, ids: EvalResult(0.5, 1, 2, ("t1:0",), usage=ApiUsage(10, 5))
+        args = ImproveSkillArgs(skill_name="wrap", max_iterations=10, max_budget_usd=5.0)
+        res = improve_skill(args, eval_runner=fake_eval, change_proposer=fake_prop, cwd=tmp_skill_repo)
+        assert res.exit_reason == ExitReason.NO_IMPROVEMENT_POSSIBLE
+
+
+class TestCriticGate:
+    """A2 step 4 — final cross-model critic gate before squash-merge + dispositions."""
+
+    def _lib_module(self):
+        import sys
+        return sys.modules.get("lib.__init__") or sys.modules["lib"]
+
+    def _run(self, tmp_skill_repo, monkeypatch, *, critic_runner,
+             critic_model="gpt-5", keep_branch=False):
+        from ..eval_runner import EvalSpec, EvalTest
+        _lib = self._lib_module()
+        merge_calls = []
+        scores = iter([
+            EvalResult(0.5, 1, 2, ("t1:0",), usage=ApiUsage(10, 5)),  # baseline
+            EvalResult(1.0, 2, 2, (), usage=ApiUsage(10, 5)),           # after one propose
+        ])
+        fake_eval = lambda name, ids: next(scores)
+        fake_prop = lambda spec, failing, budget: (
+            ProposedChange("SKILL.md", "--- a\n+++ b\n", "fix", "why"), ApiUsage(100, 40), 1,
+        )
+        monkeypatch.setattr(_lib, "create_improve_branch", lambda *a, **k: "improve/wrap/ts")
+        monkeypatch.setattr(_lib, "commit_iteration", lambda *a, **k: "deadbeef")
+        monkeypatch.setattr(_lib, "apply_proposed_change", lambda *a, **k: None)
+        monkeypatch.setattr(_lib, "amend_iteration_metadata", lambda *a, **k: None)
+        monkeypatch.setattr(_lib, "squash_merge_on_success",
+                            lambda *a, **k: (merge_calls.append(1) or "cafef00d"))
+        monkeypatch.setattr(_lib, "pre_flight_check", lambda *a, **k: None)
+        monkeypatch.setattr(
+            _lib, "load_eval_spec",
+            lambda d: EvalSpec(name="wrap", tests=(EvalTest("t1", "p", ("a", "b")),)),
+        )
+        args = ImproveSkillArgs(skill_name="wrap", max_iterations=3, max_budget_usd=5.0,
+                                critic_model=critic_model, keep_branch=keep_branch)
+        res = improve_skill(args, eval_runner=fake_eval, change_proposer=fake_prop,
+                            critic_runner=critic_runner, cwd=tmp_skill_repo)
+        return res, merge_calls
+
+    def test_critic_confirms_then_merges(self, tmp_skill_repo: Path, monkeypatch):
+        critic = lambda s, ids: EvalResult(1.0, 2, 2, (), usage=ApiUsage(5, 2))
+        res, merge_calls = self._run(tmp_skill_repo, monkeypatch, critic_runner=critic)
+        assert merge_calls == [1]
+        assert "confirmed" in res.branch_disposition
+        assert res.exit_reason == ExitReason.ALL_ASSERTIONS_PASS
+
+    def test_critic_disputes_blocks_merge(self, tmp_skill_repo: Path, monkeypatch):
+        critic = lambda s, ids: EvalResult(0.5, 1, 2, ("t1:1",), usage=ApiUsage(5, 2))
+        res, merge_calls = self._run(tmp_skill_repo, monkeypatch, critic_runner=critic)
+        assert merge_calls == []                       # NOT auto-merged
+        assert "critic-flagged" in res.branch_disposition
+        assert "t1:1" in res.branch_disposition
+        assert res.branch_disposition.startswith("kept")
+
+    def test_critic_unavailable_ships_without_confirmation(self, tmp_skill_repo: Path, monkeypatch):
+        from ..eval_runner import CriticBackendUnavailable
+
+        def critic(s, ids):
+            raise CriticBackendUnavailable("no codex on PATH")
+
+        res, merge_calls = self._run(tmp_skill_repo, monkeypatch, critic_runner=critic)
+        assert merge_calls == [1]                       # shipped anyway
+        assert "WITHOUT cross-model confirmation" in res.branch_disposition
+
+    def test_no_critic_model_leaves_default_path(self, tmp_skill_repo: Path, monkeypatch):
+        sentinel = {"called": False}
+
+        def critic(s, ids):
+            sentinel["called"] = True
+            return EvalResult(1.0, 2, 2, ())
+
+        res, merge_calls = self._run(tmp_skill_repo, monkeypatch,
+                                     critic_runner=critic, critic_model=None)
+        assert sentinel["called"] is False              # gate never fired
+        assert merge_calls == [1]
+        assert "critic" not in res.branch_disposition
+
+    def test_keep_branch_with_critic_reports_but_does_not_merge(self, tmp_skill_repo: Path, monkeypatch):
+        critic = lambda s, ids: EvalResult(1.0, 2, 2, (), usage=ApiUsage(5, 2))
+        res, merge_calls = self._run(tmp_skill_repo, monkeypatch,
+                                     critic_runner=critic, keep_branch=True)
+        assert merge_calls == []                         # keep_branch → no merge
+        assert "confirmed" in res.branch_disposition     # but verdict reported
+        assert res.branch_disposition.startswith("kept")

@@ -115,6 +115,7 @@ Layer-2 skill self-improvement per ADR-012. The mechanical realization of Karpat
 | `--bare` | true (inner) | Pass `--bare` to inner sub-runs (skip plugin/hook/CLAUDE.md overhead in change-proposal context) |
 | `--eval-runs N` | 1 | Run the eval suite N times per iteration; score is binarized by majority vote when N>1 (odd N recommended) |
 | `--reference PATH` | none | Pull a past artifact (e.g. last month's report) into the judge prompt as a "what good looks like" exemplar for format/quality grounding (A4). Read-only, bounded; opt-in — default is no exemplar, judge prompt unchanged. |
+| `--critic-model MODEL` | none | Cross-model critic final-gate (A2): after a run reaches all-pass, a DIFFERENT model independently re-scores once before squash-merge. `codex`/`gpt*`/`o1*`/`o3*`/`o4*` → the `codex` CLI (cross-vendor); anything else → `claude --model` (e.g. `claude-opus-4-8`). Ship only if the critic agrees; a dispute keeps the branch for human review; an absent critic backend ships WITHOUT confirmation (explicit notice, never silent). Opt-in — default is the single Haiku judge, unchanged. |
 
 ## Pre-flight check (mandatory)
 
@@ -191,6 +192,7 @@ See `references/git-mechanics.md` for branch / commit / revert / merge details. 
 - **One change per iteration.** Narrow attempt loop. The LLM proposes the SINGLE highest-leverage change; doesn't bundle "refactor everything." This is the load-bearing discipline that makes "keep or revert" work cleanly.
 - **Binary assertion only.** Per ADR-011, evals must be binary. Subjective qualifiers go through Skill Creator's qualitative dashboard separately.
 - **Git as memory.** Each iteration is one commit; revert is `git reset --hard HEAD~1`. No fancy state management.
+- **The improver cannot edit its own scorer (A1 edit-lock).** Every applied change passes through `apply_proposed_change`, which refuses any diff that targets the skill's `eval/` rubric or escapes its directory (`ScorerTamperError`). The loop optimizes the *asset* (SKILL.md / references), never the *scorer* — the anti-Goodhart invariant. Always-on; a rejection is a skipped iteration counted toward the consecutive-skip cap.
 - **Autonomous mode never asks the human** during a run. Pre-flight requires the hard ceilings before allowing autonomous mode.
 
 ## Failure-degradation modes
@@ -203,6 +205,9 @@ See `references/git-mechanics.md` for branch / commit / revert / merge details. 
 | Initial eval run errors (not assertion failure — actual test framework error) | Refuse to start | "Fix your evals first." |
 | Working tree dirty | Refuse to start | "Commit or stash, then retry." |
 | Autonomous mode without required flags | Refuse to start (pre-flight) | "Autonomous mode requires --max-iterations N --max-budget-usd N." |
+| Proposed change targets `eval/` or escapes the skill dir (A1) | Reject before apply (`ScorerTamperError`); skip iteration; count toward consecutive-skip cap | Logged; 3 in a row → `no_improvement_possible` |
+| Critic backend unavailable (`--critic-model` set but its CLI absent) | Ship the run WITHOUT cross-model confirmation; never block, never silently "confirm" | Disposition notes "shipped WITHOUT cross-model confirmation" |
+| Critic disputes the final result (`--critic-model`) | Do NOT auto-merge; keep branch for human review | Disposition `kept (critic-flagged — <model> disputed <ids>)` |
 | Inner sub-run errors mid-iteration | Treat as score=0; revert iteration; continue outer loop | Logged |
 | Budget exhausted mid-iteration | Finish current iteration's eval (keep/revert decision), then exit cleanly | Summary printed |
 | Shadow turn-cap hit | Same as budget exhaustion | Same |
