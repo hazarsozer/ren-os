@@ -16,7 +16,12 @@ Cadence: monthly stable. Out-of-cycle PATCH releases only for security or broken
 
 ## [Unreleased]
 
+RenOS is **pre-1.0 and not yet published** — everything below is staged for the first public release. Version `1.0.0` is reserved for when the product is actually done and shipped. The framework is **solo-first**, organized under Nate Herk's **Four C's** (Context → Connections → Capabilities → Cadence): a per-builder hierarchical wiki, cache-preserving wake-up context injection, schema-versioned wiki pages, a deterministic session-consolidation loop, read-only insight + permission-audit surfaces, and a curated plugin stack.
+
+The multi-user **Activity Feed was cut pre-ship** (ADR-031): the builder is solo, the feed was speculative complexity, and it was the source of four of seven pre-ship review findings. It is preserved in git history + the `baseline-v1.0-full-wiki` tag as a deferred layer — not rebuilt — so the framework has no cross-user channel. The findings it raised — **F1, F2, F5, F7** — are resolved (F3/F4/F6 are moot without the feed).
+
 ### Added
+
 - **C5c — dependency-map + auto-refresh:** `lib/codemap/deps.py` adds a stdlib-`ast` **module-level import dependency graph** (`{src: (deps,…)}`); resolves absolute + relative imports (incl. bare `from . import x`); never raises (unparseable / non-UTF-8 / missing / non-Python files produce no edges). `CodeMap.dependencies` field + `depends_on()` / `dependents_of()` queries; persisted in the cache sidecar (backward-compatible). `core.load_fresh()` auto-refreshes the cache when stale at consumption time (on-demand only — no daemon/wake-up injection, per ADR-008). `/ren:code-map --deps` renders the dependency graph (auto-refreshes); the digest gains a `## Dependencies` section. `skills/improve-skill/lib/impact.py` provides `dependency_footprint(target_files, dependencies)` → `ImpactReport` (target's dependents + dependencies) — read-only impact awareness for the self-improvement loop; stdlib-only (decoupled from `lib.codemap` to avoid a `lib` package-name collision). **Deferred:** symbol-level call-graph (function→function) — lean-ctx's graph DB is class-only with no usable edges (`lib/codemap/SPIKE_FINDINGS.md`); a true call-graph exceeds the adopted tooling. Module-import graph delivers the Pillar-5 dependency-map need. No new ADR, no page-type, no schema change. Tests: codemap 28, improve-skill 175+1skip; `claude plugin validate --strict` ✔.
 - **H1 — `/ren:doctor` +CONTEXT & TOKEN ECONOMICS +WIKI HEALTH (7→9 sections):** two new read-only report sections: **CONTEXT & TOKEN ECONOMICS** (`check-context.sh`) counts MCP servers, enabled plugins, and framework skills; flags token-heavy `CLAUDE.md` files (>200 lines); lints skill-size (SKILL.md >500 lines or missing name/description/version frontmatter); warns when `permissions.defaultMode` is `bypassPermissions` or `acceptEdits`. **WIKI HEALTH** (`check-wiki-health.sh`) reports dead links (`[[wikilinks]]` + relative `.md` links), stale pages (frontmatter `updated:` >90 days), token-heavy pages (>500 lines), and an aggregate health score. Both scripts are strictly side-effect-free. +2 hermetic shell test files (context 12/12, wiki-health 8/8; full doctor suite 8/8); `eval.json` reconciled to nine sections; `claude plugin validate --strict` ✔. Scope cut (intentional, documented): stable-ID-rehydration flag + MCP-vs-CLI audit deferred (speculative static analysis); network-tier audits already covered by ROUTINES.
 - **C5b — self-improvement loop completion:** the eval loop now scores real skills (skill-runs execute from the plugin-active worktree root); `--eval-runs N` measures true skill-run variance; unit-tested + reviewed. Still EXPERIMENTAL — the live supervised proof is deferred (needs ≥3 clean runs; ADR-036).
@@ -24,20 +29,6 @@ Cadence: monthly stable. Out-of-cycle PATCH releases only for security or broken
 - **`/ren:code-map` (C2, ADR-035):** code-map context layer — adopts the lean-ctx CLI (per-file `read -m signatures`) to generate a regenerable symbol→line-range digest; cache stored under plugin-data, never in the wiki or user's repo; staleness detection with STALE banner; load-on-demand only (never in wake-up injection per ADR-008). Ingest Stage 6 seeds the map when lean-ctx is available (graceful-degrade). ADR-035 filed; ADR-002/008 amended; `/ren:doctor` CODE-MAP check added.
 - **Cadence-as-glue (C4, ADR-034):** `routine-spec` wiki page-type; `/ren:routine-init` (scaffolds a lean Cloud-Routine repo + writes the routine-spec page); `/ren:cadence` (decision-matrix router over /loop · Cron · /goal · Cloud Routines); `/ren:recall --routine` (reads a routine's state.md/run-log.md); `/ren:doctor` ROUTINES audits (network-tier + quota headroom); wake-up hook "Live automations" section.
 - **`/ren:ingest-project` (C1, ADR-032):** brownfield onboarding — ingest an existing project into your wiki. A read-only scanner reads the repo (stack, docs, git history) and the skill drafts a populated ADR-014 sub-wiki, previews it once, and writes additively on approval. Never modifies the project's own files.
-
-### Changed
-- **Rebranded to RenOS** (from 仁 *rén*, humaneness) — command namespace `/sf:` → `/ren:`, plugin `name: sf → ren`, repo/marketplace `ren-os` (install `ren@ren-os`). Skill dirs unchanged. See ADR-033. No version bump — pre-first-republish, so `ren` / `/ren:` is the first public command surface anyone sees.
-- **Foundation merged** — the v1.0 remediation Phases 1–4 (Python correctness, doc/contract drift, security/privacy, and the `/sf:` namespace-defect fix) landed on the dev branch (`9555a2d`); 454+ tests green, `claude plugin validate --strict` ✔.
-
----
-
-## [1.0.0] — 2026-05-31
-
-The first stable release — a **solo-first** framework organized under Nate Herk's **Four C's** (Context → Connections → Capabilities → Cadence): a per-builder hierarchical wiki, cache-preserving wake-up context injection, schema-versioned wiki pages, a deterministic session-consolidation loop, read-only insight + permission-audit surfaces, and a curated plugin stack.
-
-The multi-user **Activity Feed was cut pre-ship** (ADR-031): the builder is solo, the feed was speculative complexity, and it was the source of four of seven pre-ship review findings. It is preserved in git history + the `baseline-v1.0-full-wiki` tag as a deferred layer — not rebuilt — so the framework ships with no cross-user channel. The remaining findings — **F1, F2, F5, F7** — are resolved in this release (F3/F4/F6 are moot without the feed).
-
-### Added
 
 **Context — wiki + wake-up**
 - `lib/sf_paths.py` — the framework's path/handle/schema single source of truth (extracted so it outlives the cut feed; the **F1** fix). 3-tier `wiki_path()` resolves `SF_WIKI_ROOT` → `CLAUDE_PLUGIN_OPTION_WIKIROOT` → `framework_root()/wiki`, so the advertised `wikiRoot` plugin option is honored on its own.
@@ -76,6 +67,10 @@ The multi-user **Activity Feed was cut pre-ship** (ADR-031): the builder is solo
 - `LICENSES.md` — stack license summary (ADR-015 Stage 6 + ADR-016).
 - `wiki/decisions/031-solo-first-pivot.md` — ADR-031, the durable record of the solo-first pivot.
 
+### Changed
+- **Rebranded to RenOS** (from 仁 *rén*, humaneness) — command namespace `/sf:` → `/ren:`, plugin `name: sf → ren`, repo/marketplace `ren-os` (install `ren@ren-os`). Skill dirs unchanged. See ADR-033. No version bump — pre-first-republish, so `ren` / `/ren:` is the first public command surface anyone sees.
+- **Foundation merged** — the v1.0 remediation Phases 1–4 (Python correctness, doc/contract drift, security/privacy, and the `/sf:` namespace-defect fix) landed on the dev branch (`9555a2d`); 454+ tests green, `claude plugin validate --strict` ✔.
+
 ### Security
 - `/sf:doctor --permissions` and `/sf:insights` are strictly read-only (no writes, no network) and **never print secret / env / token / header values** — verified by hermetic tests (a seeded fake token is asserted absent from output).
 - `scripts/publish.sh` snapshots only tracked files via `git ls-files` and a guard that fails on `__pycache__` / `.pytest_cache` / `*.pyc` / `wiki/` (the **F5** fix), so caches and the private wiki never reach the published snapshot.
@@ -83,6 +78,3 @@ The multi-user **Activity Feed was cut pre-ship** (ADR-031): the builder is solo
 
 ### Schema
 - All **15 page-types** start at schema version 1, supported_from 1, no migrations. Future MINOR/MAJOR releases will add migrations here. (The `feed-entry` page-type was removed pre-ship with the Activity Feed — RETIRED, not migrated, per ADR-031 + ADR-027.)
-
-[Unreleased]: https://github.com/hazarsozer/sf-marketplace/compare/v1.0.0...HEAD
-[1.0.0]: https://github.com/hazarsozer/sf-marketplace/releases/tag/v1.0.0

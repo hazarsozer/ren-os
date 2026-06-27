@@ -2,7 +2,6 @@
   "$schema": "https://json.schemastore.org/claude-code-plugin-marketplace.json",
   "name": "ren-os",
   "description": "RenOS — a governable second-brain OS for Claude Code. Solo-first, fully local: a compounding wiki you own as your single source of truth + thin glue over native primitives.",
-  "version": "1.0.0",
   "owner": {
     "name": "Hazar Sozer",
     "email": "hsozer00@gmail.com"
