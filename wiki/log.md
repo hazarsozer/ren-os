@@ -493,3 +493,17 @@ The high-value second pair of the parked video-ingest menu, built on `feat/eval-
 - **A2 — cross-model critic (`--critic-model`), opt-in final gate.** After a run reaches all-pass, a *different* model re-scores once (`eval_runs=1`) before squash-merge. `select_judge` routes `codex`/`gpt*`/`o*` to the `codex` CLI (cross-vendor — genuine OpenAI-vs-Anthropic diversity) and everything else to `claude --model`; `judge_model`/`judge_runner` are threaded separately from the skill runner so only the JUDGE switches. Agree → squash-merge (`confirmed`); dispute → keep branch for human review (`critic-flagged`), never destroy work; backend absent → ship WITHOUT confirmation (explicit, never silent). Gemini excluded (CLI no longer supported); codex token usage not budget-tracked (documented gap).
 
 TDD: 34 new tests (13 scorer-lock, 7 orchestrator [2 edit-lock skip + 5 critic-gate], 9 eval-runner [4 judge-threading + 5 select-judge], 5 codex-cli); improve-skill **224 + 1 skip**; `claude plugin validate --strict` ✔. ADR-036 second amendment (2026-06-27). Still parked: B1/C2 (page-type batch with C3), C1 (optional path-guard).
+
+---
+
+## 2026-06-28 — C3a: instincts hot tier (compounding memory, tier 1)
+
+First slice of the last untouched pillar (P4, compounding/memory), built on `feat/c3a-instincts` off `feat/project-ingest` (design spec `docs/superpowers/specs/2026-06-28-c3a-instincts-design.md`). The positioning spec's three-tier model is **hot capture → curated canonical → governed sweep**; C3a ships **tier 1 only** (new **ADR-037**). Default `note`/`recall` behavior is byte-for-byte unchanged.
+
+- **`instincts` page-type** — one append-only `instincts.md` per wiki level (`wiki/instincts.md` master + `wiki/projects/<p>/instincts.md`), frontmatter `type: instincts` / `schema_version: 1` / `scope`; typed entries `**[kind]** date — text`, `kind ∈ worked | avoid | dont-repeat`. Cheap, liberal, append — not signal-thresholded like `/wrap`.
+- **Capture — `/ren:note --instinct <kind>`** (extends note's lib: `pin_instinct` / `resolve_instinct_path` / `instinct_scope`). Project-default routing; `--global` or no resolvable project → master (with notice). Plain `/ren:note` unchanged.
+- **Read — `/ren:recall --instincts`** (`grep_wiki(..., instincts_only=True)`): narrows to `type: instincts` pages; they're in the default search regardless.
+- **Page-type batch (ADR-027 "decide together"):** `instincts` built; `experiment-log` (B1) forward-declared in `schemas.json` (no writer, zero instances); `routine-spec` v2 `verification_strategy` (C2) recorded-as-planned, not migrated.
+- **Governance:** new **ADR-037** (Compounding Memory Model) records amendments to **ADR-009** (hot tier below the manual `/wrap`; capture explicit, not a Stop hook), **ADR-014** (taxonomy gains `instincts.md`), **ADR-027** (registry gains the page-types).
+
+**Deferred → C3b:** the governed LLM hot→curated promotion/dedup sweep (proposal-diff-gated per ADR-031, never a Stop hook); no `/wrap` change; no wake-up auto-surfacing. TDD: 14 new tests (12 note instinct + 2 recall filter); note 30, recall 33; `claude plugin validate --strict` ✔.

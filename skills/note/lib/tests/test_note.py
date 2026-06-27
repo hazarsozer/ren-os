@@ -166,3 +166,81 @@ class TestPinNote:
         result = pin_note("x", session_id="s", notes_root=tmp_path)
         with pytest.raises(Exception):
             result.success = False  # type: ignore[misc]
+
+
+class TestInstinctCapture:
+    """C3a — /ren:note --instinct hot-tier capture (durable, hierarchically routed)."""
+
+    def test_instinct_scope_project_default(self):
+        from ..__init__ import instinct_scope
+        assert instinct_scope(use_global=False, project_slug="dry") == "project"
+
+    def test_instinct_scope_global_flag(self):
+        from ..__init__ import instinct_scope
+        assert instinct_scope(use_global=True, project_slug="dry") == "global"
+
+    def test_instinct_scope_no_project_falls_back_to_global(self):
+        from ..__init__ import instinct_scope
+        assert instinct_scope(use_global=False, project_slug=None) == "global"
+
+    def test_resolve_instinct_path_project(self, tmp_path: Path):
+        from ..__init__ import resolve_instinct_path
+        p = resolve_instinct_path(scope="project", project_slug="dry", wiki_root=tmp_path)
+        assert p == tmp_path / "projects" / "dry" / "instincts.md"
+
+    def test_resolve_instinct_path_global(self, tmp_path: Path):
+        from ..__init__ import resolve_instinct_path
+        p = resolve_instinct_path(scope="global", project_slug="dry", wiki_root=tmp_path)
+        assert p == tmp_path / "instincts.md"
+
+    def test_format_instinct_bullet(self):
+        from ..__init__ import format_instinct_bullet
+        line = format_instinct_bullet("worked", "do the thing",
+                                      now=datetime(2026, 6, 28, tzinfo=timezone.utc))
+        assert line == "- **[worked]** 2026-06-28 — do the thing\n"
+
+    def test_pin_instinct_creates_file_with_frontmatter(self, tmp_path: Path):
+        from ..__init__ import pin_instinct
+        res = pin_instinct("worked", "first instinct", wiki_root=tmp_path,
+                           project_slug="dry", use_global=False, framework_version="0.1.0")
+        assert res.success and res.scope == "project"
+        text = res.path.read_text(encoding="utf-8")
+        assert "type: instincts" in text and "schema_version: 1" in text
+        assert "scope: project" in text
+        assert "- **[worked]**" in text and "first instinct" in text
+
+    def test_pin_instinct_appends_to_existing_once_frontmatter(self, tmp_path: Path):
+        from ..__init__ import pin_instinct
+        pin_instinct("worked", "one", wiki_root=tmp_path, project_slug="dry",
+                     use_global=False, framework_version="0.1.0")
+        res = pin_instinct("avoid", "two", wiki_root=tmp_path, project_slug="dry",
+                           use_global=False, framework_version="0.1.0")
+        text = res.path.read_text(encoding="utf-8")
+        assert "one" in text and "two" in text
+        assert text.count("type: instincts") == 1  # frontmatter written once
+
+    def test_pin_instinct_global_routes_to_master(self, tmp_path: Path):
+        from ..__init__ import pin_instinct
+        res = pin_instinct("worked", "g", wiki_root=tmp_path, project_slug="dry",
+                           use_global=True, framework_version="0.1.0")
+        assert res.path == tmp_path / "instincts.md" and res.scope == "global"
+
+    def test_pin_instinct_no_project_falls_back_global(self, tmp_path: Path):
+        from ..__init__ import pin_instinct
+        res = pin_instinct("worked", "g", wiki_root=tmp_path, project_slug=None,
+                           use_global=False, framework_version="0.1.0")
+        assert res.path == tmp_path / "instincts.md"
+        assert res.scope == "global" and res.fell_back_to_global is True
+
+    def test_pin_instinct_rejects_bad_kind(self, tmp_path: Path):
+        from ..__init__ import pin_instinct
+        res = pin_instinct("banana", "x", wiki_root=tmp_path, project_slug="dry",
+                           use_global=False, framework_version="0.1.0")
+        assert not res.success and res.error and "worked" in res.error
+        assert not (tmp_path / "projects" / "dry" / "instincts.md").exists()
+
+    def test_pin_instinct_rejects_empty_text(self, tmp_path: Path):
+        from ..__init__ import pin_instinct
+        res = pin_instinct("worked", "   ", wiki_root=tmp_path, project_slug="dry",
+                           use_global=False, framework_version="0.1.0")
+        assert not res.success
