@@ -207,3 +207,12 @@ The user fills in PROJECT.md / REQUIREMENTS.md at kickoff (or invokes Skill Crea
 - ADR-008 (Wake-Up Hook) — defines which of these pages wake-up reads
 - ADR-009 (Consolidate via /wrap) — defines which pages get updated during consolidate
 - ADR-015 (Onboarding) — defines `/sf:bootstrap-project` for sub-wiki initialization
+
+---
+
+## Amendment — 2026-06-28: instincts.md page (ADR-037, C3a)
+
+The taxonomy gains an append-only `instincts.md` at both levels — `wiki/instincts.md` (master) and
+`wiki/projects/<project>/instincts.md` (sub-wiki) — the hot-capture tier of the compounding model
+(ADR-037). Typed append-only entries (`worked | avoid | dont-repeat`), written by `/ren:note --instinct`,
+read by `/ren:recall --instincts`.

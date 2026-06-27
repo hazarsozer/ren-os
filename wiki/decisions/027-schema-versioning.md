@@ -276,3 +276,13 @@ Add to the disaster scenarios in `RECOVERY.md` (from ADR-026):
 - ADR-017 (Per-Friend Wiki Scope) — backwards-compat commitment this ADR operationalizes
 - ADR-019 (Framework Distribution) — semver policy this ADR ties to
 - ADR-026 (Backups & Recovery) — snapshot-based rollback infrastructure this ADR uses
+
+---
+
+## Amendment — 2026-06-28: instincts + experiment-log page-types (ADR-037, C3a)
+
+The registry (`schemas.json`) gains two page-types decided together per this ADR's "decide page-types up
+front" rule: **`instincts`** (schema_version 1, **built** — C3a) and **`experiment-log`** (schema_version 1,
+**forward-declared**, no writer yet — future B1 slice; zero instances → no drift). Also recorded for the
+batch: the planned **`routine-spec` v2** additive field `verification_strategy` (C2), to be bumped +
+migrated when that slice lands. See ADR-037.

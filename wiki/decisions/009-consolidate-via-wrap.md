@@ -144,3 +144,13 @@ No collision: `/revise-claude-md` writes only at restart (CLAUDE.md cache-edit s
 - ADR-008 (Wake-Up Hook) — partner mechanism; the session pointer consolidate writes is what wake-up reads
 - ADR-010 (Hook Ordering Coordination) — addresses the broader question of multi-plugin hook coexistence; `/wrap` sidesteps this entirely by not using a hook
 - ADR-012 (Two-Layer Self-Improvement) — uses Ralph-style autonomy for skill-improvement loops; that's different from consolidate's quality-controlled writes
+
+---
+
+## Amendment — 2026-06-28: instincts hot tier added below /wrap (ADR-037, C3a)
+
+ADR-037 introduces a **hot-capture tier** beneath the manual `/wrap` consolidate: a durable, typed
+`instincts` page-type captured via `/ren:note --instinct` (explicit + cheap, hierarchically routed). This
+does **not** change this ADR's core posture — consolidation stays manual, never a Stop hook. The hot tier
+makes *capture* liberal without making *consolidation* automatic; the governed hot→curated promotion sweep
+(C3b) will likewise be proposal-diff-gated, never a Stop hook. See ADR-037.
