@@ -301,6 +301,58 @@ JUDGE_MODEL = "haiku"
 
 
 # ---------------------------------------------------------------------------
+# select_judge — A2 cross-model critic router
+# ---------------------------------------------------------------------------
+
+# OpenAI/codex model-name prefixes routed to the `codex` CLI critic backend.
+_CODEX_MODEL_PREFIXES = ("codex", "gpt", "o1", "o3", "o4")
+
+
+class CriticBackendUnavailable(RuntimeError):
+    """
+    Raised by `select_judge` when the chosen critic model's CLI is not on PATH.
+
+    The critic gate catches this and ships WITHOUT cross-model confirmation
+    (an explicit notice) rather than crashing — A2 graceful degradation, mirroring
+    A4's missing-reference handling.
+    """
+
+
+def _is_codex_model(model: str) -> bool:
+    return (model or "").strip().lower().startswith(_CODEX_MODEL_PREFIXES)
+
+
+def select_judge(model: str):
+    """
+    Map a critic model name to `(judge_runner, model)`.
+
+    Codex/OpenAI-shaped names (`codex*`, `gpt*`, `o1*`, `o3*`, `o4*`) route to the
+    `codex` CLI adapter; everything else routes to the `claude` CLI (e.g.
+    `claude-opus-4-8`). The skill under test is unaffected — this only selects the
+    JUDGE.
+
+    Raises:
+        CriticBackendUnavailable: if the required CLI is not on PATH.
+    """
+    import shutil
+
+    if _is_codex_model(model):
+        if shutil.which("codex") is None:
+            raise CriticBackendUnavailable(
+                f"critic model {model!r} requires the `codex` CLI, which is not on PATH"
+            )
+        from .codex_cli import run_exec
+        return run_exec, model
+
+    if shutil.which("claude") is None:
+        raise CriticBackendUnavailable(
+            f"critic model {model!r} requires the `claude` CLI, which is not on PATH"
+        )
+    from .claude_cli import run_print
+    return run_print, model
+
+
+# ---------------------------------------------------------------------------
 # load_reference_exemplar — A4: pull a "what good looks like" artifact for the judge
 # ---------------------------------------------------------------------------
 
@@ -350,6 +402,7 @@ def judge_assertion(
     *,
     timeout_seconds: int = 120,
     reference_text: str | None = None,
+    judge_model: str = JUDGE_MODEL,
     _runner=None,
 ) -> tuple[bool, ApiUsage]:
     """
@@ -371,7 +424,7 @@ def judge_assertion(
     run = runner(
         _judge_prompt(output_text, assertion, reference_text=reference_text),
         bare=False,
-        model=JUDGE_MODEL,
+        model=judge_model,
         timeout_seconds=timeout_seconds,
     )
     verdict = run.output_text.strip().upper().startswith("TRUE")
@@ -413,6 +466,8 @@ def run_evals(
     eval_runs: int = 1,
     skills_root: Path | str | None = None,
     reference_text: str | None = None,
+    judge_model: str = JUDGE_MODEL,
+    judge_runner=None,
     _runner=None,
 ) -> EvalResult:
     """
@@ -456,6 +511,11 @@ def run_evals(
                 "primitives. Inject a working eval_runner to exercise the loop."
             )
         runner = run_print
+
+    # The skill ALWAYS runs under `runner` (claude). The judge MAY be a different
+    # model/vendor (A2 cross-model critic); default it to the skill runner so the
+    # standard single-judge path is byte-for-byte unchanged.
+    judge_runner_resolved = judge_runner or runner
 
     root = Path(skills_root) if skills_root else Path("skills")
     # Plugin-active CWD: the worktree root (parent of skills/) so the nested
@@ -511,7 +571,10 @@ def run_evals(
         for i, assertion in enumerate(test.binary_assertions):
             votes = []
             for r in runs:
-                ok, ju = judge_assertion(r.output_text, assertion, reference_text=reference_text, _runner=runner)
+                ok, ju = judge_assertion(
+                    r.output_text, assertion, reference_text=reference_text,
+                    judge_model=judge_model, _runner=judge_runner_resolved,
+                )
                 usage = _add(usage, ju)
                 votes.append(ok)
             if _majority(votes):
