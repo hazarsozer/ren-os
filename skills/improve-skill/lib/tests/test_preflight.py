@@ -437,3 +437,47 @@ class TestLightweightRefusal:
         skill_dir = tmp_path / "skills" / "bare"
         skill_dir.mkdir(parents=True)
         _refuse_if_lightweight(skill_dir)  # no raise
+
+
+# --- eval_readiness_notes (A3 — eval-readiness advisory) -------------------
+
+
+class TestEvalReadiness:
+    """A3 — eval-readiness advisory (additive, never blocks): a mechanical
+    thin-signal warning from the assertion count + the Karpathy precondition
+    checklist surfaced before a budget-spending run."""
+
+    def _eval(self, root: Path, name: str, n_assertions: int) -> Path:
+        skill_dir = root / "skills" / name
+        (skill_dir / "eval").mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text(
+            f"---\nname: {name}\ndescription: d\n---\n\n# {name}\n", encoding="utf-8"
+        )
+        assertions = [f"assertion {i}" for i in range(n_assertions)]
+        (skill_dir / "eval" / "eval.json").write_text(
+            json.dumps({"name": name, "tests": [{"id": "t1", "binary_assertions": assertions}]}),
+            encoding="utf-8",
+        )
+        return skill_dir
+
+    def test_thin_signal_warns(self, tmp_path: Path):
+        from ..preflight import eval_readiness_notes
+        notes = eval_readiness_notes(self._eval(tmp_path, "thin", 1))
+        assert any("thin" in n.lower() or "signal" in n.lower() for n in notes)
+
+    def test_healthy_no_thin_warning(self, tmp_path: Path):
+        from ..preflight import eval_readiness_notes
+        notes = eval_readiness_notes(self._eval(tmp_path, "healthy", 5))
+        assert not any("thin" in n.lower() for n in notes)
+
+    def test_always_lists_preconditions(self, tmp_path: Path):
+        from ..preflight import eval_readiness_notes
+        notes = eval_readiness_notes(self._eval(tmp_path, "p", 5))
+        assert "objective" in " ".join(notes).lower()
+
+    def test_graceful_when_no_eval(self, tmp_path: Path):
+        from ..preflight import eval_readiness_notes
+        skill_dir = tmp_path / "skills" / "bare"
+        skill_dir.mkdir(parents=True)
+        notes = eval_readiness_notes(skill_dir)  # no raise
+        assert isinstance(notes, list)

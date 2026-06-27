@@ -50,6 +50,7 @@ class ImproveSkillArgs:
     eval_subset_path: str | None = None
     bare: bool = True  # passed to inner sub-runs
     eval_runs: int = 1
+    reference: str | None = None  # A4: path to a "what good looks like" exemplar for the judge
 
 
 @dataclass(frozen=True)

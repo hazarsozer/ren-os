@@ -301,14 +301,44 @@ JUDGE_MODEL = "haiku"
 
 
 # ---------------------------------------------------------------------------
+# load_reference_exemplar — A4: pull a "what good looks like" artifact for the judge
+# ---------------------------------------------------------------------------
+
+
+def load_reference_exemplar(path: str | Path, *, max_chars: int = 4000) -> str | None:
+    """Read a reference exemplar file for the eval judge (A4).
+
+    Returns the file text (truncated to max_chars with a marker) or None if the
+    path is missing/unreadable. Never raises — a bad reference must not crash the
+    loop; it just means "no exemplar".
+    """
+    try:
+        text = Path(path).read_text(encoding="utf-8")
+    except (OSError, ValueError):  # missing / non-UTF-8 / not a file
+        return None
+    if len(text) > max_chars:
+        text = text[:max_chars] + "\n… [truncated]"
+    return text
+
+
+# ---------------------------------------------------------------------------
 # judge_assertion — single TRUE/FALSE call via the LLM judge
 # ---------------------------------------------------------------------------
 
 
-def _judge_prompt(output_text: str, assertion: str) -> str:
+def _judge_prompt(output_text: str, assertion: str, reference_text: str | None = None) -> str:
+    reference_block = ""
+    if reference_text:
+        reference_block = (
+            "--- REFERENCE EXEMPLAR (what good output looks like; for grounding only, "
+            "NOT the statement to judge) ---\n"
+            f"{reference_text}\n"
+            "--- END REFERENCE EXEMPLAR ---\n\n"
+        )
     return (
         "Given the following skill output, is the statement TRUE or FALSE?\n"
         "Reply with exactly TRUE or FALSE and nothing else.\n\n"
+        f"{reference_block}"
         f"--- OUTPUT ---\n{output_text}\n--- END OUTPUT ---\n\n"
         f"STATEMENT: {assertion}"
     )
@@ -319,6 +349,7 @@ def judge_assertion(
     assertion: str,
     *,
     timeout_seconds: int = 120,
+    reference_text: str | None = None,
     _runner=None,
 ) -> tuple[bool, ApiUsage]:
     """
@@ -338,7 +369,7 @@ def judge_assertion(
     runner = _runner or run_print
     # SPIKE: non-bare — --bare skips auth (SPIKE_FINDINGS.md §2)
     run = runner(
-        _judge_prompt(output_text, assertion),
+        _judge_prompt(output_text, assertion, reference_text=reference_text),
         bare=False,
         model=JUDGE_MODEL,
         timeout_seconds=timeout_seconds,
@@ -381,6 +412,7 @@ def run_evals(
     cwd: Path | None = None,
     eval_runs: int = 1,
     skills_root: Path | str | None = None,
+    reference_text: str | None = None,
     _runner=None,
 ) -> EvalResult:
     """
@@ -479,7 +511,7 @@ def run_evals(
         for i, assertion in enumerate(test.binary_assertions):
             votes = []
             for r in runs:
-                ok, ju = judge_assertion(r.output_text, assertion, _runner=runner)
+                ok, ju = judge_assertion(r.output_text, assertion, reference_text=reference_text, _runner=runner)
                 usage = _add(usage, ju)
                 votes.append(ok)
             if _majority(votes):
