@@ -2,7 +2,7 @@
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "ren",
   "displayName": "RenOS",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "description": "RenOS — a governable second-brain OS for Claude Code. A compounding wiki you own as your single source of truth + thin glue over native primitives (Routines, Memory, Agents). The plugin's source-of-truth version lives in this field; the marketplace entry omits version to avoid drift (per CC docs, plugin.json wins silently when both are set).",
   "author": {
     "name": "Hazar Sozer",
