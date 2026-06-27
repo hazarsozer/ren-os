@@ -166,3 +166,14 @@ this is premature optimization on an already-over-engineered path.
 - ADR-031 (Solo-First Pivot) — solo-first constraint; speculative subsystem removal; earned-autonomy framing §3
 - ADR-009 (Consolidate via Wrap) — manual-consolidate posture this ADR echoes for improvement loops
 - ADR-003 (No-Daemon Rule) — no background autonomous processes; improvement loops are explicit, bounded, and user-initiated
+
+---
+
+## Amendment — 2026-06-27: eval-readiness advisory + reference exemplar (A3+A4)
+
+Two additive, opt-in extensions to the loop from the parked video-ingest menu (`docs/superpowers/specs/2026-06-21-video-ingest-improvements.md`). Both leave the **default** scoring path byte-for-byte unchanged — the eval engine is the framework's most delicate subsystem, so nothing in the existing judge/score behavior moves unless explicitly opted in.
+
+- **A3 — eval-readiness advisory (`preflight.eval_readiness_notes`, gate 7).** Surfaced before a budget-spending run: a mechanical thin-signal warning (too few binary assertions to discriminate) + the six Karpathy "Auto Research" preconditions (objective metric, fast feedback, write access, high-volume signal, cheap-to-fail, consistent measuring stick). **Advisory, never blocks** — five of the six preconditions are qualitative and cannot be honestly auto-detected, so a hard gate would be either dishonest or wrong. It informs; the author decides.
+- **A4 — reference exemplar (`--reference PATH` → `ImproveSkillArgs.reference`).** `eval_runner.load_reference_exemplar` (bounded 4 KB, graceful on missing/non-UTF-8) threads a "what good looks like" artifact into the judge prompt via a `reference_text` parameter (default `None` → unchanged prompt) through `_judge_prompt` → `judge_assertion` → `run_evals`. Opt-in only; when set it grounds every assertion judgment for that run (intent: better-calibrated TRUE/FALSE, not a scoring shortcut).
+
+**Deliberately deferred (still parked):** A1+A2 (tamper-proof locked scorer + cross-model critic) — the anti-Goodhart pair — remain a future amendment; they change the *judge trust model* (isolation + second-model agreement) and deserve their own deliberate slice. B1 (experiment-log page-type) batches with C3's page-type decisions (ADR-027).

@@ -58,7 +58,7 @@ Your policy was *build worthy+safe, spec-and-park the big ones*. On scrutiny, **
 ---
 
 ## Recommended build order (on greenlight)
-1. **A3 + A4** (eval-readiness gate + reference exemplar) — cheapest, lowest-risk, ship as one small improve-skill slice.
+1. **A3 + A4** (eval-readiness gate + reference exemplar) — ✅ **BUILT 2026-06-27** (`feat/eval-loop-polish-a3a4`): advisory readiness gate (`preflight.eval_readiness_notes`) + opt-in `--reference` exemplar (`eval_runner.load_reference_exemplar`); strictly additive, ADR-036 amended, improve-skill 190+1skip.
 2. **A1 + A2** (locked scorer + cross-model critic) — the high-value anti-Goodhart pair; one ADR-036 amendment + slice.
 3. **B1 + C2** (experiment-log + verification field) — batch with C3's page-type/schema decisions (decide all page-types at once, per ADR-027).
 4. **C1** (path-guard) — optional, only if you want the guardrail UX.

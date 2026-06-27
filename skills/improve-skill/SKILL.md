@@ -114,6 +114,7 @@ Layer-2 skill self-improvement per ADR-012. The mechanical realization of Karpat
 | `--eval-subset PATH` | full eval | Run a subset of `eval/eval.json` (useful for partial improvements) |
 | `--bare` | true (inner) | Pass `--bare` to inner sub-runs (skip plugin/hook/CLAUDE.md overhead in change-proposal context) |
 | `--eval-runs N` | 1 | Run the eval suite N times per iteration; score is binarized by majority vote when N>1 (odd N recommended) |
+| `--reference PATH` | none | Pull a past artifact (e.g. last month's report) into the judge prompt as a "what good looks like" exemplar for format/quality grounding (A4). Read-only, bounded; opt-in — default is no exemplar, judge prompt unchanged. |
 
 ## Pre-flight check (mandatory)
 
@@ -128,7 +129,9 @@ Before the first iteration:
 5. **CC is on the supported PATH**: `claude --version` returns a parseable version. Else refuse with installation instructions.
 6. **Initial eval run succeeds**: `uv run pytest skills/<skill-name>/eval/` (or equivalent) runs to completion. If the evals themselves are broken, refuse — we don't want the loop chasing test errors.
 
-Only after all 6 pass does the loop begin.
+A `tier: lightweight` skill (ADR-011 amendment) is refused before gate 2 — it has no eval surface, so it is not self-improvable (the message points to the promotion path: add `eval/eval.json` and drop `tier: lightweight`).
+
+Only after all gates pass does the loop begin. It then surfaces a non-blocking **eval-readiness advisory** (A3): a thin-signal warning (too few binary assertions to discriminate) plus the Karpathy preconditions (objective metric, fast feedback, write access, high-volume signal, cheap-to-fail, consistent measuring stick) for you to confirm before spending eval-run budget. Advisory only — it never blocks.
 
 ## The Karpathy loop (8 steps per iteration)
 

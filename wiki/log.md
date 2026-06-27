@@ -471,3 +471,14 @@ Plan: `docs/superpowers/plans/2026-06-21-c5c-dep-graph.md`.
 - **Part 3 (broadened onboarding) deferred** — onboarding-designer / UX, a separate slice.
 
 `claude plugin validate --strict` ✔. ADR-011 amendment appended (2026-06-27).
+
+---
+
+## 2026-06-27 — A3+A4: eval-loop polish (eval-readiness advisory + reference exemplar)
+
+The first of the parked video-ingest improvements (the cheapest/lowest-risk pair), built on `feat/eval-loop-polish-a3a4` off `feat/project-ingest`. Both strictly additive / opt-in — default eval behavior is byte-for-byte unchanged (the spec flagged the eval engine as the framework's most delicate subsystem, so nothing in the default scoring path moved).
+
+- **A3 — eval-readiness advisory (`preflight.eval_readiness_notes`, gate 7, non-blocking).** A thin-signal warning when the eval has too few binary assertions to discriminate, plus the six Karpathy preconditions (objective metric, fast feedback, write access, high-volume signal, cheap-to-fail, consistent measuring stick) surfaced for the author to confirm before spending budget. Advisory because those preconditions are qualitative and can't be honestly auto-detected — it never blocks.
+- **A4 — reference exemplar (`--reference PATH`, opt-in).** `eval_runner.load_reference_exemplar` (bounded to 4 KB, graceful on missing/non-UTF-8) threads a "what good looks like" artifact into the judge prompt via `reference_text` (default `None` → prompt unchanged) through `_judge_prompt` → `judge_assertion` → `run_evals`; `ImproveSkillArgs.reference` added.
+
+TDD: 10 new tests (6 eval-runner + 4 preflight); improve-skill 190 + 1 skip; `claude plugin validate --strict` ✔. ADR-036 amended (2026-06-27). Still parked: A1+A2 (anti-Goodhart locked-scorer + cross-model critic) and B1/C2 (page-type batch with C3).
