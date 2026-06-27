@@ -44,7 +44,10 @@ emit("framework_skills", "ok" if skill_mds else "skip", len(skill_mds))
 offenders = []
 for p in skill_mds:
     name = os.path.basename(os.path.dirname(p)); lc = linecount(p) or 0; fm = parse_fm(p)
-    missing = [k for k in REQUIRED_FM if not fm.get(k)]
+    # tier:lightweight skills (ADR-011 amendment) ship just name+description+prompt — exempt from
+    # the version/contract/eval expectation; the full schema stays the default for standard skills.
+    required = ("name", "description") if fm.get("tier") == "lightweight" else REQUIRED_FM
+    missing = [k for k in required if not fm.get(k)]
     if lc > SKILL_LINE_WARN: offenders.append(f"{name}:{lc}L")
     if missing: offenders.append(f"{name}:missing[{','.join(missing)}]")
 emit("skill_size_lint", "warn" if offenders else "ok",
