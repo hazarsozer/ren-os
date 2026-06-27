@@ -442,6 +442,44 @@ def _write_eval(tmp_path, name, tests, non_triggers=None):
     return tmp_path / "skills"
 
 
+class TestEvalReference:
+    """A4 — eval `reference` exemplar (opt-in). Additive: default behavior unchanged."""
+
+    def test_judge_prompt_omits_reference_when_none(self):
+        from ..eval_runner import _judge_prompt
+        assert "REFERENCE EXEMPLAR" not in _judge_prompt("out", "a")
+
+    def test_judge_prompt_includes_reference_when_given(self):
+        from ..eval_runner import _judge_prompt
+        p = _judge_prompt("out", "a", reference_text="GOLDEN-EXEMPLAR")
+        assert "GOLDEN-EXEMPLAR" in p and "REFERENCE" in p.upper()
+
+    def test_load_reference_exemplar_missing_returns_none(self, tmp_path: Path):
+        from ..eval_runner import load_reference_exemplar
+        assert load_reference_exemplar(tmp_path / "nope.md") is None
+
+    def test_load_reference_exemplar_reads_and_bounds(self, tmp_path: Path):
+        from ..eval_runner import load_reference_exemplar
+        f = tmp_path / "ref.md"
+        f.write_text("x" * 10_000, encoding="utf-8")
+        out = load_reference_exemplar(f, max_chars=100)
+        assert out is not None and len(out) <= 200 and "truncated" in out.lower()
+
+    def test_judge_assertion_threads_reference(self):
+        from ..eval_runner import judge_assertion
+        fake = _FakeRunner(judge_true=True)
+        judge_assertion("out", "the output is good", reference_text="GOLDEN", _runner=fake)
+        assert "GOLDEN" in fake.calls[-1]["prompt"]
+
+    def test_run_evals_threads_reference_to_judge(self, tmp_path: Path):
+        skills_root = _write_eval(tmp_path, "wrap",
+            [{"id": "t1", "prompt": "p", "binary_assertions": ["a"]}])
+        fake = _FakeRunner(judge_true=True)
+        run_evals("wrap", skills_root=skills_root, _runner=fake, reference_text="GOLDEN")
+        judge_calls = [c for c in fake.calls if not c["detect_activation"]]
+        assert judge_calls and all("GOLDEN" in c["prompt"] for c in judge_calls)
+
+
 class TestRunEvalsBackend:
     def test_all_pass_when_judge_true_and_activated(self, tmp_path):
         skills_root = _write_eval(tmp_path, "wrap",
