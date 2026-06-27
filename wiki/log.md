@@ -457,3 +457,17 @@ No new ADR, no new page-type, no schema change. Tests: codemap 28, improve-skill
 
 **C5 chain complete: C5a ✅ (eval backend) · C5b ✅ (loop completion) · C5c ✅ (dep-map + auto-refresh).**
 Plan: `docs/superpowers/plans/2026-06-21-c5c-dep-graph.md`.
+
+---
+
+## 2026-06-27 — De-release to 0.1.0, RenOS rebrand finished, H2 parts 1+2
+
+**Housekeeping first** (see CHANGELOG + ADR-033; on `feat/project-ingest`): the never-published `1.0.0` was folded back into `[Unreleased]` and `plugin.json` set to **0.1.0** — no `v1.0.0` tag or GitHub release ever existed, so it was never a real ship. The RenOS rebrand was then finished on the shipped surface, **including renaming the GitHub repo `sf-marketplace` → `ren-os`** (ADR-033's outward follow-up). History + internal identifiers (`SF_*` env vars, `lib/sf_paths.py`, the `~/.startup-framework/` data root) were left per the flip/freeze rule.
+
+**H2 parts 1+2** then built on `feat/h2-lightweight-tier-glue`:
+
+- **Part 1 — lightweight-skill tier (amends ADR-011, additive).** Optional `tier:` frontmatter: `standard` (default = full contract) | `lightweight` = name + description + prompt body, no eval/contract. Lightweight skills are **not self-improvable** — `/ren:improve-skill` refuses them in preflight (`_refuse_if_lightweight`, Gate 1b, before the eval gate) with a promotion-path message; `/ren:doctor`'s skill-lint (`check-context.sh`) requires only name + description for them. Full schema stays default; framework skills stay standard. Frontmatter convention — no page-type / schema-version change. TDD: 5 preflight tests + 2 lint scenarios; improve-skill 180 + 1 skip, check-context 16.
+- **Part 2 — orchestration glue (doc only).** `skills/cadence/references/agent-orchestration.md`: the decomposition ladder (quick-ask → skill → sub-agent → agent-team → /goal → dynamic-workflow, lowest rung that fits) + model-routing (Haiku workers under a Sonnet orchestrator, Opus for the hardest step; 3–5 concurrent cap) + anti-patterns. Pointed to from `/ren:cadence` (the recurrence axis; orchestration is the fan-out axis). No scheduler.
+- **Part 3 (broadened onboarding) deferred** — onboarding-designer / UX, a separate slice.
+
+`claude plugin validate --strict` ✔. ADR-011 amendment appended (2026-06-27).
