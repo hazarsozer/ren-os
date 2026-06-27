@@ -84,6 +84,11 @@ def pre_flight_check(
     # eval file PARSES, not that it RUNS. The first iteration's eval-run failure is
     # treated as ExitReason.EVAL_UNRUNNABLE.
 
+    # Gate 7 — eval-readiness advisory (A3, video-ingest). Non-blocking: surfaces a
+    # thin-signal warning + the Karpathy preconditions before the loop spends budget.
+    for _note in eval_readiness_notes(skill_path):
+        logger.info("eval-readiness: %s", _note)
+
     logger.info("pre-flight checks passed for skill=%s autonomous=%s", args.skill_name, args.autonomous)
 
 
@@ -280,3 +285,49 @@ def _validate_cc_available() -> None:
             "Claude Code CLI ('claude') not found on PATH. "
             "Install Claude Code before running /ren:improve-skill."
         )
+
+
+# Karpathy "Auto Research" eval-readiness preconditions (A3 video-ingest improvement).
+# Mostly qualitative — surfaced for the author to self-confirm before spending budget.
+_EVAL_READINESS_PRECONDITIONS = (
+    "objective metric (binary assertions, not vibes)",
+    "fast feedback (cheap to score)",
+    "write access to the artifact",
+    "high-volume signal (enough assertions to discriminate)",
+    "cheap-to-fail (a bad iteration is reverted, not costly)",
+    "a consistent measuring stick (the eval does not move under you)",
+)
+
+
+def eval_readiness_notes(skill_path: Path, *, thin_signal_below: int = 2) -> list[str]:
+    """A3: advisory eval-readiness check (never blocks).
+
+    Returns human-readable notes surfaced before a budget-spending improve-skill
+    run. Mechanically flags a *thin signal* (too few binary assertions for the
+    loop to discriminate against) and always lists the Karpathy preconditions for
+    the author to self-confirm. Never raises — a missing/unreadable eval just
+    yields the checklist.
+    """
+    notes: list[str] = []
+    total_assertions = 0
+    try:
+        with (skill_path / EVAL_FILE).open("r", encoding="utf-8") as fh:
+            data = json.load(fh)
+        for test in data.get("tests", []) or []:
+            if isinstance(test, dict):
+                total_assertions += len(test.get("binary_assertions") or [])
+    except (OSError, ValueError):
+        notes.append("⚠ eval/eval.json unreadable — cannot assess signal strength.")
+
+    if total_assertions and total_assertions < thin_signal_below:
+        notes.append(
+            f"⚠ Thin eval signal: only {total_assertions} binary assertion(s). "
+            "The loop has little to discriminate against — consider adding more "
+            "before spending eval-run budget."
+        )
+    notes.append(
+        "Eval-readiness — confirm these hold before an autonomous run: "
+        + "; ".join(_EVAL_READINESS_PRECONDITIONS)
+        + "."
+    )
+    return notes
