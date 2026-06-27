@@ -643,3 +643,117 @@ class TestEvalRunsVariance:
         fake = _VaryingRunner(outputs=["GOOD", "BAD", "BAD"])
         res = run_evals("wrap", skills_root=skills_root, _runner=fake, eval_runs=3)
         assert res.passed == 0 and res.failing_assertion_ids == ("t1:0",)
+
+
+class TestJudgeModelThreading:
+    """A2 step 2 — judge model/runner are separable from the skill runner.
+
+    Default-preserving: with no judge_model/judge_runner, behavior is byte-for-byte
+    today's (skill runner doubles as the Haiku judge). The critic pass overrides the
+    judge ONLY — the skill under test always runs under the original (claude) runner.
+    """
+
+    def _recording(self, judge_true=True):
+        calls = {"skill": [], "judge": []}
+
+        def runner(prompt, *, bare, model=None, detect_activation=False,
+                   timeout_seconds=300, cwd=None, env=None, max_budget_usd=None):
+            if detect_activation:
+                calls["skill"].append(model)
+                return ClaudeRun("OUT", ApiUsage(20, 5), activated=("wrap",))
+            calls["judge"].append(model)
+            return ClaudeRun("TRUE" if judge_true else "FALSE", ApiUsage(8, 1))
+
+        return runner, calls
+
+    def test_judge_assertion_threads_judge_model(self):
+        from ..eval_runner import judge_assertion
+        seen = []
+
+        def rec(prompt, *, bare, model=None, timeout_seconds=300, **k):
+            seen.append(model)
+            return ClaudeRun("TRUE", ApiUsage(1, 1))
+
+        judge_assertion("out", "a", judge_model="claude-opus-4-8", _runner=rec)
+        assert seen == ["claude-opus-4-8"]
+
+    def test_judge_assertion_defaults_to_haiku(self):
+        from ..eval_runner import judge_assertion, JUDGE_MODEL
+        seen = []
+
+        def rec(prompt, *, bare, model=None, timeout_seconds=300, **k):
+            seen.append(model)
+            return ClaudeRun("TRUE", ApiUsage(1, 1))
+
+        judge_assertion("out", "a", _runner=rec)
+        assert seen == [JUDGE_MODEL]
+
+    def test_run_evals_default_judge_model_is_haiku(self, tmp_path: Path):
+        from ..eval_runner import JUDGE_MODEL
+        skills_root = _write_eval(tmp_path, "wrap",
+            [{"id": "t1", "prompt": "p", "binary_assertions": ["a"]}])
+        runner, calls = self._recording()
+        run_evals("wrap", skills_root=skills_root, _runner=runner)
+        assert calls["judge"] == [JUDGE_MODEL]
+        assert calls["skill"] == [None]  # skill-run carries no model override
+
+    def test_run_evals_routes_judge_to_separate_runner_and_model(self, tmp_path: Path):
+        skills_root = _write_eval(tmp_path, "wrap",
+            [{"id": "t1", "prompt": "p", "binary_assertions": ["a"]}])
+        skill_runner, skill_calls = self._recording()
+        judge_seen = []
+
+        def critic(prompt, *, bare, model=None, timeout_seconds=300, **k):
+            judge_seen.append(model)
+            return ClaudeRun("TRUE", ApiUsage(2, 1))
+
+        res = run_evals("wrap", skills_root=skills_root, _runner=skill_runner,
+                        judge_runner=critic, judge_model="o3-mini")
+        assert res.score == 1.0
+        assert judge_seen == ["o3-mini"]        # judged by the critic model+runner
+        assert skill_calls["judge"] == []        # the skill runner did NOT judge
+        assert skill_calls["skill"] == [None]    # but DID run the skill
+
+
+class TestSelectJudge:
+    """A2 step 3 — judge router: model name -> (runner, model), with backend checks."""
+
+    def test_claude_model_routes_to_run_print(self, monkeypatch):
+        import shutil
+        from ..eval_runner import select_judge
+        from ..claude_cli import run_print
+        monkeypatch.setattr(shutil, "which", lambda name: "/usr/bin/" + name)
+        runner, model = select_judge("claude-opus-4-8")
+        assert runner is run_print and model == "claude-opus-4-8"
+
+    def test_codex_model_routes_to_run_exec(self, monkeypatch):
+        import shutil
+        from ..eval_runner import select_judge
+        from ..codex_cli import run_exec
+        monkeypatch.setattr(shutil, "which", lambda name: "/usr/bin/" + name)
+        runner, model = select_judge("gpt-5")
+        assert runner is run_exec and model == "gpt-5"
+
+    def test_openai_family_recognized_as_codex(self, monkeypatch):
+        import shutil
+        from ..eval_runner import select_judge
+        from ..codex_cli import run_exec
+        monkeypatch.setattr(shutil, "which", lambda name: "/usr/bin/" + name)
+        for m in ("gpt-5", "GPT-4o", "o1", "o3-mini", "o4-preview", "codex-mini"):
+            runner, _ = select_judge(m)
+            assert runner is run_exec, m
+
+    def test_codex_absent_raises_unavailable(self, monkeypatch):
+        import shutil
+        from ..eval_runner import select_judge, CriticBackendUnavailable
+        monkeypatch.setattr(shutil, "which",
+                            lambda name: None if name == "codex" else "/usr/bin/claude")
+        with pytest.raises(CriticBackendUnavailable):
+            select_judge("o3-mini")
+
+    def test_claude_absent_raises_unavailable(self, monkeypatch):
+        import shutil
+        from ..eval_runner import select_judge, CriticBackendUnavailable
+        monkeypatch.setattr(shutil, "which", lambda name: None)
+        with pytest.raises(CriticBackendUnavailable):
+            select_judge("claude-opus-4-8")

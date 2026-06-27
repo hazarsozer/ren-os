@@ -61,6 +61,7 @@ from .budget import (
     pre_iteration_check,
 )
 from .eval_runner import (
+    CriticBackendUnavailable,
     EvalBackendNotConfiguredError,
     EvalSpec,
     filter_tests_by_ids,
@@ -74,6 +75,7 @@ from .git_mechanics import (
     revert_last_iteration,
     squash_merge_on_success,
 )
+from .scorer_lock import ScorerTamperError, diff_targets_locked_path
 from .types import (
     ApiUsage,
     BudgetState,
@@ -99,6 +101,11 @@ ChangeProposer = Callable[
 # orchestrator catches it and exits with REQUIRES_CONFIGURED_BACKEND).
 EvalRunner = Callable[[str, "list[str] | None"], "EvalResult"]
 
+# A critic-runner re-scores the FINAL skill with a DIFFERENT judge model (A2). Same
+# shape as EvalRunner; may raise CriticBackendUnavailable when the critic's CLI is
+# absent (the gate catches it and ships without cross-model confirmation).
+CriticRunner = Callable[[str, "list[str] | None"], "EvalResult"]
+
 
 def _default_eval_runner(
     skill_name: str,
@@ -114,6 +121,28 @@ def _default_eval_runner(
         skill_name,
         eval_subset_ids=subset_ids,
         eval_runs=eval_runs,
+        skills_root=skills_root,
+    )
+
+
+def _default_critic_runner(
+    skill_name: str,
+    subset_ids: "list[str] | None",
+    *,
+    critic_model: str,
+    skills_root: "Path | None" = None,
+) -> "EvalResult":
+    """A2 critic gate default: re-score the skill once (eval_runs=1) with a DIFFERENT
+    judge model. The skill still runs under `claude`; only the JUDGE switches (via
+    select_judge). Raises CriticBackendUnavailable if the critic's CLI is absent."""
+    from .eval_runner import run_evals, select_judge
+    judge_runner, model = select_judge(critic_model)
+    return run_evals(
+        skill_name,
+        eval_subset_ids=subset_ids,
+        judge_model=model,
+        judge_runner=judge_runner,
+        eval_runs=1,
         skills_root=skills_root,
     )
 
@@ -189,6 +218,7 @@ def improve_skill(
     skills_root: Path | None = None,
     eval_runner: EvalRunner | None = None,
     change_proposer: ChangeProposer | None = None,
+    critic_runner: CriticRunner | None = None,
     pricing_table: PricingTable | None = None,
     cwd: Path | None = None,
 ) -> ImproveSkillResult:
@@ -318,7 +348,6 @@ def improve_skill(
         # Propose one change (LLM sub-run; injected for testability)
         try:
             proposed, usage, turns_used = proposer(spec, last_failing_ids, budget)
-            consecutive_proposer_errors = 0
         except NotImplementedError:
             # The default proposer raises; if no custom proposer was injected,
             # we exit cleanly with no-improvement-possible.
@@ -337,8 +366,26 @@ def improve_skill(
         # Advance budget BEFORE applying (the API call happened regardless)
         budget = advance_budget(budget, usage, model=table.default_model, table=table, turns_used=turns_used)
 
-        # Apply change to filesystem + commit
-        apply_proposed_change(proposed, skills_root=skills_root_resolved, cwd=cwd)
+        # Apply change to filesystem + commit. The A1 edit-lock refuses any diff
+        # that targets the skill's own scorer (eval/) or escapes its directory — an
+        # anti-Goodhart guard. A rejection is a skipped iteration, counted toward the
+        # SAME consecutive-skip cap as a ProposerError, so a stuck/tampering proposer
+        # exits cleanly instead of looping. (The counter resets only once a real,
+        # applicable change lands — below.)
+        try:
+            apply_proposed_change(
+                proposed,
+                skill_name=args.skill_name,
+                skills_root=skills_root_resolved,
+                cwd=cwd,
+            )
+        except ScorerTamperError:
+            consecutive_proposer_errors += 1
+            if consecutive_proposer_errors >= 3:
+                exit_reason = ExitReason.NO_IMPROVEMENT_POSSIBLE
+                break
+            continue
+        consecutive_proposer_errors = 0  # a real, applicable change landed
         commit_sha = commit_iteration(
             iteration,
             proposed.summary,
@@ -420,11 +467,45 @@ def improve_skill(
             exit_reason = ExitReason.ALL_ASSERTIONS_PASS
             break
 
+    # --- A2 cross-model critic: final gate before merge (opt-in) ---
+    # Only on an otherwise-successful run, and only when a critic model is set. The
+    # critic independently re-scores the final skill with a DIFFERENT model; a
+    # dispute blocks the AUTO-merge (work kept for human review), never destroys it.
+    # An absent critic backend ships WITHOUT confirmation (graceful + explicit) —
+    # it never silently passes as if confirmed.
+    critic_disputed = False
+    critic_disputed_ids: tuple[str, ...] = ()
+    critic_note = ""  # appended to the disposition when a critic ran
+    if args.critic_model and exit_reason == ExitReason.ALL_ASSERTIONS_PASS:
+        critic = critic_runner or (
+            lambda s, ids: _default_critic_runner(
+                s, ids, critic_model=args.critic_model, skills_root=skills_root_resolved
+            )
+        )
+        try:
+            critic_result = critic(args.skill_name, _eval_subset_ids_from_args(args))
+        except CriticBackendUnavailable:
+            critic_note = (
+                f"; critic {args.critic_model} unavailable "
+                "— shipped WITHOUT cross-model confirmation"
+            )
+        else:
+            if critic_result.all_pass:
+                critic_note = f"; critic {args.critic_model} confirmed"
+            else:
+                critic_disputed = True
+                critic_disputed_ids = critic_result.failing_assertion_ids
+                critic_note = f"; critic {args.critic_model} disputed {list(critic_disputed_ids)}"
+
     # --- Finalize: squash-merge or keep branch ---
     iterations_kept = sum(1 for o in history if o.status != IterationStatus.REVERTED)
     iterations_reverted = sum(1 for o in history if o.status == IterationStatus.REVERTED)
 
-    if exit_reason == ExitReason.ALL_ASSERTIONS_PASS and not args.keep_branch:
+    if (
+        exit_reason == ExitReason.ALL_ASSERTIONS_PASS
+        and not args.keep_branch
+        and not critic_disputed
+    ):
         squash_msg = (
             f"improve({args.skill_name}): {len(history)} iterations; "
             f"{baseline_score:.1%} → {current_score:.1%}"
@@ -435,9 +516,15 @@ def improve_skill(
             commit_message=squash_msg,
             cwd=cwd,
         )
-        branch_disposition = f"squash-merged ({squash_sha[:8] if squash_sha else 'unknown'})"
+        branch_disposition = (
+            f"squash-merged ({squash_sha[:8] if squash_sha else 'unknown'}){critic_note}"
+        )
+    elif critic_disputed:
+        branch_disposition = (
+            f"kept (critic-flagged — {args.critic_model} disputed {list(critic_disputed_ids)})"
+        )
     else:
-        branch_disposition = f"kept (reason: {exit_reason.value})"
+        branch_disposition = f"kept (reason: {exit_reason.value}){critic_note}"
 
     elapsed = time.monotonic() - start_time
     return ImproveSkillResult(
@@ -467,6 +554,7 @@ def _eval_subset_ids_from_args(args: ImproveSkillArgs) -> "list[str] | None":
 def apply_proposed_change(
     change: ProposedChange,
     *,
+    skill_name: str,
     skills_root: Path,
     cwd: Path | None = None,
 ) -> None:
@@ -477,16 +565,29 @@ def apply_proposed_change(
     skills/<skill-name>/<target_file>. We run `git apply` from the wiki root
     (or `cwd`) so the diff resolves correctly.
 
+    A1 edit-lock: before applying, refuse any diff that targets the skill's own
+    scorer (`eval/`) or escapes its directory. This is the single choke point
+    every applied change passes through, so the rubric stays immutable from the
+    loop's perspective (anti-Goodhart) — the guard runs BEFORE any git apply, so
+    a tampering diff writes nothing.
+
     Args:
         change: The ProposedChange to apply.
+        skill_name: The skill being improved (scopes the edit-lock).
         skills_root: Skills directory root.
         cwd: Working directory for the git command. Default: current.
 
     Raises:
+        ScorerTamperError: if the diff targets the locked scorer or escapes the
+            skill directory (raised before any write).
         subprocess.CalledProcessError if git apply fails (caller should
         revert the iteration's commit).
     """
     import subprocess
+
+    locked = diff_targets_locked_path(change.unified_diff, change.target_file, skill_name)
+    if locked is not None:
+        raise ScorerTamperError(locked)
 
     # `git apply` reads the diff from stdin
     subprocess.run(

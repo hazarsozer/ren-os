@@ -51,6 +51,7 @@ class ImproveSkillArgs:
     bare: bool = True  # passed to inner sub-runs
     eval_runs: int = 1
     reference: str | None = None  # A4: path to a "what good looks like" exemplar for the judge
+    critic_model: str | None = None  # A2: cross-model critic for the final-gate (opt-in; None = single judge)
 
 
 @dataclass(frozen=True)
