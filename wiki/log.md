@@ -520,3 +520,17 @@ The second half of Pillar 4, built on `feat/c3b-consolidate` off `feat/project-i
 - **Idempotent:** marked entries are excluded by `unpromoted`, so re-runs never re-propose; the marker traces each promotion.
 
 **Deferred (later slices):** mechanical housekeeping (dedup, dead-link repair, date-normalize, contradiction-prune); the project↔global axis; per-routine lightweight sweeps (cadence integration); autonomous mode. `/ren:wrap` unchanged. ADR-037 amended (2026-06-28). TDD: 14 tests (parse/unpromoted 7 + diff-build 3 + atomic-apply 4); `claude plugin validate --strict` ✔.
+
+---
+
+## 2026-06-28 — C3c: dead-link repair sweep (`/ren:consolidate --fix-links`, compounding housekeeping)
+
+The first mechanical housekeeping sweep — the deferred half of Pillar 4's governed sweep. Built on `feat/c3c-link-repair` off `feat/project-ingest` (design spec `docs/superpowers/specs/2026-06-28-c3c-link-repair-design.md`). **Extends `/ren:consolidate`** rather than adding a skill — reuses the C3b diff-gate + atomic-apply spine in-package (no copy needed; same `lib`).
+
+- **New `--fix-links` mode** (`lib/links.py`): scans `wiki/**` for dead `[[wikilinks]]` (slug not found) and `](file.md)` links (don't resolve relative to the source; `http(s)` ignored). Detection is a faithful Python port of doctor's read-only `check-wiki-health.sh` — doctor still only *detects*; consolidate now *repairs*.
+- **Deterministic + conservative repair** (`propose_link_repair`): wikilinks fuzzy-match the slug pool (cutoff 0.8); mdlinks relocate on an unambiguous basename match (corrected relative path). It **never removes a link or invents a target** — no-confidence links go to a manual-attention report, not a guess. Human approves every diff (ADR-031); manual, never a Stop hook (ADR-009).
+- **Gate per-repair, apply per-file** (`build_link_repair_diffs`): approved fixes for one page coalesce into one `PromotionDiff(kind="link-fix")` (N independent same-file diffs would fail the 2nd `git apply`), applied atomically via the reused `apply_diff_entries`.
+- **Naturally idempotent** — a repaired link resolves, so the next scan skips it; no marker needed (unlike promotion).
+- **Refactor:** shared diff builders extracted to `lib/diffs.py` (second consumer; `__init__` re-imports them, C3b tests stay green).
+
+**Still deferred:** dedup, date-normalize, contradiction-prune; the project↔global axis. ADR-037 amended (2026-06-28). TDD: 19 new tests (detect 10 + propose 6 + compose/idempotent 3); consolidate **33** total; `claude plugin validate --strict` ✔.

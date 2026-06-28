@@ -48,7 +48,7 @@ are reused in-package. The bash `check-wiki-health.sh` is **unchanged** (it stay
 | Unit | Path | Status | Responsibility |
 |------|------|--------|----------------|
 | **skill contract** | `skills/consolidate/SKILL.md` | EDIT | Add the `--fix-links` mode (default = promotion). Broaden `write:` to `~/.startup-framework/wiki/**`. Pipeline + failure-mode rows for the new mode. |
-| **types** | `skills/consolidate/lib/types.py` | EDIT | Add `DeadLink(source_relpath, form, raw_target, alias, raw_line)` and `LinkRepair(dead, new_target, new_line, rationale)`. Reuse `PromotionDiff` (kind=`"link-fix"`). |
+| **types** | `skills/consolidate/lib/types.py` | EDIT | Add `DeadLink(source_relpath, form, raw_target, alias, old_literal, line_no, raw_line)` and `LinkRepair(dead, new_target, new_literal, rationale)` — `old_literal`+`line_no` make same-line multi-link rewrites precise; the repair carries `new_literal` (the link token), not a whole line. Reuse `PromotionDiff` (kind=`"link-fix"`). |
 | **detect** | `skills/consolidate/lib/links.py` → `find_dead_links(pages)` | NEW | Port the wikilink + mdlink detection from `check-wiki-health.sh`; return structured `DeadLink[]` (slug index built from `pages`). |
 | **propose** | `… → propose_link_repair(dead, slug_index, basename_index)` | NEW | Deterministic, conservative repair → `LinkRepair` or `None`. |
 | **compose** | `… → build_link_repair_diffs(page_relpath, page_text, repairs)` | NEW | Apply all approved `LinkRepair` line-rewrites to one page's text → ONE `PromotionDiff(kind="link-fix")`. Reuses `_unified_diff`. |
