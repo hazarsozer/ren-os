@@ -534,3 +534,16 @@ The first mechanical housekeeping sweep — the deferred half of Pillar 4's gove
 - **Refactor:** shared diff builders extracted to `lib/diffs.py` (second consumer; `__init__` re-imports them, C3b tests stay green).
 
 **Still deferred:** dedup, date-normalize, contradiction-prune; the project↔global axis. ADR-037 amended (2026-06-28). TDD: 19 new tests (detect 10 + propose 6 + compose/idempotent 3); consolidate **33** total; `claude plugin validate --strict` ✔.
+
+---
+
+## 2026-06-28 — B1: experiment-log writer (`/ren:improve-skill` audit ledger)
+
+The first of C3a's forward-declared page-type writers. Built on `feat/b1-experiment-log` off `feat/project-ingest` (design spec `docs/superpowers/specs/2026-06-28-b1-experiment-log-design.md`). The `/ren:improve-skill` Karpathy loop now **persists its outcomes** instead of leaving only in-memory `history` + git commits.
+
+- **New `lib/experiment_log.py`** (pure builders + one append): `build_experiment_entries(history, ts)` maps each `IterationOutcome` → the forward-declared shape (`change`=proposed summary, `disposition`=`reverted` if REVERTED else `kept`); `render_run_section(...)` formats a dated section; `append_experiment_log(path, section)` creates-with-frontmatter / appends. `ExperimentEntry` added to `types.py`.
+- **Wired as a SKILL.md close-out step**, not in the orchestrator: resolve `wiki_root` + active project (like `/ren:note`), append the run to `wiki/projects/<project>/experiment-log.md`; **no resolvable project → skip with a notice** (the git history is still the record). The 224-test orchestrator (`improve_skill()`) is byte-for-byte unchanged.
+- **No schema version bump** — `experiment-log` was already `current: 1` (forward-declared C3a); instances write at v1, so `/ren:doctor` sees no drift. The registry description was updated (writer shipped); ADR-037 + ADR-012 noted.
+- **Why now:** the experiment-log is the loop's compounding memory + the supervised-run audit trail ADR-036 requires before `/ren:improve-skill` earns autonomy.
+
+**Deferred:** C2 (`routine-spec` v2 `verification_strategy`) is the next page-type slice; a master-level `wiki/experiment-log.md`. TDD: 12 new tests (build 6 + render 3 + append 3); improve-skill **236 + 1 skip**; `claude plugin validate --strict` ✔.
