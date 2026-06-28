@@ -35,7 +35,7 @@ contract:
   completion_conditions:
     - "Every applied change was shown to the user and approved first"
     - "Promoted instincts carry an in-place `_(promoted …)_` marker (idempotency)"
-    - "On any apply failure, the wiki was fully rolled back (no half-applied promotion)"
+    - "On any apply failure, the batch's own changed files were rolled back (scoped — unrelated uncommitted wiki work is left untouched); no half-applied promotion"
   output_paths:
     - "~/.startup-framework/wiki/patterns/"
     - "~/.startup-framework/wiki/decisions/"
@@ -103,7 +103,8 @@ autonomous mode in V1. Drop any diff the user rejects (and its paired diff — n
 
 ### Step 5. Apply atomically + close out
 Apply the approved diffs via `lib.apply.apply_diff_entries(entries, wiki_root=…, cwd=…)` — all-or-nothing
-with `git restore`/`git clean` rollback. On failure, surface the cause; the wiki is already rolled back.
+with `git restore`/`git clean` rollback **scoped to the files the batch changed** (a friend's unrelated
+uncommitted wiki work is never reverted or deleted). On failure, surface the cause; those files are already rolled back.
 On success, append one line to `wiki/log.md` (`consolidated N instincts → M curated pages`) and print:
 ```
 /ren:consolidate complete.
@@ -125,7 +126,7 @@ traces where each instinct went.
 
 ### Step 1. Scan (read-only, wiki-wide)
 Glob `wiki/**/*.md` into `pages = {repo_relpath: text}` (keys relative to the git root, e.g.
-`wiki/decisions/037.md`). `lib.find_dead_links(pages)` → dead `[[wikilinks]]` (slug not found) and `](file.md)`
+`wiki/decisions/037.md`; glob order is irrelevant — the lib sorts internally for cross-machine determinism). `lib.find_dead_links(pages)` → dead `[[wikilinks]]` (slug not found) and `](file.md)`
 links (don't resolve relative to the source; `http(s)` ignored). Empty → print "No dead links — the wiki is
 link-healthy." and stop.
 
@@ -170,7 +171,7 @@ A repaired link resolves, so the next scan no longer reports it — no marker ne
 |---|---|---|
 | No unpromoted instincts | Stop cleanly, no writes | "Nothing to consolidate — the hot tier is empty or all promoted." |
 | User rejects a promotion | Drop both diffs of the pair | (that instinct stays in the hot tier) |
-| A diff fails to apply | Full atomic rollback; surface cause | "Apply failed; wiki rolled back. Cause: <err>" |
+| A diff fails to apply | Atomic rollback scoped to the batch's changed files; surface cause | "Apply failed; the batch's changes were rolled back. Cause: <err>" |
 | instincts.md missing | Treat as empty | "Nothing to consolidate." |
 | No dead links (`--fix-links`) | Stop cleanly, no writes | "No dead links — the wiki is link-healthy." |
 | A dead link has no confident fix | Skip it; collect for the report | "K link(s) need manual attention: …" |

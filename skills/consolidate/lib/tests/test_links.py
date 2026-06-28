@@ -219,3 +219,21 @@ class TestBuildLinkRepairDiffs:
         # re-scan the whole wiki (full slug index) → the repaired page is now clean
         remaining = [d for d in find_dead_links(_read_wiki(tmp_link_repo)) if d.source_relpath == page_rel]
         assert remaining == []
+
+
+class TestDeterminism:
+    """Detection + repair must be invariant under input dict order — a friend's
+    glob may enumerate pages in any filesystem order, and proposals must not vary
+    across machines."""
+
+    def test_slug_index_first_wins_is_order_invariant(self):
+        # Two pages share a slug; the "first wins" winner must be deterministic.
+        a = {"wiki/b/dup.md": "x\n", "wiki/a/dup.md": "y\n"}
+        b = {"wiki/a/dup.md": "y\n", "wiki/b/dup.md": "x\n"}
+        assert build_slug_index(a) == build_slug_index(b)
+        assert build_slug_index(a)["dup"] == "wiki/a/dup.md"  # sorted-first, deterministically
+
+    def test_find_dead_links_order_invariant(self):
+        a = {"wiki/z.md": "[[dead]]\n", "wiki/a.md": "[[gone]]\n"}
+        b = {"wiki/a.md": "[[gone]]\n", "wiki/z.md": "[[dead]]\n"}
+        assert find_dead_links(a) == find_dead_links(b)
