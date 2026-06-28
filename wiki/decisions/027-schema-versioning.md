@@ -286,3 +286,26 @@ front" rule: **`instincts`** (schema_version 1, **built** — C3a) and **`experi
 **forward-declared**, no writer yet — future B1 slice; zero instances → no drift). Also recorded for the
 batch: the planned **`routine-spec` v2** additive field `verification_strategy` (C2), to be bumped +
 migrated when that slice lands. See ADR-037.
+
+---
+
+## Amendment — 2026-06-28: the framework's first real migration (`routine-spec` 1 → 2, C2)
+
+The planned `routine-spec` v2 (above) **ships** as C2 — the first concrete migration to exercise this ADR's
+machinery end-to-end (registry `migrations[]`, a `migrations/<type>-1-to-2/` dir, `verify.json`, the chain
+computer, and `/ren:doctor` drift). Until now every page-type sat at `current: 1, migrations: []`.
+
+- **Additive MINOR, scripted.** `routine-spec` gains `verification_strategy` (enum
+  `visual|test-run|lint|llm-judge|manual`, default `manual`) + `verification_tools` (default `[]`).
+  `migrations/routine-spec-1-to-2/` is idempotent, deterministic, frontmatter-bounded (body byte-identical),
+  and `migrate.sh` writes **clean values without inline `#` comments** — the naive frontmatter parsers in
+  `verify-page.sh` / `check-schemas.sh` / `compute-migration-chain.sh` don't strip comments, so a commented
+  value would fail the `yaml.in` enum check.
+- **Registry:** `routine-spec` `current: 1 → 2`, `supported_from: 1`, `migrations: ["1-to-2"]`.
+- **Discovery gap fixed.** `routine-spec` was absent from BOTH `compute-migration-chain.sh:files_for()` and
+  `doctor/check-schemas.sh:globs_for()` (both predate C4), so the migration would have been invisible to
+  `/ren:update` and `/ren:doctor`. Both now glob `wiki/routines/*.md`. (`instincts` / `experiment-log` are
+  likewise absent but harmless at `current:1` — to be added when they first migrate.)
+- **Verified end-to-end** against `tests/fixtures/routine-spec-v1/`: migrate → `verify-page.sh` passes →
+  idempotent rerun SKIPs → body identical. Design spec
+  `docs/superpowers/specs/2026-06-28-c2-routine-spec-v2-design.md`.
