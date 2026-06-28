@@ -22,9 +22,32 @@ class InstinctEntry:
 
 @dataclass(frozen=True)
 class PromotionDiff:
-    """One unified diff in a promotion plan — either a curated-page edit or the source marking."""
+    """One unified diff in a sweep plan — a curated-page edit, source marking, or link fix."""
 
     target_file: str   # path for display / metadata
     unified_diff: str  # git-apply-compatible unified diff
-    kind: str          # "page-edit" | "marking"
+    kind: str          # "page-edit" | "marking" | "link-fix"
     rationale: str     # short justification shown to the user at the gate
+
+
+@dataclass(frozen=True)
+class DeadLink:
+    """One dead link occurrence found in a wiki page (C3c link-repair sweep)."""
+
+    source_relpath: str   # repo-relative path of the page that holds the link
+    form: str             # "wikilink" | "mdlink"
+    raw_target: str       # target as written ([[<t>]] / ](<t>)), anchor excluded
+    alias: str | None     # the |alias of a wikilink, else None
+    old_literal: str      # the exact matched link text (drives the in-line rewrite)
+    line_no: int          # 0-based line index within the source page
+    raw_line: str         # the full source line
+
+
+@dataclass(frozen=True)
+class LinkRepair:
+    """A proposed, deterministic fix for one DeadLink (C3c). None-able upstream."""
+
+    dead: DeadLink     # the dead link this repairs
+    new_target: str    # resolved slug (wikilink) or relative path (mdlink)
+    new_literal: str   # replacement for dead.old_literal
+    rationale: str     # short justification shown at the gate
