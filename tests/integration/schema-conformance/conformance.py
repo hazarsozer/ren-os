@@ -71,6 +71,8 @@ REQUIRED_FIELDS_BY_TYPE: dict[str, set[str]] = {
     "licenses": set(),
     # C4 cadence (ADR-034): documents one live routine; surfaced by wake-up + doctor.
     "routine-spec": {"name", "trigger_type", "linked_repo", "network_tier"},
+    # H2.3 broadened onboarding: master-level venture profile (loose — section + universal triple).
+    "venture-profile": {"section"},
 }
 
 # ──────────────────────────────────────────────────────────────────────
