@@ -306,6 +306,14 @@ computer, and `/ren:doctor` drift). Until now every page-type sat at `current: 1
   `doctor/check-schemas.sh:globs_for()` (both predate C4), so the migration would have been invisible to
   `/ren:update` and `/ren:doctor`. Both now glob `wiki/routines/*.md`. (`instincts` / `experiment-log` are
   likewise absent but harmless at `current:1` — to be added when they first migrate.)
-- **Verified end-to-end** against `tests/fixtures/routine-spec-v1/`: migrate → `verify-page.sh` passes →
+- **Verified against the v1 fixture** (`tests/fixtures/routine-spec-v1/`): migrate → `verify-page.sh` passes →
   idempotent rerun SKIPs → body identical. Design spec
   `docs/superpowers/specs/2026-06-28-c2-routine-spec-v2-design.md`.
+- **Correction (later 2026-06-28, holistic pre-1.0 review).** The fixture verification above was *not*
+  end-to-end: it never ran the repo-level schema-conformance suite (`tests/integration/schema-conformance/`),
+  which scans the **live** template. That template (`routine-init/templates/wiki/routine-spec.md.tmpl`) shipped
+  with **unquoted** `verification_strategy`/`verification_tools` placeholders (invalid YAML once the conformance
+  harness rendered them) plus a stale `current == 1` regression assert — so the conformance suite was **red**
+  until repaired in `00bc6a5`. Root cause: the per-slice gauntlet's TDD ran only the migration fixture test,
+  never the integration suite. Backstop in `2b5abf2` — CI now runs the full suite (conformance + ~798 pytest +
+  shell) so a red gate can't reach a merged slice undetected again.
