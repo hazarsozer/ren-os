@@ -29,9 +29,11 @@ def _slug(relpath: str) -> str:
 
 
 def build_slug_index(pages: dict[str, str]) -> dict[str, str]:
-    """basename-without-ext → relpath (first wins, mirroring check-wiki-health.sh)."""
+    """basename-without-ext → relpath (first wins). Iterate sorted so the winner
+    on a slug collision is deterministic across machines — bash's `*` glob in
+    check-wiki-health.sh is itself sorted, so this stays faithful to it."""
     index: dict[str, str] = {}
-    for relpath in pages:
+    for relpath in sorted(pages):
         index.setdefault(_slug(relpath), relpath)
     return index
 
@@ -39,7 +41,7 @@ def build_slug_index(pages: dict[str, str]) -> dict[str, str]:
 def build_basename_index(pages: dict[str, str]) -> dict[str, list[str]]:
     """basename.md → [relpaths] (for mdlink relocation; >1 ⇒ ambiguous)."""
     index: dict[str, list[str]] = {}
-    for relpath in pages:
+    for relpath in sorted(pages):
         index.setdefault(posixpath.basename(relpath), []).append(relpath)
     return index
 
@@ -55,7 +57,7 @@ def find_dead_links(pages: dict[str, str]) -> tuple[DeadLink, ...]:
     """
     slug_index = build_slug_index(pages)
     dead: list[DeadLink] = []
-    for relpath, text in pages.items():
+    for relpath, text in sorted(pages.items()):
         src_dir = posixpath.dirname(relpath)
         for line_no, line in enumerate(text.split("\n")):
             for m in _WIKILINK_RE.finditer(line):
@@ -95,7 +97,7 @@ def propose_link_repair(
     """
     if dead.form == "wikilink":
         match = difflib.get_close_matches(
-            dead.raw_target, list(slug_index), n=1, cutoff=_FUZZY_CUTOFF
+            dead.raw_target, sorted(slug_index), n=1, cutoff=_FUZZY_CUTOFF
         )
         if not match:
             return None

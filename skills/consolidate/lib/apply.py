@@ -8,7 +8,8 @@ takes a tuple of `PromotionDiff` (no wrap-specific `context_md_rewrite`).
 
 Algorithm (all-or-nothing):
   1. `git apply --check` every diff (no writes). Any failure → return early, untouched.
-  2. Apply each diff in order. On ANY failure → `git restore` + `git clean` rollback.
+  2. Apply each diff in order. On ANY failure → roll back exactly the files
+     applied so far (restore tracked / remove created) — never the whole wiki.
   3. All succeed → report files changed.
 
 Atomicity matters: a promotion is a PAIR (curated-page edit + source marking); a
@@ -75,17 +76,29 @@ def _git_apply(diff_text: str, *, cwd: Path) -> tuple[bool, str]:
     return (result.returncode == 0, result.stderr.strip())
 
 
-def _rollback_wiki(wiki_root: Path, *, cwd: Path) -> bool:
-    rel = str(wiki_root)
-    restore = _run_git(["restore", "--source=HEAD", "--", rel], cwd=cwd)
-    clean = _run_git(["clean", "-fd", "--", rel], cwd=cwd)
-    if restore.returncode != 0:
-        logger.warning("git restore failed during rollback: %s", restore.stderr)
-        return False
-    if clean.returncode != 0:
-        logger.warning("git clean failed during rollback: %s", clean.stderr)
-        return False
-    return True
+def _rollback_files(files_changed: tuple[str, ...], *, cwd: Path) -> bool:
+    """Undo ONLY the files this batch touched — never the whole wiki.
+
+    Tracked files are restored to HEAD; files the batch newly created (absent
+    from HEAD) are removed. Scoping to ``files_changed`` is what keeps a partial
+    failure from reverting or deleting a friend's unrelated uncommitted wiki work
+    — critical for --fix-links, which can target arbitrary pages. Each path is
+    relative to ``cwd`` (the git root the diffs apply against).
+    """
+    ok = True
+    for rel in files_changed:
+        in_head = _run_git(["cat-file", "-e", f"HEAD:{rel}"], cwd=cwd).returncode == 0
+        if in_head:
+            res = _run_git(["restore", "--source=HEAD", "--", rel], cwd=cwd)
+            if res.returncode != 0:
+                logger.warning("git restore failed during rollback for %s: %s", rel, res.stderr)
+                ok = False
+        else:
+            res = _run_git(["clean", "-fd", "--", rel], cwd=cwd)
+            if res.returncode != 0:
+                logger.warning("git clean failed during rollback for %s: %s", rel, res.stderr)
+                ok = False
+    return ok
 
 
 def apply_diff_entries(
@@ -112,7 +125,7 @@ def apply_diff_entries(
         if not ok:
             logger.warning("Diff apply failed at entry %d (%s); rolling back. err=%s",
                            index, entry.target_file, err)
-            rollback_ok = _rollback_wiki(wiki_root, cwd=cwd)
+            rollback_ok = _rollback_files(tuple(files_changed), cwd=cwd)
             post_snapshot = _wiki_files_snapshot(wiki_root)
             if pre_snapshot != post_snapshot:
                 logger.error("Rollback incomplete: %d files still differ",
