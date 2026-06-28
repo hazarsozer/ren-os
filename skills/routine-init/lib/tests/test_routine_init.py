@@ -89,7 +89,7 @@ class TestSpecPage:
         assert r.spec_page == page
         content = page.read_text()
         assert "type: routine-spec" in content
-        assert "schema_version: 1" in content
+        assert "schema_version: 2" in content
         assert "daily-digest" in content
         assert '"cron"' in content
         assert '"trusted"' in content
@@ -119,3 +119,32 @@ class TestSpecPage:
         r = _run(tmp_path, templates_dir=fake_templates)
         assert not r.success and "Wiki-page write failed" in r.error
         assert not (tmp_path / "repos" / "daily-digest").exists()
+
+
+class TestVerificationStrategy:
+    """C2 — routine-spec v2: verification_strategy + verification_tools."""
+
+    def test_defaults_to_manual(self, tmp_path):
+        _run(tmp_path)
+        content = (tmp_path / "wiki" / "routines" / "daily-digest.md").read_text()
+        assert "verification_strategy: manual" in content
+
+    def test_explicit_strategy_renders(self, tmp_path):
+        _run(tmp_path, verification_strategy="test-run")
+        content = (tmp_path / "wiki" / "routines" / "daily-digest.md").read_text()
+        assert "verification_strategy: test-run" in content
+
+    def test_rejects_bad_strategy(self, tmp_path):
+        r = _run(tmp_path, verification_strategy="eyeball")
+        assert not r.success and "verification_strategy" in r.error
+        assert not (tmp_path / "repos" / "daily-digest").exists()
+
+    def test_tools_default_to_empty_list(self, tmp_path):
+        _run(tmp_path)
+        content = (tmp_path / "wiki" / "routines" / "daily-digest.md").read_text()
+        assert "verification_tools: []" in content
+
+    def test_tools_render_as_yaml_list(self, tmp_path):
+        _run(tmp_path, verification_tools=("pytest", "ruff"))
+        content = (tmp_path / "wiki" / "routines" / "daily-digest.md").read_text()
+        assert "verification_tools: [pytest, ruff]" in content

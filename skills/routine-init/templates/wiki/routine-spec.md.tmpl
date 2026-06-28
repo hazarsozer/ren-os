@@ -1,7 +1,7 @@
 ---
 title: "Routine: {{routine_name}}"
 type: routine-spec
-schema_version: 1
+schema_version: 2
 framework_version: "{{framework_version}}"
 name: "{{routine_name}}"
 trigger_type: "{{trigger_type}}"
@@ -11,6 +11,8 @@ env_secrets_ref: "{{env_secrets_ref}}"
 schedule: "{{schedule}}"
 expected_output: "{{expected_output}}"
 failure_handler: "{{failure_handler}}"
+verification_strategy: {{verification_strategy}}
+verification_tools: {{verification_tools}}
 created: "{{today}}"
 updated: "{{today}}"
 ---
@@ -40,6 +42,11 @@ Documents one live cadence routine deployed via `/ren:routine-init` (ADR-034). S
 ## Failure handling
 
 {{failure_handler}}
+
+## Verification
+
+- **Strategy:** {{verification_strategy}} — how this routine's output is confirmed (visual | test-run | lint | llm-judge | manual).
+- **Tools:** {{verification_tools}}
 
 ## Cross-run memory
 
