@@ -1,12 +1,12 @@
 ---
 name: consolidate
 description: |
-  Use when the friend wants to PROMOTE accumulated hot-tier instincts into the
-  curated wiki — the governed compounding sweep (C3b). Triggers on /ren:consolidate.
-  Reads instincts.md, proposes which durable instincts graduate into curated pages
-  (patterns/decisions/lessons), shows every change as a diff for approval, and applies
-  atomically. Per ADR-009/031: manual, never a Stop hook; LLM proposes, human approves
-  every diff. Companion to /ren:wrap (session consolidate) and /ren:note --instinct (capture).
+  Use when the friend wants a governed, diff-gated wiki sweep — either PROMOTE accumulated
+  hot-tier instincts into the curated wiki (default, C3b) or REPAIR dead links across the
+  wiki (--fix-links, C3c). Triggers on /ren:consolidate. Proposes each change, shows it as a
+  diff for approval, and applies atomically. Per ADR-009/031: manual, never a Stop hook; the
+  tool proposes, the human approves every diff. Companion to /ren:wrap (session consolidate)
+  and /ren:note --instinct (capture).
 version: 0.1.0
 license: MIT
 
@@ -27,11 +27,10 @@ contract:
     read:
       - "~/.startup-framework/wiki/**"
     write:
-      - "~/.startup-framework/wiki/patterns/**"
-      - "~/.startup-framework/wiki/decisions/**"
-      - "~/.startup-framework/wiki/projects/**"
-      - "~/.startup-framework/wiki/instincts.md"
-      - "~/.startup-framework/wiki/log.md"
+      # Default (promotion) writes patterns/decisions/projects + the instincts.md marking.
+      # --fix-links may rewrite a dead link in ANY page, so the sweep's write scope is the
+      # whole wiki; log.md gets one summary line in either mode.
+      - "~/.startup-framework/wiki/**"
     execute: []
   completion_conditions:
     - "Every applied change was shown to the user and approved first"
@@ -57,10 +56,18 @@ Tier 3 of the compounding memory model (ADR-037). C3a gave instincts a cheap hom
 makes them **compound upward** — promoting durable instincts into the curated wiki, one approved diff at a
 time. It is the controllable answer to opaque auto-memory: same benefit, but the human approves every change.
 
+**Two modes, one diff-gate spine:**
+- **promote (default, no flag)** — graduate durable hot-tier instincts into curated pages (C3b).
+- **`--fix-links` (C3c)** — repair dead `[[wikilinks]]` and `](file.md)` links across the wiki.
+
+Both propose changes, gate every diff (`Y/N/E/A`), and apply atomically via the same primitive.
+
 ## When to use this skill
 
-- Friend invokes `/ren:consolidate` (canonical trigger)
+- Friend invokes `/ren:consolidate` (canonical trigger — promote mode)
 - Friend says: "promote my instincts", "consolidate the hot tier", "graduate these lessons", "compound the wiki"
+- Friend invokes `/ren:consolidate --fix-links` (dead-link repair mode, C3c)
+- Friend says: "fix the dead links", "repair broken wikilinks", "the wiki has broken links"
 
 ## When NOT to use this skill
 
@@ -69,7 +76,7 @@ time. It is the controllable answer to opaque auto-memory: same benefit, but the
 - Look something up → `/ren:recall`
 - No unpromoted instincts exist → the skill reports "nothing to consolidate" and exits (no writes)
 
-## The pipeline
+## Mode: promote instincts (default — no flag)
 
 ### Step 1. Read the hot tier (read-only)
 Load the project `wiki/projects/<active>/instincts.md` (resolve the active project as `/ren:wrap`/`/ren:recall`
@@ -104,18 +111,57 @@ On success, append one line to `wiki/log.md` (`consolidated N instincts → M cu
   Hot tier: <K> instincts left unpromoted
 ```
 
-## Idempotency
+## Idempotency (promote mode)
 
 A promoted instinct's source line is annotated in place: `… — text  _(promoted <date> → <page>)_`. Re-running
 the sweep skips marked entries (`unpromoted` excludes them), so promotions never double-fire, and the marker
 traces where each instinct went.
 
-## What `/ren:consolidate` explicitly DOES NOT do (C3b scope)
+## Mode: `--fix-links` — dead-link repair (C3c)
+
+> The first mechanical housekeeping sweep. Detection is a faithful port of doctor's read-only
+> `check-wiki-health.sh`; repair is **deterministic + conservative** — it never removes a link or invents a
+> target. Same gate + atomic apply as promote mode.
+
+### Step 1. Scan (read-only, wiki-wide)
+Glob `wiki/**/*.md` into `pages = {repo_relpath: text}` (keys relative to the git root, e.g.
+`wiki/decisions/037.md`). `lib.find_dead_links(pages)` → dead `[[wikilinks]]` (slug not found) and `](file.md)`
+links (don't resolve relative to the source; `http(s)` ignored). Empty → print "No dead links — the wiki is
+link-healthy." and stop.
+
+### Step 2. Propose repairs (deterministic — bias conservative)
+Build `lib.build_slug_index(pages)` + `lib.build_basename_index(pages)`. For each dead link,
+`lib.propose_link_repair(dead, slug_index, basename_index)`:
+- dead wikilink → fuzzy-match the slug pool (cutoff 0.8); confident match → re-point, else **report** (no diff).
+- dead mdlink → relocate on an unambiguous basename match (corrected relative path), else **report**.
+Links with no confident candidate are collected for the manual-attention report — never guessed or removed.
+
+### Step 3. Gate — show every fix
+For each `LinkRepair` show `source_relpath: <old_literal> → <new_literal>` with `Y / N / E[dit] / A[ll-yes]`.
+**Always prompt.** Dropped repairs leave the link as-is.
+
+### Step 4. Compose per-file + apply atomically
+Group approved repairs by page; `lib.build_link_repair_diffs(page_relpath, page_text, repairs)` → ONE
+`PromotionDiff(kind="link-fix")` per page (multiple fixes coalesce — N same-file diffs would fail the 2nd
+`git apply`). Apply via `lib.apply.apply_diff_entries(...)` — all-or-nothing with rollback. On success append
+one `log.md` line (`fixed N dead links across M pages`) and print:
+```
+/ren:consolidate --fix-links complete.
+  Fixed:  <N> dead links across <M> pages
+  Manual: <K> links with no confident fix (listed above)
+```
+
+### Idempotency (natural)
+A repaired link resolves, so the next scan no longer reports it — no marker needed (unlike promote mode).
+
+## What `/ren:consolidate` explicitly DOES NOT do (C3b + C3c scope)
 
 - Run automatically / autonomously. Manual + interactive only (ADR-009/031).
-- Mechanical housekeeping — dedup, dead-link repair, date-normalize, contradiction-prune. A later sweep slice.
+- Mechanical housekeeping beyond link repair — dedup, date-normalize, contradiction-prune. Later sweep slices.
+- Create a missing target page or remove a link. `--fix-links` only re-points to an existing page; missing
+  targets go to the manual-attention report.
 - The project↔global instinct axis (promoting a project instinct into the global pool). Deferred.
-- Touch `/ren:wrap`'s domain. Wrap owns session→wiki; this owns hot-tier→curated.
+- Touch `/ren:wrap`'s domain. Wrap owns session→wiki; this owns hot-tier→curated + wiki link health.
 - Write any change the user didn't approve. Every diff is gated.
 
 ## Failure-degradation modes
@@ -126,6 +172,8 @@ traces where each instinct went.
 | User rejects a promotion | Drop both diffs of the pair | (that instinct stays in the hot tier) |
 | A diff fails to apply | Full atomic rollback; surface cause | "Apply failed; wiki rolled back. Cause: <err>" |
 | instincts.md missing | Treat as empty | "Nothing to consolidate." |
+| No dead links (`--fix-links`) | Stop cleanly, no writes | "No dead links — the wiki is link-healthy." |
+| A dead link has no confident fix | Skip it; collect for the report | "K link(s) need manual attention: …" |
 
 ## References
 
@@ -133,5 +181,7 @@ traces where each instinct went.
 - ADR-009 (Consolidate via /wrap) — manual posture, never a Stop hook
 - ADR-031 (Solo-First) — LLM proposes / human approves; no speculative autonomy
 - `docs/superpowers/specs/2026-06-28-c3b-consolidate-design.md` — C3b design spec
+- `docs/superpowers/specs/2026-06-28-c3c-link-repair-design.md` — C3c design spec (dead-link repair mode)
 - `skills/wrap/references/wiki-page-mapping.md` — signal→page mapping reused for promotion targets
 - `skills/wrap/lib/apply.py` — the atomic-apply pattern this skill's `lib/apply.py` mirrors
+- `skills/doctor/scripts/check-wiki-health.sh` — the read-only dead-link DETECTOR that `lib/links.py` ports

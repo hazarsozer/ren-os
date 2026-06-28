@@ -145,3 +145,23 @@ C3b ships **tier 3** — the governed sweep — as the new `skills/consolidate/`
 
 This completes the compounding loop: **capture (C3a) → promote (C3b)**. The wiki now compounds upward, under
 human control at every diff.
+
+---
+
+## Amendment — 2026-06-28: C3c first housekeeping sweep — dead-link repair (`/ren:consolidate --fix-links`)
+
+C3c ships the first **mechanical housekeeping** sweep named in §7's deferred list, as a `--fix-links` mode on
+`/ren:consolidate` (design spec `docs/superpowers/specs/2026-06-28-c3c-link-repair-design.md`) — **extending the
+skill** rather than adding one, reusing the C3b diff-gate + atomic-apply spine in-package.
+
+- **Dead-link repair, wiki-wide.** Scans `wiki/**` for dead `[[wikilinks]]` and `](file.md)` links; detection is
+  a faithful Python port of doctor's read-only `check-wiki-health.sh` (doctor *detects*, consolidate now *repairs*).
+- **Deterministic + conservative proposer.** Wikilinks fuzzy-match the slug pool (cutoff 0.8); mdlinks relocate
+  on an unambiguous basename match. It **never removes a link or invents a target** — no-confidence links are
+  reported for manual fixing, never guessed. The human still approves every diff (ADR-031); manual, never a Stop
+  hook (ADR-009).
+- **Gate-per-repair, apply-per-file, naturally idempotent.** Approved fixes for a page coalesce into one
+  `link-fix` diff (atomic apply); a repaired link resolves, so re-scans skip it — no marker needed (unlike promotion).
+- **Still deferred:** dedup, date-normalize, contradiction-prune; the project↔global instinct axis.
+
+The governed sweep now covers both **promotion** (C3b) and **link-health housekeeping** (C3c), each diff-gated.
