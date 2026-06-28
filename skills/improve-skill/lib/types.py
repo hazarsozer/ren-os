@@ -134,6 +134,21 @@ class IterationOutcome:
 
 
 @dataclass(frozen=True)
+class ExperimentEntry:
+    """One improvement experiment for the experiment-log (B1, ADR-037/012).
+
+    Derived from an IterationOutcome; mirrors the forward-declared page-type shape
+    {change, score_before, score_after, disposition, iteration, ts}."""
+
+    iteration: int
+    change: str            # the proposed change's one-line summary
+    score_before: float
+    score_after: float
+    disposition: str       # "kept" | "reverted"
+    ts: str                # ISO date (YYYY-MM-DD) — the run date
+
+
+@dataclass(frozen=True)
 class LoopState:
     """Mutable-by-replacement loop state (still frozen dataclass; new instance per iteration)."""
 
