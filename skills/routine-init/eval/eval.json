@@ -13,6 +13,7 @@
         "<dest>/daily-digest/ contains CLAUDE.md, ROUTINE_PROMPT.md, state.md, run-log.md",
         "~/.startup-framework/wiki/routines/daily-digest.md exists and contains 'type: routine-spec'",
         "The routine-spec page contains name, trigger_type, linked_repo, network_tier frontmatter keys",
+        "The routine-spec page frontmatter has schema_version 2 and a verification_strategy field (v2 — C2)",
         "ROUTINE_PROMPT.md contains the substring 'mcp__resend__send-email'",
         "ROUTINE_PROMPT.md contains the substring '/ren:recall --routine .'",
         "ROUTINE_PROMPT.md contains the substring '/ren:insights'",

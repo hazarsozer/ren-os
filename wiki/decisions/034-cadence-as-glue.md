@@ -111,3 +111,13 @@ rethink.
 - `wiki/research/nate-herk-cadence-automation.md` — the primitive ladder, conventions, open tensions
 - `wiki/research/new-angles-for-the-os.md` — Pillar 3 (control the truth / leverage the muscle) + the cadence angles
 - ADR-003 (no-daemon rule) · ADR-026 (git backup plumbing) · ADR-014/027 (page-type taxonomy + schema registry) · ADR-031 (solo-first permission posture)
+
+---
+
+## Amendment — 2026-06-28: `routine-spec` v2 — `verification_strategy` (C2)
+
+`routine-spec` gains a v2 (additive — the framework's first real schema migration; see the ADR-027 amendment):
+**`verification_strategy`** (`visual | test-run | lint | llm-judge | manual`) + optional **`verification_tools`**
+— how a routine's output is confirmed, not just what it does and how it fails. `/ren:routine-init` elicits it
+(`--verify`, default `manual`); new pages write at schema 2, and v1 pages migrate via
+`migrations/routine-spec-1-to-2/`. Design spec `docs/superpowers/specs/2026-06-28-c2-routine-spec-v2-design.md`.

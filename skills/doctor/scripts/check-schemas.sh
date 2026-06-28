@@ -74,6 +74,8 @@ def globs_for(pt: str) -> list[str]:
     if pt == "licenses":
         p = os.path.join(wiki_root, "LICENSES.md")
         return [p] if os.path.isfile(p) else []
+    if pt == "routine-spec":
+        return glob.glob(os.path.join(wiki_root, "routines", "*.md"))
     return []
 
 frontmatter_re = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)

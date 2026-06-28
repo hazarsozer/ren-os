@@ -547,3 +547,17 @@ The first of C3a's forward-declared page-type writers. Built on `feat/b1-experim
 - **Why now:** the experiment-log is the loop's compounding memory + the supervised-run audit trail ADR-036 requires before `/ren:improve-skill` earns autonomy.
 
 **Deferred:** C2 (`routine-spec` v2 `verification_strategy`) is the next page-type slice; a master-level `wiki/experiment-log.md`. TDD: 12 new tests (build 6 + render 3 + append 3); improve-skill **236 + 1 skip**; `claude plugin validate --strict` ✔.
+
+---
+
+## 2026-06-28 — C2: routine-spec v2 verification_strategy (the framework's first real schema migration)
+
+Closes the C3a page-type batch. Built on `feat/c2-routine-spec-v2` off `feat/project-ingest` (design spec `docs/superpowers/specs/2026-06-28-c2-routine-spec-v2-design.md`). Until now every page-type sat at `current: 1, migrations: []`; C2 is the first to exercise the ADR-027 machinery end-to-end.
+
+- **The field:** `routine-spec` v2 adds `verification_strategy` (`visual | test-run | lint | llm-judge | manual`) + optional `verification_tools` — how a routine's output is confirmed. Additive → MINOR (ADR-019/027).
+- **The migration** (`migrations/routine-spec-1-to-2/`, scripted): idempotent guard, frontmatter-bounded sed (bump schema + insert the two fields with defaults), body byte-identical. `migrate.sh` writes **clean values without inline `#` comments** — the naive frontmatter parsers don't strip comments, so a commented value would fail `verify.json`'s `yaml.in` enum check (caught during TDD). Verified end-to-end against a fixture: migrate → `verify-page.sh` passes → idempotent rerun SKIPs.
+- **Latent gap fixed:** `routine-spec` was absent from BOTH `compute-migration-chain.sh:files_for()` and `doctor/check-schemas.sh:globs_for()` (both predate C4) — so `/ren:update` would compute no chain and `/ren:doctor` would show `skip`. Both now glob `wiki/routines/*.md`. (`instincts`/`experiment-log` are likewise absent but harmless at `current:1` — deferred.)
+- **Writer:** `/ren:routine-init` elicits `--verify` (default `manual`) + `--verify-tools`; the template writes schema 2 + the two fields (unquoted, byte-matching the migration output).
+- **Registry:** `routine-spec` `current: 1 → 2`, `migrations: ["1-to-2"]`. ADR-027 + ADR-034 amended; CHANGELOG `### Schema` gains its first real entry.
+
+TDD: routine-spec migration **7** (transform + verify + idempotent + body-identical + discovery) + routine-init **18** (+6) + doctor check-schemas **5**; `verify.json` conforms to `verify.schema.json`; `claude plugin validate --strict` ✔.
