@@ -39,6 +39,47 @@ profiles:
         # /ren:interview re-runs are responsible for in-place updates; Stage 5
         # only writes this template if no identity.md exists yet.
 
+      - path: "venture/"
+        type: directory
+        write_rule: create_if_missing
+        min_framework_version: "1.0.0"
+        description: "Venture/studio profile dir (broadened onboarding, H2.3)"
+
+      - path: "venture/company.md"
+        template: "templates/venture/company.md.tmpl"
+        type: file
+        write_rule: copy_if_missing
+        min_framework_version: "1.0.0"
+        description: "Venture stub: what you're building + stage; /ren:interview venture arc populates it"
+
+      - path: "venture/market.md"
+        template: "templates/venture/market.md.tmpl"
+        type: file
+        write_rule: copy_if_missing
+        min_framework_version: "1.0.0"
+        description: "Venture stub: the market/space"
+
+      - path: "venture/icp.md"
+        template: "templates/venture/icp.md.tmpl"
+        type: file
+        write_rule: copy_if_missing
+        min_framework_version: "1.0.0"
+        description: "Venture stub: ideal customer profile"
+
+      - path: "venture/team.md"
+        template: "templates/venture/team.md.tmpl"
+        type: file
+        write_rule: copy_if_missing
+        min_framework_version: "1.0.0"
+        description: "Venture stub: who's building"
+
+      - path: "venture/brain-dump.md"
+        template: "templates/venture/brain-dump.md.tmpl"
+        type: file
+        write_rule: copy_if_missing
+        min_framework_version: "1.0.0"
+        description: "Venture stub: freeform scratch space"
+
       - path: "LICENSES.md"
         template: "templates/LICENSES.md.tmpl"
         type: file

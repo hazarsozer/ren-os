@@ -72,6 +72,8 @@ simulated_friend_responses:
   q16-avoid-patterns: "Over-engineering; premature abstractions; excessive comments."
   q17-phase: "ideation"
   q18-contribution: "I plan and prototype quickly; bias toward AI/backend in friend-group splits."
+  # H2.3: declines the optional venture arc — this fixture stays identity-only.
+  f-venture-gate: "skip"
 
 expected_writes_after_run:
   - ~/.startup-framework/wiki/identity.md

@@ -280,3 +280,24 @@ These assertions are checked by Skill Creator's eval loop (per ADR-012 Layer 1 +
 - ADR-017 (Per-Friend Wiki Scope) — identity.md is per-friend-local
 - ADR-018 (Activity Feed) — public summary in `<activity-feed>/identities/<handle>.md`
 - ADR-020 (Joiner & Leaver) — re-running the interview matters for friends evolving over time
+
+---
+
+## Amendment — 2026-06-28: broadened onboarding (the optional venture arc, H2.3)
+
+H2 part 3 ships: `/ren:interview` is **broadened beyond identity-only** to optionally capture the friend's
+venture/studio context — "Ben's 12-section population (you/company/market/ICP/team + brain-dump)" — for a
+day-1 populated brain (design spec `docs/superpowers/specs/2026-06-28-h2-broadened-onboarding-design.md`).
+
+- **Separate pages, fully additive.** The "you" stays in `identity.md` (friend-profile v1, **unchanged — no
+  migration**). The venture layer is a **new loose page-type `venture-profile`** (universal triple + `section`)
+  across five pages `wiki/venture/{company,market,icp,team,brain-dump}.md`, stamped by install Stage 5
+  (skeleton templates) and populated in place by a new **optional Section F** of the interview.
+- **Optional + explorer-safe.** Section F is gated ("Want to sketch your venture/studio context now?"); a
+  pre-idea friend declines (records `f-venture` in `skipped_questions`) and the stubs stay `_TBD_` placeholders
+  (the ingest-project honest-placeholder ethic). Adding/changing F questions never bumps the identity schema —
+  F writes to `venture-profile` pages, not `identity.md` fields (question-template v2 records the exemption).
+- **Registry:** `venture-profile` registered `current: 1` (ADR-027); conformance scans the five templates strict.
+
+This closes H2 (parts 1+2 shipped 2026-06-27; part 3 here). Onboarding now populates the venture brain, not
+just identity — under the same per-friend-local, additive, friend-approved discipline.

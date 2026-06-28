@@ -14,6 +14,16 @@
       "adr_refs": ["ADR-015"],
       "migrations": []
     },
+    "venture-profile": {
+      "current": 1,
+      "supported_from": 1,
+      "deprecated_below": null,
+      "path_pattern": "wiki/venture/<section>.md",
+      "description": "Master-level venture/studio profile (company | market | icp | team | brain-dump) populated by the broadened /ren:interview venture arc, beyond identity-only (H2.3). Loose page-type: universal triple + section.",
+      "owner_module": "sf-onboarding",
+      "adr_refs": ["ADR-022", "ADR-015"],
+      "migrations": []
+    },
     "master-index": {
       "current": 1,
       "supported_from": 1,

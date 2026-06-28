@@ -1,6 +1,6 @@
 {
   "name": "sf-interview",
-  "description": "Binary-assertion test suite for /ren:interview. Covers fresh-bootstrap, refresh on existing identity, emoji-free style respect, and handle validation.",
+  "description": "Binary-assertion test suite for /ren:interview. Covers fresh-bootstrap, refresh on existing identity, emoji-free style respect, handle validation, skipped questions, and the optional venture arc (H2.3).",
   "schema_version": 1,
   "tests": [
     {
@@ -70,6 +70,31 @@
         "strong_skills field has its default value (empty list) since Q4 was skipped",
         "Markdown body's 'Strong opinions + non-goals' section is present but only contains the TDD framing from Q15 (no Q16 content)",
         "Re-running /ren:interview detects skipped questions and offers to ask them again as part of a refresh"
+      ]
+    },
+    {
+      "id": "venture-arc-populates",
+      "fixture": "fixtures/venture-arc.yaml",
+      "prompt": "/ren:interview",
+      "expected_output_summary": "Friend opts into Section F; the five wiki/venture/ pages are populated from F1-F5 (H2.3 broadened onboarding).",
+      "trigger_test": false,
+      "binary_assertions": [
+        "After the run, each of wiki/venture/{company,market,icp,team,brain-dump}.md exists with 'type: venture-profile' frontmatter and the matching 'section' value",
+        "Each written venture page body contains the friend's F-answer, not the _TBD_ placeholder",
+        "identity.md is still written and conforms to the friend-profile schema; its schema_version stays 1 (the venture arc does not migrate identity)",
+        "A venture page whose F-question was skipped keeps its _TBD_ placeholder body and is not overwritten"
+      ]
+    },
+    {
+      "id": "venture-arc-skipped",
+      "fixture": "fixtures/fresh-interview.yaml",
+      "prompt": "/ren:interview",
+      "expected_output_summary": "Friend declines the Section F gate; venture stubs stay placeholders and identity-only completes as before.",
+      "trigger_test": false,
+      "binary_assertions": [
+        "When the friend answers 'skip' to the Section F gate, no wiki/venture/<section>.md page is overwritten (placeholders intact)",
+        "skipped_questions in identity.md contains 'f-venture'",
+        "identity.md is written exactly as in the identity-only flow (the venture arc is purely additive and optional)"
       ]
     }
   ],
