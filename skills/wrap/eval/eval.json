@@ -2,7 +2,7 @@
   "name": "sf-wrap",
   "description": "Binary-assertion test suite for /ren:wrap. Each test provides a fixture session transcript + expected classifier label + expected wiki-page diff plan. Tests are run by /ren:improve-skill's Karpathy loop (per ADR-012) and by CI. Solo-first (ADR-031): the default classifier is a conservative deterministic heuristic and there is no Activity Feed write.",
   "schema_version": 1,
-  "framework_version": "1.0.0",
+  "framework_version": "0.1.0",
   "_status": "scaffold — fixtures pending; assertions are the testable goals as /ren:wrap implementation lands. Schema conforms to ADR-011 §eval.json schema.",
   "tests": [
     {

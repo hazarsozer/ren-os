@@ -5,7 +5,7 @@
 # Consumed by eval.json test "ingest-name-collision-additive".
 
 fixture_name: ingest-name-collision
-framework_version: "1.0.0"
+framework_version: "0.1.0"
 simulated_date: "2026-05-31"
 
 environment:
@@ -30,7 +30,7 @@ filesystem:
     frontmatter:
       handle: tester
       name: "Tester"
-      framework_version: "1.0.0"
+      framework_version: "0.1.0"
 
   # Pre-existing partial sub-wiki — only 3 of 7 pages are present.
   - path: ~/.startup-framework/wiki/projects/demo-api/PROJECT.md

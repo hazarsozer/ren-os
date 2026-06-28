@@ -20,21 +20,21 @@ profiles:
         template: "templates/index.md.tmpl"
         type: file
         write_rule: copy_if_missing
-        min_framework_version: "1.0.0"
+        min_framework_version: "0.1.0"
         description: "Master catalog index; empty section headers, frontmatter only"
 
       - path: "log.md"
         template: "templates/log.md.tmpl"
         type: file
         write_rule: copy_if_missing
-        min_framework_version: "1.0.0"
+        min_framework_version: "0.1.0"
         description: "Master chronological event log; single init entry"
 
       - path: "identity.md"
         template: "templates/identity.md.tmpl"
         type: file
         write_rule: copy_if_missing
-        min_framework_version: "1.0.0"
+        min_framework_version: "0.1.0"
         description: "Identity frontmatter stub; /ren:interview populates fields"
         # /ren:interview re-runs are responsible for in-place updates; Stage 5
         # only writes this template if no identity.md exists yet.
@@ -42,42 +42,42 @@ profiles:
       - path: "venture/"
         type: directory
         write_rule: create_if_missing
-        min_framework_version: "1.0.0"
+        min_framework_version: "0.1.0"
         description: "Venture/studio profile dir (broadened onboarding, H2.3)"
 
       - path: "venture/company.md"
         template: "templates/venture/company.md.tmpl"
         type: file
         write_rule: copy_if_missing
-        min_framework_version: "1.0.0"
+        min_framework_version: "0.1.0"
         description: "Venture stub: what you're building + stage; /ren:interview venture arc populates it"
 
       - path: "venture/market.md"
         template: "templates/venture/market.md.tmpl"
         type: file
         write_rule: copy_if_missing
-        min_framework_version: "1.0.0"
+        min_framework_version: "0.1.0"
         description: "Venture stub: the market/space"
 
       - path: "venture/icp.md"
         template: "templates/venture/icp.md.tmpl"
         type: file
         write_rule: copy_if_missing
-        min_framework_version: "1.0.0"
+        min_framework_version: "0.1.0"
         description: "Venture stub: ideal customer profile"
 
       - path: "venture/team.md"
         template: "templates/venture/team.md.tmpl"
         type: file
         write_rule: copy_if_missing
-        min_framework_version: "1.0.0"
+        min_framework_version: "0.1.0"
         description: "Venture stub: who's building"
 
       - path: "venture/brain-dump.md"
         template: "templates/venture/brain-dump.md.tmpl"
         type: file
         write_rule: copy_if_missing
-        min_framework_version: "1.0.0"
+        min_framework_version: "0.1.0"
         description: "Venture stub: freeform scratch space"
 
       - path: "LICENSES.md"
@@ -85,33 +85,33 @@ profiles:
         type: file
         write_rule: copy_if_missing
         generated_at: stage-6
-        min_framework_version: "1.0.0"
+        min_framework_version: "0.1.0"
         description: "Plugin-license summary; written by Stage 6 from the registry"
 
       - path: "research/"
         type: directory
         write_rule: create_if_missing
-        min_framework_version: "1.0.0"
+        min_framework_version: "0.1.0"
 
       - path: "decisions/"
         type: directory
         write_rule: create_if_missing
-        min_framework_version: "1.0.0"
+        min_framework_version: "0.1.0"
 
       - path: "alternatives/"
         type: directory
         write_rule: create_if_missing
-        min_framework_version: "1.0.0"
+        min_framework_version: "0.1.0"
 
       - path: "patterns/"
         type: directory
         write_rule: create_if_missing
-        min_framework_version: "1.0.0"
+        min_framework_version: "0.1.0"
 
       - path: "projects/"
         type: directory
         write_rule: create_if_missing
-        min_framework_version: "1.0.0"
+        min_framework_version: "0.1.0"
 
   project:
     description: "Files stamped into wiki/projects/<project>/ by /ren:bootstrap-project"
@@ -137,7 +137,7 @@ profiles:
 #   {{handle}}             friend handle (kebab-case)         required for identity.md
 #   {{name}}               friend display name                required for identity.md
 #   {{today}}              ISO date YYYY-MM-DD                always available
-#   {{framework_version}}  framework semver (e.g. "1.0.0")    always available
+#   {{framework_version}}  framework semver (e.g. "0.1.0")    always available
 #
 # Missing placeholder values cause the loader to leave the literal {{var}} in
 # the file and emit a warning. No silent substitution with empty strings.

@@ -194,7 +194,7 @@ class TestDecisionCase:
         # And contains the required frontmatter triple
         assert 'type: decision' in new_page_entry.unified_diff
         assert 'schema_version: 1' in new_page_entry.unified_diff
-        assert 'framework_version: "1.0.0"' in new_page_entry.unified_diff
+        assert 'framework_version: "0.1.0"' in new_page_entry.unified_diff
 
     def test_decision_appends_master_log(self, wiki_root: Path, project_wiki: Path):
         artifact = CandidateArtifact(
@@ -349,7 +349,7 @@ class TestAtomicityInvariant:
 class TestFrameworkVersionResolution:
     def test_frontmatter_uses_resolver_not_hardcoded(self, monkeypatch):
         """New-page frontmatter must reflect the resolved framework version,
-        not a hardcoded '1.0.0'. Override via the highest-precedence env tier."""
+        not a hardcoded '0.1.0'. Override via the highest-precedence env tier."""
         from ..diff_plan import _frontmatter_for
         monkeypatch.setenv("CLAUDE_PLUGIN_OPTION_FRAMEWORK_VERSION", "9.9.9")
         fm = _frontmatter_for("decision", "Title", "2026-05-31")
@@ -357,21 +357,21 @@ class TestFrameworkVersionResolution:
 
     def test_frontmatter_uses_default_when_no_env_override(self, monkeypatch):
         """No env override → the resolver loads sf_paths, whose own lowest tier
-        returns its default ('1.0.0'). This exercises the success path's default,
+        returns its default ('0.1.0'). This exercises the success path's default,
         NOT the resolver's except-branch fallback (see the test below for that)."""
         from ..diff_plan import _frontmatter_for
         monkeypatch.delenv("CLAUDE_PLUGIN_OPTION_FRAMEWORK_VERSION", raising=False)
         monkeypatch.delenv("CLAUDE_PLUGIN_ROOT", raising=False)
         fm = _frontmatter_for("decision", "Title", "2026-05-31")
-        assert 'framework_version: "1.0.0"' in fm
+        assert 'framework_version: "0.1.0"' in fm
 
     def test_framework_version_falls_back_on_load_failure(self, monkeypatch):
         """Force the except branch: if sf_paths.py can't be loaded, the resolver
-        returns its hardcoded '1.0.0' fallback so frontmatter is never broken."""
+        returns its hardcoded '0.1.0' fallback so frontmatter is never broken."""
         import importlib.util
         from .. import diff_plan
         monkeypatch.setattr(
             importlib.util, "spec_from_file_location",
             lambda *a, **k: (_ for _ in ()).throw(OSError("forced")),
         )
-        assert diff_plan._framework_version() == "1.0.0"
+        assert diff_plan._framework_version() == "0.1.0"

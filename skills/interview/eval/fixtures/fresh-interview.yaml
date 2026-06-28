@@ -4,7 +4,7 @@
 # skipped-question-handling.
 
 fixture_name: fresh-interview
-framework_version: "1.0.0"
+framework_version: "0.1.0"
 simulated_date: "2026-05-29"
 
 environment:

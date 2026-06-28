@@ -2,7 +2,7 @@
   "name": "ingest-project",
   "description": "Binary-assertion test suite for /ren:ingest-project. Each test runs a simulated invocation against a fixture and verifies the assertions hold. Load-bearing: the user's project is never modified; writes are additive; no content is invented.",
   "schema_version": 1,
-  "framework_version": "1.0.0",
+  "framework_version": "0.1.0",
   "tests": [
     {
       "id": "ingest-happy-path",

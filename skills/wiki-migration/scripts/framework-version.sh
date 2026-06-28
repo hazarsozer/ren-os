@@ -4,7 +4,7 @@
 # Resolution chain (same as lib.sf_paths.framework_version()):
 #   1. $CLAUDE_PLUGIN_OPTION_FRAMEWORK_VERSION (env)         — explicit override
 #   2. $CLAUDE_PLUGIN_ROOT/.claude-plugin/plugin.json#version — canonical install
-#   3. Fallback "1.0.0"                                       — only if both above fail
+#   3. Fallback "0.1.0"                                       — only if both above fail
 #
 # Fail-open semantics: any error falls through to the next layer; never raises.
 # Stdout: exactly one line containing the version. No newlines or extra output.
@@ -38,5 +38,5 @@ if [[ -n "${CLAUDE_PLUGIN_ROOT:-}" && -f "$PJ" ]]; then
 fi
 
 # Layer 3: fallback
-printf '1.0.0'
+printf '0.1.0'
 exit 0

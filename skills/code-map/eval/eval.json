@@ -2,7 +2,7 @@
   "name": "code-map",
   "description": "Binary-assertion suite for /ren:code-map. Load-bearing: the project is never modified; the map is a cache, not wiki content; absence of lean-ctx degrades gracefully.",
   "schema_version": 1,
-  "framework_version": "1.0.0",
+  "framework_version": "0.1.0",
   "tests": [
     {
       "id": "code-map-happy-path",

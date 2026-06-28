@@ -27,7 +27,7 @@ filesystem:
     frontmatter:
       handle: hazar
       name: "Hazar"
-      framework_version: "1.0.0"
+      framework_version: "0.1.0"
 
   - path: ~/.startup-framework/wiki/projects/sidecar-v2/PROJECT.md
     kind: file

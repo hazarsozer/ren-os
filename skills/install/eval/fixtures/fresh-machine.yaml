@@ -6,7 +6,7 @@
 # abort-and-resume-on-plugin-fail, reset-command.
 
 fixture_name: fresh-machine
-framework_version: "1.0.0"
+framework_version: "0.1.0"
 simulated_date: "2026-05-29"
 
 environment:
@@ -49,7 +49,7 @@ simulated_friend_responses:
 
 simulated_plugin_registry:
   schema_version: 1
-  framework_version: "1.0.0"
+  framework_version: "0.1.0"
   plugins:
     context-mode:         { version: "1.4.0", marketplace: "mksglu/context-mode", id: "context-mode@context-mode" }
     claude-mem:           { version: "2.1.3", marketplace: "thedotmack/claude-mem", id: "claude-mem" }

@@ -120,7 +120,7 @@ class InstallSimulator:
                                     (must stay [] — P2)
     """
 
-    FRAMEWORK_VERSION = "1.0.0"
+    FRAMEWORK_VERSION = "0.1.0"
     REQUIRED_PLUGIN_NAMES = (
         "context-mode",
         "claude-mem",

@@ -21,7 +21,7 @@ def test_fresh_machine_writes_valid_checkpoint(simulator, tmp_checkpoint: Path) 
     assert tmp_checkpoint.exists()
     state = json.loads(tmp_checkpoint.read_text(encoding="utf-8"))
     assert state["schema_version"] == 1
-    assert state["framework_version"] == "1.0.0"
+    assert state["framework_version"] == "0.1.0"
     assert "started_at" in state
     assert "last_updated_at" in state
     assert state["completed_stages"] == [1, 2, 3, 4, 5, 6, 7]

@@ -9,7 +9,7 @@
 #   - "ingest-no-invention-on-thin-evidence" appends '--depth light' to the prompt.
 
 fixture_name: ingest-python-project
-framework_version: "1.0.0"
+framework_version: "0.1.0"
 simulated_date: "2026-05-31"
 
 environment:
@@ -21,7 +21,7 @@ filesystem:
   - path: ~/.startup-framework/wiki/index.md
     kind: file
     content_summary: |
-      Master index with frontmatter (schema_version 1, framework_version 1.0.0),
+      Master index with frontmatter (schema_version 1, framework_version 0.1.0),
       empty section headers including '## Projects' (no entries yet),
       and a 'See also' pointer to log.md.
 
@@ -37,7 +37,7 @@ filesystem:
       title: "Tester's Identity"
       type: identity
       schema_version: 1
-      framework_version: "1.0.0"
+      framework_version: "0.1.0"
       handle: tester
       name: "Tester"
       created: "2026-05-28"

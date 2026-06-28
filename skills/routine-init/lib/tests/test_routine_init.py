@@ -99,7 +99,7 @@ class TestSpecPage:
         content = (tmp_path / "wiki" / "routines" / "daily-digest.md").read_text()
         for key in ("name:", "trigger_type:", "linked_repo:", "network_tier:"):
             assert key in content
-        assert 'framework_version: "1.0.0"' in content
+        assert 'framework_version: "0.1.0"' in content
 
     def test_refuses_existing_spec_page(self, tmp_path):
         (tmp_path / "wiki" / "routines").mkdir(parents=True)

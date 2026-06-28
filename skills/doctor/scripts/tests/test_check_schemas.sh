@@ -44,7 +44,7 @@ for i in 1 2 3 4 5; do
 ---
 type: research
 schema_version: 1
-framework_version: 1.0.0
+framework_version: 0.1.0
 title: "Topic ${i}"
 ---
 
@@ -106,7 +106,7 @@ cat > "$TMPWIKI/research/topic-a.md" <<'EOF'
 ---
 type: research
 schema_version: 1
-framework_version: 1.0.0
+framework_version: 0.1.0
 ---
 
 ok
@@ -116,7 +116,7 @@ cat > "$TMPWIKI/research/topic-b.md" <<'EOF'
 ---
 type: research
 schema_version: 1
-framework_version: 1.0.0
+framework_version: 0.1.0
 ---
 
 ok
@@ -152,7 +152,7 @@ for i in 1 2; do
 ---
 type: research
 schema_version: 1
-framework_version: 1.0.0
+framework_version: 0.1.0
 ---
 EOF
 done
@@ -160,7 +160,7 @@ cat > "$TMPWIKI/research/at-v2.md" <<EOF
 ---
 type: research
 schema_version: 2
-framework_version: 1.0.0
+framework_version: 0.1.0
 ---
 EOF
 

@@ -5,7 +5,7 @@
 # which exercises the same starting state with a malformed name).
 
 fixture_name: bootstrap-new-project
-framework_version: "1.0.0"
+framework_version: "0.1.0"
 simulated_date: "2026-05-29"
 
 environment:
@@ -17,7 +17,7 @@ filesystem:
   - path: ~/.startup-framework/wiki/index.md
     kind: file
     content_summary: |
-      Master index with frontmatter (schema_version 1, framework_version 1.0.0),
+      Master index with frontmatter (schema_version 1, framework_version 0.1.0),
       empty section headers including '## Projects' (no entries yet),
       and a 'See also' pointer to log.md.
 
@@ -33,7 +33,7 @@ filesystem:
       title: "Hazar's Identity"
       type: identity
       schema_version: 1
-      framework_version: "1.0.0"
+      framework_version: "0.1.0"
       handle: hazar
       name: "Hazar"
       created: "2026-05-28"

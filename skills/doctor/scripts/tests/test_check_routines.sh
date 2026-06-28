@@ -16,7 +16,7 @@ mk_routine() {  # $1=slug $2=trigger $3=tier
 ---
 type: routine-spec
 schema_version: 1
-framework_version: "1.0.0"
+framework_version: "0.1.0"
 name: "$1"
 trigger_type: "$2"
 linked_repo: "https://github.com/u/$1"

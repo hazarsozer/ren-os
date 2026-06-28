@@ -41,9 +41,11 @@ WIKI_ROOT_PLUGIN_OPTION = "CLAUDE_PLUGIN_OPTION_WIKIROOT"
 Honored on its own — independent of `SF_FRAMEWORK_ROOT` — so a friend who configures
 only `wikiRoot` reads/writes the path they advertised (Codex F1)."""
 
-FALLBACK_FRAMEWORK_VERSION = "1.0.0"
+FALLBACK_FRAMEWORK_VERSION = "0.1.0"
 """Fallback used when no installed-plugin metadata is reachable. Matches
-distribution-2's schemas.json top-level value for v1.0.0. Tests pinned to this."""
+plugin.json#version (the SSOT) and schemas.json's top-level framework_version.
+Tests pinned to this. In a real install Layer 2 (plugin.json) wins, so this
+only stamps in bare-checkout/test contexts."""
 
 
 def framework_version() -> str:

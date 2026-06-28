@@ -3,7 +3,7 @@
 # Consumed by eval.json test "refresh-existing".
 
 fixture_name: refresh-existing
-framework_version: "1.0.0"
+framework_version: "0.1.0"
 simulated_date: "2026-06-15"
 
 environment:
@@ -22,7 +22,7 @@ filesystem:
       title: "Hazar's Identity"
       type: identity
       schema_version: 1
-      framework_version: "1.0.0"
+      framework_version: "0.1.0"
       handle: "hazar"
       name: "Hazar"
       created: "2026-05-29"

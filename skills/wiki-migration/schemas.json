@@ -1,6 +1,6 @@
 {
   "$schema": "./schemas.schema.json",
-  "framework_version": "1.0.0",
+  "framework_version": "0.1.0",
   "_comment": "Canonical schema-version registry per ADR-027. Owned by sf-distribution; peers PR their page-types here. Authoritative source: this file. /ren:doctor reads this to compute drift; /ren:update consults this to compute migration chains. Do NOT edit on a friend's machine — it lives in the plugin install and is replaced on each /ren:update.",
   "_path_pattern_note": "v1.0: `path_pattern` is documentation/lint-helper only. NOT runtime-enforced — the actual file-discovery patterns are hardcoded in skills/doctor/scripts/check-schemas.sh and skills/wiki-migration/scripts/compute-migration-chain.sh (Python helpers). Marked for v1.1 unification: extract a single pattern-resolver that consumes path_pattern directly. Placeholders documented: <name>=project basename (literal alphanumeric+hyphens); <handle>=friend handle; <topic>=research-page slug; <NNN>=zero-padded 3-digit ADR number; <slug>=kebab-case identifier.",
   "page_types": {

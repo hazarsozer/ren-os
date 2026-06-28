@@ -18,7 +18,7 @@ from typing import Final
 
 logger = logging.getLogger(__name__)
 
-FRAMEWORK_VERSION: Final[str] = "1.0.0"
+FRAMEWORK_VERSION: Final[str] = "0.1.0"
 VALID_TRIGGERS: Final[frozenset[str]] = frozenset({"cron", "api", "github"})
 VALID_TIERS: Final[frozenset[str]] = frozenset({"trusted", "full", "custom"})
 VALID_VERIFICATION_STRATEGIES: Final[frozenset[str]] = frozenset(

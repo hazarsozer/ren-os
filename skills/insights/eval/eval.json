@@ -2,7 +2,7 @@
   "name": "sf-insights",
   "description": "Binary-assertion test suite for /ren:insights. Validates the read-only invariant (no files written), the four-section synthesis output, empty-window tolerance, and --days respect.",
   "schema_version": 1,
-  "framework_version": "1.0.0",
+  "framework_version": "0.1.0",
   "tests": [
     {
       "id": "default-window-four-sections",

@@ -4,7 +4,7 @@
 # Identity answers are abbreviated — the venture arc is what this fixture exercises.
 
 fixture_name: venture-arc
-framework_version: "1.0.0"
+framework_version: "0.1.0"
 simulated_date: "2026-05-29"
 
 environment:

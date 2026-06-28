@@ -5,7 +5,7 @@
 # Consumed by eval.json test "emoji-free-respect".
 
 fixture_name: emoji-free-respect
-framework_version: "1.0.0"
+framework_version: "0.1.0"
 simulated_date: "2026-05-29"
 
 environment:

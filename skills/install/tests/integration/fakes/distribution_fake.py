@@ -96,7 +96,7 @@ class DistributionFake:
     def __init__(self) -> None:
         self._registry = PinnedRegistry(
             schema_version=1,
-            framework_version="1.0.0",
+            framework_version="0.1.0",
             plugins=_DEFAULT_PLUGINS,
         )
         self._licenses_md_content: str = ""

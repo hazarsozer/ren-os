@@ -13,7 +13,7 @@ def _write_routine(routines_dir: Path, slug: str, *, trigger="cron", tier="trust
         "---\n"
         "type: routine-spec\n"
         "schema_version: 1\n"
-        'framework_version: "1.0.0"\n'
+        'framework_version: "0.1.0"\n'
         f'name: "{slug}"\n'
         f'trigger_type: "{trigger}"\n'
         f'linked_repo: "{repo}"\n'

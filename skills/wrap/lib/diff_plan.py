@@ -59,7 +59,7 @@ def _framework_version() -> str:
 
     Loaded by file path (not `import lib.sf_paths`) to avoid the name collision
     with this skill's own `lib/` package under the per-module test harness.
-    Falls back to "1.0.0" if unreachable so frontmatter is never broken.
+    Falls back to "0.1.0" if unreachable so frontmatter is never broken.
     """
     import importlib.util
     from pathlib import Path as _P
@@ -70,7 +70,7 @@ def _framework_version() -> str:
         spec.loader.exec_module(mod)
         return mod.framework_version()
     except Exception:
-        return "1.0.0"  # mirrors lib/sf_paths.py FALLBACK_FRAMEWORK_VERSION — keep in sync
+        return "0.1.0"  # mirrors lib/sf_paths.py FALLBACK_FRAMEWORK_VERSION — keep in sync
 
 
 def _today_iso() -> str:
