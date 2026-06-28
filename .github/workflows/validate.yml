@@ -209,3 +209,6 @@ jobs:
             echo "::endgroup::"
           done < <(find skills hooks -path '*/tests/test_*.sh' -type f | sort)
           exit $FAIL
+
+      - name: wiki-skeleton dev-content lint (no ADR/founder/codename leak into shipped templates, ADR-017)
+        run: python3 wiki-skeleton/tests/lint_no_dev_wiki_content.py

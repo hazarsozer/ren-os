@@ -1,6 +1,6 @@
 # Routine prompt — {{routine_name}}
 
-> The prompt the scheduled run executes. Skill-as-routine-prompt convention (ADR-034):
+> The prompt the scheduled run executes. Skill-as-routine-prompt convention:
 > one named /ren: skill, explicit order of operations, one pass, then exit.
 
 ## Order of operations
@@ -11,14 +11,14 @@
    ```
    git add -A && git commit -m "routine {{routine_name}}: <summary>" && git push origin HEAD
    ```
-   (Pull-model write-back per ADR-026 — the run pushes; the human pulls.)
+   (Pull-model write-back — the run pushes; the human pulls.)
 4. **Exit.** This is a SINGLE-PASS run. Do not start a `/loop`, do not schedule additional crons, do not iterate beyond the one pass above.
 
 ## Secrets
 
 {{env_secrets_ref}} — available as environment variables. Use directly; do NOT look for a `.env`.
 
-## Failure handler (required — ADR-034)
+## Failure handler (required)
 
 If this run fails for ANY reason — an error, an unmet precondition, or an empty result where output was expected — then BEFORE exiting, send an email via the Resend MCP tool `mcp__resend__send-email`:
 
