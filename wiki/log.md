@@ -561,3 +561,13 @@ Closes the C3a page-type batch. Built on `feat/c2-routine-spec-v2` off `feat/pro
 - **Registry:** `routine-spec` `current: 1 → 2`, `migrations: ["1-to-2"]`. ADR-027 + ADR-034 amended; CHANGELOG `### Schema` gains its first real entry.
 
 TDD: routine-spec migration **7** (transform + verify + idempotent + body-identical + discovery) + routine-init **18** (+6) + doctor check-schemas **5**; `verify.json` conforms to `verify.schema.json`; `claude plugin validate --strict` ✔.
+
+## 2026-06-28 — C3: project↔global instinct axis (`/ren:consolidate --to-global`)
+
+Completes C3's last buildable axis (ADR-037 §1 "promotes project→global"). Built on `feat/c3-project-global-axis` off `feat/project-ingest` (design spec `docs/superpowers/specs/2026-06-28-c3-project-global-axis-design.md`); C3b and C3c had both listed this axis as deferred.
+
+- **The mode:** `/ren:consolidate --to-global` reads the active project's `wiki/projects/<p>/instincts.md`, the LLM selects **cross-project-general** unpromoted instincts, and each graduates into the master `wiki/instincts.md` (created with `scope: global` frontmatter if absent), preserving original kind/date/text.
+- **The builder:** `lib.build_globalize_diffs` — a coalesced **2-diff plan** (one global page-edit appending all bullets + ONE project marking covering all source lines; K separate same-file diffs would fail the 2nd `git apply` — the C3c lesson), applied atomically via the reused `apply_diff_entries`. Idempotent via the same `_(promoted … → wiki/instincts.md)_` marker; one-way (no global→project demotion). The global-instincts header is replicated from `note` (skill libs can't cross-import).
+- **Still deferred** (C3 remainder): dedup/merge/contradiction-prune (high-risk LLM-semantic, ADR-031); date-normalize (YAGNI).
+
+TDD: consolidate **42** (+4: create-pool, append, coalesced-marking, idempotent); conformance green; `claude plugin validate --strict` ✔. ADR-037 amended; CHANGELOG + roadmap C3 row updated.

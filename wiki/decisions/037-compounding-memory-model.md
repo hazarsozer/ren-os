@@ -179,3 +179,25 @@ a SKILL.md close-out step (resolve the active project, skip with a notice if non
 layer's slice of the compounding model — the loop's outcomes now persist (ADR-012/036), giving the supervised
 runs the audit trail ADR-036 requires before autonomy is earned. **`routine-spec` v2 `verification_strategy`
 (C2) remains the next page-type-batch slice.**
+
+---
+
+## Amendment — 2026-06-28: C3 ships the project↔global axis (`/ren:consolidate --to-global`)
+
+The project↔global axis — deferred in the C3b and C3c amendments above — **ships** as a `--to-global` mode on
+`/ren:consolidate` (design spec `docs/superpowers/specs/2026-06-28-c3-project-global-axis-design.md`),
+realizing §1's "promotes project→global" tier-3 capability.
+
+- **Project instinct → global pool.** Reads the active project's `wiki/projects/<p>/instincts.md`; the LLM
+  proposes which **unpromoted** instincts are general beyond this project, and each graduates into the master
+  `wiki/instincts.md` (created with `scope: global` frontmatter if absent), preserving original kind/date/text.
+- **Reuses the C3b spine.** `lib.build_globalize_diffs` returns a coalesced 2-diff plan (one global page-edit +
+  ONE project marking covering all source lines — K separate same-file diffs would fail the 2nd `git apply`,
+  the C3c finding), applied atomically via the same `apply_diff_entries`. Idempotent via the same
+  `_(promoted … → wiki/instincts.md)_` marker; one promotion per instinct line (curated OR global). One-way —
+  no global→project demotion. Manual, diff-gated (ADR-009/031).
+- **Still deferred** (the C3 remainder): dedup, merge, contradiction-prune (high-risk LLM-semantic — ADR-031
+  "Auto-Dream"); date-normalize (YAGNI — schema enforces ISO).
+
+C3's buildable axes are now complete: **capture (C3a) → promote-to-curated (C3b) → link-health (C3c) →
+project→global (this slice).** The compounding hierarchy is fully governed — every change human-gated.
