@@ -113,6 +113,89 @@ def build_promotion_diffs(
     return page, marking
 
 
+# ---------------------------------------------------------------------------
+# Project → global instinct promotion (C3 — the project↔global axis, ADR-037)
+# ---------------------------------------------------------------------------
+
+
+def _global_instincts_header(framework_version: str, *, updated: str) -> str:
+    """Frontmatter + header for a freshly-created GLOBAL instincts.md. Replicated
+    from note._instinct_template(scope=global) — skill libs can't cross-import
+    (the `lib` package-name collision), per the apply.py-copies-wrap precedent."""
+    return (
+        "---\n"
+        "type: instincts\n"
+        "schema_version: 1\n"
+        f'framework_version: "{framework_version}"\n'
+        "scope: global\n"
+        f"updated: {updated}\n"
+        "---\n\n"
+        "# Instincts — Global\n\n"
+        "Append-only hot-tier memory. Each entry is **[kind]** date — text. "
+        "Kinds: worked | avoid | dont-repeat.\n\n"
+    )
+
+
+def _format_global_bullet(entry: InstinctEntry) -> str:
+    """Re-emit a project instinct as a global bullet, preserving its original
+    kind + date + text (provenance — when the lesson was learned, not today)."""
+    return f"- **[{entry.kind}]** {entry.date} — {entry.text}\n"
+
+
+def build_globalize_diffs(
+    entries: tuple[InstinctEntry, ...],
+    *,
+    project_instincts_relpath: str,
+    project_instincts_current: str,
+    global_relpath: str,
+    global_current: str | None,
+    framework_version: str,
+    promoted_on: str,
+) -> tuple[PromotionDiff, PromotionDiff]:
+    """
+    Build the 2-diff plan to promote project instincts → the global pool (C3).
+
+    Returns (global_page_diff, project_marking_diff):
+      1. global page-edit — append each entry's provenance-preserving bullet to the
+         global `instincts.md`; CREATE it (with replicated `scope: global`
+         frontmatter) when `global_current` is None/empty (the global pool is created
+         lazily on first `--global` capture and may not exist yet).
+      2. project marking — annotate every promoted source line in place with a
+         `_(promoted <date> → <global_relpath>)_` marker, COALESCED into ONE diff
+         (K separate same-file diffs would fail the 2nd `git apply` — the C3c finding),
+         so the sweep is idempotent (`unpromoted()` skips marked lines).
+
+    Pure + git-apply-compatible. `entries` are the LLM-selected unpromoted project
+    instincts to graduate; an empty tuple is a caller error (the SKILL gate handles
+    the "nothing to globalize" case).
+    """
+    bullets = "".join(_format_global_bullet(e) for e in entries)
+    if not global_current:
+        new_global = _global_instincts_header(framework_version, updated=promoted_on) + bullets
+        global_diff = _create_file_diff(global_relpath, new_global)
+    else:
+        base = global_current if global_current.endswith("\n") else global_current + "\n"
+        global_diff = _unified_diff(global_relpath, global_current, base + bullets)
+    global_page = PromotionDiff(
+        target_file=global_relpath,
+        unified_diff=global_diff,
+        kind="page-edit",
+        rationale=f"globalize {len(entries)} instinct(s) → {global_relpath}",
+    )
+
+    marker = f"  _(promoted {promoted_on} → {global_relpath})_"
+    marked = project_instincts_current
+    for entry in entries:
+        marked = _mark_line(marked, entry.raw_line, entry.raw_line + marker)
+    marking = PromotionDiff(
+        target_file=project_instincts_relpath,
+        unified_diff=_unified_diff(project_instincts_relpath, project_instincts_current, marked),
+        kind="marking",
+        rationale=f"mark {len(entries)} instinct(s) globalized → {global_relpath}",
+    )
+    return global_page, marking
+
+
 from .apply import ApplyResult, apply_diff_entries  # re-export the atomic-apply primitive
 from .links import (
     build_basename_index,
@@ -130,6 +213,7 @@ __all__ = [
     "parse_instincts",
     "unpromoted",
     "build_promotion_diffs",
+    "build_globalize_diffs",
     "ApplyResult",
     "apply_diff_entries",
     "find_dead_links",

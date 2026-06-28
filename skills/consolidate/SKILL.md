@@ -2,8 +2,9 @@
 name: consolidate
 description: |
   Use when the friend wants a governed, diff-gated wiki sweep — either PROMOTE accumulated
-  hot-tier instincts into the curated wiki (default, C3b) or REPAIR dead links across the
-  wiki (--fix-links, C3c). Triggers on /ren:consolidate. Proposes each change, shows it as a
+  hot-tier instincts into the curated wiki (default, C3b), REPAIR dead links across the
+  wiki (--fix-links, C3c), or GLOBALIZE a project's cross-project instincts into the global
+  pool (--to-global, C3). Triggers on /ren:consolidate. Proposes each change, shows it as a
   diff for approval, and applies atomically. Per ADR-009/031: manual, never a Stop hook; the
   tool proposes, the human approves every diff. Companion to /ren:wrap (session consolidate)
   and /ren:note --instinct (capture).
@@ -56,11 +57,12 @@ Tier 3 of the compounding memory model (ADR-037). C3a gave instincts a cheap hom
 makes them **compound upward** — promoting durable instincts into the curated wiki, one approved diff at a
 time. It is the controllable answer to opaque auto-memory: same benefit, but the human approves every change.
 
-**Two modes, one diff-gate spine:**
+**Three modes, one diff-gate spine:**
 - **promote (default, no flag)** — graduate durable hot-tier instincts into curated pages (C3b).
 - **`--fix-links` (C3c)** — repair dead `[[wikilinks]]` and `](file.md)` links across the wiki.
+- **`--to-global` (C3)** — graduate a project's cross-project-general instincts into the global pool.
 
-Both propose changes, gate every diff (`Y/N/E/A`), and apply atomically via the same primitive.
+All propose changes, gate every diff (`Y/N/E/A`), and apply atomically via the same primitive.
 
 ## When to use this skill
 
@@ -68,6 +70,8 @@ Both propose changes, gate every diff (`Y/N/E/A`), and apply atomically via the 
 - Friend says: "promote my instincts", "consolidate the hot tier", "graduate these lessons", "compound the wiki"
 - Friend invokes `/ren:consolidate --fix-links` (dead-link repair mode, C3c)
 - Friend says: "fix the dead links", "repair broken wikilinks", "the wiki has broken links"
+- Friend invokes `/ren:consolidate --to-global` (project→global promotion, C3)
+- Friend says: "promote this to global", "this lesson applies everywhere", "lift this into the global pool"
 
 ## When NOT to use this skill
 
@@ -155,13 +159,46 @@ one `log.md` line (`fixed N dead links across M pages`) and print:
 ### Idempotency (natural)
 A repaired link resolves, so the next scan no longer reports it — no marker needed (unlike promote mode).
 
-## What `/ren:consolidate` explicitly DOES NOT do (C3b + C3c scope)
+## Mode: `--to-global` — promote project instincts → the global pool (C3)
+
+> The project↔global axis (ADR-037 §1). A lesson first learned inside one project that proves
+> **cross-project-general** graduates up to the master `wiki/instincts.md`. Same gate + atomic apply.
+
+### Step 1. Read the active project's hot tier (read-only)
+Resolve the active project (as promote mode does); load `wiki/projects/<active>/instincts.md`. Parse with
+`lib.parse_instincts`; filter with `lib.unpromoted`. Empty → "nothing to globalize" and stop. Also read the
+global `wiki/instincts.md` if it exists (it is created if absent).
+
+### Step 2. Select cross-project-general instincts (LLM judgment — bias conservative)
+For each unpromoted project instinct, decide whether it is **general beyond this project** — a lesson useful in
+*any* project, not a project-specific quirk. **Most instincts stay project-scoped.** Promote only the genuinely
+portable ones; when in doubt, leave it local.
+
+### Step 3. Build + gate + apply
+`lib.build_globalize_diffs(selected, project_instincts_relpath=…, project_instincts_current=…,
+global_relpath="wiki/instincts.md", global_current=<text-or-None>, framework_version=<via sf_paths>,
+promoted_on=<today>)` → a 2-diff plan: one global page-edit appending the provenance-preserving bullets
+(creating the pool with `scope: global` frontmatter if absent) + ONE coalesced project marking. Gate each diff
+(`Y/N/E/A`; always prompt), then `lib.apply.apply_diff_entries(...)` (all-or-nothing, scoped rollback). On
+success append one `log.md` line (`globalized N instincts → wiki/instincts.md`) and print:
+```
+/ren:consolidate --to-global complete.
+  Globalized:   <N> project instinct(s) → wiki/instincts.md
+  Project tier: <K> instinct(s) left local
+```
+
+### Idempotency (same marker model as promote)
+Each globalized source line is marked `_(promoted <date> → wiki/instincts.md)_`; re-runs skip it. One promotion
+per instinct line — a globalized instinct is not also promoted to a curated page (single-marker model).
+
+## What `/ren:consolidate` explicitly DOES NOT do (C3b + C3c + C3 scope)
 
 - Run automatically / autonomously. Manual + interactive only (ADR-009/031).
 - Mechanical housekeeping beyond link repair — dedup, date-normalize, contradiction-prune. Later sweep slices.
 - Create a missing target page or remove a link. `--fix-links` only re-points to an existing page; missing
   targets go to the manual-attention report.
-- The project↔global instinct axis (promoting a project instinct into the global pool). Deferred.
+- Demote a global instinct back to a project — the axis is one-way (project→global only).
+- Dedup / merge / contradiction-prune the hot tier — still deferred (high-risk LLM-semantic; ADR-031).
 - Touch `/ren:wrap`'s domain. Wrap owns session→wiki; this owns hot-tier→curated + wiki link health.
 - Write any change the user didn't approve. Every diff is gated.
 
@@ -175,6 +212,7 @@ A repaired link resolves, so the next scan no longer reports it — no marker ne
 | instincts.md missing | Treat as empty | "Nothing to consolidate." |
 | No dead links (`--fix-links`) | Stop cleanly, no writes | "No dead links — the wiki is link-healthy." |
 | A dead link has no confident fix | Skip it; collect for the report | "K link(s) need manual attention: …" |
+| Nothing cross-project-general (`--to-global`) | Stop cleanly, no writes | "Nothing to globalize — no project instinct is general enough." |
 
 ## References
 
@@ -183,6 +221,7 @@ A repaired link resolves, so the next scan no longer reports it — no marker ne
 - ADR-031 (Solo-First) — LLM proposes / human approves; no speculative autonomy
 - `docs/superpowers/specs/2026-06-28-c3b-consolidate-design.md` — C3b design spec
 - `docs/superpowers/specs/2026-06-28-c3c-link-repair-design.md` — C3c design spec (dead-link repair mode)
+- `docs/superpowers/specs/2026-06-28-c3-project-global-axis-design.md` — C3 design spec (project→global axis)
 - `skills/wrap/references/wiki-page-mapping.md` — signal→page mapping reused for promotion targets
 - `skills/wrap/lib/apply.py` — the atomic-apply pattern this skill's `lib/apply.py` mirrors
 - `skills/doctor/scripts/check-wiki-health.sh` — the read-only dead-link DETECTOR that `lib/links.py` ports
