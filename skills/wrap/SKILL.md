@@ -32,7 +32,7 @@ contract:
     read:
       - "~/.startup-framework/wiki/**"
       - "~/.startup-framework/wiki/.session-notes/**"
-      - "skills/sf-wrap/references/**"
+      - "skills/wrap/references/**"
     write:
       - "~/.startup-framework/wiki/**"
     execute: []
@@ -44,7 +44,7 @@ contract:
     - "~/.startup-framework/wiki/projects/<active-project>/"
 
 tags: [session-end, consolidate, wiki, lifecycle]
-related_skills: [sf-note, sf-recall, sf-bootstrap-project]
+related_skills: [note, recall, bootstrap-project]
 references_required:
   - "references/signal-threshold.md"
   - "references/wiki-page-mapping.md"
@@ -53,7 +53,7 @@ references_on_demand:
   - "references/notes-discovery.md"
 ---
 
-# sf-wrap
+# wrap
 
 End-of-session consolidate. The partner to the wake-up hook (ADR-008): wake-up reads what `/ren:wrap` writes. Per ADR-009 this is a **user-invoked slash command**, NEVER a Stop hook (Ralph collision + claude-mem SessionEnd ordering + the discipline that most sessions are routine and shouldn't pollute the wiki).
 
@@ -154,7 +154,7 @@ Print the final summary to the user:
 
 ## Implementation note
 
-V1 implementation lives in `skills/sf-wrap/lib/`. The default classifier (`lib/classifier.py:classify()`) is a conservative DETERMINISTIC heuristic — **EXPERIMENTAL** (ADR-031 bike-method): phrase-driven with a hard bias to `none`, never raises. `build_classifier_prompt()` + `parse_classifier_output()` ship as composable primitives for the future LLM classifier path; they are unit-tested but not wired into the default path.
+V1 implementation lives in `skills/wrap/lib/`. The default classifier (`lib/classifier.py:classify()`) is a conservative DETERMINISTIC heuristic — **EXPERIMENTAL** (ADR-031 bike-method): phrase-driven with a hard bias to `none`, never raises. `build_classifier_prompt()` + `parse_classifier_output()` ship as composable primitives for the future LLM classifier path; they are unit-tested but not wired into the default path.
 
 The criteria the classifier encodes live in `references/signal-threshold.md`.
 

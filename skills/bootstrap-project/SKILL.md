@@ -22,8 +22,8 @@ contract:
   permissions:
     read:
       - "~/.startup-framework/wiki/**"
-      - "skills/sf-bootstrap-project/templates/**"
-      - "skills/sf-bootstrap-project/references/**"
+      - "skills/bootstrap-project/templates/**"
+      - "skills/bootstrap-project/references/**"
     write:
       - "~/.startup-framework/wiki/projects/<project-name>/**"
       - "~/.startup-framework/wiki/index.md"
@@ -37,7 +37,7 @@ contract:
     - "~/.startup-framework/wiki/projects/<project-name>/"
 
 tags: [onboarding, project, wiki, bootstrap]
-related_skills: [sf-install, sf-interview, brainstorming]
+related_skills: [install, interview, brainstorming]
 references_required:
   - "references/template-loader.md"
   - "references/taxonomy-templates.md"
@@ -45,7 +45,7 @@ references_on_demand:
   - "references/brainstorm-handoff.md"
 ---
 
-# sf-bootstrap-project
+# bootstrap-project
 
 Stamps the ADR-014 per-project sub-wiki taxonomy under the friend's local wiki at `~/.startup-framework/wiki/projects/<project-name>/`. Per ADR-015 §"`/ren:bootstrap-project <name>` command".
 
@@ -87,7 +87,7 @@ If `identity.md` doesn't exist (e.g. friend skipped `/ren:interview`): fall back
 
 Load `references/template-loader.md` and follow its procedure with:
 
-- Template root: `skills/sf-bootstrap-project/templates/`
+- Template root: `skills/bootstrap-project/templates/`
 - Target root: `~/.startup-framework/wiki/projects/<project-name>/`
 - Placeholder bindings:
   - `{{project_name}}` ← kebab-case name from argv

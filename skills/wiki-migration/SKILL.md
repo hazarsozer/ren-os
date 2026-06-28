@@ -79,7 +79,7 @@ The schema-versioning runtime for the startup framework. Per ADR-027.
 
 ### With /ren:doctor
 
-- Read-only scan via `scripts/scan-schemas.sh` (lives in `skills/sf-doctor/scripts/check-schemas.sh` and imports this skill's registry).
+- Read-only scan via `scripts/scan-schemas.sh` (lives in `skills/doctor/scripts/check-schemas.sh` and imports this skill's registry).
 - Computes per-page status: up-to-date / migration-available / read-only (beyond N+3).
 
 ## Schema-policy reminder

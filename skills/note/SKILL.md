@@ -42,12 +42,12 @@ contract:
     - "~/.startup-framework/wiki/projects/<project>/instincts.md"
 
 tags: [companion, mid-session, note, wiki, lifecycle]
-related_skills: [sf-wrap, sf-recall]
+related_skills: [wrap, recall]
 references_required: []
 references_on_demand: []
 ---
 
-# sf-note
+# note
 
 Mid-session pin. The friend says "this is worth remembering for `/ren:wrap`." Skill appends the text as a timestamped bullet to a per-session file. `/ren:wrap` reads this file at session end (per its SKILL.md step 1) and may promote individual pins to the wiki if they meet the high-signal threshold.
 
@@ -112,4 +112,4 @@ The pure logic lives in `lib/__init__.py` (`pin_instinct`, `resolve_instinct_pat
 - ADR-014 (Project Sub-Wiki Taxonomy) — `wiki/.session-notes/` lives at master-wiki level (cross-session), not project-level
 - ADR-037 (Compounding Memory Model) — the instincts hot tier this skill captures into (C3a)
 - `docs/superpowers/specs/2026-06-28-c3a-instincts-design.md` — C3a design spec
-- `skills/sf-wrap/SKILL.md` § "Step 1. Gather inputs" — consumes these notes
+- `skills/wrap/SKILL.md` § "Step 1. Gather inputs" — consumes these notes

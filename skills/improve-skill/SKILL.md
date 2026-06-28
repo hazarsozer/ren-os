@@ -32,7 +32,7 @@ contract:
   permissions:
     read:
       - "skills/<skill-name>/**"
-      - "skills/sf-improve-skill/references/**"
+      - "skills/improve-skill/references/**"
     write:
       - "skills/<skill-name>/SKILL.md"
       - "skills/<skill-name>/references/**"
@@ -50,7 +50,7 @@ contract:
     - "wiki/projects/<project>/experiment-log.md"  # B1 ledger (when an active project resolves)
 
 tags: [self-improvement, karpathy-loop, skill-quality, eval-driven]
-related_skills: [skill-creator, sf-doctor]
+related_skills: [skill-creator, doctor]
 references_required:
   - "references/karpathy-loop.md"
   - "references/cc-flag-watch.md"
@@ -60,7 +60,7 @@ references_on_demand:
   - "references/eval-runner.md"
 ---
 
-# sf-improve-skill
+# improve-skill
 
 Layer-2 skill self-improvement per ADR-012. The mechanical realization of Karpathy's "auto-research" pattern applied to a skill's `SKILL.md` body and references. Layer 1 (description optimization for activation reliability) is the Skill Creator's territory; this skill does not touch the description.
 
@@ -246,7 +246,7 @@ After the loop returns — success OR cap/partial, any run with ≥1 iteration �
 
 ## Implementation note
 
-V1 implementation lives in `skills/sf-improve-skill/lib/`. Inner sub-runs spawn `claude --bare --print --max-budget-usd <remaining>` as subprocesses with stdin = the proposed-change prompt + the skill's current files. Output is parsed as a structured JSON change-proposal (which file to edit, the diff). Apply uses `git apply` for atomicity.
+V1 implementation lives in `skills/improve-skill/lib/`. Inner sub-runs spawn `claude --bare --print --max-budget-usd <remaining>` as subprocesses with stdin = the proposed-change prompt + the skill's current files. Output is parsed as a structured JSON change-proposal (which file to edit, the diff). Apply uses `git apply` for atomicity.
 
 The shadow-budget tracker sums `usage.input_tokens + usage.output_tokens` from each sub-run × the current model's price from `references/model-pricing.json` (file maintained per plugin version). When CC ships a reliable cross-mode `--max-turns` or non-print-mode `--max-budget-usd`, we drop the shadow. See `references/cc-flag-watch.md`.
 

@@ -42,12 +42,12 @@ contract:
     - "~/.startup-framework/wiki/instincts.md"
 
 tags: [companion, compounding, promotion, wiki, lifecycle, experimental]
-related_skills: [sf-wrap, sf-note, sf-recall]
+related_skills: [wrap, note, recall]
 references_required: []
 references_on_demand: []
 ---
 
-# sf-consolidate
+# consolidate
 
 > **⚠ EXPERIMENTAL (bike-method, ADR-031/036).** The promotion *proposal* is LLM judgment; the *gate* is
 > human. Interactive-only — there is NO autonomous mode. Manual slash command, never a Stop hook (ADR-009).
