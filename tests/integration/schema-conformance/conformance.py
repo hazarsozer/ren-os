@@ -101,6 +101,11 @@ TEMPLATE_PLACEHOLDERS = {
     "{{framework_version}}": "1.0.0",
     "{{project_name}}": "demo-project",
     "{{project_title}}": "Demo Project",
+    # routine-spec v2 (C2/ADR-034) writes these bare (unquoted) to match migrate.sh's
+    # output, so the synthetic values must themselves be valid YAML — a plain scalar for
+    # the strategy enum and a sequence literal for the tools list.
+    "{{verification_strategy}}": "manual",
+    "{{verification_tools}}": "[]",
 }
 
 

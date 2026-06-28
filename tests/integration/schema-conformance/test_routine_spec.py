@@ -15,7 +15,7 @@ def test_routine_spec_registered():
     registry = conformance.load_registry()
     assert "routine-spec" in registry["page_types"]
     meta = registry["page_types"]["routine-spec"]
-    assert meta["current"] == 1
+    assert meta["current"] == 2
     assert meta["supported_from"] == 1
 
 
