@@ -179,7 +179,7 @@
       "supported_from": 1,
       "deprecated_below": null,
       "path_pattern": "wiki/projects/<name>/experiment-log.md",
-      "description": "Forward-declared (B1, ADR-037 page-type batch per ADR-027 'decide together'): a persistent log of improvement experiments — {change, score_before, score_after, disposition: kept|reverted, iteration, ts}. Shape decided now; NO writer yet (future B1 slice; the /ren:improve-skill loop will fill it). Zero instances today, so no doctor drift.",
+      "description": "A persistent log of improvement experiments — {change, score_before, score_after, disposition: kept|reverted, iteration, ts}. Writer shipped B1 (2026-06-28): the /ren:improve-skill close-out appends one section per run via skills/improve-skill/lib/experiment_log.py (ADR-037 page-type batch per ADR-027 'decide together'). Project-scoped; instances written at v1 (current), so no doctor drift.",
       "owner_module": "sf-lifecycle",
       "adr_refs": ["ADR-037", "ADR-027", "ADR-012"],
       "migrations": []
