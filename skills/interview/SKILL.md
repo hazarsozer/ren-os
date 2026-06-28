@@ -6,7 +6,9 @@ description: |
   question interview across 5 sections (About you / Working style / Tech
   preferences / Opinions+non-goals / Contribution) and writes
   ~/.startup-framework/wiki/identity.md (hybrid YAML frontmatter + markdown
-  body). Detects existing identity.md and offers full-refresh vs
+  body). Optionally continues into a venture arc (Section F) that populates the
+  ~/.startup-framework/wiki/venture/ pages (company/market/icp/team/brain-dump),
+  beyond identity-only (H2.3). Detects existing identity.md and offers full-refresh vs
   specific-field updates.
 version: 0.1.0
 license: MIT
@@ -14,16 +16,19 @@ license: MIT
 contract:
   required_outputs:
     - "~/.startup-framework/wiki/identity.md (hybrid YAML+markdown matching the friend-profile schema)"
+    - "When the optional venture arc runs: ~/.startup-framework/wiki/venture/<section>.md pages (type venture-profile) for answered sections"
   budgets:
-    turns: 36                  # ~2 per question (ask + capture); generous slack
-    files_written: 1           # identity.md
-    duration_seconds: 900      # ~15 minutes; target is 10
+    turns: 46                  # ~2 per question (ask + capture); +5 optional venture questions
+    files_written: 6           # identity.md + up to 5 venture pages
+    duration_seconds: 1080     # ~18 minutes; target is 10 (venture arc is optional)
   permissions:
     read:
       - "~/.startup-framework/wiki/identity.md"
+      - "~/.startup-framework/wiki/venture/**"
       - "skills/interview/references/**"
     write:
       - "~/.startup-framework/wiki/identity.md"
+      - "~/.startup-framework/wiki/venture/**"
     execute: []
   completion_conditions:
     - "identity.md exists with frontmatter matching the friend-profile schema"
@@ -31,8 +36,10 @@ contract:
     - "Handle is kebab-case (^[a-z][a-z0-9-]*$)"
     - "phase is one of: ideation | building | shipping | other"
     - "If communication_style == emoji-free, no emoji in the markdown body"
+    - "If the venture arc ran, each written wiki/venture/<section>.md is a conformant venture-profile page; skipped sections keep their _TBD_ placeholder"
   output_paths:
     - "~/.startup-framework/wiki/identity.md"
+    - "~/.startup-framework/wiki/venture/"
 
 tags: [onboarding, identity, interview]
 related_skills: [install, bootstrap-project]
@@ -68,7 +75,7 @@ Check whether `~/.startup-framework/wiki/identity.md` exists.
 - **Absent** → run the full interview from scratch. Load `references/question-template.md` and go to step 2.
 - **Present** → load `references/re-run-flow.md` and follow the refresh branch (skip step 2; jump to step 3 with refreshed defaults).
 
-### 2. Run the 18-question template
+### 2. Run the 18-question identity template (+ optional venture arc)
 
 Load `references/question-template.md` for the full question list. Five sections, A–E:
 
@@ -79,6 +86,7 @@ Load `references/question-template.md` for the full question list. Five sections
 | C | Tech preferences | 10–14 |
 | D | Opinions + non-goals | 15–17 |
 | E | Contribution | 18 |
+| F | Venture context (OPTIONAL) | F1–F5 → `wiki/venture/` pages |
 
 Per question, use the input strategy noted in `references/ask-user-question-pagination.md`. The strategies are: native AskUserQuestion (≤4 options), pagination (split into two prompts), category cascade (two-stage drill), combine (collapse two semantic axes into one), open-ended fallback (always-offered escape hatch on multi-select).
 
@@ -86,11 +94,20 @@ Per question, use the input strategy noted in `references/ask-user-question-pagi
 
 **Skipping:** any question may be skipped. Record the question ID in the `skipped_questions` frontmatter list. Don't push skipped-question reminders; trust the friend.
 
+### 2b. Optional venture arc (Section F) — H2.3
+
+After Section E, ask the Section F **gate** (`question-template.md`): "Want to sketch your venture/studio
+context now?" — **yes / skip for now**. On skip → record `f-venture` in `skipped_questions`, leave the
+`wiki/venture/` stubs as placeholders, and go to step 3. On yes → ask F1–F5 (each independently skippable;
+`_TBD_` always acceptable), capturing one answer per `venture/<section>.md` page. `identity.md` stays the
+"you"; these pages are the company / market / ICP / team / brain-dump. Pre-idea friends can skip freely — the
+venture profile is allowed to be mostly-empty.
+
 ### 3. Render output
 
 Load `references/output-format.md` for the canonical hybrid YAML+markdown structure.
 
-Write `~/.startup-framework/wiki/identity.md`. Schema MUST match the friend-profile schema (v1). On re-run, show a diff and require approval before write (mirrors `/revise-claude-md`'s pattern).
+Write `~/.startup-framework/wiki/identity.md` (friend-profile schema v1). If the venture arc ran, also write each answered `~/.startup-framework/wiki/venture/<section>.md` page (type `venture-profile`) per output-format.md's venture rules — skipped sections keep their `_TBD_` placeholder. On re-run, show a diff and require approval before write (mirrors `/revise-claude-md`'s pattern).
 
 ### 4. Confirm + exit
 
@@ -116,3 +133,4 @@ directly for one-off field changes.
 - Refresh-existing test: re-running on a populated identity.md shows diff and requires approval
 - Emoji-free-respect test: setting `communication_style: emoji-free` results in zero emoji in the markdown body
 - Handle-validation test: rejecting non-kebab-case handles
+- Venture-arc test (H2.3): completing Section F writes conformant `venture-profile` pages; declining the gate leaves the stubs as placeholders and identity-only completes unchanged
