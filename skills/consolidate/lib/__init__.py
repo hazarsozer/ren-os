@@ -11,10 +11,12 @@ Public surface filled in over the TDD build. Per dotfiles python/coding-style.md
 
 from __future__ import annotations
 
-import difflib
 import re
 
-from .types import InstinctEntry, PromotionDiff
+from .diffs import create_file_diff as _create_file_diff
+from .diffs import mark_line as _mark_line
+from .diffs import unified_diff as _unified_diff
+from .types import DeadLink, InstinctEntry, LinkRepair, PromotionDiff
 
 # A hot-tier bullet: `- **[kind]** YYYY-MM-DD — text` (em-dash separator, per note's writer).
 _BULLET_RE = re.compile(
@@ -65,39 +67,6 @@ def unpromoted(entries: tuple[InstinctEntry, ...]) -> tuple[InstinctEntry, ...]:
 # ---------------------------------------------------------------------------
 
 
-def _unified_diff(relpath: str, old_text: str, new_text: str) -> str:
-    """Unified diff for an edit to an EXISTING file (git apply -p1 compatible)."""
-    old_lines = old_text.splitlines(keepends=True)
-    new_lines = new_text.splitlines(keepends=True)
-    return "".join(
-        difflib.unified_diff(old_lines, new_lines, fromfile=f"a/{relpath}", tofile=f"b/{relpath}")
-    )
-
-
-def _create_file_diff(relpath: str, content: str) -> str:
-    """Unified diff that CREATES a new file holding `content`."""
-    lines = content.splitlines()
-    body = "".join(f"+{ln}\n" for ln in lines)
-    return (
-        f"diff --git a/{relpath} b/{relpath}\n"
-        "new file mode 100644\n"
-        "--- /dev/null\n"
-        f"+++ b/{relpath}\n"
-        f"@@ -0,0 +1,{len(lines)} @@\n"
-        f"{body}"
-    )
-
-
-def _mark_line(text: str, raw_line: str, marked_line: str) -> str:
-    """Replace exactly the matching `raw_line` with `marked_line` (first match)."""
-    lines = text.split("\n")
-    for i, ln in enumerate(lines):
-        if ln == raw_line:
-            lines[i] = marked_line
-            break
-    return "\n".join(lines)
-
-
 def build_promotion_diffs(
     entry: InstinctEntry,
     *,
@@ -145,13 +114,27 @@ def build_promotion_diffs(
 
 
 from .apply import ApplyResult, apply_diff_entries  # re-export the atomic-apply primitive
+from .links import (
+    build_basename_index,
+    build_link_repair_diffs,
+    build_slug_index,
+    find_dead_links,
+    propose_link_repair,
+)
 
 __all__ = [
     "InstinctEntry",
     "PromotionDiff",
+    "DeadLink",
+    "LinkRepair",
     "parse_instincts",
     "unpromoted",
     "build_promotion_diffs",
     "ApplyResult",
     "apply_diff_entries",
+    "find_dead_links",
+    "build_slug_index",
+    "build_basename_index",
+    "propose_link_repair",
+    "build_link_repair_diffs",
 ]
