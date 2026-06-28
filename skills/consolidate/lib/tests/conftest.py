@@ -56,3 +56,38 @@ def tmp_wiki_repo(tmp_path: Path) -> Generator[Path, None, None]:
     _git(["add", "wiki/"], tmp_path)
     _git(["commit", "-m", "initial wiki"], tmp_path)
     yield tmp_path
+
+
+@pytest.fixture
+def tmp_link_repo(tmp_path: Path) -> Generator[Path, None, None]:
+    """
+    Init a git repo with a wiki/ tree containing DEAD links (for C3c link repair).
+
+    Layout:
+        wiki/patterns/schema-versioning.md   (target of a typo'd wikilink)
+        wiki/patterns/read-before-edit.md    (target; also holds one dead wikilink)
+        wiki/decisions/037.md                (two dead wikilinks on separate lines)
+
+    The dead links are near-miss typos that fuzzy-match their targets:
+      [[scheme-versioning]] → schema-versioning,  [[reed-before-edit]] → read-before-edit
+    """
+    subprocess.run(["git", "init", "--initial-branch=main"], cwd=tmp_path, check=True, capture_output=True)
+    _git(["config", "user.email", "test@example.com"], tmp_path)
+    _git(["config", "user.name", "Test"], tmp_path)
+    _git(["config", "commit.gpgsign", "false"], tmp_path)
+
+    wiki = tmp_path / "wiki"
+    (wiki / "patterns").mkdir(parents=True)
+    (wiki / "decisions").mkdir(parents=True)
+    (wiki / "patterns" / "schema-versioning.md").write_text("# Schema Versioning\n\nbody\n", encoding="utf-8")
+    (wiki / "patterns" / "read-before-edit.md").write_text(
+        "# Read Before Edit\n\nsee [[scheme-versioning]] for the schema\n", encoding="utf-8"
+    )
+    (wiki / "decisions" / "037.md").write_text(
+        "# 037\n\nsee [[scheme-versioning]] for schema\nand [[reed-before-edit]] for editing\n",
+        encoding="utf-8",
+    )
+
+    _git(["add", "wiki/"], tmp_path)
+    _git(["commit", "-m", "initial wiki with dead links"], tmp_path)
+    yield tmp_path
