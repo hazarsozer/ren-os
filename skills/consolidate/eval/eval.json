@@ -1,0 +1,61 @@
+{
+  "name": "sf-consolidate",
+  "description": "Binary-assertion suite for /ren:consolidate (C3b governed promotion sweep). Validates activation, the no-instincts no-op, the gated-write invariant, and idempotency markers. EXPERIMENTAL — interactive-only.",
+  "schema_version": 1,
+  "framework_version": "0.1.0",
+  "tests": [
+    {
+      "id": "activates-on-consolidate",
+      "prompt": "/ren:consolidate",
+      "expected_output_summary": "The consolidate skill activates and reads the hot-tier instincts before proposing anything.",
+      "trigger_test": true,
+      "binary_assertions": [
+        "The sf-consolidate skill is activated for this prompt",
+        "The skill reads instincts.md (hot tier) before proposing any promotion"
+      ]
+    },
+    {
+      "id": "no-instincts-is-noop",
+      "prompt": "/ren:consolidate",
+      "expected_output_summary": "When there are no unpromoted instincts, the skill reports 'nothing to consolidate' and writes nothing.",
+      "trigger_test": false,
+      "binary_assertions": [
+        "When no unpromoted instincts exist, the user-facing output states there is nothing to consolidate",
+        "No file under wiki/ is modified when there is nothing to consolidate"
+      ]
+    },
+    {
+      "id": "every-write-is-gated",
+      "prompt": "/ren:consolidate",
+      "expected_output_summary": "Every applied change was shown to the user as a diff and approved before being written (the load-bearing invariant).",
+      "trigger_test": false,
+      "binary_assertions": [
+        "Every wiki change applied by the run was preceded by showing that diff to the user for approval",
+        "No autonomous/unattended application occurs — the run is interactive",
+        "On any apply failure, the wiki is fully rolled back (no half-applied promotion pair)"
+      ]
+    },
+    {
+      "id": "promotions-are-marked-idempotent",
+      "prompt": "/ren:consolidate",
+      "expected_output_summary": "A promoted instinct's source line gains a `_(promoted …)_` marker so re-running never re-promotes it.",
+      "trigger_test": false,
+      "binary_assertions": [
+        "Each promoted instinct line carries an in-place '_(promoted' marker after the run",
+        "A second run does not re-propose an instinct that already carries the promoted marker"
+      ]
+    }
+  ],
+  "non_triggers": [
+    {
+      "id": "wrap-not-consolidate",
+      "prompt": "/ren:wrap",
+      "expected_outcome": "skill_not_activated"
+    },
+    {
+      "id": "note-not-consolidate",
+      "prompt": "/ren:note --instinct worked something",
+      "expected_outcome": "skill_not_activated"
+    }
+  ]
+}
