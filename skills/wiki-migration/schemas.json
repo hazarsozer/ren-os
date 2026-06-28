@@ -21,7 +21,7 @@
       "path_pattern": "wiki/venture/<section>.md",
       "description": "Master-level venture/studio profile (company | market | icp | team | brain-dump) populated by the broadened /ren:interview venture arc, beyond identity-only (H2.3). Loose page-type: universal triple + section.",
       "owner_module": "sf-onboarding",
-      "adr_refs": ["ADR-022", "ADR-014"],
+      "adr_refs": ["ADR-022", "ADR-015"],
       "migrations": []
     },
     "master-index": {

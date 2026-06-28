@@ -317,3 +317,14 @@ computer, and `/ren:doctor` drift). Until now every page-type sat at `current: 1
   until repaired in `00bc6a5`. Root cause: the per-slice gauntlet's TDD ran only the migration fixture test,
   never the integration suite. Backstop in `2b5abf2` — CI now runs the full suite (conformance + ~798 pytest +
   shell) so a red gate can't reach a merged slice undetected again.
+
+---
+
+## Amendment — 2026-06-28: registry gains `venture-profile` (H2.3 broadened onboarding)
+
+Additive: a new loose page-type **`venture-profile`** (`current: 1, supported_from: 1, migrations: []`) for the
+master-level venture/studio profile the broadened `/ren:interview` populates (company/market/icp/team/brain-dump).
+Required fields = the universal triple + `section` (deliberately loose, like `research`/`pattern`). Five skeleton
+templates ship under `wiki-skeleton/templates/venture/` and are conformance-scanned strict. No migration (first
+version); `identity.md` is untouched (the venture layer is separate pages, not new identity fields). See ADR-022's
+H2.3 amendment + `docs/superpowers/specs/2026-06-28-h2-broadened-onboarding-design.md`.

@@ -571,3 +571,13 @@ Completes C3's last buildable axis (ADR-037 §1 "promotes project→global"). Bu
 - **Still deferred** (C3 remainder): dedup/merge/contradiction-prune (high-risk LLM-semantic, ADR-031); date-normalize (YAGNI).
 
 TDD: consolidate **42** (+4: create-pool, append, coalesced-marking, idempotent); conformance green; `claude plugin validate --strict` ✔. ADR-037 amended; CHANGELOG + roadmap C3 row updated.
+
+## 2026-06-28 — H2.3: broadened onboarding (venture profile beyond identity)
+
+Closes H2 (parts 1+2 shipped 2026-06-27). Built on `feat/h2-broadened-onboarding` off `feat/project-ingest` (design spec `docs/superpowers/specs/2026-06-28-h2-broadened-onboarding-design.md`). `/ren:interview` broadens beyond identity-only to optionally capture the venture/studio context ("Ben's 12-section: you/company/market/ICP/team + brain-dump").
+
+- **Separate pages, fully additive:** the "you" stays in `identity.md` (friend-profile v1, no migration). The venture layer is a new loose page-type `venture-profile` (universal triple + `section`) across `wiki/venture/{company,market,icp,team,brain-dump}.md` — stamped by install Stage 5 (skeleton templates, lint-clean + conformance-scanned strict), populated in place by a new **optional Section F** of the interview.
+- **Explorer-safe:** Section F is gated; a pre-idea friend declines (records `f-venture`) and the stubs stay `_TBD_`. F never bumps the identity schema (it writes to venture-profile pages).
+- Banked lessons applied: registered-placeholders-only templates (the C2 unquoted-placeholder break) + lint-clean bodies (no ADR/dev-content leak — the routine-spec.md.tmpl footgun).
+
+TDD: conformance scans the 5 venture templates green; install **33**; interview eval +2 venture cases (7 total); `claude plugin validate --strict` ✔. ADR-022 + ADR-027 amended; CHANGELOG + roadmap H2 row → DONE.
