@@ -24,7 +24,7 @@ Translates the 7 labels from `signal-threshold.md` into concrete `(file_path, pr
 
 | File | Action |
 |---|---|
-| `wiki/projects/<active>/decisions/<slug>.md` | **CREATE** new file with full ADR-style frontmatter (per ADR-011 schema) + decision body. Use `framework_version: 1.0.0`, `schema_version: 1`, `type: decision`, `status: accepted`, `date: <today>`. |
+| `wiki/projects/<active>/decisions/<slug>.md` | **CREATE** new file with full ADR-style frontmatter (per ADR-011 schema) + decision body. Use `schema_version: 1`, `type: decision`, `status: accepted`, `date: <today>`, and the **same `framework_version` the wrap writer stamps on `CONTEXT.md`/`STATE.md` this run** (resolved from the plugin manifest — never a hardcoded literal). |
 | `wiki/projects/<active>/STATE.md` | **APPEND** to "Recent decisions" section: `- [<slug>](decisions/<slug>.md) — <one-line>` |
 | `wiki/projects/<active>/index.md` | **APPEND** to decisions catalog if not already present |
 
