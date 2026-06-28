@@ -507,3 +507,16 @@ First slice of the last untouched pillar (P4, compounding/memory), built on `fea
 - **Governance:** new **ADR-037** (Compounding Memory Model) records amendments to **ADR-009** (hot tier below the manual `/wrap`; capture explicit, not a Stop hook), **ADR-014** (taxonomy gains `instincts.md`), **ADR-027** (registry gains the page-types).
 
 **Deferred → C3b:** the governed LLM hot→curated promotion/dedup sweep (proposal-diff-gated per ADR-031, never a Stop hook); no `/wrap` change; no wake-up auto-surfacing. TDD: 14 new tests (12 note instinct + 2 recall filter); note 30, recall 33; `claude plugin validate --strict` ✔.
+
+---
+
+## 2026-06-28 — C3b: governed promotion sweep (`/ren:consolidate`, compounding memory tier 3)
+
+The second half of Pillar 4, built on `feat/c3b-consolidate` off `feat/project-ingest` (design spec `docs/superpowers/specs/2026-06-28-c3b-consolidate-design.md`). Completes the compounding loop — **capture (C3a) → promote (C3b)**. Tier 3 of ADR-037's three-tier model.
+
+- **New `skills/consolidate/` skill — `/ren:consolidate`, promotion-first, interactive-only + EXPERIMENTAL.** Reads the hot-tier `instincts.md` (`parse_instincts` → `unpromoted`); the LLM *proposes* which durable instincts graduate into curated pages (`patterns/`/`decisions/`/lessons); **every change is a diff the human approves** (`Y/N/E/A`) before an atomic apply. Manual, never a Stop hook (ADR-009); LLM-proposes/human-approves every diff (ADR-031); no autonomous mode.
+- **Deterministic diff construction** (`build_promotion_diffs`): the promotion PAIR — a curated-page edit (difflib append, or a `/dev/null` create) + an in-place source **marking** (`_(promoted <date> → <page>)_`). All verified against real `git apply`.
+- **Atomic apply** (`apply.apply_diff_entries`): a faithful copy of wrap's `git apply --check` → apply → `git restore`/`git clean` rollback, all-or-nothing. Skill libs can't cross-import (the `lib` name collision from C5c), so the proven primitive is duplicated + separately tested.
+- **Idempotent:** marked entries are excluded by `unpromoted`, so re-runs never re-propose; the marker traces each promotion.
+
+**Deferred (later slices):** mechanical housekeeping (dedup, dead-link repair, date-normalize, contradiction-prune); the project↔global axis; per-routine lightweight sweeps (cadence integration); autonomous mode. `/ren:wrap` unchanged. ADR-037 amended (2026-06-28). TDD: 14 tests (parse/unpromoted 7 + diff-build 3 + atomic-apply 4); `claude plugin validate --strict` ✔.

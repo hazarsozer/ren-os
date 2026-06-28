@@ -122,3 +122,26 @@ auto-surfacing; no inferred capture. The sweep (C3b) will be **proposal-diff-gat
 - ADR-031 (Solo-First Pivot) — no speculative autonomy; the C3b sweep is proposal-diff-gated
 - ADR-012 (Two-Layer Self-Improvement) — the skill-quality compounding layer, orthogonal to this memory layer
 - ADR-003 (No-Daemon Rule) — capture + sweep are explicit, bounded, user-initiated
+
+---
+
+## Amendment — 2026-06-28: C3b governed promotion sweep (`/ren:consolidate`)
+
+C3b ships **tier 3** — the governed sweep — as the new `skills/consolidate/` skill, **promotion-first**
+(design spec `docs/superpowers/specs/2026-06-28-c3b-consolidate-design.md`).
+
+- **`/ren:consolidate` — manual, interactive-only, EXPERIMENTAL.** Reads the hot-tier `instincts.md`; the LLM
+  *proposes* which durable instincts graduate into curated pages (`patterns/`/`decisions/`/lessons), and shows
+  **every change as a diff for approval** before applying. No autonomous mode; never a Stop hook (ADR-009);
+  LLM-proposes / human-approves every diff (ADR-031).
+- **Reuses wrap's proven pattern.** Promotions apply atomically (all-or-nothing with `git restore`/`git clean`
+  rollback) via a faithful copy of wrap's apply primitive — skill libs can't cross-import (the `lib`
+  package-name collision documented in the C5c codemap work), so the primitive is duplicated + separately tested.
+- **Idempotent via in-place marking.** A promoted instinct's source line gains a `_(promoted <date> → <page>)_`
+  marker; the sweep skips marked entries, so re-runs never re-promote, and the marker traces each promotion.
+- **Still deferred:** mechanical housekeeping (dedup, dead-link repair, date-normalize, contradiction-prune);
+  the project↔global instinct axis; per-routine-run lightweight sweeps (a future cadence integration);
+  autonomous mode. `/ren:wrap` is unchanged.
+
+This completes the compounding loop: **capture (C3a) → promote (C3b)**. The wiki now compounds upward, under
+human control at every diff.
