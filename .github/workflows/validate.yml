@@ -139,3 +139,73 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: bash skills/update/scripts/version-compare.sh --self-test
+
+  # ──────────────────────────────────────────────────────────────────
+  # Python + shell test suites. Added 2026-06-28 as the backstop for a
+  # real process gap: a red schema-conformance suite reached a merged
+  # slice because (a) NO Python suite ran in CI and (b) CI didn't run on
+  # the integration branch. Skill suites are DISCOVERED, not hardcoded,
+  # so the set can't drift as skills are added — the exact failure mode
+  # that let SHIP_CHECKLIST §1.1's hand-maintained list go stale.
+  # (Whether to also trigger this on the integration branch — vs. only
+  # at the main/rc boundary + workflow_dispatch — is a CI-minute cost
+  # call left to the maintainer.)
+  # ──────────────────────────────────────────────────────────────────
+  tests:
+    name: python + shell test suites
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install test deps
+        run: pip install --quiet pytest pyyaml jsonschema
+
+      - name: Repo-root suites (lib + conformance drift-catcher + installed-runtime acceptance)
+        run: python3 -m pytest lib/ tests/integration/ -q
+
+      - name: Shared-infra suites (wake-up hook + scripts, each from its own package root)
+        run: |
+          set -uo pipefail
+          FAIL=0
+          for d in hooks/wake-up scripts; do
+            echo "::group::pytest ${d}"
+            ( cd "$d" && python3 -m pytest -q ) || FAIL=1
+            echo "::endgroup::"
+          done
+          exit $FAIL
+
+      - name: Per-skill pytest suites (discovered; each run from its skill dir to dodge lib/ basename collisions)
+        run: |
+          set -uo pipefail
+          FAIL=0
+          while IFS= read -r testdir; do
+            rel="${testdir#skills/}"; skill="${rel%%/*}"; subpath="${rel#*/}"
+            echo "::group::pytest ${skill} :: ${subpath}"
+            rc=0
+            ( cd "skills/${skill}" && python3 -m pytest "${subpath}" -q ) || rc=$?
+            if [[ $rc -eq 0 ]]; then
+              echo "  OK"
+            elif [[ $rc -eq 5 ]]; then
+              echo "  (no pytest tests — shell-only dir, covered in the shell step)"
+            else
+              echo "  FAIL (pytest exit ${rc})"; FAIL=1
+            fi
+            echo "::endgroup::"
+          done < <(find skills -mindepth 2 -type d -name tests | sort)
+          exit $FAIL
+
+      - name: Shell test suites (discovered test_*.sh under */tests/)
+        run: |
+          set -uo pipefail
+          FAIL=0
+          while IFS= read -r t; do
+            echo "::group::bash ${t}"
+            if bash "$t"; then echo "  OK"; else echo "  FAIL"; FAIL=1; fi
+            echo "::endgroup::"
+          done < <(find skills hooks -path '*/tests/test_*.sh' -type f | sort)
+          exit $FAIL

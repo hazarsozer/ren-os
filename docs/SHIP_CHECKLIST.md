@@ -21,15 +21,24 @@ Run each module's pytest suite **from its own directory** — root-level `pytest
 collides on duplicate test-module import names, so always run per-module:
 
 ```bash
-for m in hooks/wake-up scripts \
-         skills/backup skills/improve-skill \
-         skills/install skills/note skills/recall skills/wrap; do
-  ( cd "$m" && python3 -m pytest -q ) || echo "FAIL: $m"
+# Per-skill suites — DISCOVERED, not hardcoded, so the set can't drift as skills
+# are added (a hand-maintained list here went stale through C1–C4, which is part
+# of how a red conformance suite reached a merged slice — see validate.yml `tests`).
+# Each runs from its own dir: root-level pytest collides on duplicate lib/ module names.
+for testdir in $(find skills -mindepth 2 -type d -name tests | sort); do
+  rel="${testdir#skills/}"; skill="${rel%%/*}"; subpath="${rel#*/}"
+  ( cd "skills/$skill" && python3 -m pytest "$subpath" -q ) \
+    || echo "FAIL: skills/$skill/$subpath"   # shell-only dirs (doctor/update) report "no tests" — expected
+done
+# Shared infra (each from its own package root):
+python3 -m pytest lib/ tests/integration/ -q || echo "FAIL: lib + integration"
+for d in hooks/wake-up scripts; do
+  ( cd "$d" && python3 -m pytest -q ) || echo "FAIL: $d"
 done
 ```
 
-> `feed/` and `skills/sf-catch-up` were removed with the Activity Feed (ADR-031, solo-first pivot) —
-> drop them from the loop. The per-module loop is otherwise unchanged.
+> `feed/` and `skills/sf-catch-up` were removed with the Activity Feed (ADR-031, solo-first pivot).
+> The same suites now also run in CI (`validate.yml` `tests` job) as a backstop to this local gate.
 
 Then the distribution shell suites + the version-compare self-test:
 
