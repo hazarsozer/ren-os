@@ -165,3 +165,17 @@ skill** rather than adding one, reusing the C3b diff-gate + atomic-apply spine i
 - **Still deferred:** dedup, date-normalize, contradiction-prune; the project↔global instinct axis.
 
 The governed sweep now covers both **promotion** (C3b) and **link-health housekeeping** (C3c), each diff-gated.
+
+---
+
+## Amendment — 2026-06-28: B1 ships the `experiment-log` writer
+
+§6's page-type batch forward-declared `experiment-log` (shape decided, no writer). **B1 ships the writer**
+(design spec `docs/superpowers/specs/2026-06-28-b1-experiment-log-design.md`): `/ren:improve-skill`'s close-out
+turns a finished Karpathy-loop `history` into an append-only, project-scoped ledger at
+`wiki/projects/<project>/experiment-log.md` (`skills/improve-skill/lib/experiment_log.py`). **No schema version
+bump** — instances are written at the already-declared `current: 1`. The orchestrator is unchanged; the write is
+a SKILL.md close-out step (resolve the active project, skip with a notice if none). This is the self-improvement
+layer's slice of the compounding model — the loop's outcomes now persist (ADR-012/036), giving the supervised
+runs the audit trail ADR-036 requires before autonomy is earned. **`routine-spec` v2 `verification_strategy`
+(C2) remains the next page-type-batch slice.**
