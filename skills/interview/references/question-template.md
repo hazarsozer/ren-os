@@ -1,6 +1,7 @@
-# Identity Interview — Question Template (v1)
+# Identity Interview — Question Template (v2)
 
-Eighteen questions across five sections. Per ADR-022. Loaded by `SKILL.md` step 2.
+Eighteen identity questions across five sections (A–E), plus an **optional** venture arc (Section F, ~5
+questions → the `venture-profile` pages). Per ADR-022 (broadened in H2.3). Loaded by `SKILL.md` step 2.
 
 Each question entry has:
 
@@ -246,6 +247,68 @@ Total target: ~10 minutes for the friend, 70% complete acceptable. Friend may sk
     typically land in?
 - default: empty paragraph placeholder
 
+## Section F — Venture context (OPTIONAL, ~5 questions) — broadened onboarding (H2.3)
+
+> **Skippable as a whole.** Gate first: "Want to sketch your venture/studio context now? (optional — you can
+> always run `/ren:interview` later or fill the `wiki/venture/` pages by hand)." If **no** → skip all of F,
+> record `f-venture` in `skipped_questions`, leave the venture stubs as placeholders. Each answer populates one
+> `wiki/venture/<section>.md` page (type `venture-profile`); every question is independently skippable and
+> `_TBD_` is always acceptable (the friend may be pre-idea / still exploring).
+
+### F1 — Company / what you're building
+- id: `f1-company`
+- section: F
+- type: open
+- strategy: native open-ended
+- field: `wiki/venture/company.md` body
+- prompt: |
+    What are you building? One line, then a short paragraph if you have it.
+    What stage is it at — idea / prototype / launched / scaling?
+- default: leave the template's `_TBD_` placeholder
+
+### F2 — Market / the space
+- id: `f2-market`
+- section: F
+- type: open
+- strategy: native open-ended
+- field: `wiki/venture/market.md` body
+- prompt: |
+    The space you're playing in — who else is there, and why now? Rough is fine.
+- default: leave `_TBD_`
+
+### F3 — Ideal customer
+- id: `f3-icp`
+- section: F
+- type: open
+- strategy: native open-ended
+- field: `wiki/venture/icp.md` body
+- prompt: |
+    Who is this for? The person or team you most want to help first — their
+    context and their pain.
+- default: leave `_TBD_`
+
+### F4 — Team
+- id: `f4-team`
+- section: F
+- type: open
+- strategy: native open-ended
+- field: `wiki/venture/team.md` body
+- prompt: |
+    Who's building this — just you, or collaborators / advisors / future hires?
+    (Solo is a complete answer.)
+- default: leave `_TBD_`
+
+### F5 — Brain dump
+- id: `f5-brain-dump`
+- section: F
+- type: open
+- strategy: native open-ended
+- field: `wiki/venture/brain-dump.md` body
+- prompt: |
+    Anything else worth capturing on day one — raw thoughts, goals, constraints,
+    open questions? No structure needed.
+- default: leave `_TBD_`
+
 ---
 
 ## Question-template revision policy
@@ -258,6 +321,12 @@ identity.md files gracefully (additive migration; never silently drop fields).
 Adding / removing options inside a question = no schema bump if the field
 type stays the same. Document in this file's revision history below.
 
+**Section F (venture) is exempt from the identity-bump rule:** its answers populate separate
+`venture-profile` pages, not `identity.md` fields, so adding/changing F questions never bumps the
+friend-profile schema (additive new page-type, H2.3).
+
 ## Revision history
 
 - v1 (2026-05-28) — initial 18-question template per ADR-022.
+- v2 (2026-06-28) — added the optional **Section F** venture arc (→ `venture-profile` pages); the identity
+  friend-profile schema stays at v1 (broadened onboarding, H2.3).

@@ -97,6 +97,40 @@ Five fixed top-level sections, in this order. Sections may be empty if the frien
 8. **Unknown enum values**: if Q4/Q5/Q10/Q12/Q13's "other" path captures a free-form value the enum can't represent, normalize to `other` in the list AND preserve the free-form text in the markdown body's relevant section. Don't silently drop information.
 9. **Skipped questions**: record the question ID in `skipped_questions`. Don't write empty placeholders in YAML — use the schema's default value AND mark the question skipped so re-run knows to ask again.
 
+## Venture pages (`venture-profile`) — broadened onboarding (H2.3)
+
+Section F populates five **separate** pages under `~/.startup-framework/wiki/venture/`, NOT `identity.md`. Each
+is a `venture-profile` page (loose schema: the universal triple + `section`). The interview writes the friend's
+answer into the page body in place of the template's `_TBD_` placeholder; a skipped question leaves it intact.
+
+| Page | section | F-question | Body |
+|---|---|---|---|
+| `venture/company.md` | company | F1 | what you're building + stage |
+| `venture/market.md` | market | F2 | the space, why-now, alternatives |
+| `venture/icp.md` | icp | F3 | ideal customer / user |
+| `venture/team.md` | team | F4 | who's building |
+| `venture/brain-dump.md` | brain-dump | F5 | freeform |
+
+Frontmatter (per page):
+
+```yaml
+---
+title: "Venture — <Section>"      # required; string
+type: venture-profile             # required; const
+schema_version: 1                 # required; int
+framework_version: "<semver>"     # required; string
+section: company|market|icp|team|brain-dump   # required; the page discriminator
+updated: <YYYY-MM-DD>             # rewritten on each /ren:interview venture pass
+---
+```
+
+Render rules (in addition to the identity rules above):
+- **Don't invent.** Thin or skipped answer → keep the `_TBD_` placeholder (the ingest-project honest-placeholder
+  ethic). The venture profile is allowed to be mostly-empty for a pre-idea friend.
+- **One page per section**; never collapse them into `identity.md`. `identity.md` is the "you"; these are the venture.
+- **Skip handling**: a skipped F question records its ID in `identity.md`'s `skipped_questions` (the single skip
+  ledger), and the corresponding venture page keeps its placeholder body.
+
 ## What's NOT in the local identity.md
 
 - Anything beyond the friend's own profile. No notes about peers. No project state. No session pointers.
