@@ -24,6 +24,7 @@ contract:
     - "Either: all eval assertions pass → squash-merge to base branch (default) or keep branch (--keep-branch)"
     - "Or: max-iterations / budget / turn cap reached → branch retained for inspection"
     - "A run summary listing: iterations executed, score-before vs score-after, commits kept, commits reverted"
+    - "On a resolvable active project: one appended section in wiki/projects/<project>/experiment-log.md recording the run's experiments (B1)"
   budgets:
     turns: 200                                  # outer loop turns; inner sub-runs separately capped
     files_written: 30                           # SKILL.md, references/*, eval edits if any
@@ -35,6 +36,7 @@ contract:
     write:
       - "skills/<skill-name>/SKILL.md"
       - "skills/<skill-name>/references/**"
+      - "wiki/projects/<project>/experiment-log.md"   # B1: append the run's experiment ledger
     execute:
       - "git (status, branch, switch, add, commit, reset, restore, merge, log)"
       - "claude --bare --print --max-budget-usd <N> ... (inner sub-runs for change proposals)"
@@ -45,6 +47,7 @@ contract:
     - "Run summary printed to user"
   output_paths:
     - "skills/<skill-name>/"  # only target skill modified
+    - "wiki/projects/<project>/experiment-log.md"  # B1 ledger (when an active project resolves)
 
 tags: [self-improvement, karpathy-loop, skill-quality, eval-driven]
 related_skills: [skill-creator, sf-doctor]
@@ -187,6 +190,22 @@ for i in 1..max_iterations:
 
 See `references/git-mechanics.md` for branch / commit / revert / merge details. See `references/budget-tracking.md` for the shadow-budget math (token sums × current model pricing).
 
+## Close-out: append the experiment-log (B1)
+
+After the loop returns — success OR cap/partial, any run with ≥1 iteration — record it to the project-scoped ledger so supervised runs accrue the audit trail ADR-036/012 want:
+
+1. Resolve `wiki_root` (SF_WIKI_ROOT → CLAUDE_PLUGIN_OPTION_WIKIROOT → framework wiki, as `/ren:recall` does) and the **active project slug** (same resolution as `/ren:note` / `/ren:wrap`).
+2. **No resolvable project →** print "experiment-log skipped (no active project); the run's git history is the record." and stop — the page-type is project-scoped (a master-level ledger is deferred to a later slice).
+3. Otherwise build → render → append via the lib (pure builders + one append primitive):
+   ```python
+   from lib.experiment_log import build_experiment_entries, render_run_section, append_experiment_log
+   entries = build_experiment_entries(result.history, ts=<today>)
+   section = render_run_section(entries, skill_name=result.skill_name, baseline=result.baseline_score,
+                                final=result.final_score, disposition=result.branch_disposition, ts=<today>)
+   append_experiment_log(wiki_root / "projects" / <slug> / "experiment-log.md", section, project=<slug>)
+   ```
+4. The write is **append-only and ungated** — it records what the loop *did* (like `log.md`), not proposed content needing approval. Re-runs append new sections in chronological order. Print a one-line confirmation with the path.
+
 ## Operating principles (carried from ADR-012)
 
 - **One change per iteration.** Narrow attempt loop. The LLM proposes the SINGLE highest-leverage change; doesn't bundle "refactor everything." This is the load-bearing discipline that makes "keep or revert" work cleanly.
@@ -223,6 +242,7 @@ See `references/git-mechanics.md` for branch / commit / revert / merge details. 
 - Modify `eval/eval.json` (the source of truth for what "improvement" means; the loop must not move its own goalposts)
 - Push the improve branch anywhere — local-only; if friend wants to share progress they push manually
 - Run during a dirty working tree — pre-flight refuses
+- Write anything to the wiki beyond the append-only experiment-log (B1) — no curated-page edits, no gating, no other pages
 
 ## Implementation note
 
@@ -233,7 +253,9 @@ The shadow-budget tracker sums `usage.input_tokens + usage.output_tokens` from e
 ## References
 
 - ADR-011 (Skill Schema) — defines `eval/eval.json` shape this loop consumes
-- ADR-012 (Two-Layer Self-Improvement) — the design + safety primitives
+- ADR-012 (Two-Layer Self-Improvement) — the design + safety primitives; the experiment-log (B1) is the loop's compounding memory
+- ADR-037 (Compounding Memory Model) — the experiment-log page-type batch (forward-declared C3a, writer shipped B1)
+- `docs/superpowers/specs/2026-06-28-b1-experiment-log-design.md` — B1 design spec
 - `references/karpathy-loop.md` — full prose on the loop discipline
 - `references/cc-flag-watch.md` — CC CLI flag availability watch list (`--max-turns` etc.)
 - `references/git-mechanics.md` — branch / commit / revert / merge details
