@@ -1,0 +1,34 @@
+{
+  "_schema_note": "Anthropic API pricing per million tokens. Used by skills/improve-skill/lib/budget.py for shadow-USD enforcement when CC's --max-budget-usd isn't available (i.e., non-print-mode contexts). Per ADR-006 plugin-versioning discipline, bumps to this file are bound to plugin minor or patch releases. See references/cc-flag-watch.md for when we can drop this dependency.",
+  "version": "1.0.0",
+  "valid_as_of": "2026-05-28",
+  "source_url_at_capture": "https://www.anthropic.com/pricing (verify before each plugin release)",
+  "pricing_usd_per_million_tokens": {
+    "claude-sonnet-4-6": {
+      "input": 3.00,
+      "output": 15.00,
+      "cache_read": 0.30,
+      "cache_creation": 3.75
+    },
+    "claude-opus-4-5": {
+      "input": 15.00,
+      "output": 75.00,
+      "cache_read": 1.50,
+      "cache_creation": 18.75
+    },
+    "claude-haiku-4-5": {
+      "input": 1.00,
+      "output": 5.00,
+      "cache_read": 0.10,
+      "cache_creation": 1.25
+    }
+  },
+  "default_model": "claude-sonnet-4-6",
+  "alias_resolution": {
+    "_note": "Maps common CLI aliases (e.g., 'sonnet', 'opus', 'haiku') to canonical model IDs. budget.py uses this to resolve unknown model strings.",
+    "sonnet": "claude-sonnet-4-6",
+    "opus": "claude-opus-4-5",
+    "haiku": "claude-haiku-4-5"
+  },
+  "_warning": "These are placeholder values for V1 scaffolding. BEFORE first plugin release, verify against Anthropic's current pricing page and update both pricing_usd_per_million_tokens AND valid_as_of. /ren:doctor warns when valid_as_of is >60 days stale."
+}

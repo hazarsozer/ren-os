@@ -1,0 +1,73 @@
+{
+  "name": "sf-doctor",
+  "description": "Binary-assertion suite for /ren:doctor. Covers the nine status sections, install-mode skipping, and the standalone read-only permission audit (--permissions, 'KEYS ON YOUR RING'). The permission-audit assertions are concretely backed by the hermetic scripts/tests/test_check_permissions.sh (which seeds fake tokens and asserts they never appear in the output).",
+  "schema_version": 1,
+  "tests": [
+    {
+      "id": "install-mode-skips-update",
+      "fixture": "scripts/tests (hermetic)",
+      "prompt": "/ren:doctor --install-mode",
+      "expected_output_summary": "FRAMEWORK UPDATE section is skipped (no marketplace fetch).",
+      "trigger_test": false,
+      "binary_assertions": [
+        "FRAMEWORK UPDATE section reports skipped (install mode) and performs no gh api network call",
+        "All other sections still render"
+      ]
+    },
+    {
+      "id": "permission-audit",
+      "fixture": "scripts/tests/test_check_permissions.sh (hermetic; seeds a crafted .claude.json + settings.json with fake tokens)",
+      "prompt": "/ren:doctor --permissions",
+      "expected_output_summary": "Standalone 'KEYS ON YOUR RING' report: MCP servers by name+transport, allow/deny/ask tallies, broad grants flagged, plugins + hooks listed, and ZERO secret values printed.",
+      "trigger_test": true,
+      "binary_assertions": [
+        "Output contains the report header 'KEYS ON YOUR RING' and the framing copy 'keys != instructions' (keys ≠ instructions)",
+        "Every configured MCP server (global ~/.claude.json#mcpServers and per-project projects.*.mcpServers) is listed by name with its transport classified as stdio, http, or sse",
+        "permissions.allow / permissions.deny / permissions.ask are each tallied with a rule count and per-prefix breakdown, including a settings.local.json overlay when present",
+        "Broad grants are flagged: bare `Bash` (every shell command) and `mcp__*` (every tool on every server); server-scoped `mcp__<server>__*` wildcards are noted",
+        "enabledPlugins (a dict keyed '<plugin>@<marketplace>') and configured hooks (by event name) are listed",
+        "No secret/env/token/header value is ever printed: a seeded fake token present in an MCP server's env, in an http server's headers, and in a project server's env is ABSENT from the output",
+        "All inputs absent (no ~/.claude.json, no settings.json, no settings.local.json) still renders a clean empty report and exits 0",
+        "The audit performs no writes and no network calls"
+      ]
+    },
+    {
+      "id": "context-section",
+      "fixture": "scripts/tests/test_check_context.sh (hermetic)",
+      "prompt": "/ren:doctor --section context",
+      "expected_output_summary": "Only the CONTEXT & TOKEN ECONOMICS section renders; no other sections appear.",
+      "trigger_test": true,
+      "binary_assertions": [
+        "Output contains the section header 'CONTEXT & TOKEN ECONOMICS'",
+        "No other section headers (ENVIRONMENT, PLUGINS, SCHEMA VERSIONS, FRAMEWORK UPDATE, BACKUP, ROUTINES, CODE-MAP, WIKI HEALTH) appear in the output",
+        "The auto_mode check never prints a secret or token value even when settings.json is present"
+      ]
+    },
+    {
+      "id": "wiki-health-section",
+      "fixture": "scripts/tests/test_check_wiki_health.sh (hermetic)",
+      "prompt": "/ren:doctor --section wiki-health",
+      "expected_output_summary": "Only the WIKI HEALTH section renders; no other sections appear.",
+      "trigger_test": true,
+      "binary_assertions": [
+        "Output contains the section header 'WIKI HEALTH'",
+        "No other section headers (ENVIRONMENT, PLUGINS, SCHEMA VERSIONS, FRAMEWORK UPDATE, BACKUP, ROUTINES, CODE-MAP, CONTEXT & TOKEN ECONOMICS) appear in the output",
+        "Output ends with a health_score summary line (e.g. '0 issue(s) across N pages' or 'N issue(s) across N pages')"
+      ]
+    },
+    {
+      "id": "full-report-nine-sections",
+      "fixture": "scripts/tests (hermetic; check-* scripts run read-only)",
+      "prompt": "/ren:doctor",
+      "expected_output_summary": "All nine sections render; a final summary line; read-only throughout.",
+      "trigger_test": true,
+      "binary_assertions": [
+        "Output contains all nine section headers: ENVIRONMENT, PLUGINS, SCHEMA VERSIONS, FRAMEWORK UPDATE, BACKUP, ROUTINES, CODE-MAP, CONTEXT & TOKEN ECONOMICS, WIKI HEALTH",
+        "A crashing or timed-out check-script degrades to a per-section failure note and does NOT crash the overall report",
+        "The run is side-effect-free: nothing under the wiki or settings is written",
+        "Exit code is 0 when no blocker (❌) is present",
+        "The auto_mode line in CONTEXT & TOKEN ECONOMICS never prints a secret or token value"
+      ]
+    }
+  ]
+}

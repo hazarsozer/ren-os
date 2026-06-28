@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "ren",
+  "displayName": "RenOS",
+  "version": "0.1.0",
+  "description": "RenOS — a governable second-brain OS for Claude Code. A compounding wiki you own as your single source of truth + thin glue over native primitives (Routines, Memory, Agents). The plugin's source-of-truth version lives in this field; the marketplace entry omits version to avoid drift (per CC docs, plugin.json wins silently when both are set).",
+  "author": {
+    "name": "Hazar Sozer",
+    "email": "hsozer00@gmail.com"
+  },
+  "homepage": "https://github.com/hazarsozer/ren-os",
+  "repository": "https://github.com/hazarsozer/ren-os",
+  "license": "MIT",
+  "keywords": [
+    "wiki",
+    "memory",
+    "second-brain",
+    "agentic-os",
+    "solo-builder",
+    "claude-code"
+  ],
+  "userConfig": {
+    "wikiRoot": {
+      "type": "directory",
+      "title": "Wiki location",
+      "description": "Where your personal wiki lives on disk. Default: ~/.startup-framework/wiki/ (matches ADR-017 + ADR-027). Used by every framework command that reads or writes the wiki.",
+      "default": "${HOME}/.startup-framework/wiki",
+      "required": false
+    },
+    "devRoot": {
+      "type": "directory",
+      "title": "Projects root directory",
+      "description": "Where your code projects live (e.g. ~/Dev, ~/code, ~/work). The wake-up hook uses this to detect which project you're in and inject that project's wiki context. Default: ~/Dev.",
+      "default": "${HOME}/Dev",
+      "required": false
+    },
+    "snapshotRetain": {
+      "type": "number",
+      "title": "Schema snapshot retention",
+      "description": "How many pre-migration wiki snapshots to keep at ${CLAUDE_PLUGIN_DATA}/wiki-snapshots/ before pruning. Default: 3 (per ADR-027). Increase if you want a longer rollback window; decrease to save disk.",
+      "default": 3,
+      "min": 1,
+      "max": 20
+    },
+    "rcChannel": {
+      "type": "boolean",
+      "title": "Subscribe to release candidates",
+      "description": "When true, /ren:update --rc and /ren:doctor will track ren-os-rc in addition to stable. Builders who want early access enable this; everyone else leaves it off and rides the monthly stable cadence (per ADR-019).",
+      "default": false
+    }
+  }
+}

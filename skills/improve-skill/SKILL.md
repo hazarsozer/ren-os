@@ -1,0 +1,263 @@
+---
+name: improve-skill
+description: |
+  Use when the friend wants to improve an existing skill's body (SKILL.md
+  instructions, references/, examples) against its own eval/eval.json
+  binary-assertion test suite. Triggers on the /ren:improve-skill <skill-name>
+  slash command. Applies the Karpathy auto-research loop per ADR-012:
+  read skill → run evals → propose ONE change → re-run → keep on score
+  improvement, revert on score drop. Defaults to interactive mode (user
+  approves each change). Autonomous mode (--autonomous) requires hard
+  ceilings (--max-iterations AND --max-budget-usd) and uses git as memory
+  for atomic revert. Layer 1 (description optimization) is Skill Creator's
+  job, NOT this skill — this is Layer 2 (body quality).
+version: 0.1.0
+license: MIT
+
+framework_version: 1.0.0
+schema_version: 1
+type: skill
+
+contract:
+  required_outputs:
+    - "A git branch named improve/<skill-name>/<YYYY-MM-DD-HHMMSS> containing 1+ iteration commits"
+    - "Either: all eval assertions pass → squash-merge to base branch (default) or keep branch (--keep-branch)"
+    - "Or: max-iterations / budget / turn cap reached → branch retained for inspection"
+    - "A run summary listing: iterations executed, score-before vs score-after, commits kept, commits reverted"
+    - "On a resolvable active project: one appended section in wiki/projects/<project>/experiment-log.md recording the run's experiments (B1)"
+  budgets:
+    turns: 200                                  # outer loop turns; inner sub-runs separately capped
+    files_written: 30                           # SKILL.md, references/*, eval edits if any
+    duration_seconds: 7200                      # 2h hard upper bound (12-iteration overnight runs typical)
+  permissions:
+    read:
+      - "skills/<skill-name>/**"
+      - "skills/improve-skill/references/**"
+    write:
+      - "skills/<skill-name>/SKILL.md"
+      - "skills/<skill-name>/references/**"
+      - "wiki/projects/<project>/experiment-log.md"   # B1: append the run's experiment ledger
+    execute:
+      - "git (status, branch, switch, add, commit, reset, restore, merge, log)"
+      - "claude --bare --print --max-budget-usd <N> ... (inner sub-runs for change proposals)"
+      - "uv run pytest skills/<skill-name>/eval/ (or equivalent eval runner)"
+  completion_conditions:
+    - "Exit reason in {all_assertions_pass, max_iterations_reached, max_budget_reached, max_turns_shadow_reached, user_cancelled, eval_unrunnable, no_improvement_possible, requires_configured_backend}"
+    - "Branch state (kept or squashed-merged) matches the exit-reason policy"
+    - "Run summary printed to user"
+  output_paths:
+    - "skills/<skill-name>/"  # only target skill modified
+    - "wiki/projects/<project>/experiment-log.md"  # B1 ledger (when an active project resolves)
+
+tags: [self-improvement, karpathy-loop, skill-quality, eval-driven]
+related_skills: [skill-creator, doctor]
+references_required:
+  - "references/karpathy-loop.md"
+  - "references/cc-flag-watch.md"
+  - "references/git-mechanics.md"
+references_on_demand:
+  - "references/budget-tracking.md"
+  - "references/eval-runner.md"
+---
+
+# improve-skill
+
+Layer-2 skill self-improvement per ADR-012. The mechanical realization of Karpathy's "auto-research" pattern applied to a skill's `SKILL.md` body and references. Layer 1 (description optimization for activation reliability) is the Skill Creator's territory; this skill does not touch the description.
+
+> ⚠️ **EXPERIMENTAL — the eval backend is wired (own LLM-judge); autonomy is still earned per ADR-036.**
+> The Karpathy loop scores each iteration by running the target skill's `eval/eval.json`
+> through our own LLM-judge (`references/eval-runner.md`). **The backend is wired:**
+> the loop runs when `claude` + a credential are present (non-bare invocation). When
+> the backend is unavailable (bare context, missing credential, or no `claude` binary),
+> the skill exits immediately and cleanly with exit reason `requires_configured_backend`
+> (no crash, no branch created, no exception) — the same honest default as before, now
+> meaning *backend unavailable* rather than *backend not yet wired*. **Autonomy is still
+> earned:** `--autonomous` requires `--max-iterations N` + `--max-budget-usd X` (pre-flight
+> refuses otherwise), and the EXPERIMENTAL banner stays until ≥3 logged clean supervised
+> runs prove the loop in production (ADR-036 §3).
+
+## When to use this skill
+
+- Friend invokes `/ren:improve-skill <skill-name>` (canonical trigger)
+- Friend says any of: "make X skill better", "improve X", "let X learn from its evals", "run the improvement loop on X" — confirm intent + the target skill name, then run
+- During `/ren:doctor` if a skill's eval pass rate drops below a threshold (proactive nudge; user invokes manually)
+
+## When NOT to use this skill
+
+- The target skill has no `eval/eval.json` — the loop has no scoring primitive. Refuse with a clear message and (if friend confirms) suggest invoking Skill Creator first to bootstrap evals.
+- The target skill's evals are all subjective qualifiers (per ADR-011, eval.json should be binary assertions only). Refuse and explain the binary-assertion requirement.
+- The friend wants to improve the description (activation reliability) — direct them to Skill Creator's `/skill-creator > Improve my <skill> description` flow instead. This skill ONLY edits SKILL.md body + references.
+- Autonomous mode (`--autonomous`) without ALL the required safety flags set (see "Flag set" below). Refuse pre-flight.
+
+## Flag set (locked per team-lead arbitration, 2026-05-28)
+
+```
+/ren:improve-skill <skill-name> [flags]
+```
+
+**REQUIRED in `--autonomous` mode** (all must be set; pre-flight refuses to run otherwise):
+
+| Flag | Origin | Purpose |
+|---|---|---|
+| `--max-iterations N` | Our framework cap | Outer-loop ceiling; canonical safety bound |
+| `--max-budget-usd N` | CC-native (print-mode only) | API-cost ceiling; inner `claude --bare --print` sub-runs respect it |
+
+**`--max-turns` is NOT required** because it does not exist as a CC CLI flag in CC `2.1.154` (verified absent — see `references/cc-flag-watch.md` for the watch). Our framework's shadow turn-counter via response-summation fills the gap; that's belt-and-suspenders, not a pre-flight requirement.
+
+**Optional flags**:
+
+| Flag | Default | Purpose |
+|---|---|---|
+| `--autonomous` | false | Skip per-iteration user approval; required only in unsupervised runs |
+| `--interactive` | true | Explicit opt-in (the default); user approves each change |
+| `--branch-prefix STR` | `improve` | Override branch-name prefix |
+| `--base-ref REF` | `HEAD` | Base for the improve branch + final merge target |
+| `--keep-branch` | false | Don't squash-merge on success; leave branch for review |
+| `--dry-run` | false | Compose ONE proposed change, show the diff, exit without committing |
+| `--eval-subset PATH` | full eval | Run a subset of `eval/eval.json` (useful for partial improvements) |
+| `--bare` | true (inner) | Pass `--bare` to inner sub-runs (skip plugin/hook/CLAUDE.md overhead in change-proposal context) |
+| `--eval-runs N` | 1 | Run the eval suite N times per iteration; score is binarized by majority vote when N>1 (odd N recommended) |
+| `--reference PATH` | none | Pull a past artifact (e.g. last month's report) into the judge prompt as a "what good looks like" exemplar for format/quality grounding (A4). Read-only, bounded; opt-in — default is no exemplar, judge prompt unchanged. |
+| `--critic-model MODEL` | none | Cross-model critic final-gate (A2): after a run reaches all-pass, a DIFFERENT model independently re-scores once before squash-merge. `codex`/`gpt*`/`o1*`/`o3*`/`o4*` → the `codex` CLI (cross-vendor); anything else → `claude --model` (e.g. `claude-opus-4-8`). Ship only if the critic agrees; a dispute keeps the branch for human review; an absent critic backend ships WITHOUT confirmation (explicit notice, never silent). Opt-in — default is the single Haiku judge, unchanged. |
+
+## Pre-flight check (mandatory)
+
+The loop may surface the target skill's dependency footprint (its `lib/` dependencies + dependents) via `impact.dependency_footprint(target_files, code_map.dependencies)`, so the operator sees the blast radius before iterating.
+
+Before the first iteration:
+
+1. **Target skill exists**: `skills/<skill-name>/SKILL.md` is readable. Else refuse.
+2. **Eval file exists + parseable**: `skills/<skill-name>/eval/eval.json` loads as JSON, has `tests[]` with at least one binary assertion (`binary_assertions[]`). Else refuse.
+3. **Working tree clean**: `git status --porcelain` is empty. Else refuse with "Commit or stash your changes first." (We don't want to mix improve-loop commits with unrelated WIP.)
+4. **Autonomous-mode safety**: if `--autonomous`, require ALL of `--max-iterations` AND `--max-budget-usd`. Else refuse with "Autonomous mode requires --max-iterations N --max-budget-usd N. Refusing to run unbounded."
+5. **CC is on the supported PATH**: `claude --version` returns a parseable version. Else refuse with installation instructions.
+6. **Initial eval run succeeds**: `uv run pytest skills/<skill-name>/eval/` (or equivalent) runs to completion. If the evals themselves are broken, refuse — we don't want the loop chasing test errors.
+
+A `tier: lightweight` skill (ADR-011 amendment) is refused before gate 2 — it has no eval surface, so it is not self-improvable (the message points to the promotion path: add `eval/eval.json` and drop `tier: lightweight`).
+
+Only after all gates pass does the loop begin. It then surfaces a non-blocking **eval-readiness advisory** (A3): a thin-signal warning (too few binary assertions to discriminate) plus the Karpathy preconditions (objective metric, fast feedback, write access, high-volume signal, cheap-to-fail, consistent measuring stick) for you to confirm before spending eval-run budget. Advisory only — it never blocks.
+
+## The Karpathy loop (8 steps per iteration)
+
+See `references/karpathy-loop.md` for the full prose. Mechanical summary:
+
+```
+branch = create_branch(f"improve/{skill}/{timestamp}")
+
+baseline_score = run_evals(skill, eval_subset)
+if baseline_score == 1.0:
+    exit("no improvements needed", branch_kept=True)
+
+for i in 1..max_iterations:
+    # Track budgets BEFORE the inner sub-run
+    if budget_exhausted(): exit("budget_exhausted")
+    if shadow_turn_count >= max_turns_shadow: exit("max_turns_shadow_reached")
+
+    # Inner sub-run: propose ONE change
+    proposed_change = run_inner_sub_run(
+        prompt=propose_one_change_prompt(skill, failing_assertions, history),
+        flags=["--bare", "--print", "--max-budget-usd", remaining_budget],
+    )
+
+    # User approval (interactive only)
+    if not autonomous and not user_approves(proposed_change):
+        continue   # try a different angle next iteration
+
+    # Apply the change atomically
+    apply_change(proposed_change)
+    git_commit(f"iter {i}: {proposed_change.summary}")
+
+    # Re-run evals
+    new_score = run_evals(skill, eval_subset)
+
+    if new_score < baseline_score:
+        git_reset_hard("HEAD~1")
+        log("iter %d: reverted (score %.2f → %.2f)", i, baseline_score, new_score)
+    elif new_score == baseline_score:
+        log("iter %d: neutral (score %.2f)", i, baseline_score)
+        # Keep the change — some iterations need to stack
+    else:
+        log("iter %d: improved (%.2f → %.2f)", i, baseline_score, new_score)
+        baseline_score = new_score
+
+    if baseline_score == 1.0:
+        break   # all assertions pass; success
+
+# Exit: success → squash-merge unless --keep-branch
+#       partial → branch kept; user reviews
+#       cap → branch kept; user reviews
+```
+
+See `references/git-mechanics.md` for branch / commit / revert / merge details. See `references/budget-tracking.md` for the shadow-budget math (token sums × current model pricing).
+
+## Close-out: append the experiment-log (B1)
+
+After the loop returns — success OR cap/partial, any run with ≥1 iteration — record it to the project-scoped ledger so supervised runs accrue the audit trail ADR-036/012 want:
+
+1. Resolve `wiki_root` (SF_WIKI_ROOT → CLAUDE_PLUGIN_OPTION_WIKIROOT → framework wiki, as `/ren:recall` does) and the **active project slug** (same resolution as `/ren:note` / `/ren:wrap`).
+2. **No resolvable project →** print "experiment-log skipped (no active project); the run's git history is the record." and stop — the page-type is project-scoped (a master-level ledger is deferred to a later slice).
+3. Otherwise build → render → append via the lib (pure builders + one append primitive):
+   ```python
+   from lib.experiment_log import build_experiment_entries, render_run_section, append_experiment_log
+   entries = build_experiment_entries(result.history, ts=<today>)
+   section = render_run_section(entries, skill_name=result.skill_name, baseline=result.baseline_score,
+                                final=result.final_score, disposition=result.branch_disposition, ts=<today>)
+   append_experiment_log(wiki_root / "projects" / <slug> / "experiment-log.md", section, project=<slug>)
+   ```
+4. The write is **append-only and ungated** — it records what the loop *did* (like `log.md`), not proposed content needing approval. Re-runs append new sections in chronological order. Print a one-line confirmation with the path.
+
+## Operating principles (carried from ADR-012)
+
+- **One change per iteration.** Narrow attempt loop. The LLM proposes the SINGLE highest-leverage change; doesn't bundle "refactor everything." This is the load-bearing discipline that makes "keep or revert" work cleanly.
+- **Binary assertion only.** Per ADR-011, evals must be binary. Subjective qualifiers go through Skill Creator's qualitative dashboard separately.
+- **Git as memory.** Each iteration is one commit; revert is `git reset --hard HEAD~1`. No fancy state management.
+- **The improver cannot edit its own scorer (A1 edit-lock).** Every applied change passes through `apply_proposed_change`, which refuses any diff that targets the skill's `eval/` rubric or escapes its directory (`ScorerTamperError`). The loop optimizes the *asset* (SKILL.md / references), never the *scorer* — the anti-Goodhart invariant. Always-on; a rejection is a skipped iteration counted toward the consecutive-skip cap.
+- **Autonomous mode never asks the human** during a run. Pre-flight requires the hard ceilings before allowing autonomous mode.
+
+## Failure-degradation modes
+
+| Failure | Behavior | User-visible |
+|---|---|---|
+| Eval backend unavailable (bare context / missing credential / no `claude` binary) | Exit immediately + cleanly; no branch; no exception | "Eval backend unavailable." → exit reason `requires_configured_backend` |
+| Skill not found | Refuse to start | "Skill `<name>` not found. Run `/skill-creator` to bootstrap." |
+| `eval/eval.json` missing or malformed | Refuse to start | Pointer to ADR-011 schema |
+| Initial eval run errors (not assertion failure — actual test framework error) | Refuse to start | "Fix your evals first." |
+| Working tree dirty | Refuse to start | "Commit or stash, then retry." |
+| Autonomous mode without required flags | Refuse to start (pre-flight) | "Autonomous mode requires --max-iterations N --max-budget-usd N." |
+| Proposed change targets `eval/` or escapes the skill dir (A1) | Reject before apply (`ScorerTamperError`); skip iteration; count toward consecutive-skip cap | Logged; 3 in a row → `no_improvement_possible` |
+| Critic backend unavailable (`--critic-model` set but its CLI absent) | Ship the run WITHOUT cross-model confirmation; never block, never silently "confirm" | Disposition notes "shipped WITHOUT cross-model confirmation" |
+| Critic disputes the final result (`--critic-model`) | Do NOT auto-merge; keep branch for human review | Disposition `kept (critic-flagged — <model> disputed <ids>)` |
+| Inner sub-run errors mid-iteration | Treat as score=0; revert iteration; continue outer loop | Logged |
+| Budget exhausted mid-iteration | Finish current iteration's eval (keep/revert decision), then exit cleanly | Summary printed |
+| Shadow turn-cap hit | Same as budget exhaustion | Same |
+| User Ctrl-C | `git checkout -- .` to clear dirty state; branch retained for inspection | Branch info printed |
+| All iterations regressed (zero net improvement) | Branch kept (don't squash garbage); user inspects `git log` | "No net improvement; branch retained: `<name>`" |
+| Eval framework crash | Same as inner sub-run error: treat as score=0 for current iteration | Logged |
+| CC sub-process crash | One iteration lost; outer loop retries on next iteration (state re-read from git) | Logged |
+
+## What `/ren:improve-skill` explicitly DOES NOT do
+
+- Touch the skill's `description` field — Layer 1, Skill Creator's job
+- Touch any skill OTHER than the named target — the branch isolates writes
+- Modify `eval/eval.json` (the source of truth for what "improvement" means; the loop must not move its own goalposts)
+- Push the improve branch anywhere — local-only; if friend wants to share progress they push manually
+- Run during a dirty working tree — pre-flight refuses
+- Write anything to the wiki beyond the append-only experiment-log (B1) — no curated-page edits, no gating, no other pages
+
+## Implementation note
+
+V1 implementation lives in `skills/improve-skill/lib/`. Inner sub-runs spawn `claude --bare --print --max-budget-usd <remaining>` as subprocesses with stdin = the proposed-change prompt + the skill's current files. Output is parsed as a structured JSON change-proposal (which file to edit, the diff). Apply uses `git apply` for atomicity.
+
+The shadow-budget tracker sums `usage.input_tokens + usage.output_tokens` from each sub-run × the current model's price from `references/model-pricing.json` (file maintained per plugin version). When CC ships a reliable cross-mode `--max-turns` or non-print-mode `--max-budget-usd`, we drop the shadow. See `references/cc-flag-watch.md`.
+
+## References
+
+- ADR-011 (Skill Schema) — defines `eval/eval.json` shape this loop consumes
+- ADR-012 (Two-Layer Self-Improvement) — the design + safety primitives; the experiment-log (B1) is the loop's compounding memory
+- ADR-037 (Compounding Memory Model) — the experiment-log page-type batch (forward-declared C3a, writer shipped B1)
+- `docs/superpowers/specs/2026-06-28-b1-experiment-log-design.md` — B1 design spec
+- `references/karpathy-loop.md` — full prose on the loop discipline
+- `references/cc-flag-watch.md` — CC CLI flag availability watch list (`--max-turns` etc.)
+- `references/git-mechanics.md` — branch / commit / revert / merge details
+- `references/budget-tracking.md` — shadow-budget math
+- `references/eval-runner.md` — how we invoke pytest against eval/eval.json

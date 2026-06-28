@@ -1,0 +1,128 @@
+{
+  "_spike_meta": {
+    "tool": "lean-ctx",
+    "version": "3.8.8",
+    "command": "lean-ctx read <file> -m signatures",
+    "note": "No 'lean-ctx map' subcommand exists. The per-file CLI surface is 'lean-ctx read <file> -m signatures'. Run once per source file; parse the text lines. For project-wide analysis, 'lean-ctx graph build <path>' writes a SQLite graph to ~/.local/share/lean-ctx/graphs/<project-hash>/graph.db (nodes table has kind/name/file_path/line_start/line_end but only classes, not functions)."
+  },
+  "_raw_signatures_output": "sf_paths.py [322L]\nfn pub framework_version() → str @L49-82\nfn pub framework_root() → Path @L98-107\nfn _resolve_path_env(name:s) → Path | None @L110-120\nfn pub wiki_path() → Path @L123-135\nclass pub HandleNotConfiguredError @L141-147\nclass pub InvalidHandleError @L150-160\nclass pub SchemaVersionMismatchError @L163-183\n  fn __init__(self, path:Path, found:int, expected:int) → None @L176-183\nfn pub validate_handle(value:s) → str @L192-206\nfn pub handle(*, strict_schema:bool = True) → str @L209-248\nfn _parse_schema_version_from_frontmatter(text:s) → int | None @L251-259\nfn _parse_field_from_frontmatter(text:s, field:s) → str | None @L262-281\nfn _parse_handle_from_frontmatter(text:s) → str | None @L284-302",
+  "symbols": [
+    {
+      "name": "framework_version",
+      "kind": "fn",
+      "visibility": "public",
+      "signature": "framework_version() → str",
+      "file_path": "lib/sf_paths.py",
+      "line_start": 49,
+      "line_end": 82
+    },
+    {
+      "name": "framework_root",
+      "kind": "fn",
+      "visibility": "public",
+      "signature": "framework_root() → Path",
+      "file_path": "lib/sf_paths.py",
+      "line_start": 98,
+      "line_end": 107
+    },
+    {
+      "name": "_resolve_path_env",
+      "kind": "fn",
+      "visibility": "private",
+      "signature": "_resolve_path_env(name:s) → Path | None",
+      "file_path": "lib/sf_paths.py",
+      "line_start": 110,
+      "line_end": 120
+    },
+    {
+      "name": "wiki_path",
+      "kind": "fn",
+      "visibility": "public",
+      "signature": "wiki_path() → Path",
+      "file_path": "lib/sf_paths.py",
+      "line_start": 123,
+      "line_end": 135
+    },
+    {
+      "name": "HandleNotConfiguredError",
+      "kind": "class",
+      "visibility": "public",
+      "signature": "HandleNotConfiguredError",
+      "file_path": "lib/sf_paths.py",
+      "line_start": 141,
+      "line_end": 147
+    },
+    {
+      "name": "InvalidHandleError",
+      "kind": "class",
+      "visibility": "public",
+      "signature": "InvalidHandleError",
+      "file_path": "lib/sf_paths.py",
+      "line_start": 150,
+      "line_end": 160
+    },
+    {
+      "name": "SchemaVersionMismatchError",
+      "kind": "class",
+      "visibility": "public",
+      "signature": "SchemaVersionMismatchError",
+      "file_path": "lib/sf_paths.py",
+      "line_start": 163,
+      "line_end": 183
+    },
+    {
+      "name": "__init__",
+      "kind": "fn",
+      "visibility": "private",
+      "signature": "__init__(self, path:Path, found:int, expected:int) → None",
+      "file_path": "lib/sf_paths.py",
+      "line_start": 176,
+      "line_end": 183
+    },
+    {
+      "name": "validate_handle",
+      "kind": "fn",
+      "visibility": "public",
+      "signature": "validate_handle(value:s) → str",
+      "file_path": "lib/sf_paths.py",
+      "line_start": 192,
+      "line_end": 206
+    },
+    {
+      "name": "handle",
+      "kind": "fn",
+      "visibility": "public",
+      "signature": "handle(*, strict_schema:bool = True) → str",
+      "file_path": "lib/sf_paths.py",
+      "line_start": 209,
+      "line_end": 248
+    },
+    {
+      "name": "_parse_schema_version_from_frontmatter",
+      "kind": "fn",
+      "visibility": "private",
+      "signature": "_parse_schema_version_from_frontmatter(text:s) → int | None",
+      "file_path": "lib/sf_paths.py",
+      "line_start": 251,
+      "line_end": 259
+    },
+    {
+      "name": "_parse_field_from_frontmatter",
+      "kind": "fn",
+      "visibility": "private",
+      "signature": "_parse_field_from_frontmatter(text:s, field:s) → str | None",
+      "file_path": "lib/sf_paths.py",
+      "line_start": 262,
+      "line_end": 281
+    },
+    {
+      "name": "_parse_handle_from_frontmatter",
+      "kind": "fn",
+      "visibility": "private",
+      "signature": "_parse_handle_from_frontmatter(text:s) → str | None",
+      "file_path": "lib/sf_paths.py",
+      "line_start": 284,
+      "line_end": 302
+    }
+  ]
+}

@@ -1,0 +1,69 @@
+{
+  "name": "sf-recall",
+  "description": "Binary-assertion test suite for /ren:recall. Validates wiki-grep ranking, read-only invariant, and empty-query refusal.",
+  "schema_version": 1,
+  "framework_version": "0.1.0",
+  "tests": [
+    {
+      "id": "decision-query-finds-decision-first",
+      "fixture": "fixtures/sample-wiki-with-postgres-decision.yaml",
+      "prompt": "/ren:recall postgres decision",
+      "expected_output_summary": "Wiki match for the postgres-vs-mongo decision page ranks first; snippet includes the matching line.",
+      "trigger_test": true,
+      "binary_assertions": [
+        "The user-facing output contains the path 'wiki/decisions/' followed by a slug containing 'postgres'",
+        "The first listed wiki hit has higher score than any subsequent hit",
+        "Each listed wiki hit's snippet contains at least one query token (case-insensitive)",
+        "No file under wiki/ was modified by the run (sha256 checksums of all wiki/**/*.md unchanged)"
+      ]
+    },
+    {
+      "id": "no-matches-explicit-message",
+      "fixture": "fixtures/sample-wiki-with-postgres-decision.yaml",
+      "prompt": "/ren:recall xyzzy quux frobnitz",
+      "expected_output_summary": "Query tokens don't appear in any wiki page. Skill prints an explicit no-results message.",
+      "trigger_test": true,
+      "binary_assertions": [
+        "User-facing output contains the substring 'No matches' (or equivalent explicit no-results phrasing)",
+        "Zero wiki hits are listed",
+        "No error or stack trace appears in the output"
+      ]
+    },
+    {
+      "id": "empty-query-refused",
+      "fixture": "fixtures/sample-wiki-with-postgres-decision.yaml",
+      "prompt": "/ren:recall ",
+      "expected_output_summary": "Skill refuses with a usage prompt.",
+      "trigger_test": true,
+      "binary_assertions": [
+        "User-facing output contains the substring 'Empty query' OR 'Usage: /ren:recall'",
+        "No file under wiki/ is read for content matching (skill exits before grep)"
+      ]
+    },
+    {
+      "id": "read-only-invariant-load-bearing",
+      "fixture": "fixtures/sample-wiki-with-postgres-decision.yaml",
+      "prompt": "/ren:recall postgres",
+      "expected_output_summary": "After the run, every wiki file's content is byte-identical to its pre-run state (the LOAD-BEARING invariant).",
+      "trigger_test": true,
+      "binary_assertions": [
+        "sha256 of every file under wiki/**/*.md is unchanged after the run",
+        "No new files are created under wiki/ during the run",
+        "No files are deleted from wiki/ during the run",
+        "Git status (if wiki is a git repo) shows zero modified/untracked/deleted files post-run"
+      ]
+    }
+  ],
+  "non_triggers": [
+    {
+      "id": "wrap-not-recall",
+      "prompt": "/ren:wrap",
+      "expected_outcome": "skill_not_activated"
+    },
+    {
+      "id": "note-not-recall",
+      "prompt": "/ren:note something to remember",
+      "expected_outcome": "skill_not_activated"
+    }
+  ]
+}

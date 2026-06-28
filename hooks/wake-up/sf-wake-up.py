@@ -10,18 +10,16 @@ system-prompt prefix is unmodified; cache benefit is preserved across sessions.
 Locked path convention (per team-lead 2026-05-28):
   - Framework root: ~/.startup-framework/
   - Wiki: ~/.startup-framework/wiki/
-  - Activity Feed: ~/.startup-framework/activity-feed/
 
 Operating model per CC_API_NOTES.md:
   1. Read stdin JSON (CC's SessionStart event)
   2. Resolve cwd → project context (if any)
   3. Read master + project wiki indices, recent log tails
-  4. Read friends'-activity tail from feed module (silent-degrade per feed-2's contract)
-  5. Compose additionalContext payload; truncate to <5K tokens
-  6. Emit JSON to stdout; exit 0
-  7. NEVER raise — graceful failure logs to stderr + emits empty context
+  4. Compose additionalContext payload; truncate to <5K tokens
+  5. Emit JSON to stdout; exit 0
+  6. NEVER raise — graceful failure logs to stderr + emits empty context
 
-Idempotency: hook is read-only on the wiki (writes go via feed module).
+Idempotency: hook is read-only on the wiki.
 Order-insensitive: no dependency on other plugins' hooks.
 """
 
@@ -59,134 +57,68 @@ def _setup_logging() -> None:
     logger.setLevel(logging.INFO)
 
 
-def _build_feed_callback(*, cwd: str):
+def _plugin_root() -> Path:
     """
-    Build the fetch_feed_tail callable consumed by compose_wake_up_context.
+    Resolve the plugin root — the directory where lib/, hooks/, skills/ live as
+    real dirs (post-Crucible restructure, ADR-030; the root IS the plugin).
 
-    Per team-lead's locked sequence (#13 task description):
-      1. feed.pull() 10s timeout best-effort (never blocks the session)
-      2. feed.feed_write_session_start(handle, cwd, schema_version=1, skip=...)
-      3. feed.feed_read_friends_tails(handle, n_per_friend=5, include_self=True,
-                                       max_tokens=2500, refresh=False)
-
-    Returns a callable that returns the rendered friends-activity block
-    (including freshness header from FriendsTail.formatted_header).
-
-    Silent-degrade per feed-2's contract:
-      - HandleNotConfiguredError / SchemaVersionMismatchError → return ""
-      - feed module not importable → return ""
-      - pull / write_session_start failures → log but continue with read
-      - read returns empty list → return ""
-
-    All exceptions caught inside; never propagates up.
+    Prefer $CLAUDE_PLUGIN_ROOT (the env Claude Code sets when invoking the hook:
+    hooks.json runs `python3 "$CLAUDE_PLUGIN_ROOT/hooks/wake-up/sf-wake-up.py"`),
+    .strip()+expand-guarded for the same reasons as _resolve_wiki_root. Else fall
+    back to Path(__file__).resolve().parents[2] — hooks/wake-up/sf-wake-up.py →
+    parents[2] == plugin root. Both agree in production (verified against the
+    real tree).
     """
-    def fetch_tail() -> str:
-        try:
-            from feed import (
-                feed_read_friends_tails,
-                feed_write_session_start,
-                is_skip_active,
-                pull as feed_pull,
-            )
-            from feed.config import (
-                HandleNotConfiguredError,
-                SchemaVersionMismatchError,
-                handle as get_handle,
-            )
-        except ImportError:
-            logger.info("feed module unavailable; skipping feed integration")
-            return ""
-
-        # Resolve handle (silent-degrade on identity not bootstrapped)
-        try:
-            handle = get_handle()
-        except (HandleNotConfiguredError, SchemaVersionMismatchError) as exc:
-            logger.info("feed identity not configured (%s); skipping feed integration",
-                        type(exc).__name__)
-            return ""
-        except Exception:  # noqa: BLE001 — defensive
-            logger.warning("get_handle raised unexpected exception", exc_info=True)
-            return ""
-
-        # Step 1: best-effort pull
-        try:
-            feed_pull()
-        except Exception:  # noqa: BLE001
-            logger.info("feed.pull failed silently; proceeding with local clone",
-                        exc_info=True)
-
-        # Step 2: write session-start entry
-        try:
-            skip_active, _reason = is_skip_active()
-            feed_write_session_start(
-                handle=handle,
-                cwd=cwd,
-                schema_version=1,
-                skip=skip_active,
-            )
-        except Exception:  # noqa: BLE001
-            logger.info("feed_write_session_start failed silently", exc_info=True)
-
-        # Step 3: read friends tail (refresh=False since pull just happened)
-        try:
-            tail = feed_read_friends_tails(
-                own_handle=handle,
-                n_per_friend=5,
-                include_self=True,
-                max_tokens=2500,
-                refresh=False,
-            )
-        except Exception:  # noqa: BLE001
-            logger.warning("feed_read_friends_tails failed silently", exc_info=True)
-            return ""
-
-        return _render_friends_tail(tail)
-
-    return fetch_tail
+    val = os.environ.get("CLAUDE_PLUGIN_ROOT", "").strip()
+    if val:
+        return Path(os.path.expanduser(os.path.expandvars(val)))
+    return Path(__file__).resolve().parents[2]
 
 
-def _render_friends_tail(tail) -> str:
+def _ensure_plugin_root_on_path() -> None:
     """
-    Render a FriendsTail dataclass into a markdown block per the lifecycle ↔
-    feed contract (rider 1: freshness header inline + per-friend bullets via
-    feed.format_entry_one_line).
+    Put the plugin root on sys.path[0] so plugin-root-relative imports like
+    `from lib.sf_paths import …` resolve in the installed runtime.
 
-    Falls back gracefully when the tail is empty or feed.format_entry_one_line
-    is unavailable.
+    hooks.json invokes the hook by absolute path with cwd set to the session's
+    project (not the plugin root) and no PYTHONPATH, so a top-level package like
+    `lib` is not importable unless we add the plugin root explicitly. (ADR-031:
+    the wiki-root resolution unifies onto lib.sf_paths.wiki_path(), which needs
+    this insert.)
+
+    Idempotent: a no-op if the root is already on sys.path.
     """
-    formatted_header = getattr(tail, "formatted_header", None)
-    friends = getattr(tail, "friends", None) or {}
-    stale = bool(getattr(tail, "stale", False))
+    root = str(_plugin_root())
+    if root not in sys.path:
+        sys.path.insert(0, root)
 
-    if not formatted_header or not friends:
-        return ""
 
-    lines: list[str] = [formatted_header]
-    if stale:
-        lines.append("*(feed data may be stale — last sync was >24h ago)*")
-        lines.append("")
+def _resolve_wiki_root() -> Path:
+    """
+    Resolve the wiki root via `lib.sf_paths.wiki_path()` — the single source of
+    truth for the 3-tier resolution (SF_WIKI_ROOT → CLAUDE_PLUGIN_OPTION_WIKIROOT
+    → framework_root()/wiki), per ADR-031's F1 unification. The hook previously
+    inlined this logic; delegating keeps the Python reader and the shell scripts
+    (`${SF_WIKI_ROOT:-${CLAUDE_PLUGIN_OPTION_WIKIROOT:-...}}`) in lockstep with one
+    resolver. Each tier is `.strip()`-guarded (empty/whitespace = unset) and
+    expandvars+expanduser-normalized so a literal `${HOME}`/`~` default is safe —
+    this is what closes the C1 bug (the old `Path("")`-is-truthy fallthrough).
 
+    Defensive fallback: if `lib.sf_paths` is somehow not importable in the
+    installed runtime, resolve the same 3 tiers inline so the hook never breaks
+    (graceful failure is load-bearing).
+    """
+    _ensure_plugin_root_on_path()
     try:
-        from feed import format_entry_one_line
+        from lib.sf_paths import wiki_path
+        return wiki_path()
     except ImportError:
-        format_entry_one_line = None
-
-    for handle_key, entries in friends.items():
-        if not entries:
-            continue
-        for entry in entries:
-            if format_entry_one_line is not None:
-                try:
-                    lines.append(format_entry_one_line(entry))
-                    continue
-                except Exception:  # noqa: BLE001
-                    pass
-            # Fallback rendering
-            entry_handle = getattr(entry, "handle", handle_key)
-            entry_summary = getattr(entry, "summary", "") or getattr(entry, "raw_line", "")
-            lines.append(f"- {entry_handle}: {entry_summary}")
-
-    return "\n".join(lines).rstrip() + "\n"
+        logger.warning("lib.sf_paths unavailable; resolving wiki root inline", exc_info=True)
+        for var in ("SF_WIKI_ROOT", "CLAUDE_PLUGIN_OPTION_WIKIROOT"):
+            val = os.environ.get(var, "").strip()
+            if val:
+                return Path(os.path.expanduser(os.path.expandvars(val)))
+        return Path.home() / ".startup-framework" / "wiki"
 
 
 def main() -> int:
@@ -209,35 +141,36 @@ def main() -> int:
     cwd = event.get("cwd") or os.getcwd()
     source = event.get("source", "")
 
-    # Locked path: ~/.startup-framework/wiki/
-    wiki_root = Path(os.environ.get("SF_WIKI_ROOT", "")) or (
-        Path.home() / ".startup-framework" / "wiki"
-    )
-
-    # Feed integration callback per team-lead's locked 8-step sequence (#13):
-    # pull → write_session_start → read_friends_tails. All silent-degrade per
-    # feed-2's read-side asymmetry contract.
-    fetch_feed_tail = _build_feed_callback(cwd=cwd)
+    # Locked path: ~/.startup-framework/wiki/ (resolved via explicit three-way
+    # fallback — see _resolve_wiki_root for the C1 bug this closes).
+    wiki_root = _resolve_wiki_root()
 
     # Compose the context payload.
     #
-    # Import path: the script lives at hooks/wake-up/sf-wake-up.py with `lib/`
-    # right next to it. Python can't resolve `from hooks.wake_up.lib import ...`
-    # because the parent dir `wake-up` has a dash. We add THIS script's dir
-    # to sys.path and import `lib` directly. Bug caught by the end-to-end
-    # smoke test 2026-05-28 — unit tests passed via relative imports but the
-    # standalone-script invocation path was broken.
+    # Import path: the script lives at hooks/wake-up/sf-wake-up.py with the
+    # `wakeup/` package right next to it. Python can't resolve
+    # `from hooks.wake_up.wakeup import ...` because the parent dir `wake-up` has
+    # a dash. We add THIS script's dir to sys.path and import `wakeup` directly.
+    # Bug caught by the end-to-end smoke test 2026-05-28 — unit tests passed via
+    # relative imports but the standalone-script invocation path was broken.
+    #
+    # The package is named `wakeup` (not `lib`) deliberately (ADR-031): the
+    # repo-root `lib/` package (lib.sf_paths) and a hook-local `lib/` cannot both
+    # be top-level names on one sys.path — once the plugin root is inserted below,
+    # a bare `import lib` would resolve to repo-root lib and shadow this helper.
     try:
         script_dir = Path(__file__).resolve().parent
         if str(script_dir) not in sys.path:
             sys.path.insert(0, str(script_dir))
-        from lib import compose_wake_up_context  # type: ignore[import-not-found]
+        # Also put the plugin root on sys.path so plugin-root-relative imports
+        # (e.g. lib.sf_paths) resolve in the installed runtime (ADR-031).
+        _ensure_plugin_root_on_path()
+        from wakeup import compose_wake_up_context  # type: ignore[import-not-found]
 
         context_text = compose_wake_up_context(
             cwd=Path(cwd),
             wiki_root=wiki_root,
             source=source,
-            fetch_feed_tail=fetch_feed_tail,
         )
     except Exception:  # noqa: BLE001 — load-bearing graceful failure
         logger.error("compose failed:\n%s", traceback.format_exc())

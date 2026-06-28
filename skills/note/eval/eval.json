@@ -1,0 +1,64 @@
+{
+  "name": "sf-note",
+  "description": "Binary-assertion test suite for /ren:note. Validates pin-append, session-id resolution, fallback, refusal on empty text.",
+  "schema_version": 1,
+  "framework_version": "0.1.0",
+  "tests": [
+    {
+      "id": "basic-pin",
+      "prompt": "/ren:note Stripe webhook signing is HMAC-SHA256 not raw SHA256",
+      "expected_output_summary": "Bullet appended to current session's notes file; user sees confirmation with path.",
+      "trigger_test": true,
+      "binary_assertions": [
+        "wiki/.session-notes/<session-id>.md exists after the run",
+        "The user-provided text appears verbatim in the file",
+        "The bullet starts with '- [' and includes an ISO-8601 UTC timestamp",
+        "User-facing output contains the substring 'Pinned to' followed by the file path"
+      ]
+    },
+    {
+      "id": "no-session-fallback",
+      "prompt": "/ren:note remember to check the rate limit on the auth endpoint",
+      "expected_output_summary": "Skill detects no resolvable session id, falls back to unsessioned-notes.md.",
+      "trigger_test": true,
+      "binary_assertions": [
+        "wiki/.session-notes/unsessioned-notes.md exists after the run",
+        "The text appears verbatim in unsessioned-notes.md",
+        "User-facing output mentions 'unsessioned' or names the unsessioned file"
+      ]
+    },
+    {
+      "id": "empty-refused",
+      "prompt": "/ren:note ",
+      "expected_output_summary": "Skill refuses with a usage prompt; no file written.",
+      "trigger_test": true,
+      "binary_assertions": [
+        "No new file is created under wiki/.session-notes/",
+        "User-facing output mentions 'Empty text' or 'Usage: /ren:note' "
+      ]
+    },
+    {
+      "id": "second-pin-appends",
+      "prompt": "/ren:note second pin in the same session",
+      "expected_output_summary": "Appends to the existing file rather than overwriting or duplicating the header.",
+      "trigger_test": true,
+      "binary_assertions": [
+        "The file contains exactly one '# Session notes' header line",
+        "Both the first and second pin texts appear in the file",
+        "The second pin's bullet appears AFTER the first (chronological order)"
+      ]
+    }
+  ],
+  "non_triggers": [
+    {
+      "id": "wrap-not-note",
+      "prompt": "/ren:wrap",
+      "expected_outcome": "skill_not_activated"
+    },
+    {
+      "id": "recall-not-note",
+      "prompt": "/ren:recall what did we decide about auth",
+      "expected_outcome": "skill_not_activated"
+    }
+  ]
+}

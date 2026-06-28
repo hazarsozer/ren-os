@@ -1,0 +1,105 @@
+# Fixture: ingest a project whose sub-wiki already partially exists.
+#
+# Exercises additive-only mode: existing pages are never overwritten;
+# only missing pages are written; master-wiki registration is idempotent.
+# Consumed by eval.json test "ingest-name-collision-additive".
+
+fixture_name: ingest-name-collision
+framework_version: "0.1.0"
+simulated_date: "2026-05-31"
+
+environment:
+  XDG_STATE_HOME: /tmp/sf-eval-state
+  home: /tmp/sf-eval-home
+
+filesystem:
+  - path: ~/.startup-framework/wiki/index.md
+    kind: file
+    content_summary: |
+      Master index already has one bullet under '## Projects' linking to
+      projects/demo-api/index.md from a prior ingest run.
+
+  - path: ~/.startup-framework/wiki/log.md
+    kind: file
+    content_summary: |
+      Master log with an existing '## [2026-05-31] init | Project sub-wiki
+      ingested for demo-api' entry from the prior ingest run.
+
+  - path: ~/.startup-framework/wiki/identity.md
+    kind: file
+    frontmatter:
+      handle: tester
+      name: "Tester"
+      framework_version: "0.1.0"
+
+  # Pre-existing partial sub-wiki — only 3 of 7 pages are present.
+  - path: ~/.startup-framework/wiki/projects/demo-api/PROJECT.md
+    kind: file
+    content_summary: |
+      Written by the prior ingest run. Has populated stack section (Python/FastAPI).
+      type: project-main, status: ingested.
+
+  - path: ~/.startup-framework/wiki/projects/demo-api/index.md
+    kind: file
+    content_summary: |
+      Written by the prior ingest run. Standard project-index frontmatter.
+
+  - path: ~/.startup-framework/wiki/projects/demo-api/log.md
+    kind: file
+    content_summary: |
+      Written by the prior ingest run. Has one backfill entry from 2025-01 and
+      the '## [2026-05-31] init |' entry.
+
+  # The following 4 pages are ABSENT — they were not written in the prior run.
+  # Additive mode should write exactly these 4 and leave the 3 above untouched.
+  # REQUIREMENTS.md, ROADMAP.md, STATE.md, CONTEXT.md are absent.
+
+  - path: ~/.startup-framework/wiki/projects/demo-api/research/.gitkeep
+    kind: file
+  - path: ~/.startup-framework/wiki/projects/demo-api/decisions/.gitkeep
+    kind: file
+  - path: ~/.startup-framework/wiki/projects/demo-api/patterns/.gitkeep
+    kind: file
+
+  # The project to be ingested (read-only by the skill).
+  - path: /home/tester/Dev/demo-api/pyproject.toml
+    kind: file
+    content_summary: |
+      [project] name='demo-api', version='0.1.0', dependencies=['fastapi', 'uvicorn'].
+
+  - path: /home/tester/Dev/demo-api/uv.lock
+    kind: file
+    content_summary: "uv lockfile for demo-api."
+
+  - path: /home/tester/Dev/demo-api/src/main.py
+    kind: file
+    content_summary: "FastAPI app."
+
+  - path: /home/tester/Dev/demo-api/README.md
+    kind: file
+    content_summary: "# Demo API\nA small FastAPI service."
+
+  - path: /home/tester/Dev/demo-api/.git/
+    kind: directory
+    note: "Git repo with 120 commits, first 2025-01-05, last 2026-05-20."
+
+project_to_ingest:
+  path: "/home/tester/Dev/demo-api"
+  git:
+    is_repo: true
+    commit_count: 120
+    first_commit: "2025-01-05"
+    last_commit: "2026-05-20"
+
+invocation:
+  cwd: /home/tester
+  command: "/ren:ingest-project /home/tester/Dev/demo-api"
+
+expected_behavior:
+  - "Skill detects existing sub-wiki and switches to additive-only mode."
+  - "Reports 'already exists' or 'additive' in the user-facing message."
+  - "Only REQUIREMENTS.md, ROADMAP.md, STATE.md, CONTEXT.md are written."
+  - "PROJECT.md, index.md, log.md modification times are unchanged."
+  - "wiki/index.md does NOT gain a second demo-api bullet (idempotent)."
+  - "wiki/log.md does NOT gain a second 'init | Project sub-wiki ingested for demo-api' entry (idempotent)."
+  - "No file inside /home/tester/Dev/demo-api/ is modified."

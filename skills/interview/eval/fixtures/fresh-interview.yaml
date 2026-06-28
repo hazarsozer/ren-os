@@ -1,0 +1,79 @@
+# Fixture: fresh /ren:interview — no existing identity.md, no prior install state.
+#
+# Consumed by eval.json tests: fresh-interview-complete, handle-validation,
+# skipped-question-handling.
+
+fixture_name: fresh-interview
+framework_version: "0.1.0"
+simulated_date: "2026-05-29"
+
+environment:
+  XDG_STATE_HOME: /tmp/sf-eval-state
+  home: /tmp/sf-eval-home
+
+filesystem:
+  - path: ~/.startup-framework/wiki/index.md
+    kind: file
+    content_summary: "Master index from a prior /ren:install run; no identity link yet."
+
+  - path: ~/.startup-framework/wiki/log.md
+    kind: file
+    content_summary: "Master log; init entry only."
+
+  # identity.md does NOT exist; this is the fresh case.
+  - path: ~/.startup-framework/wiki/research/
+    kind: directory
+  - path: ~/.startup-framework/wiki/decisions/
+    kind: directory
+  - path: ~/.startup-framework/wiki/alternatives/
+    kind: directory
+  - path: ~/.startup-framework/wiki/patterns/
+    kind: directory
+  - path: ~/.startup-framework/wiki/projects/
+    kind: directory
+
+install_state:
+  # No Stage 3 mini-handle prepopulation in this fixture; the interview asks Q1 fully.
+  proposed_handle: null
+
+simulated_friend_responses:
+  q1-name-handle:
+    name: "Hazar"
+    handle: "hazar"
+  q2-intro: "Building agentic AI projects; 4th-year AI/Data Eng undergrad in Istanbul, exploring the startup space."
+  q3-role:
+    page1: "student"
+  q4-strong-skills:
+    stage1: ["build"]
+    stage2_build: ["ai-ml", "backend"]
+  q5-growth-areas:
+    stage1: ["design", "build"]
+    stage2_build: ["frontend"]
+    stage2_design: ["design"]
+  q6-response-length: "balanced"
+  q7-communication-style:
+    sub7a_tone: "casual"
+    sub7b_emoji: "no"
+  q8-plans-before-code: "often"
+  q9-hours-tz:
+    timezone: "Europe/Istanbul"
+    working_hours: "10-19 local"
+  q10-languages:
+    stage1: ["data-or-other", "web"]
+    stage2_data: ["python"]
+    stage2_web: ["typescript"]
+  q11-package-managers: "uv for Python; pnpm for TypeScript."
+  q12-clouds:
+    page1: ["vercel", "supabase"]
+  q13-databases:
+    page1: ["postgresql", "supabase"]
+  q14-other-tools: "Docker for local dev; not yet committed to a deployment toolchain."
+  q15-tdd: "case-by-case"
+  q16-avoid-patterns: "Over-engineering; premature abstractions; excessive comments."
+  q17-phase: "ideation"
+  q18-contribution: "I plan and prototype quickly; bias toward AI/backend in friend-group splits."
+  # H2.3: declines the optional venture arc — this fixture stays identity-only.
+  f-venture-gate: "skip"
+
+expected_writes_after_run:
+  - ~/.startup-framework/wiki/identity.md

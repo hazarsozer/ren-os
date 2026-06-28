@@ -4,7 +4,7 @@
 
 ## What this is
 
-`wiki-skeleton/` holds the empty templates the framework's `/sf:install` skill (Stage 5) and `/sf:bootstrap-project` skill stamp into a friend's machine when they run the framework for the first time (or bootstrap a new project).
+`wiki-skeleton/` holds the empty templates the framework's `/ren:install` skill (Stage 5) and `/ren:bootstrap-project` skill stamp into a friend's machine when they run the framework for the first time (or bootstrap a new project).
 
 It is **the plugin's shipping payload** for the wiki layer — not a copy of the framework's own development wiki. Per ADR-017, the friend's wiki starts EMPTY of any framework-developer content. The skeleton provides structure + page-format conventions; the friend fills in content through their own work.
 
@@ -22,7 +22,7 @@ wiki-skeleton/
 ├── templates/
 │   ├── index.md.tmpl            # master wiki index — empty section headers
 │   ├── log.md.tmpl              # master log — single init entry
-│   ├── identity.md.tmpl         # frontmatter stub; /sf:interview populates it
+│   ├── identity.md.tmpl         # frontmatter stub; /ren:interview populates it
 │   ├── LICENSES.md.tmpl         # plugin-license summary; written at Stage 6
 │   ├── research/.gitkeep        # ingested-source pages live here once friend ingests
 │   ├── decisions/.gitkeep       # friend's own ADRs live here
@@ -41,8 +41,8 @@ Templates use a tiny `{{var}}` placeholder syntax. The Stage 5 / bootstrap-proje
 
 | Placeholder         | Source                                          |
 | ------------------- | ----------------------------------------------- |
-| `{{handle}}`        | friend's kebab-case handle (from `/sf:interview`)  |
-| `{{name}}`          | friend's display name (from `/sf:interview`)       |
+| `{{handle}}`        | friend's kebab-case handle (from `/ren:interview`)  |
+| `{{name}}`          | friend's display name (from `/ren:interview`)       |
 | `{{today}}`         | ISO date (YYYY-MM-DD) of install / bootstrap       |
 | `{{framework_version}}` | framework semver from the plugin registry      |
 
@@ -71,7 +71,7 @@ This makes minor framework upgrades safe: new template files appear in `wiki-ske
 
 - ADR-004 — page format conventions the templates follow
 - ADR-014 — per-project taxonomy that `skills/sf-bootstrap-project/` instantiates
-- ADR-015 — Stage 5 of `/sf:install`
+- ADR-015 — Stage 5 of `/ren:install`
 - ADR-017 — load-bearing: skeleton ships, dev wiki does not
 - ADR-022 — `identity.md` frontmatter shape (this template reflects it)
 - ADR-027 — schema versioning + additive migration pattern

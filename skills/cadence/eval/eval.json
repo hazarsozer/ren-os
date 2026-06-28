@@ -1,0 +1,46 @@
+{
+  "name": "cadence",
+  "description": "Binary-assertion suite for /ren:cadence — the cadence router. Asserts correct tier routing + convention attachment.",
+  "schema_version": 1,
+  "framework_version": "0.1.0",
+  "tests": [
+    {
+      "id": "machine-off-routes-cloud",
+      "prompt": "/ren:cadence I want a daily digest emailed every morning while my laptop is closed",
+      "expected_output_summary": "Recommends a Cloud Routine and hands off to /ren:routine-init.",
+      "trigger_test": true,
+      "binary_assertions": [
+        "Output recommends a Cloud Routine (names 'Cloud Routine' or 'routine')",
+        "Output names '/ren:routine-init' as the next step",
+        "Output mentions the failure footer / Resend notification convention"
+      ]
+    },
+    {
+      "id": "intra-session-routes-loop",
+      "prompt": "/ren:cadence keep checking my deploy every few minutes while I work",
+      "expected_output_summary": "Recommends /loop with a self-terminating stop condition.",
+      "trigger_test": true,
+      "binary_assertions": [
+        "Output recommends '/loop'",
+        "Output attaches a self-terminating stop condition (mentions stopping after N iterations or a time window)"
+      ]
+    },
+    {
+      "id": "measurable-job-routes-goal",
+      "prompt": "/ren:cadence run improve-skill overnight until coverage hits 80%",
+      "expected_output_summary": "Recommends /goal with the measurable exit criterion.",
+      "trigger_test": false,
+      "binary_assertions": [
+        "Output recommends '/goal'",
+        "Output requires a measurable exit criterion (references the 80% coverage as the done-condition)"
+      ]
+    }
+  ],
+  "non_triggers": [
+    {
+      "id": "plain-question",
+      "prompt": "What does ADR-034 say?",
+      "expected_outcome": "skill_not_activated"
+    }
+  ]
+}

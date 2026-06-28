@@ -1,0 +1,118 @@
+# Fixture: ingest a pre-existing python project into an installed wiki.
+#
+# Consumed by eval.json tests "ingest-happy-path", "ingest-no-master-wiki-refused",
+# and "ingest-no-invention-on-thin-evidence".
+#
+# Two per-test overrides are applied by the eval harness at test time, NOT baked
+# into this fixture (see `test_overrides` below):
+#   - "ingest-no-master-wiki-refused" removes the master wiki (wiki absent).
+#   - "ingest-no-invention-on-thin-evidence" appends '--depth light' to the prompt.
+
+fixture_name: ingest-python-project
+framework_version: "0.1.0"
+simulated_date: "2026-05-31"
+
+environment:
+  XDG_STATE_HOME: /tmp/sf-eval-state
+  home: /tmp/sf-eval-home
+
+filesystem:
+  # ~/.startup-framework/wiki/ exists and is populated by a prior /ren:install run.
+  - path: ~/.startup-framework/wiki/index.md
+    kind: file
+    content_summary: |
+      Master index with frontmatter (schema_version 1, framework_version 0.1.0),
+      empty section headers including '## Projects' (no entries yet),
+      and a 'See also' pointer to log.md.
+
+  - path: ~/.startup-framework/wiki/log.md
+    kind: file
+    content_summary: |
+      Master log with frontmatter and a single init entry from 2026-05-28
+      attributing wiki creation to /ren:install for handle 'tester'.
+
+  - path: ~/.startup-framework/wiki/identity.md
+    kind: file
+    frontmatter:
+      title: "Tester's Identity"
+      type: identity
+      schema_version: 1
+      framework_version: "0.1.0"
+      handle: tester
+      name: "Tester"
+      created: "2026-05-28"
+      updated: "2026-05-28"
+      phase: ideation
+
+  - path: ~/.startup-framework/wiki/projects/
+    kind: directory
+    note: "Empty — no projects yet. Ingest creates the first one under it."
+
+  # The project to be ingested (read-only by the skill).
+  - path: /home/tester/Dev/demo-api/pyproject.toml
+    kind: file
+    content_summary: |
+      [project] name='demo-api', version='0.1.0', dependencies=['fastapi', 'uvicorn'].
+
+  - path: /home/tester/Dev/demo-api/uv.lock
+    kind: file
+    content_summary: "uv lockfile for demo-api."
+
+  - path: /home/tester/Dev/demo-api/src/main.py
+    kind: file
+    content_summary: |
+      FastAPI app with a single /health endpoint.
+
+  - path: /home/tester/Dev/demo-api/README.md
+    kind: file
+    content_summary: |
+      "# Demo API\nA small FastAPI service."
+
+  - path: /home/tester/Dev/demo-api/.git/
+    kind: directory
+    note: "Git repo with 120 commits, first 2025-01-05, last 2026-05-20, tag v1.0."
+
+project_to_ingest:
+  path: "/home/tester/Dev/demo-api"
+  git:
+    is_repo: true
+    commit_count: 120
+    first_commit: "2025-01-05"
+    last_commit: "2026-05-20"
+    tags: ["v1.0"]
+
+invocation:
+  cwd: /home/tester
+  command: "/ren:ingest-project /home/tester/Dev/demo-api"
+
+expected_writes_after_run:
+  - ~/.startup-framework/wiki/projects/demo-api/PROJECT.md
+  - ~/.startup-framework/wiki/projects/demo-api/REQUIREMENTS.md
+  - ~/.startup-framework/wiki/projects/demo-api/ROADMAP.md
+  - ~/.startup-framework/wiki/projects/demo-api/STATE.md
+  - ~/.startup-framework/wiki/projects/demo-api/CONTEXT.md
+  - ~/.startup-framework/wiki/projects/demo-api/index.md
+  - ~/.startup-framework/wiki/projects/demo-api/log.md
+  - ~/.startup-framework/wiki/projects/demo-api/research/.gitkeep
+  - ~/.startup-framework/wiki/projects/demo-api/decisions/.gitkeep
+  - ~/.startup-framework/wiki/projects/demo-api/patterns/.gitkeep
+
+expected_edits_after_run:
+  - ~/.startup-framework/wiki/index.md
+  - ~/.startup-framework/wiki/log.md
+
+project_readonly_invariant:
+  note: |
+    The skill must not create, modify, or delete any file under
+    /home/tester/Dev/demo-api/ during the run. All access is read-only.
+
+# Per-test mutations the harness applies to this shared fixture at run time.
+# The base fixture above models the happy path; the harness layers these on
+# for the two tests that reuse it with a different starting state / prompt.
+test_overrides:
+  ingest-no-master-wiki-refused:
+    remove: ["~/.startup-framework/wiki/index.md"]
+    note: "Master wiki absent → the skill must refuse before scanning."
+  ingest-no-invention-on-thin-evidence:
+    prompt_suffix: "--depth light"
+    note: "Light depth + sparse README → thin sections keep their '_TBD_' markers."

@@ -1,0 +1,13 @@
+name: code-map-python-project
+description: A small Python project for exercising /ren:code-map.
+files:
+  - path: src/app.py
+    content: |
+      def main():
+          return 0
+  - path: src/util.py
+    content: |
+      class Helper:
+          def run(self):
+              return 1
+leanctx_available: true

@@ -1,0 +1,81 @@
+{
+  "name": "sf-wrap",
+  "description": "Binary-assertion test suite for /ren:wrap. Each test provides a fixture session transcript + expected classifier label + expected wiki-page diff plan. Tests are run by /ren:improve-skill's Karpathy loop (per ADR-012) and by CI. Solo-first (ADR-031): the default classifier is a conservative deterministic heuristic and there is no Activity Feed write.",
+  "schema_version": 1,
+  "framework_version": "0.1.0",
+  "_status": "scaffold — fixtures pending; assertions are the testable goals as /ren:wrap implementation lands. Schema conforms to ADR-011 §eval.json schema.",
+  "tests": [
+    {
+      "id": "routine-debug-session-no-signal",
+      "fixture": "fixtures/routine-debug.transcript.json",
+      "prompt": "/ren:wrap",
+      "expected_output_summary": "Classifier returns 'none'; zero wiki edits except CONTEXT.md rewrite + project log.md append.",
+      "trigger_test": true,
+      "binary_assertions": [
+        "Classifier output 'labels' field equals exactly ['none']",
+        "Classifier output 'candidate_artifacts' is empty (none implies empty)",
+        "No new file is created under wiki/projects/<active>/decisions/ after the run",
+        "No new file is created under wiki/projects/<active>/patterns/ after the run",
+        "wiki/projects/<active>/CONTEXT.md content differs from its pre-wrap state",
+        "wiki/projects/<active>/log.md has exactly one new line whose date matches today",
+        "Master wiki/log.md is byte-identical to its pre-wrap state (routine sessions skip master log)"
+      ]
+    },
+    {
+      "id": "decision-session-creates-adr",
+      "fixture": "fixtures/decision-postgres-over-mongo.transcript.json",
+      "prompt": "/ren:wrap",
+      "expected_output_summary": "Deterministic classifier fires 'decision' on a deliberate phrase; new file under decisions/; STATE.md updated; master log appended.",
+      "trigger_test": true,
+      "binary_assertions": [
+        "Classifier output 'labels' field contains 'decision'",
+        "A new file is created at wiki/projects/<active>/decisions/<slug>.md where <slug> is non-empty kebab-case",
+        "The new decisions file's YAML frontmatter includes 'framework_version', 'schema_version', and 'type: decision' fields",
+        "wiki/projects/<active>/STATE.md contains a new entry under the 'Recent decisions' section pointing at the new decisions file",
+        "Master wiki/log.md gains exactly one new entry whose date matches today (non-routine sessions update master log)"
+      ]
+    },
+    {
+      "id": "pin-escalates-signal",
+      "fixture": "fixtures/routine-log-with-decision-pin.transcript.json",
+      "prompt": "/ren:wrap",
+      "expected_output_summary": "Session log is routine, but a /ren:note pin records a decision; the deterministic classifier escalates (pins dominate) and creates a decisions page.",
+      "trigger_test": true,
+      "binary_assertions": [
+        "Classifier output 'labels' field contains 'decision' (escalated from the pinned note, not the routine log)",
+        "A new file is created under wiki/projects/<active>/decisions/ after the run",
+        "Master wiki/log.md gains exactly one new entry (a non-none signal fired)"
+      ]
+    },
+    {
+      "id": "wiki-write-failure-rollback",
+      "fixture": "fixtures/wiki-write-fails-mid-batch.transcript.json",
+      "prompt": "/ren:wrap",
+      "expected_output_summary": "Mid-batch wiki write fails (simulated permission error); all wiki changes rolled back via git restore; user sees retry instructions.",
+      "trigger_test": true,
+      "binary_assertions": [
+        "The command 'git restore wiki/' (or equivalent) was invoked during the run",
+        "After the run, wiki/ has zero diffs against its pre-run state (full rollback confirmed)",
+        "The WrapResult surfaces a non-empty apply_error explaining which diff failed",
+        "The user-facing output contains instructions explaining how to retry the wrap"
+      ]
+    }
+  ],
+  "non_triggers": [
+    {
+      "id": "mid-session-note",
+      "prompt": "Pin this for later: we decided to use Postgres.",
+      "expected_outcome": "skill_not_activated"
+    },
+    {
+      "id": "ad-hoc-recall",
+      "prompt": "What did we decide about auth last week?",
+      "expected_outcome": "skill_not_activated"
+    }
+  ],
+  "_notes": [
+    "Fixtures under fixtures/ are populated incrementally as /ren:wrap implementation lands.",
+    "Run via: uv run pytest skills/wrap/eval/ (TBD wiring).",
+    "These assertions are also the targets for /ren:improve-skill's Karpathy loop per ADR-012."
+  ]
+}

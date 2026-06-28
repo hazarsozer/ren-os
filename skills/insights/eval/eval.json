@@ -1,0 +1,83 @@
+{
+  "name": "sf-insights",
+  "description": "Binary-assertion test suite for /ren:insights. Validates the read-only invariant (no files written), the four-section synthesis output, empty-window tolerance, and --days respect.",
+  "schema_version": 1,
+  "framework_version": "0.1.0",
+  "tests": [
+    {
+      "id": "default-window-four-sections",
+      "prompt": "/ren:insights",
+      "expected_output_summary": "Collector mines the last 30 days of local sessions; the synthesis renders a four-section report grounded in the collected facts.",
+      "trigger_test": true,
+      "binary_assertions": [
+        "The collector is invoked read-only (scripts/collect.py) with the default 30-day window",
+        "User-facing output contains all four section headers: '## Usage at a Glance', '## What's Working', '## What's Hindering', '## Quick Wins'",
+        "Every quantitative claim in the report traces to a number/tool/project present in the collector's '=== SF-INSIGHTS COLLECTED DATA (v1) ===' block",
+        "No file anywhere on disk is created, modified, or deleted by the run (read-only invariant)"
+      ]
+    },
+    {
+      "id": "days-flag-respected",
+      "prompt": "/ren:insights --days 7",
+      "expected_output_summary": "Look-back window narrows to 7 days; only source files with mtime within 7 days are scanned.",
+      "trigger_test": true,
+      "binary_assertions": [
+        "The collector is invoked with --days 7 (window_days: 7 appears in the collected block)",
+        "Source files older than 7 days (by mtime) are excluded from the report",
+        "User-facing output still contains the four section headers",
+        "No file is written, modified, or deleted during the run"
+      ]
+    },
+    {
+      "id": "project-filter-respected",
+      "prompt": "/ren:insights --project sidecar",
+      "expected_output_summary": "Only sessions whose project (cwd basename) matches 'sidecar' are included.",
+      "trigger_test": true,
+      "binary_assertions": [
+        "The collected block reports project_filter: sidecar",
+        "Every session listed under '## SESSIONS' has project matching 'sidecar' (case-insensitive substring)",
+        "No file is written, modified, or deleted during the run"
+      ]
+    },
+    {
+      "id": "empty-window-tolerated",
+      "prompt": "/ren:insights --days 1",
+      "expected_output_summary": "When no local sessions fall within the window, the skill renders all four sections noting the empty window rather than inventing activity or erroring.",
+      "trigger_test": true,
+      "binary_assertions": [
+        "When the collected block shows 'sessions_found: 0', the report still contains all four section headers",
+        "The report states plainly that the window is empty and suggests widening --days (no fabricated sessions, dates, or trends)",
+        "The run exits successfully (no crash, no stack trace) on an empty window",
+        "No file is written, modified, or deleted during the run"
+      ]
+    },
+    {
+      "id": "malformed-jsonl-tolerated",
+      "prompt": "/ren:insights",
+      "expected_output_summary": "A transcript containing malformed JSON lines is parsed tolerantly: bad lines are skipped, valid records still summarized, no crash.",
+      "trigger_test": true,
+      "binary_assertions": [
+        "Malformed JSONL lines are skipped without aborting the file or the run",
+        "Valid records from the same file still appear in the collected block (tool/topic/error signal)",
+        "No error or stack trace appears in the user-facing output"
+      ]
+    }
+  ],
+  "non_triggers": [
+    {
+      "id": "wrap-not-insights",
+      "prompt": "/ren:wrap",
+      "expected_outcome": "skill_not_activated"
+    },
+    {
+      "id": "recall-not-insights",
+      "prompt": "/ren:recall what did we decide about auth",
+      "expected_outcome": "skill_not_activated"
+    },
+    {
+      "id": "doctor-not-insights",
+      "prompt": "/ren:doctor",
+      "expected_outcome": "skill_not_activated"
+    }
+  ]
+}

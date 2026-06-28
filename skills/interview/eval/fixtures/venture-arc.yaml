@@ -1,0 +1,52 @@
+# Fixture: /ren:interview with the optional venture arc (Section F) completed.
+#
+# Consumed by eval.json test: venture-arc-populates (H2.3 broadened onboarding).
+# Identity answers are abbreviated — the venture arc is what this fixture exercises.
+
+fixture_name: venture-arc
+framework_version: "0.1.0"
+simulated_date: "2026-05-29"
+
+environment:
+  XDG_STATE_HOME: /tmp/sf-eval-state
+  home: /tmp/sf-eval-home
+
+filesystem:
+  - path: ~/.startup-framework/wiki/index.md
+    kind: file
+    content_summary: "Master index; venture stubs stamped by Stage 5."
+  - path: ~/.startup-framework/wiki/venture/company.md
+    kind: file
+    content_summary: "venture-profile stub (section: company), _TBD_ placeholder body."
+  - path: ~/.startup-framework/wiki/venture/market.md
+    kind: file
+    content_summary: "venture-profile stub (section: market)."
+  - path: ~/.startup-framework/wiki/venture/icp.md
+    kind: file
+    content_summary: "venture-profile stub (section: icp)."
+  - path: ~/.startup-framework/wiki/venture/team.md
+    kind: file
+    content_summary: "venture-profile stub (section: team)."
+  - path: ~/.startup-framework/wiki/venture/brain-dump.md
+    kind: file
+    content_summary: "venture-profile stub (section: brain-dump)."
+
+simulated_friend_responses:
+  q1-name-handle:
+    name: "Hazar"
+    handle: "hazar"
+  # identity answers as in fresh-interview.yaml (abbreviated here); then the venture arc:
+  f-venture-gate: "yes"
+  f1-company: "A focus-timer app for students. Stage: prototype."
+  f2-market: "Productivity / study tools; competing with generic timers. Why now: AI-personalized pacing is newly feasible."
+  f3-icp: "Undergrads who study in long sessions and struggle to take structured breaks."
+  f4-team: "Solo for now; might add a designer later."
+  f5-brain-dump: "Open question: free vs paid. Constraint: solo, limited time. Goal: 10 weekly-active users."
+
+expected_writes_after_run:
+  - ~/.startup-framework/wiki/identity.md
+  - ~/.startup-framework/wiki/venture/company.md
+  - ~/.startup-framework/wiki/venture/market.md
+  - ~/.startup-framework/wiki/venture/icp.md
+  - ~/.startup-framework/wiki/venture/team.md
+  - ~/.startup-framework/wiki/venture/brain-dump.md

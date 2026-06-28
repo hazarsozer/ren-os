@@ -1,0 +1,84 @@
+# Fixture: bootstrap a project name that already exists.
+#
+# Exercises additive-diff mode (per references/template-loader.md
+# § Additive-diff mode). Consumed by eval.json test "name-collision".
+
+fixture_name: bootstrap-name-collision
+framework_version: "1.1.0"   # newer than the existing sub-wiki's framework_version
+simulated_date: "2026-06-15"
+
+environment:
+  XDG_STATE_HOME: /tmp/sf-eval-state
+  home: /tmp/sf-eval-home
+
+filesystem:
+  - path: ~/.startup-framework/wiki/index.md
+    kind: file
+    content_summary: |
+      Master index with one Projects entry pointing at sidecar-v2.
+
+  - path: ~/.startup-framework/wiki/log.md
+    kind: file
+    content_summary: |
+      Master log with init entry + bootstrap entry from 2026-05-29 for sidecar-v2.
+
+  - path: ~/.startup-framework/wiki/identity.md
+    kind: file
+    frontmatter:
+      handle: hazar
+      name: "Hazar"
+      framework_version: "0.1.0"
+
+  - path: ~/.startup-framework/wiki/projects/sidecar-v2/PROJECT.md
+    kind: file
+    content_summary: |
+      Hand-edited by the friend after their first bootstrap on 2026-05-29.
+      Has real purpose / users / success criteria filled in.
+
+  - path: ~/.startup-framework/wiki/projects/sidecar-v2/REQUIREMENTS.md
+    kind: file
+    content_summary: |
+      Partially filled — Functional section has 4 bullets; Non-functional and
+      Out-of-scope still placeholders.
+
+  - path: ~/.startup-framework/wiki/projects/sidecar-v2/ROADMAP.md
+    kind: file
+  - path: ~/.startup-framework/wiki/projects/sidecar-v2/STATE.md
+    kind: file
+  - path: ~/.startup-framework/wiki/projects/sidecar-v2/CONTEXT.md
+    kind: file
+    content_summary: |
+      Updated 2026-06-14 by /ren:wrap; says "Implementing onboarding screen 3."
+  - path: ~/.startup-framework/wiki/projects/sidecar-v2/index.md
+    kind: file
+  - path: ~/.startup-framework/wiki/projects/sidecar-v2/log.md
+    kind: file
+    content_summary: |
+      Init entry + several /ren:wrap entries over the past 2 weeks.
+
+  - path: ~/.startup-framework/wiki/projects/sidecar-v2/research/.gitkeep
+    kind: file
+  - path: ~/.startup-framework/wiki/projects/sidecar-v2/decisions/.gitkeep
+    kind: file
+  - path: ~/.startup-framework/wiki/projects/sidecar-v2/patterns/.gitkeep
+    kind: file
+
+  # Simulate a framework v1.1.0 that adds a new optional template file.
+  # The bootstrap-name-collision test verifies additive-diff offers this
+  # without touching the friend's existing files.
+  hypothetical_v1_1_addition:
+    note: |
+      In framework v1.1.0, the project-bootstrap template set MAY add a new
+      file (e.g. PATTERNS_HINT.md.tmpl). The additive-diff prompt should
+      surface this and write only if the friend approves.
+
+invocation:
+  cwd: ~/.startup-framework/wiki/
+
+expected_behavior:
+  - "Skill detects existing sub-wiki and refuses to overwrite."
+  - "Switches to additive-diff mode."
+  - "Reports 'already_present' for each of the 10 existing files."
+  - "If a v1.1.0 addition exists, reports it as 'would_write' and prompts for approval."
+  - "If friend declines, exits clean (zero status); no files modified."
+  - "If friend accepts, writes ONLY the new additive entries; existing files untouched."

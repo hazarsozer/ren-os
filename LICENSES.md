@@ -1,14 +1,14 @@
 # Stack Licenses
 
-This file summarises the license terms for every plugin the Startup Framework installs (per ADR-006) plus the framework's own license (per ADR-016). It is the friend-facing declaration of what they are agreeing to when they run `/sf:install`.
+This file summarises the license terms for every plugin the RenOS installs (per ADR-006) plus the framework's own license (per ADR-016). It is the friend-facing declaration of what they are agreeing to when they run `/ren:install`.
 
-Generated at install time by `/sf:install` Stage 6 (per ADR-015). The template ships in the marketplace repo; the install-time copy is regenerated on the friend's machine with their conditional-install choices reflected.
+Generated at install time by `/ren:install` Stage 6 (per ADR-015). The template ships in the marketplace repo; the install-time copy is regenerated on the friend's machine with their conditional-install choices reflected.
 
 > **Read this before you ship a hosted SaaS.** Most of the stack is permissive (MIT / Apache-2.0), but **Context Mode is ELv2**, which restricts certain commercial / SaaS distributions. If you intend to host the framework's output as a paid hosted service, see the Context Mode entry below.
 
 ---
 
-## Required plugins (auto-installed by `/sf:install`)
+## Required plugins (auto-installed by `/ren:install`)
 
 ### Superpowers — MIT
 
@@ -49,20 +49,20 @@ Generated at install time by `/sf:install` Stage 6 (per ADR-015). The template s
 ### context7 — TBD permissive (verify on install)
 
 - Source: [upstash/context7](https://github.com/upstash/context7)
-- License: verify at install time. As of v1.0 of the framework, context7's license is TBD but the plugin is published in Anthropic's official marketplace, implying a permissive license. The framework's CI does NOT lock this; the friend's `/sf:install` should re-read the upstream license at install time.
+- License: verify at install time. As of v1.0 of the framework, context7's license is TBD but the plugin is published in Anthropic's official marketplace, implying a permissive license. The framework's CI does NOT lock this; the friend's `/ren:install` should re-read the upstream license at install time.
 - Use: version-aware documentation lookup (solves the "Claude wrote code against an outdated library version" failure mode).
 - Distribution: defer to upstream's stated terms.
 
 ### claude-md-management — TBD permissive (verify on install)
 
 - Source: [anthropics/claude-md-management](https://github.com/anthropics) (Anthropic-verified plugin)
-- License: verify at install time. Anthropic's official-marketplace plugins are typically Apache-2.0 or MIT; the friend's `/sf:install` should confirm.
-- Use: `claude-md-improver` skill audits CLAUDE.md quality; `/revise-claude-md` captures session learnings into CLAUDE.md (complements `/sf:wrap` at a different layer per ADR-009).
+- License: verify at install time. Anthropic's official-marketplace plugins are typically Apache-2.0 or MIT; the friend's `/ren:install` should confirm.
+- Use: `claude-md-improver` skill audits CLAUDE.md quality; `/revise-claude-md` captures session learnings into CLAUDE.md (complements `/ren:wrap` at a different layer per ADR-009).
 - Distribution: defer to upstream's stated terms.
 
 ---
 
-## Conditional plugins (asked at `/sf:install` Stage 3)
+## Conditional plugins (asked at `/ren:install` Stage 3)
 
 ### Frontend Design — TBD permissive (Anthropic, verify on install)
 
@@ -86,9 +86,9 @@ Generated at install time by `/sf:install` Stage 6 (per ADR-015). The template s
 
 ## Framework itself
 
-### Startup Framework — MIT
+### RenOS — MIT
 
-- Source: this repo (`sf-marketplace`).
+- Source: this repo (`ren-os`).
 - License: [MIT](https://opensource.org/licenses/MIT).
 - Reasoning per ADR-016:
   - The framework is a thin coordination layer + curated plugin set + per-friend wiki tooling. It does not contain proprietary algorithms or business-critical IP.
@@ -110,9 +110,9 @@ Generated at install time by `/sf:install` Stage 6 (per ADR-015). The template s
 | claude-md-management | TBD permissive | ✅ (verify upstream) |
 | Frontend Design (conditional) | TBD permissive | ✅ (verify upstream) |
 | Ralph (not bundled) | TBD permissive | ✅ (verify upstream) |
-| **Startup Framework** | **MIT** | ✅ Fully |
+| **RenOS** | **MIT** | ✅ Fully |
 
-The mix is dominated by permissive licenses. ELv2 (Context Mode) is the one explicit caveat — surfaced here, surfaced in the install-time confirmation prompt, and re-surfaced in `/sf:doctor` output ("Context Mode: ELv2 — SaaS distribution restricted; see LICENSES.md").
+The mix is dominated by permissive licenses. ELv2 (Context Mode) is the one explicit caveat — surfaced here, surfaced in the install-time confirmation prompt, and re-surfaced in `/ren:doctor` output ("Context Mode: ELv2 — SaaS distribution restricted; see LICENSES.md").
 
 ---
 
@@ -120,7 +120,7 @@ The mix is dominated by permissive licenses. ELv2 (Context Mode) is the one expl
 
 The framework's value depends on the stack, and the stack's mix includes ELv2. If you cannot accept Context Mode's terms:
 
-1. **Don't run `/sf:install`** — exit before Stage 2.
+1. **Don't run `/ren:install`** — exit before Stage 2.
 2. **Or substitute Context Mode** with a permissively-licensed token-efficiency plugin of your choice. The framework's architecture supports plugin substitution (per ADR-002), but you give up Context Mode's specific sandboxing approach.
 3. **Or accept Context Mode for personal/team use** and design any future SaaS offering so Context Mode is not the user-facing feature. This is the path the original framework was designed around.
 
@@ -141,7 +141,7 @@ gh api repos/mksglu/context-mode/contents/LICENSE -q '.content' | base64 -d | he
 gh api repos/upstash/context7/contents/LICENSE -q '.content' | base64 -d | head -5
 ```
 
-The framework does NOT pin upstream license file SHAs. If an upstream re-licenses, `/sf:doctor`'s plugin section will need to surface the change in a future framework MINOR release (per ADR-006 § sunset-review triggers).
+The framework does NOT pin upstream license file SHAs. If an upstream re-licenses, `/ren:doctor`'s plugin section will need to surface the change in a future framework MINOR release (per ADR-006 § sunset-review triggers).
 
 ---
 
