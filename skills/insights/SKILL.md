@@ -38,15 +38,15 @@ contract:
   output_paths: []
 
 tags: [insights, retrospective, read-only, cadence, sessions, lifecycle]
-related_skills: [sf-wrap, sf-recall, sf-doctor]
+related_skills: [wrap, recall, doctor]
 references_required:
   - "references/synthesis-prompt.md"
 references_on_demand: []
 ---
 
-# sf-insights
+# insights
 
-Read-only session retrospective. The solo builder asks "how have my last few weeks of building actually gone?" — sf-insights mines the **local** Claude Code session history, extracts per-session facts (project, tools used, topics, error/retry signals), and hands the LLM a bounded, cited fact-block to turn into a four-section narrative.
+Read-only session retrospective. The solo builder asks "how have my last few weeks of building actually gone?" — /ren:insights mines the **local** Claude Code session history, extracts per-session facts (project, tools used, topics, error/retry signals), and hands the LLM a bounded, cited fact-block to turn into a four-section narrative.
 
 Solo-first (ADR-031): this is the **Cadence** layer's reflection surface. It mines only local on-disk history; it never phones home and never writes anything.
 
@@ -111,7 +111,7 @@ Solo-first (ADR-031): this is the **Cadence** layer's reflection surface. It min
 
 ## Implementation note
 
-V1 implementation in `skills/sf-insights/scripts/collect.py`:
+V1 implementation in `skills/insights/scripts/collect.py`:
 - Pure-stdlib, streaming, read-only collector (no third-party deps, no writes, no network).
 - mtime-based window filter applied **before** opening any file (cheap `stat` first).
 - Bounded accumulation (counters + capped snippet lists) so memory stays flat regardless of transcript size.

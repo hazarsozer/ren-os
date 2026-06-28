@@ -21,7 +21,7 @@ contract:
   permissions:
     read:
       - "~/.startup-framework/wiki/identity.md"
-      - "skills/sf-interview/references/**"
+      - "skills/interview/references/**"
     write:
       - "~/.startup-framework/wiki/identity.md"
     execute: []
@@ -35,7 +35,7 @@ contract:
     - "~/.startup-framework/wiki/identity.md"
 
 tags: [onboarding, identity, interview]
-related_skills: [sf-install, sf-bootstrap-project]
+related_skills: [install, bootstrap-project]
 references_required:
   - "references/question-template.md"
   - "references/output-format.md"
@@ -44,7 +44,7 @@ references_on_demand:
   - "references/re-run-flow.md"
 ---
 
-# sf-interview
+# interview
 
 Friend's identity-bootstrap interview. Runs once at install, re-runnable anytime via `/ren:interview`. Per ADR-022.
 

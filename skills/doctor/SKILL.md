@@ -48,7 +48,7 @@ contract:
   output_paths: []
 ---
 
-# sf-doctor
+# doctor
 
 Verification command. Read-only. Side-effect-free.
 

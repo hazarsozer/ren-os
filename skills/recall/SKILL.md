@@ -34,15 +34,15 @@ contract:
   output_paths: []
 
 tags: [companion, mid-session, search, wiki, lifecycle, read-only]
-related_skills: [sf-wrap, sf-note]
+related_skills: [wrap, note]
 references_required:
   - "references/grep-strategy.md"
 references_on_demand: []
 ---
 
-# sf-recall
+# recall
 
-Read-only wiki search. The friend asks "what did we decide about X" or "what does pattern Y look like" — sf-recall greps their local wiki and returns top matches with snippets.
+Read-only wiki search. The friend asks "what did we decide about X" or "what does pattern Y look like" — /ren:recall greps their local wiki and returns top matches with snippets.
 
 Solo-first (ADR-031): recall searches the local wiki only. The former cross-friend feed-activity tail was removed with the Activity Feed module.
 
@@ -92,7 +92,7 @@ Solo-first (ADR-031): recall searches the local wiki only. The former cross-frie
 
 ## Implementation note
 
-V1 implementation in `skills/sf-recall/lib/__init__.py`:
+V1 implementation in `skills/recall/lib/__init__.py`:
 - `RecallHit`, `RecallResult` dataclasses (frozen)
 - pure-logic wiki-grep + scoring + snippet extraction
 - public `recall(query, *, wiki_root, n_hits)` orchestrator

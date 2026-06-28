@@ -46,12 +46,12 @@ contract:
     - "~/.startup-framework/backups/"  # tarballs
 
 tags: [backup, recovery, lifecycle, wiki]
-related_skills: [sf-install, sf-doctor]
+related_skills: [install, doctor]
 references_required: []
 references_on_demand: []
 ---
 
-# sf-backup
+# backup
 
 Per-friend wiki backup with two paths:
 1. **Primary**: commit + push to a configured git remote (the canonical recommendation per ADR-026 — a private GitHub repo on the friend's own account)
@@ -123,7 +123,7 @@ Print:
 
 ## Implementation note
 
-V1 implementation in `skills/sf-backup/lib/`:
+V1 implementation in `skills/backup/lib/`:
 - `lib/types.py` — `BackupResult`, `StatusResult` dataclasses (frozen)
 - `lib/__init__.py` — public `backup()`, `setup_remote()`, `status()` entry points + pure-logic helpers (`tarball_filename_for`, `prune_old_tarballs`, `looks_like_git_url`)
 
@@ -134,5 +134,5 @@ The pure-logic layers are fully unit-testable. The subprocess calls (`git`, `tar
 - ADR-026 (Backups and Recovery) — design rationale + the explicit "what does NOT get backed up" list
 - ADR-017 (Per-Friend Wiki Scope) — self-sync recommendation this skill operationalizes
 - `docs/RECOVERY.md` (distribution-2 shipped) — the recovery doc this skill points at on remote-history-rewrite refusal
-- `skills/sf-install/SKILL.md` — Stage 5 wiki bootstrap that creates the git repo this skill backs up
-- `skills/sf-doctor/SKILL.md` — surfaces the missing-remote nag that points friends at `/ren:backup --setup`
+- `skills/install/SKILL.md` — Stage 5 wiki bootstrap that creates the git repo this skill backs up
+- `skills/doctor/SKILL.md` — surfaces the missing-remote nag that points friends at `/ren:backup --setup`

@@ -16,7 +16,7 @@ contract:
   required_outputs:
     - "All 6 required plugins installed at pinned versions"
     - "~/.startup-framework/wiki/ skeleton present (or additive-diff'd onto existing wiki)"
-    - "~/.startup-framework/wiki/identity.md populated via sf-interview"
+    - "~/.startup-framework/wiki/identity.md populated via /ren:interview"
     - "Green /ren:doctor verification at end"
     - "Idempotent checkpoint file with all 7 stages marked completed"
   budgets:
@@ -27,7 +27,7 @@ contract:
     read:
       - "~/.startup-framework/**"
       - "$XDG_STATE_HOME/sf/**"
-      - "skills/sf-install/references/**"
+      - "skills/install/references/**"
       - "wiki-skeleton/**"
     write:
       - "~/.startup-framework/wiki/**"
@@ -50,7 +50,7 @@ contract:
     - "~/.startup-framework/wiki/**"
 
 tags: [onboarding, install, orchestrator]
-related_skills: [sf-interview, sf-bootstrap-project, sf-doctor, sf-update]
+related_skills: [interview, bootstrap-project, doctor, update]
 references_required:
   - "references/resume-protocol.md"
 references_on_demand:
@@ -64,7 +64,7 @@ references_on_demand:
   - "references/install-state.schema.json"
 ---
 
-# sf-install
+# install
 
 7-stage onboarding orchestrator. Idempotent, resumable, additive-only against any existing friend wiki content.
 
@@ -117,7 +117,7 @@ Each stage reference doc is self-contained. SKILL.md is the orchestrator; per-st
 | 1 | Environment check | `references/stage-1-environment.md` |
 | 2 | Required plugin install (6 plugins, ordered per ADR-010) | `references/stage-2-required-plugins.md` |
 | 3 | Conditional plugins (opt-in, e.g. Frontend Design for UI work) | `references/stage-3-conditional-plugins.md` |
-| 4 | Identity bootstrap via `sf-interview` skill | `references/stage-4-identity-bootstrap.md` |
+| 4 | Identity bootstrap via `/ren:interview` | `references/stage-4-identity-bootstrap.md` |
 | 5 | Master wiki skeleton bootstrap (additive-diff) | `references/stage-5-wiki-bootstrap.md` |
 | 6 | `/ren:doctor` verification | `references/stage-6-doctor-verification.md` (lifecycle owns `/ren:doctor` itself) |
 | 7 | First-session walkthrough | `references/stage-7-walkthrough.md` |

@@ -53,7 +53,7 @@ contract:
     - "${CLAUDE_PLUGIN_DATA}/wiki-snapshots/"
 ---
 
-# sf-update
+# update
 
 The opt-in framework upgrade command. Per ADR-019 + ADR-027.
 
@@ -147,7 +147,7 @@ State transitions, side effects, and failure paths:
    └──────┬──────┘
           ▼
    ┌─────────────┐  Invoke /ren:doctor --post-update (no marketplace fetch).
-   │  VERIFYING_ │  Print sf-doctor's output.
+   │  VERIFYING_ │  Print /ren:doctor's output.
    │  FINAL      │  If all green: SUCCESS.
    │             │  If any new ❌ / ⚠️ appeared: do NOT auto-rollback.
    └──────┬──────┘  Per lead's pushback: explicit message:
