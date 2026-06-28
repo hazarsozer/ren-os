@@ -16,7 +16,9 @@ Cadence: monthly stable. Out-of-cycle PATCH releases only for security or broken
 
 ## [Unreleased]
 
-RenOS is **pre-1.0 and not yet published** — everything below is staged for the first public release. Version `1.0.0` is reserved for when the product is actually done and shipped. The framework is **solo-first**, organized under Nate Herk's **Four C's** (Context → Connections → Capabilities → Cadence): a per-builder hierarchical wiki, cache-preserving wake-up context injection, schema-versioned wiki pages, a deterministic session-consolidation loop, read-only insight + permission-audit surfaces, and a curated plugin stack.
+## [0.1.0] — 2026-06-28
+
+RenOS's **first published release** — 0.1, deliberately pre-1.0. Version `1.0.0` is reserved for when the product is tested, evaluated, and gap-closed after real usage. The framework is **solo-first**, organized under Nate Herk's **Four C's** (Context → Connections → Capabilities → Cadence): a per-builder hierarchical wiki, cache-preserving wake-up context injection, schema-versioned wiki pages, a deterministic session-consolidation loop, read-only insight + permission-audit surfaces, and a curated plugin stack.
 
 The multi-user **Activity Feed was cut pre-ship** (ADR-031): the builder is solo, the feed was speculative complexity, and it was the source of four of seven pre-ship review findings. It is preserved in git history + the `baseline-v1.0-full-wiki` tag as a deferred layer — not rebuilt — so the framework has no cross-user channel. The findings it raised — **F1, F2, F5, F7** — are resolved (F3/F4/F6 are moot without the feed).
 
