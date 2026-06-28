@@ -35,7 +35,7 @@ contract:
       - "skills/routine-init/lib (routine_init)"
   completion_conditions:
     - "The repo dir and the routine-spec page both exist after a successful run"
-    - "On any name/trigger/tier/skill validation failure OR an existing target, nothing is written (clean refusal)"
+    - "On any name/trigger/tier/skill/verification validation failure OR an existing target, nothing is written (clean refusal)"
   output_paths:
     - "~/.startup-framework/wiki/routines/"
     - "<dest-dir>/<slug>/"
@@ -70,6 +70,7 @@ Scaffolds a **lean per-routine repo** for a Cloud Routine and records it in the 
    - `--tier <trusted|full|custom>` (default `trusted` — see § Safety),
    - `--schedule "<natural language>"` (cron trigger only), `--expected "<one line>"`,
    - `--secrets "<env var names>"`, `--failure-email <addr>` (default: friend's email from `identity.md`),
+   - `--verify <visual|test-run|lint|llm-judge|manual>` (how the routine's output is confirmed; default `manual`) + optional `--verify-tools <names>` (v2 routine-spec, C2),
    - `--dest <dir>` (where to create the repo; default the cwd).
 2. **Resolve paths**: `wiki_root` = `~/.startup-framework/wiki`; `dest_dir` = `--dest` or cwd.
 3. **Invoke the lib** `routine_init(...)` (see `lib/__init__.py`). It validates, refuses to overwrite, scaffolds the four repo files (templates baked with the skill-as-prompt + failure footer + single-pass + env-var-sourcing conventions), and writes the conformant routine-spec page.
@@ -97,13 +98,14 @@ Scaffolds a **lean per-routine repo** for a Cloud Routine and records it in the 
 |---|---|---|
 | Non-kebab name | Refuse, no writes | "Invalid routine name … Use kebab-case" |
 | Bad trigger/tier | Refuse, no writes | "Invalid trigger_type/network_tier …" |
+| Bad verification strategy | Refuse, no writes | "Invalid verification_strategy …" |
 | Target repo or spec page exists | Refuse, no writes | "Refusing to overwrite …" |
 
 ## Eval
 
-`eval/eval.json` asserts: a clean run writes the 4 repo files + the spec page; the spec page carries `type: routine-spec` + required fields; the prompt bakes in the Resend failure footer and `/ren:recall --routine .`; invalid inputs and existing targets refuse with no writes.
+`eval/eval.json` asserts: a clean run writes the 4 repo files + the spec page; the spec page carries `type: routine-spec` + required fields + (v2) `verification_strategy`; the prompt bakes in the Resend failure footer and `/ren:recall --routine .`; invalid inputs and existing targets refuse with no writes.
 
 ## References
 
 - `references/lean-repo.md` — the lean-repo discipline + the export-from-rich-session step.
-- ADR-034 (cadence-as-glue), ADR-026 (git pull-model write-back), ADR-027 (routine-spec page-type).
+- ADR-034 (cadence-as-glue), ADR-026 (git pull-model write-back), ADR-027 (routine-spec page-type; v2 adds `verification_strategy` — C2, the framework's first schema migration).

@@ -21,6 +21,9 @@ logger = logging.getLogger(__name__)
 FRAMEWORK_VERSION: Final[str] = "1.0.0"
 VALID_TRIGGERS: Final[frozenset[str]] = frozenset({"cron", "api", "github"})
 VALID_TIERS: Final[frozenset[str]] = frozenset({"trusted", "full", "custom"})
+VALID_VERIFICATION_STRATEGIES: Final[frozenset[str]] = frozenset(
+    {"visual", "test-run", "lint", "llm-judge", "manual"}
+)
 SLUG_RE: Final[re.Pattern[str]] = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 
 REPO_TEMPLATE_FILES: Final[tuple[str, ...]] = (
@@ -63,6 +66,8 @@ def routine_init(
     expected_output: str = "",
     env_secrets_ref: str = "",
     failure_email: str = "",
+    verification_strategy: str = "manual",
+    verification_tools: tuple[str, ...] = (),
     today: str | None = None,
     templates_dir: Path | None = None,
 ) -> RoutineInitResult:
@@ -75,6 +80,8 @@ def routine_init(
         return RoutineInitResult(False, error=f"Invalid network_tier {network_tier!r}. One of: {sorted(VALID_TIERS)}.")
     if not skill or not skill.strip():
         return RoutineInitResult(False, error="A target /ren: skill is required (the skill the routine runs).")
+    if verification_strategy not in VALID_VERIFICATION_STRATEGIES:
+        return RoutineInitResult(False, error=f"Invalid verification_strategy {verification_strategy!r}. One of: {sorted(VALID_VERIFICATION_STRATEGIES)}.")
 
     templates_dir = templates_dir or _default_templates_dir()
     repo_tmpl_dir = templates_dir / "repo"
@@ -99,6 +106,8 @@ def routine_init(
         "{{failure_handler}}": f"email {failure_email} via Resend MCP" if failure_email else "(set a failure email)",
         "{{failure_email}}": failure_email or "(set --failure-email)",
         "{{skill}}": skill.strip(),
+        "{{verification_strategy}}": verification_strategy,
+        "{{verification_tools}}": "[" + ", ".join(verification_tools) + "]",
         "{{today}}": today,
         "{{framework_version}}": FRAMEWORK_VERSION,
     }
@@ -144,6 +153,7 @@ __all__ = [
     "FRAMEWORK_VERSION",
     "VALID_TRIGGERS",
     "VALID_TIERS",
+    "VALID_VERIFICATION_STRATEGIES",
     "RoutineInitResult",
     "routine_init",
 ]

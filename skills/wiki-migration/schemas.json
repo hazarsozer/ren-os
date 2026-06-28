@@ -155,14 +155,14 @@
       "migrations": []
     },
     "routine-spec": {
-      "current": 1,
+      "current": 2,
       "supported_from": 1,
       "deprecated_below": null,
       "path_pattern": "wiki/routines/<slug>.md",
-      "description": "Documents one live cadence routine — name, trigger type, linked repo, network tier, env/secrets ref, expected output, failure handler. Written by /ren:routine-init; surfaced by the wake-up hook and audited by /ren:doctor.",
+      "description": "Documents one live cadence routine — name, trigger type, linked repo, network tier, env/secrets ref, expected output, failure handler, and (v2) verification_strategy + verification_tools (how the routine's output is confirmed). Written by /ren:routine-init; surfaced by the wake-up hook and audited by /ren:doctor. v2 (C2, 2026-06-28) is the framework's first real migration — additive, scripted.",
       "owner_module": "sf-cadence",
       "adr_refs": ["ADR-034", "ADR-027"],
-      "migrations": []
+      "migrations": ["1-to-2"]
     },
     "instincts": {
       "current": 1,
