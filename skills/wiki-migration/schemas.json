@@ -1,0 +1,17 @@
+{
+  "$comment": "Minimal schema registry (Task 7.3) — per spec §7.1, the heavy chain-computer/registry-template machinery donor built around this file is PRE-EXCLUDED for 0.2. This file only enumerates page types actually stamped by something in this repo (wiki-skeleton templates + the routine-spec migrations), each with its current schema version and the ordered chain of migration directory names to walk from any older version up to current.",
+  "page_types": {
+    "identity": {
+      "current": 1,
+      "migrations": []
+    },
+    "l2-map": {
+      "current": 1,
+      "migrations": []
+    },
+    "routine-spec": {
+      "current": 3,
+      "migrations": ["routine-spec-1-to-2", "routine-spec-2-to-3"]
+    }
+  }
+}
