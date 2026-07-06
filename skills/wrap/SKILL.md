@@ -76,7 +76,7 @@ End-of-session consolidation. The friend runs `/ren:wrap`; this skill writes the
 
 ## End screen
 
-The full unified wrap screen ("what I learned / N auto-saved (revertible) / M need your OK" — spec §3.8) is **Task 8.2, not yet built**. Until then, present the raw `wrap_session()` return dict fields (above) in whatever plain form is clearest; this skill does not yet own a polished presentation layer.
+After `wrap_session()` returns, call `skills.wrap.lib.render_wrap_screen(wrap_result, session)` and print its output VERBATIM as the close-out — do not re-summarize or re-format it. The screen is pure presentation (spec §3.8's unified wrap surface): "what I learned" (the L1 summary's status), "auto-saved (revertible)" (this session's auto-tier applies, each with a one-step revert hint), "needs your OK" (this session's still-pending entries, with conflict flags when `lib.memory.semantics` flagged one), and a refused note when the classifier gate or the secrets scan turned something away — even though risk tiers fragment the underlying writes across auto-applied and pending state, the friend sees one legible screen.
 
 ## Design notes
 
