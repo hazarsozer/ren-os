@@ -251,6 +251,63 @@ def apply(qid: str) -> Provenance:
     return prov
 
 
+def apply_auto(qid: str) -> Provenance:
+    """Apply a PENDING entry directly, bypassing the approve step — legal
+    ONLY when the risk-tier model (Task 6.1, `lib.governance.tiers`) resolves
+    the proposal to the "auto" tier (a routine's bounded, non-global-page
+    memory write). This is spec §3.6's "routine bounded writes auto-apply
+    with provenance tags + one-step revert" path: provenance (G2) and revert
+    (G4) already make an auto-applied write no less accountable than an
+    approved one, just skipping the human-approval step for the narrow case
+    the spec says is safe to skip it for.
+
+    Raises `QueueStateError` if the entry isn't `pending`, or if the tier
+    model doesn't classify this proposal as "auto" (e.g. a human/llm-auto
+    writer, or a `global/` page — those always require the normal
+    `approve()`/`apply()` path). `lib.governance.tiers` is imported lazily
+    inside this function to avoid an import cycle (governance depends on
+    nothing in `lib.memory`, but keeping the import local here means queue.py
+    never has to import governance at module load time either).
+
+    On success: marks the entry `applied` with `approved_by="auto-tier"` and
+    the resulting `write_id`, and the journal line for this write carries
+    `extra={"auto": True}` (via `write_apply.apply_write`'s `journal_extra`
+    param) — so an auto-applied write is distinguishable from a
+    human-approved one in the journal, not just in the queue-entry file.
+    """
+    from lib.governance.tiers import queue_auto_apply_allowed
+
+    entry = _load(qid)
+    if entry.status != _PENDING:
+        raise QueueStateError(f"cannot apply_auto {qid}: status is {entry.status!r}, not 'pending'")
+    if not queue_auto_apply_allowed(entry.proposal):
+        raise QueueStateError(
+            f"cannot apply_auto {qid}: proposal (writer={entry.proposal.writer!r}, "
+            f"page={entry.proposal.page!r}) does not resolve to the 'auto' tier"
+        )
+
+    supersedes = next(
+        (c.get("write_id") for c in entry.conflicts if c.get("kind") == "supersedes"),
+        None,
+    )
+    proposal = entry.proposal
+    prov = new_provenance(
+        writer=proposal.writer,
+        session=proposal.session,
+        op=proposal.op,
+        page=proposal.page,
+        supersedes=supersedes,
+    )
+
+    write_apply.apply_write(proposal.page, proposal.content, prov, journal_extra={"auto": True})
+
+    entry.status = _APPLIED
+    entry.approved_by = "auto-tier"
+    entry.write_id = prov.write_id
+    _persist(entry)
+    return prov
+
+
 def reject(qid: str, why: str) -> None:
     """Reject a pending or approved entry, recording `why`."""
     entry = _load(qid)
@@ -270,5 +327,6 @@ __all__ = [
     "get",
     "approve",
     "apply",
+    "apply_auto",
     "reject",
 ]

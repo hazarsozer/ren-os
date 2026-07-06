@@ -49,12 +49,19 @@ def apply_write(
     new_content: str | None,
     prov: Provenance,
     expect_token: str | None = None,
+    journal_extra: dict | None = None,
 ) -> None:
     """Apply one provenance-stamped write to `page` under an exclusive lease.
 
     Raises `LeaseHeld` (from `lib.memory.locks`) if another writer already
     holds `page`'s lease, or `LostUpdate` if `expect_token` doesn't match the
     page's current content. See module docstring for the full write order.
+
+    `journal_extra` (Task 6.1 addition): optional extra fields merged into the
+    journal line for this write (e.g. `{"auto": True}` for the risk-tier
+    model's auto-applied routine writes) — forwarded verbatim to
+    `journal.append`'s own `extra` parameter. `None` (the default) preserves
+    the original journal-line shape exactly for every pre-existing caller.
     """
     page_abs = ren_paths.safe_join(ren_paths.wiki_root(), page)
 
@@ -82,7 +89,7 @@ def apply_write(
         else:  # pragma: no cover - Provenance.__post_init__ already validates op
             raise ValueError(f"unknown op {prov.op!r}")
 
-        journal.append(prov)
+        journal.append(prov, journal_extra)
 
 
 __all__ = ["apply_write"]
