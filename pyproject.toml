@@ -1,0 +1,12 @@
+[project]
+name = "renos"
+version = "0.2.0"
+description = "RenOS — an Agentic OS: knowledge + governance layer for coding-agent harnesses"
+requires-python = ">=3.11"
+dependencies = ["python-ulid>=2.7", "typing-extensions>=4.0"]
+
+[dependency-groups]
+dev = ["pytest>=8.0"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

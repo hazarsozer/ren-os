@@ -1,0 +1,11 @@
+{
+  "name": "ren",
+  "displayName": "RenOS",
+  "version": "0.2.0",
+  "description": "Agentic OS: compounding memory, token discipline, governed autonomy",
+  "config": {
+    "wikiRoot": "~/.renos/wiki",
+    "devRoot": "~/Dev",
+    "snapshotRetain": 50
+  }
+}
