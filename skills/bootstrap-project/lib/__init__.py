@@ -1,0 +1,89 @@
+"""
+skills.bootstrap-project library — internal implementation for
+/ren:bootstrap-project (Task 4.4, RenOS 0.2 Phase 4).
+
+Spec §3.1 L2 + §3.8 A-10 (first-session artifact), the FRESH-project half of
+the pair: `/ren:ingest-project` (sibling skill) is for an EXISTING repo with
+real content to scan; this skill is for a brand-new project with nothing to
+scan yet. It does two things:
+
+  1. Stamps the shared wiki skeleton (`lib/skeleton.py` + `wiki-skeleton/`)
+     into the wiki root — additive, never-overwrite, so running this against
+     an already-onboarded wiki touches nothing that exists.
+  2. Queues an EMPTY L2 map at `projects/<slug>/map.md` — same frozen schema
+     `skills/ingest-project/lib/assemble_l2` renders, just with no knowledge
+     or pointers yet (the friend or a later `/ren:ingest-project`/`/ren:wrap`
+     fills it in).
+
+Always `producer="promotion"`, `writer="human"` (a human explicitly asked to
+start this project — nothing here is LLM-drafted), so `queue.apply` never
+quarantines it, unlike `ingest`'s scan-derived `writer="llm-auto"` maps.
+
+The directory name `bootstrap-project` isn't a valid Python identifier
+segment, so `assemble_l2` is reached via `importlib.import_module` (the same
+mechanism donor skills used for hyphenated skill dirs) rather than a `from
+skills.ingest_project.lib import ...`-style dotted import, which would fail
+to parse.
+"""
+
+from __future__ import annotations
+
+import importlib
+from datetime import datetime, timezone
+from pathlib import Path
+
+from lib import ren_paths
+from lib.memory.queue import Proposal, QueueEntry, propose
+from lib.skeleton import stamp_skeleton
+
+_REPO_ROOT = Path(__file__).resolve().parents[3]  # lib -> bootstrap-project -> skills -> repo root
+_SKELETON_ROOT = _REPO_ROOT / "wiki-skeleton"
+
+_ingest_lib = importlib.import_module("skills.ingest-project.lib")
+assemble_l2 = _ingest_lib.assemble_l2
+
+
+def _map_page(project_slug: str) -> str:
+    return f"projects/{project_slug}/map.md"
+
+
+def bootstrap(project_slug: str, session: str) -> QueueEntry:
+    """Stamp the shared skeleton (additive) and queue an empty L2 map for
+    `project_slug`.
+
+    ADD if `projects/<project_slug>/map.md` doesn't exist yet, else UPDATE.
+    Always human-provenance — never quarantined on apply.
+    """
+    stamp_skeleton(
+        skeleton_root=_SKELETON_ROOT,
+        target_root=ren_paths.wiki_root(),
+        profile="master",
+        placeholders={
+            "handle": "friend",
+            "name": "friend",
+            "framework_version": ren_paths.framework_version(),
+        },
+    )
+
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    content = assemble_l2(project_slug, [], [], f"{today}: project bootstrapped")
+
+    page = _map_page(project_slug)
+    page_abs = ren_paths.safe_join(ren_paths.wiki_root(), page)
+    op = "UPDATE" if page_abs.exists() else "ADD"
+
+    return propose(
+        Proposal(
+            op=op,
+            page=page,
+            content=content,
+            reason="bootstrap-project",
+            producer="promotion",
+            writer="human",
+            session=session,
+            salience=False,
+        )
+    )
+
+
+__all__ = ["bootstrap", "assemble_l2"]

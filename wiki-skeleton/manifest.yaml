@@ -25,7 +25,7 @@ profiles:
         type: file
         write_rule: copy_if_missing
         min_framework_version: "0.2.0"
-        description: "Master catalog index; empty section headers, frontmatter only"
+        description: "Master wiki index, reshaped to the L2 pointer-map schema (Task 4.4): Knowledge / Decision map / Log sections, empty, frontmatter-only"
 
       - path: "log.md"
         template: "templates/log.md.tmpl"

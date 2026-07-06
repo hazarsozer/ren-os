@@ -1,42 +1,35 @@
 ---
 title: "Wiki Index"
-type: master-index
+type: l2-map
+project: master
 schema_version: 1
 framework_version: "{{framework_version}}"
 created: {{today}}
 updated: {{today}}
 ---
 
-# Wiki Index
+# Master wiki — knowledge map
 
-Master catalog of every page in this wiki, grouped by type. Read this first to know what's here; drill into specific pages on demand.
+Reshaped (Task 4.4) to the L2 pointer-map schema (spec §3.1 L2): "a compact per-project page holding general project knowledge plus an index of pointers — a map, not the territory." This file plays that role for the wiki as a whole; per-project maps live at `projects/<slug>/map.md`, assembled by `skills/ingest-project/lib/assemble_l2` (same schema, one map per project).
 
 This file is updated by `/ren:wrap` whenever a session promotes content to the wiki. You can also edit it by hand.
 
-## Identity
+## Knowledge
 
-- [{{handle}} — identity](identity.md)
+_General facts about this wiki as a whole will be listed here as they're captured — e.g. "friend prefers X," "this wiki covers N active projects."_
 
-## Research
+## Decision map
 
-_Ingested external sources will be listed here._
+_Pointers into `decisions/`, `patterns/`, `research/`, and per-project maps will be listed here, one per line:_
 
-## Decisions
+`- [<topic>] → <wiki-relative-path>#<anchor> (<write_id or "unstamped">)`
 
-_Your own ADRs will be listed here._
+## Log
 
-## Alternatives
-
-_Rejected options with reasoning will be listed here._
-
-## Patterns
-
-_Reusable patterns will be listed here._
-
-## Projects
-
-_Active project sub-wikis will be listed here. Use `/ren:bootstrap-project <name>` to start a new one._
+_A short pointer-level summary of recent events. See [`log.md`](log.md) for the full chronological log — this section is not a duplicate of it._
 
 ## See also
 
 - [`log.md`](log.md) — chronological event log for this wiki
+- [`identity.md`](identity.md) — {{handle}}'s identity + working-style profile
+- `projects/<slug>/map.md` — per-project knowledge maps (`/ren:bootstrap-project <slug>` or `/ren:ingest-project [path]` to create one)
