@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "query": "Why did we choose Postgres instead of MongoDB?",
+      "expected_page": "decisions/use-postgres.md"
+    },
+    {
+      "query": "What database did the widget-tracker project pick for order-history joins?",
+      "expected_page": "decisions/use-postgres.md"
+    },
+    {
+      "query": "Why did we switch from webpack to vite?",
+      "expected_page": "decisions/switch-to-vite.md"
+    },
+    {
+      "query": "What build tool change made frontend hot reload faster?",
+      "expected_page": "decisions/switch-to-vite.md"
+    },
+    {
+      "query": "What did we learn about retrying flaky third-party API calls?",
+      "expected_page": "lessons/retry-with-backoff.md"
+    },
+    {
+      "query": "What's the lesson about exponential backoff and jitter for retries?",
+      "expected_page": "lessons/retry-with-backoff.md"
+    },
+    {
+      "query": "Why did distributed timestamp comparisons break across servers?",
+      "expected_page": "lessons/dont-trust-clock-skew.md"
+    },
+    {
+      "query": "What lesson did we learn about clock skew between machines?",
+      "expected_page": "lessons/dont-trust-clock-skew.md"
+    },
+    {
+      "query": "What is the Falcon app and what stack is it built with?",
+      "expected_page": "projects/falcon-app/overview.md"
+    },
+    {
+      "query": "What's on the Falcon budgeting app roadmap after recurring transactions?",
+      "expected_page": "projects/falcon-app/roadmap.md"
+    },
+    {
+      "query": "What does the Comet API service do?",
+      "expected_page": "projects/comet-api/overview.md"
+    },
+    {
+      "query": "What caused the Comet API outage in June 2026?",
+      "expected_page": "projects/comet-api/incident-2026-06.md"
+    }
+  ]
+}
