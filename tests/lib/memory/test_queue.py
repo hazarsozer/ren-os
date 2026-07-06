@@ -18,7 +18,8 @@ from dataclasses import dataclass
 
 import pytest
 
-from lib.memory import journal, queue
+from lib.memory import journal, queue, quarantine
+from lib.memory.provenance import read_frontmatter_provenance
 from lib.memory.queue import Proposal, QueueStateError
 from lib.memory.scrub import SecretsFound
 from lib.ren_paths import state_dir, wiki_root
@@ -271,3 +272,58 @@ def test_restart_survival_fresh_reads_see_identical_state(wiki):
     assert reloaded.approved_by == "hazar"
     assert reloaded.proposal.page == "survives.md"
     assert reloaded.proposal.content == "persist me"
+
+
+# ---------------------------------------------------- quarantine wiring (2.4)
+
+
+def test_llm_auto_add_is_quarantined_and_still_carries_provenance(wiki):
+    entry = queue.propose(
+        _proposal(
+            page="llm-note.md",
+            content="# LLM summary\n\nSome unreviewed narrative.\n",
+            writer="llm-auto",
+            producer="wrap",
+        )
+    )
+    queue.approve(entry.qid, approved_by="hazar")
+    prov = queue.apply(entry.qid)
+
+    text = (wiki / "llm-note.md").read_text(encoding="utf-8")
+    assert quarantine.is_quarantined(text) is True
+
+    read_prov = read_frontmatter_provenance(text)
+    assert read_prov is not None
+    assert read_prov["write_id"] == prov.write_id
+    assert read_prov["writer"] == "llm-auto"
+
+
+def test_human_add_is_not_quarantined(wiki):
+    entry = queue.propose(
+        _proposal(page="human-note.md", content="# Human note\n\nReviewed content.\n", writer="human")
+    )
+    queue.approve(entry.qid, approved_by="hazar")
+    queue.apply(entry.qid)
+
+    text = (wiki / "human-note.md").read_text(encoding="utf-8")
+    assert quarantine.is_quarantined(text) is False
+
+
+def test_quarantine_banner_does_not_break_frontmatter_stamping(wiki):
+    entry = queue.propose(
+        _proposal(
+            page="llm-note-2.md",
+            content="# Another summary\n\nMore narrative text.\n",
+            writer="llm-auto",
+        )
+    )
+    queue.approve(entry.qid, approved_by="hazar")
+    prov = queue.apply(entry.qid)
+
+    text = (wiki / "llm-note-2.md").read_text(encoding="utf-8")
+    # Frontmatter must still be the FIRST thing in the file (banner goes in the
+    # body, after frontmatter) and provenance must round-trip cleanly.
+    assert text.startswith("---\n")
+    read_prov = read_frontmatter_provenance(text)
+    assert read_prov["write_id"] == prov.write_id
+    assert read_prov["op"] == "ADD"

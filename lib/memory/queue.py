@@ -37,7 +37,7 @@ from typing import get_args
 from ulid import ULID
 
 from lib import ren_paths
-from lib.memory import scrub, write_apply
+from lib.memory import quarantine, scrub, write_apply
 from lib.memory.provenance import Op, WriterClass, Provenance, new_provenance
 
 try:
@@ -234,7 +234,16 @@ def apply(qid: str) -> Provenance:
         page=proposal.page,
         supersedes=supersedes,
     )
-    write_apply.apply_write(proposal.page, proposal.content, prov)
+
+    content = proposal.content
+    if proposal.writer == "llm-auto" and proposal.op in ("ADD", "UPDATE") and content is not None:
+        # Spec §3.1/§3.10: LLM-auto content is data-not-instruction until a
+        # human reviews it. Quarantine-mark it here, at the one door every
+        # write passes through, rather than relying on every producer to
+        # remember to mark its own proposals.
+        content = quarantine.mark(content)
+
+    write_apply.apply_write(proposal.page, content, prov)
 
     entry.status = _APPLIED
     entry.write_id = prov.write_id
