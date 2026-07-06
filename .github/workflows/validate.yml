@@ -1,0 +1,36 @@
+name: validate
+
+on:
+  push:
+    branches: [main, rc]
+  pull_request:
+    branches: [main, rc]
+  workflow_dispatch:
+
+jobs:
+  # ──────────────────────────────────────────────────────────────────
+  # Python test suite (top-level tests/ — no per-skill discovery needed
+  # yet; adapted from startup-framework's `tests` job) + frontmatter lint.
+  # ──────────────────────────────────────────────────────────────────
+  tests:
+    name: python tests + frontmatter lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Run test suite
+        run: uv run pytest tests/ -q
+
+      - name: YAML frontmatter lint (fast-fail before any semantic checks)
+        run: uv run python3 scripts/lint-yaml-frontmatter.py
