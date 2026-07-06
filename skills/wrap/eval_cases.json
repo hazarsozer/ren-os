@@ -1,0 +1,52 @@
+{
+  "cases": [
+    {
+      "input": "We decided to standardize on Postgres for all new services because order-history queries need multi-table joins that a document store handles poorly.",
+      "expect": "accept"
+    },
+    {
+      "input": "Learned the hard way that retrying a flaky third-party API immediately just hammers it harder; exponential backoff with jitter fixed it.",
+      "expect": "accept"
+    },
+    {
+      "input": "Reusable pattern: wrap every flaky outbound network call in exponential backoff with jitter, not just the ones that already broke once.",
+      "expect": "accept"
+    },
+    {
+      "input": "Gotcha: comparing raw timestamps across two servers to order events broke in production because of clock skew — use a logical clock instead.",
+      "expect": "accept"
+    },
+    {
+      "input": "Decision: switched the frontend build tool from webpack to vite because hot-module-reload times had become painful as the codebase grew.",
+      "expect": "accept"
+    },
+    {
+      "input": "Fixed a typo in the README.",
+      "expect": "refuse"
+    },
+    {
+      "input": "Ran the test suite again, still green, nothing changed.",
+      "expect": "refuse"
+    },
+    {
+      "input": "lol that stack trace was a weird one",
+      "expect": "refuse"
+    },
+    {
+      "input": "Just restarted my terminal because it felt slow.",
+      "expect": "refuse"
+    },
+    {
+      "input": "Checked email, nothing important, moving on.",
+      "expect": "refuse"
+    },
+    {
+      "input": "Here is my AWS key for reference: AKIAIOSFODNN7EXAMPLE",
+      "expect": "refuse"
+    },
+    {
+      "input": "My GitHub token is ghp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa, don't lose it.",
+      "expect": "refuse"
+    }
+  ]
+}

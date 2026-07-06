@@ -1,0 +1,84 @@
+---
+name: wrap
+description: |
+  Use at session end when the friend wants to consolidate what happened.
+  Triggers on the /ren:wrap slash command. Writes an L1 narrative summary
+  (always, auto-quarantined as unreviewed) and gates candidate durable items
+  through a fail-closed classifier before queuing them for human approval.
+  Most sessions produce zero durable candidates — the discipline is bias
+  toward NOT durable, per spec §3.1.
+version: 0.2.0
+license: MIT
+
+framework_version: "0.2.0"
+schema_version: 1
+type: skill
+
+contract:
+  required_outputs:
+    - "One L1 narrative page queued, approved, and applied (writer=llm-auto), auto-quarantined by the queue"
+    - "Zero or more durable-candidate Proposals queued (pending human approval — never auto-applied)"
+    - "A gated_out list explaining why each non-durable candidate was turned away"
+    - "A refused list for any durable candidate the queue itself rejected (e.g. a planted secret)"
+    - "A fail_closed flag, accurate for this run, surfaced to the user when true"
+  budgets:
+    turns: 3
+    files_written: 1
+    duration_seconds: 30
+  permissions:
+    read:
+      - "~/.renos/wiki/**"
+    write:
+      - "~/.renos/wiki/**"
+      - "~/.renos/wiki/.ren/metrics/**"
+    execute: []
+  completion_conditions:
+    - "The L1 QueueEntry has status=applied and its page's frontmatter carries a valid ren_write_id"
+    - "collect.read(kind=KIND_CLASSIFIER_EVENT) has one new entry per gate() call this run"
+  output_paths:
+    - "~/.renos/wiki/l1/"
+    - "~/.renos/wiki/lessons/"
+    - "~/.renos/wiki/.ren/metrics/"
+
+tags: [producer, session-end, wrap, l1, classifier, quarantine]
+related_skills: [pin, recall]
+references_required: []
+references_on_demand: []
+---
+
+# wrap
+
+End-of-session consolidation. The friend runs `/ren:wrap`; this skill writes the session's L1 narrative summary (always — quarantined as unreviewed LLM-auto content, never treated as instruction) and gates any candidate durable items through the classifier before queuing them for human approval. Per spec §3.1's discipline, most sessions should produce **zero** durable candidates — the classifier biases hard toward "not durable."
+
+## When to use this skill
+
+- Friend invokes `/ren:wrap` at (or near) the end of a session.
+- Friend says something like "let's wrap up", "consolidate this session", "what should we remember from today."
+
+## When NOT to use this skill
+
+- Friend wants to pin one specific fact mid-session → `/ren:pin`, not `/ren:wrap`.
+- Friend wants to look something up → `/ren:recall`.
+- No session content exists yet (this is the very first turn) → nothing to wrap.
+
+## Behavior
+
+1. **Compose the L1 narrative.** The live session writes a short narrative markdown summary of what happened this session — what was done, what's open, what changed. This is data, not doctrine; it always gets quarantined on write (queue Task 2.4 wiring), so nothing here needs to hedge its own confidence.
+2. **Extract candidate durable items.** The live session identifies zero or more candidate strings that MIGHT be worth durable, cross-session memory (a decision, a lesson, a reusable pattern). When in doubt, extract fewer, not more — the classifier gate is the second line of defense, not the first.
+3. **Call `skills.wrap.lib.wrap_session(narrative_md, durable_items, session, llm_call=...)`.**
+   - `llm_call` should be the live session's own way of asking itself a strict yes/no/discard question (see `lib/classifier.py`'s prompt). If no such mechanism is wired up yet, omit `llm_call` — the deterministic fallback (`session-only`/`discard` only, never `durable`) keeps memory safe by construction rather than guessing.
+4. **Present results to the friend:**
+   - L1: "session summary saved (quarantined, unreviewed)."
+   - Durable candidates queued: qids + pages, pending your approval.
+   - Gated out: verdict + one-line reason each.
+   - Refused: any candidate the queue itself rejected (e.g. a planted secret) — surfaced explicitly, not silently dropped.
+   - If `fail_closed` is true: tell the friend the classifier fell back to the deterministic path this run (LLM path errored) — nothing was silently promoted to durable as a result.
+
+## End screen
+
+The full unified wrap screen ("what I learned / N auto-saved (revertible) / M need your OK" — spec §3.8) is **Task 8.2, not yet built**. Until then, present the raw `wrap_session()` return dict fields (above) in whatever plain form is clearest; this skill does not yet own a polished presentation layer.
+
+## Design notes
+
+- Adapted from donor `skills/wrap/lib/classifier.py`'s KEY 0.1 finding: an LLM prompt/parse path was built but never wired in, while a deterministic heuristic quietly did all the real work. 0.2 swaps the roles on purpose — see `lib/classifier.py`'s module docstring.
+- Every write here goes through `lib.memory.queue` — no direct wiki writes, no donor-style `CONTEXT.md` rewrite machinery.
