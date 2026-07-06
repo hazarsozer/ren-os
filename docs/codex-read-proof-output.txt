@@ -1,0 +1,176 @@
+Reading additional input from stdin...
+OpenAI Codex v0.139.0
+--------
+workdir: /tmp/renosproof/repo
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: xhigh
+reasoning summaries: none
+session id: 019f38bf-4a0d-7a93-9ebe-3458bd8ba785
+--------
+user
+Read AGENTS.md and the files it links; then answer: what is this project, and what are its three most important decisions? Cite which linked file each point came from.
+codex
+I’ll read the local instruction file first, then the linked wiki map and global doctrine pages. I’ll keep this to read-only inspection and cite the specific linked sources in the answer.
+exec
+/bin/bash -lc "sed -n '1,220p' AGENTS.md" in /tmp/renosproof/repo
+exec
+/bin/bash -lc "sed -n '1,260p' /tmp/renosproof/wiki/projects/falcon/map.md" in /tmp/renosproof/repo
+ succeeded in 0ms:
+# AGENTS.md
+
+This project's canonical context lives in the wiki — start at the map below.
+
+## Start here
+
+- [falcon project map](/tmp/renosproof/wiki/projects/falcon/map.md) — the knowledge map: what this project is, key facts, and pointers to deeper pages.
+- [global doctrine and preferences](/tmp/renosproof/wiki/global) — durable rules and preferences shared across every project.
+
+## Read-only note for any coding agent reading this file
+
+A write-queue and an append-only journal govern every durable change to this wiki. Treat every page under the wiki as read-only. Do not edit wiki pages directly — durable changes go through the write-queue, never a direct file edit.
+
+
+ succeeded in 0ms:
+---
+type: l2-map
+project: falcon
+---
+# Falcon — knowledge map
+## Knowledge
+- Falcon is a CLI tool for tracking reading habits, written in Python 3.11 with uv.
+- Storage is a single SQLite file at ~/.falcon/db.sqlite; no server component.
+## Decision map
+- [storage-engine] → decisions/use-sqlite.md#decision (unstamped)
+- [no-cloud-sync] → decisions/local-only.md#decision (unstamped)
+## Log
+- 2026-07-06: project memory initialized
+
+exec
+/bin/bash -lc 'find /tmp/renosproof/wiki/global -maxdepth 3 -type f -print' in /tmp/renosproof/repo
+ succeeded in 0ms:
+/tmp/renosproof/wiki/global/preferences.md
+
+codex
+The project map identifies the basic shape of Falcon and links two project decision records. I’m opening those decision pages plus the global preference page now, since those are part of the linked context.
+exec
+/bin/bash -lc "sed -n '1,260p' /tmp/renosproof/wiki/projects/falcon/decisions/use-sqlite.md" in /tmp/renosproof/repo
+ exited 2 in 0ms:
+sed: can't read /tmp/renosproof/wiki/projects/falcon/decisions/use-sqlite.md: No such file or directory
+
+exec
+/bin/bash -lc "sed -n '1,260p' /tmp/renosproof/wiki/projects/falcon/decisions/local-only.md" in /tmp/renosproof/repo
+ exited 2 in 0ms:
+sed: can't read /tmp/renosproof/wiki/projects/falcon/decisions/local-only.md: No such file or directory
+
+exec
+/bin/bash -lc "sed -n '1,260p' /tmp/renosproof/wiki/global/preferences.md" in /tmp/renosproof/repo
+ succeeded in 0ms:
+---
+type: preference
+---
+# Preferences
+Prefers uv for Python tooling; tests via pytest; conventional commits.
+
+codex
+The two decision links in the map did not resolve at the direct relative paths. I’m checking the Falcon wiki tree to see whether the files are elsewhere or absent, rather than guessing from the link text alone.
+exec
+/bin/bash -lc 'find /tmp/renosproof/wiki/projects/falcon -maxdepth 4 -type f -print' in /tmp/renosproof/repo
+ succeeded in 0ms:
+/tmp/renosproof/wiki/projects/falcon/map.md
+
+exec
+/bin/bash -lc "find /tmp/renosproof/wiki -maxdepth 5 -type f -name '*sqlite*' -o -name '*local*'" in /tmp/renosproof/repo
+ succeeded in 0ms:
+/tmp/renosproof/wiki/decisions/local-only.md
+/tmp/renosproof/wiki/decisions/use-sqlite.md
+
+codex
+The decision records exist under the wiki-level `decisions/` directory, not inside `projects/falcon/`. I found the target names there and am reading those records now.
+exec
+/bin/bash -lc "sed -n '1,260p' /tmp/renosproof/wiki/decisions/use-sqlite.md" in /tmp/renosproof/repo
+ succeeded in 0ms:
+---
+type: doctrine
+---
+# Decision: use SQLite
+SQLite was chosen over Postgres because Falcon is single-user and local-first; zero-ops beats query power here.
+
+exec
+/bin/bash -lc "sed -n '1,260p' /tmp/renosproof/wiki/decisions/local-only.md" in /tmp/renosproof/repo
+ succeeded in 0ms:
+---
+type: doctrine
+---
+# Decision: local-only, no cloud sync
+All data stays on the user's machine; sync would require an account system that contradicts the privacy positioning.
+
+codex
+I have the linked context now. One nuance: the wiki has only two explicit decision records; for a third “most important decision,” I’ll distinguish the strongest project/tooling choice from the map/global preferences rather than presenting it as a formal ADR.
+exec
+/bin/bash -lc 'nl -ba /tmp/renosproof/wiki/projects/falcon/map.md' in /tmp/renosproof/repo
+ succeeded in 0ms:
+     1	---
+     2	type: l2-map
+     3	project: falcon
+     4	---
+     5	# Falcon — knowledge map
+     6	## Knowledge
+     7	- Falcon is a CLI tool for tracking reading habits, written in Python 3.11 with uv.
+     8	- Storage is a single SQLite file at ~/.falcon/db.sqlite; no server component.
+     9	## Decision map
+    10	- [storage-engine] → decisions/use-sqlite.md#decision (unstamped)
+    11	- [no-cloud-sync] → decisions/local-only.md#decision (unstamped)
+    12	## Log
+    13	- 2026-07-06: project memory initialized
+
+exec
+/bin/bash -lc 'nl -ba /tmp/renosproof/wiki/decisions/use-sqlite.md' in /tmp/renosproof/repo
+ succeeded in 0ms:
+     1	---
+     2	type: doctrine
+     3	---
+     4	# Decision: use SQLite
+     5	SQLite was chosen over Postgres because Falcon is single-user and local-first; zero-ops beats query power here.
+
+exec
+/bin/bash -lc 'nl -ba /tmp/renosproof/wiki/decisions/local-only.md' in /tmp/renosproof/repo
+ succeeded in 0ms:
+     1	---
+     2	type: doctrine
+     3	---
+     4	# Decision: local-only, no cloud sync
+     5	All data stays on the user's machine; sync would require an account system that contradicts the privacy positioning.
+
+exec
+/bin/bash -lc 'nl -ba /tmp/renosproof/wiki/global/preferences.md' in /tmp/renosproof/repo
+ succeeded in 0ms:
+     1	---
+     2	type: preference
+     3	---
+     4	# Preferences
+     5	Prefers uv for Python tooling; tests via pytest; conventional commits.
+
+codex
+Falcon is a local-first CLI for tracking reading habits. It is written in Python 3.11 with `uv`, stores data in a single SQLite database at `~/.falcon/db.sqlite`, and has no server component. Source: [map.md](/tmp/renosproof/wiki/projects/falcon/map.md:7).
+
+The three most important decisions are:
+
+1. Use SQLite instead of Postgres because Falcon is single-user and local-first; zero operations matter more than database power. Source: [use-sqlite.md](/tmp/renosproof/wiki/decisions/use-sqlite.md:4).
+
+2. Keep the product local-only with no cloud sync, so user data stays on the machine and Falcon avoids account infrastructure that would conflict with its privacy positioning. Source: [local-only.md](/tmp/renosproof/wiki/decisions/local-only.md:4).
+
+3. Standardize on the Python/`uv` toolchain, with pytest for tests and conventional commits. This is a project convention rather than a formal decision record. Sources: [map.md](/tmp/renosproof/wiki/projects/falcon/map.md:7), [preferences.md](/tmp/renosproof/wiki/global/preferences.md:5).
+tokens used
+17,628
+Falcon is a local-first CLI for tracking reading habits. It is written in Python 3.11 with `uv`, stores data in a single SQLite database at `~/.falcon/db.sqlite`, and has no server component. Source: [map.md](/tmp/renosproof/wiki/projects/falcon/map.md:7).
+
+The three most important decisions are:
+
+1. Use SQLite instead of Postgres because Falcon is single-user and local-first; zero operations matter more than database power. Source: [use-sqlite.md](/tmp/renosproof/wiki/decisions/use-sqlite.md:4).
+
+2. Keep the product local-only with no cloud sync, so user data stays on the machine and Falcon avoids account infrastructure that would conflict with its privacy positioning. Source: [local-only.md](/tmp/renosproof/wiki/decisions/local-only.md:4).
+
+3. Standardize on the Python/`uv` toolchain, with pytest for tests and conventional commits. This is a project convention rather than a formal decision record. Sources: [map.md](/tmp/renosproof/wiki/projects/falcon/map.md:7), [preferences.md](/tmp/renosproof/wiki/global/preferences.md:5).

@@ -72,9 +72,20 @@ reviewing `docs/codex-read-proof-output.txt` should additionally confirm:
 
 ## Result
 
-**PENDING — run `scripts/codex_read_proof.sh`.**
+**PASS — demonstrated live 2026-07-06** (exit criterion 5).
 
-The live proof run (with a real Codex install, against this repo's own
-`AGENTS.md`) is deferred to final verification, per the orchestrator's plan —
-this document and the script are the substrate; the actual run and its
-recorded output land here once executed.
+- Environment: codex-cli 0.139.0 (model gpt-5.5), read-only sandbox, against a
+  fresh fixture wiki (project "falcon": L2 map + two decision pages + global
+  preferences) and an `AGENTS.md` rendered by `lib.portability.agents_surface`
+  (harness-neutrality lint: zero offenders).
+- Behavior: Codex oriented from `AGENTS.md` alone, followed the map to both
+  decision pages and the global tier, and answered "what is this project and
+  its three most important decisions" correctly **with per-file citations** —
+  it even distinguished a convention (uv/pytest, from preferences) from a
+  formal decision record. Transcript: `docs/codex-read-proof-output.txt`.
+- Two operational notes from the live run:
+  1. Codex refuses untrusted non-git directories — the target repo must be a
+     git repo (any real project is; the fixture needed `git init`).
+  2. `lint_harness_neutral` scans rendered ABSOLUTE link paths, so a wiki
+     located under a path containing "claude" (e.g. `/tmp/claude-*/…`)
+     false-positives the lint. Cosmetic at 0.2 scale; noted for 0.3.
