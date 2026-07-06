@@ -1,0 +1,32 @@
+---
+title: "Stack Licenses"
+type: licenses
+schema_version: 1
+framework_version: "{{framework_version}}"
+created: {{today}}
+updated: {{today}}
+---
+
+# Stack Licenses
+
+This file is written by `/ren:install` Stage 6 from the plugin registry. Each installed plugin's license is listed here so you know what you've agreed to use.
+
+> **Skim before you ship anything as a hosted service.** Some plugins (notably ELv2-licensed ones) restrict commercial SaaS distribution. If you ever build a product on top of this stack and want to host it for paying users, re-read this file and check each ELv2 entry.
+
+## Required plugins
+
+_Populated by Stage 6 from the framework's pinned-version registry. Each entry follows this shape:_
+
+- **`<plugin-name>`** (`<SPDX-license-id>`) — _one-line summary of what the license allows / forbids_ — [repo link]
+
+## Conditional plugins
+
+_Only listed if the friend opted in during Stage 3._
+
+## Framework itself
+
+_See the framework's own LICENSE file in the marketplace repo._
+
+## How to re-generate this file
+
+Re-running `/ren:install` Stage 6 rewrites this file from the current registry. If a plugin updates its license, run `/ren:doctor` to detect the change and `/ren:install --redo-stage 6` to refresh.

@@ -1,0 +1,153 @@
+# wiki-skeleton manifest
+# Consumed by /ren:install (master wiki bootstrap) and /ren:bootstrap-project
+# (per-project sub-wiki bootstrap). Each entry describes one file or directory
+# the loader can stamp into a friend's wiki. The loader NEVER overwrites
+# existing files — it diffs additive changes and requires explicit friend
+# approval (additive-only migration pattern).
+#
+# Schema version 1. Bump when the contract changes (loader interface evolves).
+
+schema_version: 1
+
+# Manifest profiles — different consumers stamp different subsets.
+# `master`  = /ren:install master-wiki bootstrap (DEFAULT — always stamped)
+# `project` = /ren:bootstrap-project <name>
+# `venture` = optional module, NOT stamped by default. Only invoked when the
+#             friend explicitly opts into the founder/venture arc of
+#             /ren:interview. Per §3.8, the full venture arc is out of scope
+#             for the default onboarding path.
+profiles:
+  master:
+    description: "Files stamped at the master wiki root during /ren:install"
+    entries:
+      - path: "index.md"
+        template: "templates/index.md.tmpl"
+        type: file
+        write_rule: copy_if_missing
+        min_framework_version: "0.2.0"
+        description: "Master catalog index; empty section headers, frontmatter only"
+
+      - path: "log.md"
+        template: "templates/log.md.tmpl"
+        type: file
+        write_rule: copy_if_missing
+        min_framework_version: "0.2.0"
+        description: "Master chronological event log; single init entry"
+
+      - path: "identity.md"
+        template: "templates/identity.md.tmpl"
+        type: file
+        write_rule: copy_if_missing
+        min_framework_version: "0.2.0"
+        description: "Identity + working-style profile stub; /ren:interview populates fields"
+        # /ren:interview re-runs are responsible for in-place updates; the
+        # master bootstrap only writes this template if no identity.md exists yet.
+
+      - path: "LICENSES.md"
+        template: "templates/LICENSES.md.tmpl"
+        type: file
+        write_rule: copy_if_missing
+        generated_at: doctor-verification
+        min_framework_version: "0.2.0"
+        description: "Plugin-license summary; written from the registry"
+
+      - path: "research/"
+        type: directory
+        write_rule: create_if_missing
+        min_framework_version: "0.2.0"
+
+      - path: "decisions/"
+        type: directory
+        write_rule: create_if_missing
+        min_framework_version: "0.2.0"
+
+      - path: "alternatives/"
+        type: directory
+        write_rule: create_if_missing
+        min_framework_version: "0.2.0"
+
+      - path: "patterns/"
+        type: directory
+        write_rule: create_if_missing
+        min_framework_version: "0.2.0"
+
+      - path: "projects/"
+        type: directory
+        write_rule: create_if_missing
+        min_framework_version: "0.2.0"
+
+  project:
+    description: "Files stamped into wiki/projects/<project>/ by /ren:bootstrap-project"
+    # The per-project taxonomy lives in skills/bootstrap-project/ (L2 pointer-map
+    # + log page, Phase 2). This profile is reserved for future shared
+    # per-project files. v1: empty.
+    entries: []
+
+  venture:
+    description: >
+      OPTIONAL founder/venture-arc module (§3.8: "out" of the default 0.2
+      onboarding path). NOT included in the `master` profile and NOT stamped
+      by /ren:install. Only stamped when the friend explicitly opts into the
+      venture arc of /ren:interview, writing under wiki/venture/.
+    entries:
+      - path: "venture/"
+        type: directory
+        write_rule: create_if_missing
+        min_framework_version: "0.2.0"
+        description: "Venture/studio profile dir (opt-in module)"
+
+      - path: "venture/company.md"
+        template: "modules/venture/company.md.tmpl"
+        type: file
+        write_rule: copy_if_missing
+        min_framework_version: "0.2.0"
+        description: "Venture stub: what you're building + stage; venture-arc interview populates it"
+
+      - path: "venture/market.md"
+        template: "modules/venture/market.md.tmpl"
+        type: file
+        write_rule: copy_if_missing
+        min_framework_version: "0.2.0"
+        description: "Venture stub: the market/space"
+
+      - path: "venture/icp.md"
+        template: "modules/venture/icp.md.tmpl"
+        type: file
+        write_rule: copy_if_missing
+        min_framework_version: "0.2.0"
+        description: "Venture stub: ideal customer profile"
+
+      - path: "venture/team.md"
+        template: "modules/venture/team.md.tmpl"
+        type: file
+        write_rule: copy_if_missing
+        min_framework_version: "0.2.0"
+        description: "Venture stub: who's building"
+
+      - path: "venture/brain-dump.md"
+        template: "modules/venture/brain-dump.md.tmpl"
+        type: file
+        write_rule: copy_if_missing
+        min_framework_version: "0.2.0"
+        description: "Venture stub: freeform scratch space"
+
+# Per-write_rule semantics (single source of truth for the loader):
+#
+#   copy_if_missing       Target file: written only if path does not exist.
+#                         Existing path is reported as "skipped (already present)".
+#   create_if_missing     Target directory: mkdir -p only if path does not exist.
+#                         No file content placed; .gitkeep stays in the skeleton tree.
+#   never_write           Reserved. Reserved entry; loader records its existence
+#                         but never writes. Useful for deprecated paths.
+#
+# write_rule is the only knob; the loader does NOT support overwrite at any rule level.
+
+# Template variable contract (all profiles share):
+#
+#   {{handle}}             friend handle (kebab-case)         required for identity.md
+#   {{name}}               friend display name                required for identity.md
+#   {{today}}              ISO date YYYY-MM-DD                always available
+#   {{framework_version}}  framework semver (e.g. "0.2.0")    always available
+#
+# Missing placeholder values cause the loader to leave the literal {{var}} in
+# the file and emit a warning. No silent substitution with empty strings.

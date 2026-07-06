@@ -1,0 +1,60 @@
+# Forbidden substrings — case-insensitive match against every line in templates/**.
+# If ANY listed substring appears in a template, the lint exits non-zero.
+#
+# Lines starting with # are comments. Blank lines ignored.
+#
+# Add a substring here when reviewing a PR that would have leaked dev-wiki
+# content into the user-shipped skeleton. The goal: drift-resistance, not
+# completeness. Keep the list small enough that contributors can read it.
+#
+# Categories:
+#   1. Framework-development ADR / research citations
+#   2. Founder + team names
+#   3. Personal-project codenames from the founder's idea-generator
+#   4. Authors we cite in our research wiki (not as plugin authors but as research subjects)
+
+# --- 1. Framework-development citations -------------------------------------
+ADR-0
+adr-0
+sunset-review:
+references-pages:
+affects-components:
+
+# --- 2. Founder + team names ------------------------------------------------
+# (Allowed only as substitution values via {{name}} / {{handle}} placeholders;
+# never as static template content.)
+Hazar
+hazar
+Söz
+Sozer
+sozer
+
+# --- 3. Personal-project codenames -----------------------------------------
+# These are the founder's idea-generator projects; nothing about them should
+# appear in a fresh friend's skeleton.
+Sidecar
+Restore
+Era Lab
+idea-generator
+Quittr
+
+# --- 4. Research-subject author names --------------------------------------
+# We cite these people across wiki/research/*.md. They are not the framework's
+# authors and should not appear in templates the friend sees.
+Karpathy
+Simon Scrapes
+Geoffrey Huntley
+Tobi Lütke
+Ben Fellows
+Nate Herk
+Dicklesworthstone
+GSD Redux
+
+# --- 5. Framework-internal lexicon -----------------------------------------
+# Phrases distinctive to our development wiki that shouldn't appear in
+# templates. These are deliberately narrow to avoid false positives.
+"meta-harness configuration"
+"harness vs framework"
+provider-vetting
+two-layer self-improvement
+auto-research loop
