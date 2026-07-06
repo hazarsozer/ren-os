@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "$comment": "RenOS hook registrations. /ren:doctor greps the 'command' field for 'ren-wake-up.py' (primary) and the 'description' field for 'ren-wake-up:' (sentinel) — both should be preserved when editing.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PLUGIN_ROOT/hooks/wake-up/ren-wake-up.py\"",
+            "timeout": 10,
+            "description": "ren-wake-up: SessionStart context injection per ADR-008 (fresh sessions)",
+            "id": "ren-wake-up-startup"
+          }
+        ]
+      },
+      {
+        "matcher": "compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PLUGIN_ROOT/hooks/wake-up/ren-wake-up.py\"",
+            "timeout": 10,
+            "description": "ren-wake-up: re-inject context after compaction per hooks-guide compact-matcher pattern",
+            "id": "ren-wake-up-compact"
+          }
+        ]
+      }
+    ]
+  }
+}
