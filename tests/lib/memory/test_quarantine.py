@@ -1,0 +1,82 @@
+"""
+Tests for lib.memory.quarantine — G5 quarantine banner (Task 2.3).
+
+Run with: uv run pytest tests/lib/memory/test_quarantine.py -v
+"""
+
+from __future__ import annotations
+
+from lib.memory.quarantine import QUARANTINE_BANNER, is_quarantined, mark, release
+
+
+def test_mark_inserts_banner_after_frontmatter():
+    md = "---\ntitle: Session summary\n---\n# Heading\n\nBody text.\n"
+    marked = mark(md)
+    assert marked == "---\ntitle: Session summary\n---\n" + QUARANTINE_BANNER + "# Heading\n\nBody text.\n"
+
+
+def test_mark_inserts_banner_at_top_when_no_frontmatter():
+    md = "# Heading\n\nBody text.\n"
+    marked = mark(md)
+    assert marked == QUARANTINE_BANNER + md
+
+
+def test_mark_twice_yields_single_banner():
+    md = "---\ntitle: X\n---\nBody.\n"
+    once = mark(md)
+    twice = mark(once)
+    assert twice == once
+    assert twice.count(QUARANTINE_BANNER.strip()) == 1
+
+
+def test_is_quarantined_true_after_mark():
+    md = "Body only, no frontmatter.\n"
+    assert is_quarantined(mark(md)) is True
+
+
+def test_is_quarantined_false_on_plain_text():
+    assert is_quarantined("Just a normal page.\n") is False
+
+
+def test_is_quarantined_false_with_frontmatter_but_no_banner():
+    md = "---\ntitle: X\n---\nRegular body.\n"
+    assert is_quarantined(md) is False
+
+
+def test_release_removes_banner():
+    md = "---\ntitle: X\n---\nRegular body.\n"
+    marked = mark(md)
+    released = release(marked)
+    assert QUARANTINE_BANNER not in released
+    assert is_quarantined(released) is False
+
+
+def test_release_is_idempotent():
+    md = "---\ntitle: X\n---\nRegular body.\n"
+    marked = mark(md)
+    once = release(marked)
+    twice = release(once)
+    assert once == twice
+
+
+def test_release_on_unmarked_text_is_a_no_op():
+    md = "---\ntitle: X\n---\nRegular body.\n"
+    assert release(md) == md
+
+
+def test_mark_release_round_trip_is_byte_for_byte():
+    md = "---\ntitle: X\ntype: project\n---\n# Notes\n\nSome body content.\n\n- a\n- b\n"
+    assert release(mark(md)) == md
+
+
+def test_mark_release_round_trip_no_frontmatter():
+    md = "# Notes\n\nSome body content.\n"
+    assert release(mark(md)) == md
+
+
+def test_frontmatter_untouched_by_mark_and_release():
+    md = "---\ntitle: X\ncustom_key: value\n---\nBody.\n"
+    marked = mark(md)
+    assert marked.startswith("---\ntitle: X\ncustom_key: value\n---\n")
+    released = release(marked)
+    assert released.startswith("---\ntitle: X\ncustom_key: value\n---\n")
