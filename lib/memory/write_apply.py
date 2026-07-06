@@ -43,6 +43,13 @@ try:
 except ImportError:  # pragma: no cover - exercised via monkeypatch until Task 1.4 lands
     _scrub = None
 
+# Task 6.2 (G8 write gate): set for the duration of the actual write below so
+# the PreToolUse write_gate hook (hooks/guards/write_gate.py) can recognize a
+# sanctioned apply-in-progress and allow it through, even though the gate's
+# default posture is to block any direct write under the wiki tree. Always
+# cleared in `finally`, including on any exception mid-write.
+QUEUE_APPLY_ENV = "REN_QUEUE_APPLY"
+
 
 def apply_write(
     page: str,
@@ -74,20 +81,24 @@ def apply_write(
         if new_content is not None and _scrub is not None:
             _scrub.scrub_or_raise(new_content)
 
-        if prov.op in ("ADD", "UPDATE"):
-            if new_content is None:
-                raise ValueError(f"op={prov.op!r} requires new_content")
-            rendered = stamp_frontmatter(new_content, prov)
-            page_abs.parent.mkdir(parents=True, exist_ok=True)
-            tmp = page_abs.with_name(page_abs.name + ".tmp")
-            tmp.write_text(rendered, encoding="utf-8")
-            os.replace(tmp, page_abs)
-        elif prov.op == "DELETE":
-            page_abs.unlink(missing_ok=True)
-        elif prov.op == "NOOP":
-            pass
-        else:  # pragma: no cover - Provenance.__post_init__ already validates op
-            raise ValueError(f"unknown op {prov.op!r}")
+        os.environ[QUEUE_APPLY_ENV] = "1"
+        try:
+            if prov.op in ("ADD", "UPDATE"):
+                if new_content is None:
+                    raise ValueError(f"op={prov.op!r} requires new_content")
+                rendered = stamp_frontmatter(new_content, prov)
+                page_abs.parent.mkdir(parents=True, exist_ok=True)
+                tmp = page_abs.with_name(page_abs.name + ".tmp")
+                tmp.write_text(rendered, encoding="utf-8")
+                os.replace(tmp, page_abs)
+            elif prov.op == "DELETE":
+                page_abs.unlink(missing_ok=True)
+            elif prov.op == "NOOP":
+                pass
+            else:  # pragma: no cover - Provenance.__post_init__ already validates op
+                raise ValueError(f"unknown op {prov.op!r}")
+        finally:
+            os.environ.pop(QUEUE_APPLY_ENV, None)
 
         journal.append(prov, journal_extra)
 

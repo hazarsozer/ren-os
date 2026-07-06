@@ -27,6 +27,39 @@
           }
         ]
       }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PLUGIN_ROOT/hooks/guards/pre_push_scan.py\"",
+            "timeout": 20,
+            "description": "ren-pre-push-scan: force-push guard + outgoing push content/secrets scan (spec §3.6 A-8 items 1+6)",
+            "id": "ren-pre-push-scan"
+          },
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PLUGIN_ROOT/hooks/guards/write_gate.py\"",
+            "timeout": 10,
+            "description": "ren-write-gate: wiki mass-delete guard + backup-remote-change confirmation (spec §3.6 A-8 items 2+6)",
+            "id": "ren-write-gate-bash"
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PLUGIN_ROOT/hooks/guards/write_gate.py\"",
+            "timeout": 10,
+            "description": "ren-write-gate: durable wiki writes go through the queue, not direct edits (spec §3.6 A-8 item 5)",
+            "id": "ren-write-gate-direct"
+          }
+        ]
+      }
     ]
   }
 }
