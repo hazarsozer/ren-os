@@ -1,0 +1,51 @@
+{
+  "$schema": "../../verify.schema.json",
+  "migration": "routine-spec-1-to-2",
+  "page_type": "routine-spec",
+  "assertions": [
+    {
+      "id": "yaml-valid",
+      "description": "Output file has valid YAML frontmatter delimited by ---",
+      "predicate": "yaml.valid",
+      "target": "frontmatter"
+    },
+    {
+      "id": "schema-bumped",
+      "description": "schema_version is exactly 2",
+      "predicate": "yaml.equals",
+      "field": "schema_version",
+      "value": 2
+    },
+    {
+      "id": "type-preserved",
+      "description": "type is routine-spec",
+      "predicate": "yaml.equals",
+      "field": "type",
+      "value": "routine-spec"
+    },
+    {
+      "id": "framework-version-present",
+      "description": "framework_version is present (any value)",
+      "predicate": "yaml.present",
+      "field": "framework_version"
+    },
+    {
+      "id": "verification-strategy-valid",
+      "description": "verification_strategy is one of the allowed values",
+      "predicate": "yaml.in",
+      "field": "verification_strategy",
+      "values": ["visual", "test-run", "lint", "llm-judge", "manual"]
+    },
+    {
+      "id": "verification-tools-present",
+      "description": "verification_tools is present (the optional tools list)",
+      "predicate": "yaml.present",
+      "field": "verification_tools"
+    },
+    {
+      "id": "no-body-content-loss",
+      "description": "Body is byte-identical to snapshot — this migration only adds frontmatter",
+      "predicate": "snapshot.body-identical"
+    }
+  ]
+}

@@ -1,0 +1,69 @@
+{
+  "$schema": "../../verify.schema.json",
+  "migration": "routine-spec-2-to-3",
+  "page_type": "routine-spec",
+  "assertions": [
+    {
+      "id": "yaml-valid",
+      "description": "Output file has valid YAML frontmatter delimited by ---",
+      "predicate": "yaml.valid",
+      "target": "frontmatter"
+    },
+    {
+      "id": "schema-bumped",
+      "description": "schema_version is exactly 3",
+      "predicate": "yaml.equals",
+      "field": "schema_version",
+      "value": 3
+    },
+    {
+      "id": "type-preserved",
+      "description": "type is routine-spec",
+      "predicate": "yaml.equals",
+      "field": "type",
+      "value": "routine-spec"
+    },
+    {
+      "id": "framework-version-present",
+      "description": "framework_version is present (any value)",
+      "predicate": "yaml.present",
+      "field": "framework_version"
+    },
+    {
+      "id": "allowlist-present",
+      "description": "allowlist mapping is present",
+      "predicate": "yaml.present",
+      "field": "allowlist"
+    },
+    {
+      "id": "allowlist-paths-present",
+      "description": "allowlist.paths is present (may be an empty list post-migration)",
+      "predicate": "yaml.present",
+      "field": "allowlist.paths"
+    },
+    {
+      "id": "allowlist-capabilities-present",
+      "description": "allowlist.capabilities is present (may be an empty list post-migration)",
+      "predicate": "yaml.present",
+      "field": "allowlist.capabilities"
+    },
+    {
+      "id": "failure-handler-valid",
+      "description": "failure_handler is the only valid 0.2 value",
+      "predicate": "yaml.equals",
+      "field": "failure_handler",
+      "value": "notify-journal"
+    },
+    {
+      "id": "exit-criterion-present",
+      "description": "exit_criterion is present (non-empty string)",
+      "predicate": "yaml.present",
+      "field": "exit_criterion"
+    },
+    {
+      "id": "no-body-content-loss",
+      "description": "Body is byte-identical to snapshot — this migration only adds/overwrites frontmatter",
+      "predicate": "snapshot.body-identical"
+    }
+  ]
+}
