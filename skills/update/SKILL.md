@@ -9,6 +9,7 @@ description: |
 version: 0.2.0
 license: MIT
 type: skill
+execution_tier: deterministic
 schema_version: 1
 framework_version: "0.2.0"
 

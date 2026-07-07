@@ -55,7 +55,7 @@ def test_run_checks_returns_one_result_per_check(wiki):
     assert names == {
         "env", "wiki_structure", "frontmatter", "schema_versions",
         "budget_lint", "dangling_pointers", "graphify_status",
-        "backup_configured", "global_drift", "harness_neutrality", "guard_health",
+        "backup_configured", "execution_tiers", "global_drift", "harness_neutrality", "guard_health",
     }
 
 
@@ -279,3 +279,61 @@ def test_guard_health_warns_on_broken_guard(wiki, tmp_path):
     assert result.status == "warn"
     assert "degraded" in result.message
     assert "broken_guard.py" in result.message
+
+# ------------------------------------------------------- check_execution_tiers
+
+
+def _skill(dir_: str, tier_line: str | None):
+    def write(root):
+        skill_dir = root / dir_
+        skill_dir.mkdir(parents=True)
+        lines = ["---", "name: " + dir_, "type: skill"]
+        if tier_line is not None:
+            lines.append(tier_line)
+        lines += ["---", "", "# " + dir_, ""]
+        (skill_dir / "SKILL.md").write_text("\n".join(lines), encoding="utf-8")
+    return write
+
+
+def test_check_execution_tiers_ok_on_valid_declarations(tmp_path):
+    skills = tmp_path / "skills"
+    _skill("alpha", "execution_tier: deterministic")(skills)
+    _skill("beta", "execution_tier: worker")(skills)
+    _skill("gamma", "execution_tier: judgment")(skills)
+
+    result = doctor.check_execution_tiers(skills_dir=skills)
+
+    assert result.status == "ok"
+
+
+def test_check_execution_tiers_warns_on_missing_declaration(tmp_path):
+    skills = tmp_path / "skills"
+    _skill("alpha", "execution_tier: deterministic")(skills)
+    _skill("beta", None)(skills)
+
+    result = doctor.check_execution_tiers(skills_dir=skills)
+
+    assert result.status == "warn"
+    assert "beta" in result.message
+
+
+def test_check_execution_tiers_warns_on_invalid_value(tmp_path):
+    skills = tmp_path / "skills"
+    _skill("alpha", "execution_tier: turbo")(skills)
+
+    result = doctor.check_execution_tiers(skills_dir=skills)
+
+    assert result.status == "warn"
+    assert "alpha" in result.message
+
+
+def test_check_execution_tiers_skips_when_no_skills_dir(tmp_path):
+    result = doctor.check_execution_tiers(skills_dir=tmp_path / "missing")
+    assert result.status == "skip"
+
+
+def test_shipped_skills_all_declare_valid_execution_tiers():
+    """The repo's own 17 skills must each declare a valid tier — the lint
+    run doctor itself performs, executed directly against the shipped tree."""
+    result = doctor.check_execution_tiers()
+    assert result.status == "ok", result.detail

@@ -10,6 +10,7 @@ description: |
 version: 0.2.0
 license: MIT
 type: skill
+execution_tier: worker
 schema_version: 1
 framework_version: "0.2.0"
 
@@ -61,7 +62,7 @@ All three are pure, deterministic functions over `gather()`'s output — no LLM 
 
 1. Call `skills.retrospective.lib.gather(since=...)`.
 2. Call `analyze(gathered)` — get the deterministic findings list.
-3. **The live session may enrich each finding** (sharpen the message, refine the proposed skill shape) — this is where judgment enters; the lib layer stays mechanical.
+3. **Enrich each finding — in a worker subagent when possible** (`execution_tier: worker`): findings are self-contained, so spawn a cheap worker-model subagent (Sonnet/Haiku-class) to sharpen messages and refine proposed skill shapes, and take its output back. Fall back to enriching inline only when subagents aren't available; the lib layer stays mechanical either way.
 4. Call `propose_all(findings, session)` — queues one `ADD` proposal per finding, `producer="retrospective"`, `writer="retrospective"`.
 5. Render the pending list to the friend: what was proposed, and that it's sitting in the queue awaiting `/ren:approve`.
 

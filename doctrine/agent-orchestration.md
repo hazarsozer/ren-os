@@ -41,3 +41,11 @@ Rule of thumb: a 3–5 agent fan-out is Haiku workers under a Sonnet orchestrato
 
 - `cadence-matrix.md` — the *recurrence* axis (`/loop` · Cron · `/goal` · Cloud Routine).
 - `conventions.md` — self-terminating loops, measurable `/goal` exits, failure footer.
+
+## Skill execution tiers — route work DOWN, keep judgment UP
+
+Every RenOS skill declares `execution_tier` in its SKILL.md frontmatter (doctor lints it). The main session is usually the most expensive model in the room — mechanical skill work at that tier wastes tokens. Route by the declaration:
+
+- **`deterministic`** — the skill's `lib/` scripts do the work; no LLM reasoning beyond invoking them. Run inline; never spawn an agent for these.
+- **`worker`** — the reasoning is self-contained (facts in → drafts out): delegate it to a cheap worker-model subagent (Sonnet/Haiku-class) and take the output back. Inline only when subagents aren't available.
+- **`judgment`** — main model only: queue approvals, durability calls, live dialog with the friend, and anything needing the conversation itself in context (wrap's L1 narrative is the canonical case — a subagent can't summarize a conversation it never saw).

@@ -15,6 +15,7 @@ license: MIT
 framework_version: "0.2.0"
 schema_version: 1
 type: skill
+execution_tier: worker
 
 contract:
   required_outputs:
@@ -61,7 +62,7 @@ Bringing an existing repo's context into the wiki, in one visible artifact. `sca
 
 1. Resolve the repo path (default cwd) and a project slug (kebab-case, from the repo's manifest name or directory name — caller's choice of derivation).
 2. Call `skills.ingest-project.lib.scan_repo(repo_root)` — read-only facts: detected languages/package managers/frameworks, entry points, doc inventory, git history summary, size signals. Never writes to the project, never raises on a non-project path (see the carried `scan.py`'s own contract).
-3. **The live session reads those facts and drafts:**
+3. **Draft knowledge + pointers from the facts — in a worker subagent when possible** (`execution_tier: worker`): the facts JSON is self-contained, so spawn a cheap worker-model subagent (Sonnet/Haiku-class) with the facts and the drafting spec below, and take its output back. Fall back to drafting inline only when subagents aren't available. What gets drafted either way:
    - `knowledge: list[str]` — compact, general facts worth remembering (e.g. "Python project using FastAPI + PostgreSQL", "138 commits since 2025-03")
    - `pointers: list[dict]` — `{"topic": ..., "path": ..., "anchor": ..., "write_id": None}` entries pointing at wiki pages worth cross-referencing (decisions, patterns, research) — `write_id` is `None` until that target page has actually been through the write-queue (renders as `unstamped`)
 4. Call `skills.ingest-project.lib.ingest(project_slug, knowledge, pointers, session)` — assembles the L2 map, proposes it (`producer="promotion"`, `writer="llm-auto"` — scan-derived content is LLM-shaped, so it's quarantined on apply until a human reviews it), and returns `{"qid": ..., "artifact": ...}`.

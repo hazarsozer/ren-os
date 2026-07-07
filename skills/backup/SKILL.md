@@ -10,6 +10,7 @@ license: MIT
 framework_version: "0.2.0"
 schema_version: 1
 type: skill
+execution_tier: deterministic
 
 contract:
   required_outputs:

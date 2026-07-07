@@ -262,6 +262,44 @@ def check_backup_configured(wiki_root: Path | None = None) -> CheckResult:
     return CheckResult("backup_configured", "warn", "no backup remote configured and no recent tarball — run /ren:backup --setup or /ren:backup")
 
 
+_VALID_EXECUTION_TIERS = frozenset({"deterministic", "worker", "judgment"})
+
+
+def check_execution_tiers(skills_dir: Path | None = None) -> CheckResult:
+    """Finalize-v0.2 agenda item 3: every shipped SKILL.md must declare
+    `execution_tier: deterministic | worker | judgment` in its frontmatter —
+    the routing contract for WHO executes the skill's reasoning (lib scripts /
+    a cheap worker subagent / the main model only). Missing or invalid
+    declarations are a warn listing the offenders."""
+    skills_dir = skills_dir or (_REPO_ROOT / "skills")
+    if not skills_dir.is_dir():
+        return CheckResult("execution_tiers", "skip", "no skills dir to lint")
+
+    missing: list[str] = []
+    invalid: list[str] = []
+    counts: dict[str, int] = {}
+    for skill_md in sorted(skills_dir.glob("*/SKILL.md")):
+        text = skill_md.read_text(encoding="utf-8", errors="replace")
+        tier = _frontmatter_field(text, "execution_tier")
+        name = skill_md.parent.name
+        if tier is None:
+            missing.append(name)
+        elif tier not in _VALID_EXECUTION_TIERS:
+            invalid.append(f"{name} ({tier!r})")
+        else:
+            counts[tier] = counts.get(tier, 0) + 1
+
+    problems = []
+    if missing:
+        problems.append(f"{len(missing)} skill(s) missing execution_tier: {', '.join(missing[:5])}")
+    if invalid:
+        problems.append(f"{len(invalid)} skill(s) with invalid execution_tier: {', '.join(invalid[:5])}")
+    if problems:
+        return CheckResult("execution_tiers", "warn", "; ".join(problems))
+    summary = ", ".join(f"{n} {tier}" for tier, n in sorted(counts.items()))
+    return CheckResult("execution_tiers", "ok", f"all skills declare a valid tier ({summary})")
+
+
 def check_global_drift() -> CheckResult:
     violations = promotion.demote_check()
     if violations:
@@ -325,6 +363,7 @@ _ALL_CHECK_NAMES: tuple[str, ...] = (
     "check_dangling_pointers",
     "check_graphify_status",
     "check_backup_configured",
+    "check_execution_tiers",
     "check_global_drift",
     "check_harness_neutrality",
     "check_guard_health",
@@ -358,6 +397,7 @@ __all__ = [
     "check_dangling_pointers",
     "check_graphify_status",
     "check_backup_configured",
+    "check_execution_tiers",
     "check_global_drift",
     "check_harness_neutrality",
     "check_guard_health",
