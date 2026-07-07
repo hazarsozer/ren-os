@@ -22,6 +22,13 @@ again, but a proposal should never even enter the queue carrying one).
 `lib.memory.semantics` (contradiction/supersede/duplicate detection) is being
 built in parallel and may not exist yet — imported the same best-effort way
 `write_apply` imports `scrub`: `conflicts` is `[]` when the module is absent.
+
+Ordering caveat (Task 9.3 doc-note-4, accepted limitation): ULIDs are
+monotonic within one Python process but NOT across concurrent processes in
+the same millisecond — so `pending()`'s oldest-first ordering and
+`snapshot.prune()`'s keep-N-most-recent are best-effort under multi-process
+same-millisecond races. Page-level leases (`lib.memory.locks`) still prevent
+lost updates: ordering is cosmetic here, integrity is not affected.
 """
 
 from __future__ import annotations

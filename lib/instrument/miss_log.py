@@ -28,7 +28,17 @@ from lib.instrument import collect
 
 
 def log_fetch(page: str, query: str, session: str) -> None:
-    """Record an on-demand L3 fetch (a page pulled that wake-up didn't inject)."""
+    """Record an on-demand L3 fetch (a page pulled that wake-up didn't inject).
+
+    The query is user free-text and metrics JSONL is append-only, never pruned
+    (Task 9.3 FIX 2, holistic-review HIGH finding): a secret pasted into a
+    recall query must never land at rest in the metrics stream — same
+    redaction pattern as the classifier-event preview.
+    """
+    from lib.memory import scrub  # local import: instrument stays importable without lib.memory
+
+    if scrub.scan(str(query)):
+        query = "<redacted: secret-shaped content>"
     collect.record(collect.KIND_L3_FETCH, {"page": page, "query": query, "session": session})
 
 

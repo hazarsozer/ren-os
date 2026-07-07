@@ -42,10 +42,12 @@ NEW (Task 7.3, all warn-not-block):
 from __future__ import annotations
 
 import importlib
+import json
 import os
 import re
 import shutil
 import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -283,6 +285,37 @@ def check_harness_neutrality(wiki_root: Path | None = None, repo_root: Path | No
     return CheckResult("harness_neutrality", "ok", "generated surfaces are harness-neutral")
 
 
+def check_guard_health(guards_dir: Path | None = None) -> CheckResult:
+    """Task 9.3 doc-note-3 compensating control: the PreToolUse guards fail
+    OPEN on internal error by design (a broken guard must not brick the
+    harness for a non-technical friend — see docs/data-flow.md "Guard failure
+    posture"). This check makes a degraded guard VISIBLE: run each guard
+    script with a trivially-safe synthetic payload; a crash, non-zero exit, or
+    internal-error warning on stderr means enforcement is degraded."""
+    guards_dir = guards_dir or (_REPO_ROOT / "hooks" / "guards")
+    scripts = sorted(guards_dir.glob("*.py")) if guards_dir.is_dir() else []
+    scripts = [s for s in scripts if s.name != "__init__.py"]
+    if not scripts:
+        return CheckResult("guard_health", "warn", f"no guard scripts found under {guards_dir}")
+
+    safe_payload = json.dumps({"tool_name": "Bash", "tool_input": {"command": "echo ok"}})
+    degraded = []
+    for script in scripts:
+        proc = subprocess.run(
+            [sys.executable, str(script)],
+            input=safe_payload, capture_output=True, text=True, timeout=30,
+            cwd=str(_REPO_ROOT),
+        )
+        if proc.returncode != 0 or "WARNING" in proc.stderr:
+            degraded.append(script.name)
+    if degraded:
+        return CheckResult(
+            "guard_health", "warn",
+            f"guard degraded — investigate before relying on enforcement: {', '.join(degraded)}",
+        )
+    return CheckResult("guard_health", "ok", f"{len(scripts)} guard(s) healthy on a safe synthetic payload")
+
+
 _ALL_CHECK_NAMES: tuple[str, ...] = (
     "check_env",
     "check_wiki_structure",
@@ -294,6 +327,7 @@ _ALL_CHECK_NAMES: tuple[str, ...] = (
     "check_backup_configured",
     "check_global_drift",
     "check_harness_neutrality",
+    "check_guard_health",
 )
 
 
@@ -326,5 +360,6 @@ __all__ = [
     "check_backup_configured",
     "check_global_drift",
     "check_harness_neutrality",
+    "check_guard_health",
     "run_checks",
 ]

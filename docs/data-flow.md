@@ -42,3 +42,17 @@ That's the entire list. No background jobs, no separate service, no telemetry en
 - `lib/instrument/collect.py` (Task 3.1) — the metrics surface this statement's "stays local" section describes
 - `skills/wrap/lib/classifier.py` (exit criterion 4) — the one place an LLM call happens outside the session's own conversation turn
 - `hooks/wake-up/wakeup/__init__.py` (Task 5.1) — the no-LLM-at-session-start invariant
+
+## Guard failure posture (Task 9.3 ruling)
+
+The PreToolUse guards (`hooks/guards/pre_push_scan.py`, `write_gate.py`) fail
+**open** on internal error: a guard that crashes allows the tool call through
+with a warning rather than blocking. This is deliberate — a buggy guard that
+exited non-zero on every call would brick the entire harness for a
+non-technical friend, which is a worse failure than the narrow window an
+internal guard error opens. The compensating control is `/ren:doctor`'s
+`guard_health` check: it exercises every guard with a safe synthetic payload
+and WARNS "guard degraded — investigate before relying on enforcement" the
+moment a guard stops answering healthily. The queue/write-substrate itself
+remains fail-closed (scrub refusals, classifier fallback never writes durable)
+— fail-open is scoped to the hook layer only.

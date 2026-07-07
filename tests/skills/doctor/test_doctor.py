@@ -55,7 +55,7 @@ def test_run_checks_returns_one_result_per_check(wiki):
     assert names == {
         "env", "wiki_structure", "frontmatter", "schema_versions",
         "budget_lint", "dangling_pointers", "graphify_status",
-        "backup_configured", "global_drift", "harness_neutrality",
+        "backup_configured", "global_drift", "harness_neutrality", "guard_health",
     }
 
 
@@ -263,3 +263,19 @@ def test_check_harness_neutrality_skips_when_module_absent(wiki, monkeypatch):
 def test_check_harness_neutrality_ok_when_clean(wiki):
     result = doctor.check_harness_neutrality(wiki, doctor._REPO_ROOT)
     assert result.status in ("ok", "skip")  # ok if module present+clean, skip if truly absent
+
+
+def test_guard_health_quiet_on_healthy_guards(wiki):
+    """Task 9.3 doc-note-3: healthy guards pass the safe synthetic payload."""
+    result = doctor.check_guard_health()
+    assert result.status == "ok", result.message
+
+
+def test_guard_health_warns_on_broken_guard(wiki, tmp_path):
+    broken_dir = tmp_path / "guards"
+    broken_dir.mkdir()
+    (broken_dir / "broken_guard.py").write_text("raise RuntimeError('guard is broken')\n")
+    result = doctor.check_guard_health(guards_dir=broken_dir)
+    assert result.status == "warn"
+    assert "degraded" in result.message
+    assert "broken_guard.py" in result.message

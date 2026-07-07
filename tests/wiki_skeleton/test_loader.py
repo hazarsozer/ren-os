@@ -16,6 +16,16 @@ from lib.skeleton import stamp_skeleton
 SKELETON_ROOT = Path(__file__).resolve().parents[2] / "wiki-skeleton"
 
 
+@pytest.fixture(autouse=True)
+def _align_wiki_root(tmp_path, monkeypatch):
+    """stamp_skeleton routes file writes through lib.memory.write_apply (Task
+    9.3 FIX 1), which resolves pages against ren_paths.wiki_root() — so the
+    env override must make wiki_root() == the target_root these tests pass
+    (tmp_path/"wiki"), per lib/skeleton.py's module docstring."""
+    monkeypatch.setenv("REN_WIKI_ROOT", str(tmp_path / "wiki"))
+    monkeypatch.setenv("REN_FRAMEWORK_ROOT", str(tmp_path / ".renos"))
+
+
 def _placeholders() -> dict[str, str]:
     return {
         "handle": "test-friend",
@@ -210,3 +220,36 @@ def test_unknown_profile_raises(tmp_path):
             profile="does-not-exist",
             placeholders=_placeholders(),
         )
+
+
+def test_stamped_pages_are_journaled_with_provenance_and_revertible(tmp_path):
+    """Task 9.3 FIX 1 regression (holistic-review CRITICAL): founding pages
+    must carry provenance, appear in the journal, and be revertible — the
+    reviewer's failure scenario was revert() on index.md raising KeyError."""
+    from lib.memory import journal, revert
+    from lib.memory.provenance import read_frontmatter_provenance
+
+    target = tmp_path / "wiki"
+    stamp_skeleton(
+        skeleton_root=SKELETON_ROOT,
+        target_root=target,
+        profile="master",
+        placeholders=_placeholders(),
+    )
+
+    stamped_pages = [p for p in target.rglob("*.md")]
+    assert stamped_pages, "expected stamped markdown pages"
+    journaled_pages = {e["page"] for e in journal.entries()}
+    for page_abs in stamped_pages:
+        rel = page_abs.relative_to(target).as_posix()
+        prov = read_frontmatter_provenance(page_abs.read_text(encoding="utf-8"))
+        assert prov is not None, f"{rel}: no provenance frontmatter"
+        assert prov["writer"] == "human"
+        assert rel in journaled_pages, f"{rel}: no journal line"
+
+    index_write_id = read_frontmatter_provenance(
+        (target / "index.md").read_text(encoding="utf-8")
+    )["write_id"]
+    result = revert.revert(index_write_id)
+    assert result.restored
+    assert not (target / "index.md").exists()  # revert of an ADD deletes

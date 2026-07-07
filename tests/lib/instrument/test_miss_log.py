@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import pytest
 
-from lib.instrument import miss_log
+from lib.instrument import collect, miss_log
 from lib.ren_paths import wiki_root
 
 
@@ -115,3 +115,20 @@ def test_independent_sessions_do_not_cross_contaminate(isolated_state):
     assert report.fetches == 2
     assert report.misses == 1
     assert report.miss_rate == pytest.approx(0.5)
+
+
+def test_log_fetch_redacts_secret_shaped_query(isolated_state):
+    """Task 9.3 FIX 2 regression (holistic-review HIGH): a secret pasted into
+    a recall query must never land at rest in the append-only metrics JSONL."""
+    secret = "sk-abc123def456ghi789jkl012mno345"
+    miss_log.log_fetch("projects/x/map.md", f"why is my key {secret} not working", "s-1")
+    events = collect.read(kind=collect.KIND_L3_FETCH)
+    assert events, "expected an l3_fetch event"
+    assert secret not in events[-1]["query"]
+    assert events[-1]["query"] == "<redacted: secret-shaped content>"
+
+
+def test_log_fetch_leaves_clean_query_untouched(isolated_state):
+    miss_log.log_fetch("projects/x/map.md", "how does the queue work", "s-1")
+    events = collect.read(kind=collect.KIND_L3_FETCH)
+    assert events[-1]["query"] == "how does the queue work"
