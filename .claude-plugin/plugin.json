@@ -1,11 +1,46 @@
 {
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "ren",
   "displayName": "RenOS",
   "version": "0.2.0",
   "description": "Agentic OS: compounding memory, token discipline, governed autonomy",
-  "config": {
-    "wikiRoot": "~/.renos/wiki",
-    "devRoot": "~/Dev",
-    "snapshotRetain": 50
+  "author": {
+    "name": "Hazar Sozer",
+    "email": "hsozer00@gmail.com"
+  },
+  "homepage": "https://github.com/hazarsozer/ren-os",
+  "repository": "https://github.com/hazarsozer/ren-os",
+  "license": "MIT",
+  "keywords": [
+    "wiki",
+    "memory",
+    "second-brain",
+    "agentic-os",
+    "solo-builder",
+    "claude-code"
+  ],
+  "userConfig": {
+    "wikiRoot": {
+      "type": "directory",
+      "title": "Wiki location",
+      "description": "Where your personal wiki lives on disk. Default: ~/.renos/wiki. Used by every framework command that reads or writes the wiki (exported to skills as CLAUDE_PLUGIN_OPTION_WIKIROOT).",
+      "default": "${HOME}/.renos/wiki",
+      "required": false
+    },
+    "devRoot": {
+      "type": "directory",
+      "title": "Projects root directory",
+      "description": "Where your code projects live (e.g. ~/Dev, ~/code, ~/work). Used to resolve which project's L2 map a session belongs to. Default: ~/Dev.",
+      "default": "${HOME}/Dev",
+      "required": false
+    },
+    "snapshotRetain": {
+      "type": "number",
+      "title": "Write snapshot retention",
+      "description": "How many per-write wiki snapshots to keep at ~/.renos/wiki/.ren/snapshots/ before pruning. Higher = longer one-step-revert window; lower = less disk.",
+      "default": 50,
+      "min": 1,
+      "max": 500
+    }
   }
 }

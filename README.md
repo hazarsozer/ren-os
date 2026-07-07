@@ -1,89 +1,237 @@
-# RenOS (仁) 0.2 — "The measured core"
+# RenOS <ruby>仁<rt>ren</rt></ruby>
 
-An **Agentic OS**: a knowledge + governance layer that runs on top of coding-agent
-harnesses (Claude Code first, Codex read-proven). Two pillars:
+**An agentic OS for Claude Code** — memory that compounds, tokens that aren't wasted, autonomy you can trust.
 
-- **Memory that compounds** — user-owned plain markdown files every session reads and
-  extends, with update/correct/revert semantics (never append-only). A single write
-  queue (propose → approve/auto-apply → journal) is the one door every producer writes
-  through; provenance and one-step revert make every write accountable.
-- **Tokens that aren't wasted** — every injected byte budgeted, cached, or pointed-to.
-  Wake-up is heuristic-only (no LLM at session start, by design); a calibrated
-  estimator and real cache-token accounting replace guesswork.
-- **Autonomy you can trust** — writes gated by risk tier and provenance, not faith.
-  Reads are free; a routine's bounded memory writes auto-apply (with provenance +
-  one-step revert); durable knowledge and code/config changes are diff-approved;
-  destructive actions always ask, and refuse outright with no human present.
+[![validate](https://github.com/hazarsozer/ren-os/actions/workflows/validate.yml/badge.svg)](https://github.com/hazarsozer/ren-os/actions/workflows/validate.yml)
+![version](https://img.shields.io/badge/version-0.2.0-e34234)
+![python](https://img.shields.io/badge/python-%E2%89%A53.11-blue)
+![license](https://img.shields.io/badge/license-MIT-green)
 
-**Success bar:** measured pillars, not estimates. Per spec §2: *"if 0.2 ships and the
-pillars are still estimates, 0.2 failed."* See "Measured numbers" below for where each
-exit criterion actually stands.
+RenOS is a knowledge + governance layer that runs **on top of** coding-agent harnesses
+(Claude Code first; [read-proven on Codex](docs/codex-read-proof.md)). Everything it
+knows lives in a plain-markdown wiki **you own** at `~/.renos/wiki` — readable without
+RenOS, portable to any harness, openable as an Obsidian vault.
 
-## Quick start
+---
 
-```bash
-uv sync
-uv run pytest
+## Install
+
+Inside Claude Code:
+
+```
+/plugin marketplace add hazarsozer/ren-os
+/plugin install ren@ren-os
 ```
 
-Requires Python ≥3.11. No other runtime dependencies to build/test — `pyproject.toml`
-pins `python-ulid`, `pyyaml`, `typing-extensions` for the framework itself.
+Then, in your first session:
+
+```
+/ren:install
+```
+
+That's the whole onboarding — an idempotent guided flow (environment check, wiki
+bootstrap, optional 10-question identity interview, backup nag, first project). Every
+stage is skippable except the wiki bootstrap, and re-running resumes wherever you
+stopped. End it with `/ren:ingest-project` on any existing repo and you get the
+**first-session artifact**: *"I set up your project memory — here's what I captured."*
+
+> **Requirements:** Claude Code with plugin support, Python ≥ 3.11, `uv` (skills run
+> their mechanical cores via `uv run`). No API keys, no services, no telemetry — see
+> [What stays local](docs/data-flow.md).
+
+---
+
+## The three pillars
+
+| Pillar | What it means in practice |
+|---|---|
+| 🧠 **Memory that compounds** | User-owned markdown every session reads *and extends* — with update/correct/revert semantics, never append-only. One write queue is the single door every producer writes through. |
+| 🪙 **Tokens that aren't wasted** | Every injected byte budgeted, cached, or pointed-to. No LLM call at session start, by design. Real cache-token accounting and a calibrated estimator replace guesswork. |
+| 🛡️ **Autonomy you can trust** | Writes gated by **risk tier + provenance**, not faith. Reads are free; bounded routine writes auto-apply (with one-step revert); durable knowledge is diff-approved; destructive actions always ask. |
+
+**The success bar is measured, not vibes** — per spec §2: *"if 0.2 ships and the
+pillars are still estimates, 0.2 failed."* See [Measured numbers](#measured-numbers)
+for where each exit criterion actually stands.
+
+---
+
+## How it's organized
+
+### Memory hierarchy
+
+```
+            you / your sessions
+                    │
+   ┌────────────────┼──────────────────┐
+   ▼                ▼                  ▼
+ L1  session     L2  project        L3  recall
+ notes, quaran-  pointer-maps       on-demand fetch,
+ tine-bannered   projects/<slug>/   every miss logged
+ until reviewed  map.md             (honest hit rate)
+   │                │                  │
+   └────────────────┴──────────────────┘
+                    │  promotion (gated, never automatic)
+                    ▼
+          global tier — typed, durable knowledge
+          decisions/ · patterns/ · research/ · identity
+```
+
+### Instruction hierarchy
+
+RenOS rides Claude Code's **native** global → project instruction-file hierarchy
+instead of injecting context at wake-up:
+
+```
+~/.claude/CLAUDE.md          ← managed block: behavioral core + recall doctrine
+   │                            + doctrine index (markers only; your content
+   │                            outside them is never touched — dedup-aware)
+   └── <your-repo>/CLAUDE.md ← thin pointer block → that project's L2 map
+                                (points, never duplicates)
+```
+
+### Every write goes through one door
+
+```mermaid
+flowchart LR
+    P["producers<br/>pin · wrap · ingest<br/>retrospective · routines"] --> Q["write queue<br/>propose"]
+    Q --> T{"risk tier"}
+    T -- free / auto --> A["apply"]
+    T -- diff_approved --> R["you review<br/>/ren:queue → approve/reject"] --> A
+    T -- ask --> R
+    A --> W["wiki page"]
+    A -.-> J["journal + provenance<br/>+ per-write snapshot"]
+    J -.-> V["/ren:revert &lt;write_id&gt;<br/>one-step undo"]
+```
+
+Provenance on every write, an append-only journal, per-write snapshots, file leases
+against lost updates, and quarantine banners on unreviewed LLM-authored content —
+that's the write-safety substrate (`lib/memory/`), and it's the only code that ever
+touches a wiki page.
+
+---
 
 ## The skill surface
 
+Seventeen skills, each declaring an **execution tier** — deterministic scripts run as
+scripts, worker-shaped drafting delegates to cheap subagent models, and judgment
+(approvals, session narrative) stays with the main model.
+
+### Getting started
 | Skill | What it's for |
 |---|---|
-| `/ren:install` | One-time onboarding: bootstrap `~/.renos/wiki`, identity, backup nag |
-| `/ren:interview` | The identity + working-style interview (capped, skippable, sane defaults) |
-| `/ren:bootstrap-project` <slug> | Start a brand-new project's memory (empty L2 map) |
-| `/ren:ingest-project` [path] | Bring an EXISTING repo in as a populated L2 map — the first-session artifact |
-| `/ren:pin "<text>"` | Reactive memory: "remember it like THIS" |
-| `/ren:pin --wrong <page>` | Reactive correction: "that's wrong, drop it" (or `--instead "<text>"`) |
-| `/ren:recall "<query>"` | On-demand L3 fetch — every fetch logged for the honest miss rate |
-| `/ren:wrap` | End-of-session consolidation: the fail-closed classifier gate, L1 producer |
-| `/ren:remember` | The "what do you remember about this project" first-session-artifact renderer |
-| `/ren:queue` / `/ren:approve <qid>` / `/ren:reject <qid> <why>` / `/ren:revert <write_id>` | Review, approve, reject, and undo queued writes |
-| `/ren:retrospective [--since <date>]` | Mine instrumentation + journal + session history for lessons, instruction tweaks, and skill candidates |
-| `/ren:code-map` | Optional Graphify-backed structural code map (graceful absence if not installed) |
-| `/ren:doctor` | Ten isolated health checks — env, wiki structure, frontmatter, schema versions, budget lint, dangling L2 pointers, graphify status, backup config, global-tier drift, harness neutrality |
-| `/ren:backup` | Git-push-to-`backup`-remote primary, tarball fallback, retention |
-| `/ren:update` | Snapshot → migrate → verify → diff-approve → apply, with rollback built in |
-| `/ren:routine-init` | Declare a pre-declared routine/loop — schedule, exit criterion, failure handler, capability/path allowlist |
-| `/ren:metric-watch` | The minimal metric-watch routine: budget growth, memory growth, classifier fail-closed events, backup-unconfigured — findings to the journal |
+| `/ren:install` | One-time onboarding: wiki bootstrap, identity, global instruction layer, backup nag |
+| `/ren:interview` | Identity + working-style interview (capped at 10 questions, skippable, sane defaults) |
+| `/ren:ingest-project [path]` | Bring an **existing** repo in as a populated L2 map — the first-session artifact |
+| `/ren:bootstrap-project <slug>` | Start a brand-new project's memory (empty L2 map) |
 
-## Architecture at a glance
-
-- **Memory tiers:** L1 (session-scoped, quarantine-bannered until reviewed) → L2 (per-project pointer-map, `projects/<slug>/map.md`) → L3 (on-demand recall, logged) → typed global tier (promotion-gated, never auto-applied).
-- **The single write queue** (`lib/memory/queue.py`): every producer (pin, wrap, retrospective, routine, promotion) proposes; `lib/governance/tiers.py` decides `free`/`auto`/`diff_approved`/`ask`; `lib/memory/write_apply.py` is the only function that ever touches a wiki page.
-- **Write-safety substrate:** provenance on every write (`lib/memory/provenance.py`), per-write snapshots (`lib/memory/snapshot.py`), an append-only journal (`lib/memory/journal.py`), one-step revert (`lib/memory/revert.py`), file leases against lost updates (`lib/memory/locks.py`).
-- **Instrumentation with ground truth** (`lib/instrument/`): real `cache_read_input_tokens` from harness transcripts, a calibrated chars/token estimator, the mechanical L3-miss log — no self-reported numbers anywhere in this list.
-- **Harness-neutral knowledge layer:** the wiki's canonical markdown IS the `AGENTS.md` surface (`lib/portability/agents_surface.py`); see [`docs/codex-read-proof.md`](docs/codex-read-proof.md) for the one working proof a foreign harness (Codex) can read it.
-
-The wiki is **Obsidian-vault-compatible** — open `~/.renos/wiki` as a vault for a free knowledge graph. `tests/test_obsidian_invariant.py` pins the invariants that make that true (relative links only, no state-dir leakage into template content, no filename characters Obsidian can't open, no accidental `[[wikilink]]` collisions with the `{{placeholder}}` syntax).
-
-## Measured numbers (spec §2 success bar)
-
-Per spec: *"if 0.2 ships and the pillars are still estimates, 0.2 failed."* Status of each exit criterion as of this commit:
-
-| Exit criterion | Status |
+### Daily loop
+| Skill | What it's for |
 |---|---|
-| 1. Real `cache_read_input_tokens` across ≥20 sessions, published | **PENDING** — collection harness (`lib.instrument.collect.harvest_session_usage`) is built and tested; the ≥20-session collection run itself hasn't happened yet (calendar-bound, needs real usage) |
-| 2. Injected-context size + per-capability tokens automatic; retrieval hit-rate vs. the frozen fixture + mechanical miss log | **PENDING** — `injected_bytes`/`capability_tokens` recording is live (Task 5.1/3.1); the retrieval-eval fixture scoring (`skills.recall.lib.rank`, already 12/12 against the frozen fixture per Task 4.3's review) still needs the ≥20-session hit-rate computed and published alongside it |
-| 3. Token estimator calibrated against the real tokenizer | **PENDING** — `lib.instrument.estimator.calibrate` is built and unit-tested (running average against real `(text, reported_tokens)` samples); it hasn't yet been fed real calibration samples from live sessions |
-| 4. The wrap classifier's eval passes and demonstrably gates (fail-closed) | **DONE** — `skills/wrap/lib/classifier.py`'s gate eval proves a crash refuses to durable-promote; see `tests/skills/wrap/test_gate_eval.py` |
-| 5. Codex read proof | **DONE** — see [`docs/codex-read-proof.md`](docs/codex-read-proof.md) |
-| 6. Friend week (real usage) | **PENDING** — calendar-bound, not a code deliverable |
-| 7. Integrity drill (revert, quarantine, lost-update detection under a rehearsed failure) | **DONE** in the test suite; a manual real-world rehearsal log is a separate PENDING artifact |
+| `/ren:pin "<text>"` | Reactive memory: "remember it like THIS" (`--wrong` / `--instead` to correct) |
+| `/ren:recall "<query>"` | On-demand fetch — every miss logged, so the hit rate is honest |
+| `/ren:remember` | "What do you remember about this project?" — renders the live L2 map |
+| `/ren:wrap` | End-of-session consolidation behind a **fail-closed** classifier gate |
 
-Nothing in this table is asserted from vibes — every DONE line has a corresponding test file; every PENDING line is either calendar-bound (needs real elapsed usage, not more code) or needs a collection run this repo's tooling already supports but hasn't been pointed at real sessions yet.
+### Governance
+| Skill | What it's for |
+|---|---|
+| `/ren:queue` · `approve` · `reject` · `revert` | Review, approve, reject, and one-step-undo queued writes |
+| `/ren:routine-init` | Declare a bounded routine: schedule, exit criterion, failure handler, capability/path allowlist |
+| `/ren:metric-watch` | The minimal watch routine: budget growth, memory growth, gate failures → journal findings |
 
-## References
+### Maintenance
+| Skill | What it's for |
+|---|---|
+| `/ren:doctor` | Twelve isolated health checks — env, wiki structure, frontmatter, schema versions, budgets, dangling pointers, execution tiers, backup config, global-tier drift, harness neutrality |
+| `/ren:backup` | Git-push-to-`backup`-remote primary, tarball fallback, retention |
+| `/ren:update` | Snapshot → migrate → verify → diff-approve → apply, rollback built in |
+| `/ren:retrospective [--since]` | Mine instrumentation + journal + session history for lessons and skill candidates (with executable scaffolds) |
+| `/ren:code-map` | Optional Graphify-backed structural code map (graceful absence if not installed) |
+| `/ren:wiki-migration` | Schema-version migrations for wiki pages, scripted + verified |
 
-- [`docs/data-flow.md`](docs/data-flow.md) — what stays local, what ever reaches a model API, what never does, and the publish-aggregates-only rule
-- [`docs/codex-read-proof.md`](docs/codex-read-proof.md) — the harness-neutrality proof (exit criterion 5)
-- [`doctrine/companions.md`](doctrine/companions.md) — optional tools (Graphify) that pair well with RenOS; zero required
-- `CHANGELOG.md` — what changed and why, release to release
+---
+
+## What's on disk
+
+**Your wiki** (`~/.renos/wiki` — yours, plain markdown, Obsidian-vault-compatible):
+
+```
+~/.renos/wiki/
+├── index.md            # the wiki's own map
+├── identity.md         # who you are, how you work
+├── log.md              # chronological session log
+├── projects/<slug>/    # one L2 pointer-map per project
+├── decisions/          # durable decisions (promotion-gated)
+├── patterns/           # recurring approaches worth naming
+├── research/           # ingested sources, distilled
+├── alternatives/       # roads not taken, and why
+└── .ren/               # queue, journal, snapshots, locks, install state
+```
+
+**This repo** (the plugin):
+
+```
+ren-os/
+├── .claude-plugin/     # plugin + marketplace manifests
+├── skills/             # the 17 /ren: skills (SKILL.md contract + lib/ core each)
+├── lib/                # memory substrate, governance, instrumentation, adapters
+├── doctrine/           # always-on + on-demand operating doctrine
+├── wiki-skeleton/      # the templates /ren:install stamps (never dev content)
+├── hooks/              # wake-up + pre-push content guard
+├── migrations/         # scripted schema migrations with verification
+├── docs/               # data-flow, exit criteria, Codex read proof
+└── tests/              # 695 tests — every DONE claim below has one
+```
+
+---
+
+## Measured numbers
+
+Status of each 0.2 exit criterion as of this commit — nothing asserted from vibes:
+every **DONE** has a test file; every **PENDING** is calendar-bound (needs real
+elapsed usage, not more code).
+
+| # | Exit criterion | Status |
+|---|---|---|
+| 1 | Real `cache_read_input_tokens` across ≥20 sessions, published | ⏳ PENDING — harness built + tested; the collection run needs real usage |
+| 2 | Injected-context size + retrieval hit rate vs. frozen fixture + mechanical miss log | ⏳ PENDING — recording is live; fixture scores 12/12; the ≥20-session hit rate still needs computing |
+| 3 | Token estimator calibrated against the real tokenizer | ⏳ PENDING — calibration harness built + unit-tested; needs live samples |
+| 4 | Wrap classifier eval passes and demonstrably gates (fail-closed) | ✅ DONE — a crash refuses to durable-promote (`tests/skills/wrap/test_gate_eval.py`) |
+| 5 | A foreign harness can read the knowledge layer | ✅ DONE — [Codex read proof](docs/codex-read-proof.md), passed live |
+| 6 | Friend week (real usage by someone who isn't the founder) | ⏳ PENDING — calendar-bound |
+| 7 | Integrity drill: revert, quarantine, lost-update detection under rehearsed failure | ✅ DONE in the suite; a real-world rehearsal log is a separate pending artifact |
+
+---
+
+## Portability & ownership
+
+- **The wiki is the product.** Delete RenOS and your knowledge remains readable
+  markdown. No lock-in by construction.
+- **Obsidian-compatible** — open `~/.renos/wiki` as a vault for a free knowledge
+  graph. `tests/test_obsidian_invariant.py` pins the invariants that keep this true.
+- **Harness-neutral** — the wiki's canonical markdown IS the `AGENTS.md` surface
+  (`lib/portability/agents_surface.py`); Codex cited wiki pages from `AGENTS.md`
+  alone in the [live proof](docs/codex-read-proof.md).
+- **Local-first** — see [docs/data-flow.md](docs/data-flow.md) for exactly what stays
+  local (everything), what ever reaches a model API (your session content, as always),
+  and what never does (the wiki is never uploaded by RenOS itself).
+
+## Developing
+
+```bash
+git clone https://github.com/hazarsozer/ren-os.git && cd ren-os
+uv sync
+uv run pytest            # 695 tests
+uv run python scripts/lint-yaml-frontmatter.py
+```
+
+Runtime deps are just `python-ulid`, `pyyaml`, `typing-extensions`. `CHANGELOG.md`
+records what changed and why, release to release; `docs/exit-criteria.md` is the
+honest scoreboard.
 
 ## License
 
-MIT — see `LICENSE`.
+MIT — see `LICENSE`. Wiki-skeleton templates and doctrine ship under the same
+license; third-party attributions in `wiki-skeleton`'s `LICENSES.md` stamp. The
+behavioral core in the global instruction layer is adapted, with attribution, from
+Andrej Karpathy's public CLAUDE.md guidelines.

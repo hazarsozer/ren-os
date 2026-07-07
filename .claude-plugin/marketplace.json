@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-marketplace.json",
+  "name": "ren-os",
+  "description": "RenOS — an agentic OS for Claude Code: compounding memory you own, token discipline, governed autonomy. A plain-markdown wiki as your single source of truth + thin glue over native primitives.",
+  "owner": {
+    "name": "Hazar Sozer",
+    "email": "hsozer00@gmail.com"
+  },
+  "plugins": [
+    {
+      "name": "ren",
+      "source": "./",
+      "description": "Agentic OS: compounding memory (single write queue, provenance, one-step revert), token discipline (measured, not estimated), governed autonomy (risk-tiered writes). See README.md for the full skill surface.",
+      "author": {
+        "name": "Hazar Sozer",
+        "email": "hsozer00@gmail.com"
+      },
+      "homepage": "https://github.com/hazarsozer/ren-os",
+      "repository": "https://github.com/hazarsozer/ren-os",
+      "license": "MIT",
+      "keywords": [
+        "wiki",
+        "memory",
+        "second-brain",
+        "agentic-os",
+        "solo-builder",
+        "claude-code"
+      ],
+      "category": "productivity",
+      "strict": true
+    }
+  ]
+}
