@@ -59,7 +59,7 @@ def test_stamp_wiki_flips_wiki_stamped_and_identity_present(wiki):
     state = install_state(wiki)
     assert state["wiki_stamped"] is True
     assert state["identity_present"] is True
-    assert state["l2_maps"] >= 1  # index.md itself is type: l2-map
+    assert state["l2_maps"] == 0  # master index.md is not a PROJECT map (F3, 2026-07-07)
 
 
 def test_stamp_wiki_is_idempotent_second_call_changes_nothing_new(wiki):
@@ -149,3 +149,31 @@ def test_install_state_global_claude_md_ignores_unmanaged_file(wiki, monkeypatch
     monkeypatch.setenv("REN_CLAUDE_DIR", str(claude_dir))
 
     assert install_state(wiki)["global_claude_md"] is False
+
+
+# --- dogfood 2026-07-07 findings -----------------------------------------
+
+
+def test_stamp_wiki_binds_framework_version(wiki):
+    """F1: fresh install must not leave literal {{framework_version}} in pages."""
+    from lib.ren_paths import framework_version
+
+    result = stamp_wiki()
+    assert not [w for w in result.warnings if "framework_version" in w]
+    for name in ("index.md", "log.md", "identity.md", "LICENSES.md"):
+        text = (wiki / name).read_text(encoding="utf-8")
+        assert "{{framework_version}}" not in text, name
+    assert framework_version() in (wiki / "index.md").read_text(encoding="utf-8")
+
+
+def test_l2_maps_counts_only_project_maps(wiki):
+    """F3: the master index.md (type: l2-map) must not count as a project map."""
+    stamp_wiki()
+    assert install_state(wiki)["l2_maps"] == 0
+
+    proj = wiki / "projects" / "demo"
+    proj.mkdir(parents=True)
+    (proj / "map.md").write_text(
+        "---\ntype: l2-map\nproject: demo\n---\n# demo\n", encoding="utf-8"
+    )
+    assert install_state(wiki)["l2_maps"] == 1

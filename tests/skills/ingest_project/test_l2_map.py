@@ -195,3 +195,15 @@ def test_ingest_on_empty_repo_facts_still_queues_something(wiki):
     entry = queue.get(result["qid"])
     assert entry.status == "pending"
     assert "## Knowledge" in result["artifact"]
+
+
+def test_assemble_l2_omits_fragment_for_null_anchor():
+    """F4 (dogfood 2026-07-07): anchor=None must not render a literal '#None'."""
+    content = assemble_l2(
+        "demo-project",
+        knowledge=["fact"],
+        pointers=[{"topic": "arch", "path": "decisions/architecture.md", "anchor": None, "write_id": None}],
+        log_line="2026-01-01: ingested from existing repository",
+    )
+    assert "#None" not in content
+    assert "- [arch] → decisions/architecture.md (unstamped)" in content

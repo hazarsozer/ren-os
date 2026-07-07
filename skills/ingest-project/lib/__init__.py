@@ -81,7 +81,9 @@ def assemble_l2(
     lines.append("## Decision map")
     for pointer in pointers:
         write_id = pointer.get("write_id") or "unstamped"
-        lines.append(f"- [{pointer['topic']}] → {pointer['path']}#{pointer['anchor']} ({write_id})")
+        anchor = pointer.get("anchor")
+        target = f"{pointer['path']}#{anchor}" if anchor else pointer["path"]
+        lines.append(f"- [{pointer['topic']}] → {target} ({write_id})")
     lines.append("## Log")
     lines.append(f"- {log_line}")
     return "\n".join(lines) + "\n"

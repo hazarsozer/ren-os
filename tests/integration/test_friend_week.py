@@ -111,7 +111,7 @@ def test_friend_week_end_to_end(sandbox, tmp_path):
     assert state["wiki_stamped"] is True
     assert state["identity_present"] is True
     assert state["backup_configured"] is False  # never configured — expected
-    assert state["l2_maps"] >= 1  # index.md itself is type: l2-map
+    assert state["l2_maps"] == 0  # master index.md is not a PROJECT map (F3, 2026-07-07)
     assert state["installed_version"] == "0.2.0"
 
     # --- DAY 0 continued: first project ---

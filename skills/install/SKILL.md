@@ -16,7 +16,7 @@ execution_tier: judgment
 
 contract:
   required_outputs:
-    - "Master wiki stamped at wiki_root() (index.md, log.md, identity.md, decisions/, patterns/, research/, global/)"
+    - "Master wiki stamped at wiki_root() (index.md, log.md, identity.md, LICENSES.md, research/, decisions/, alternatives/, patterns/, projects/)"
     - "RenOS managed block present in claude_user_dir()/CLAUDE.md (markers only — content outside them untouched)"
     - "A closing summary naming what the friend can now do (pin/recall/wrap/remember)"
     - "state_dir()/install.json recording the installed version"

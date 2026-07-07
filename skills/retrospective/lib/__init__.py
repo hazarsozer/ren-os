@@ -76,6 +76,20 @@ STOPWORDS = frozenset(
 _TAG_RE = re.compile(r"<[^>]+>")
 _WORD_RE = re.compile(r"[a-zA-Z][a-zA-Z0-9_\-]{2,}")
 
+HARNESS_TURN_MARKERS: tuple[str, ...] = (
+    "<command-name>",
+    "<command-message>",
+    "<local-command-caveat>",
+    "<local-command-stdout>",
+    "<system-reminder>",
+)
+"""Substrings that mark a "user" transcript turn as harness-injected
+(slash-command invocations, local-command caveats, reminder blocks) rather
+than something the friend actually typed. Mining these produced junk
+skill-candidates like "resume-session-command" (dogfood finding F5,
+2026-07-07); `isMeta: true` turns (expanded command/skill bodies) are the
+same class — both are skipped in `_session_task_phrases`."""
+
 _SECRET_TOKEN_MAX_LEN = 30
 _SECRET_PREFIXES = ("sk-", "sk_", "ghp_", "gho_", "ghs_", "github_pat_", "xoxb-", "xoxp-")
 _AWS_KEY_RE = re.compile(r"^(akia|asia)[a-z0-9]{16}$")
@@ -157,11 +171,15 @@ def _session_task_phrases(transcript_path: Path) -> set[str]:
                     continue
                 if not isinstance(obj, dict) or obj.get("type") != "user":
                     continue
+                if obj.get("isMeta"):
+                    continue
                 message = obj.get("message")
                 if not isinstance(message, dict):
                     continue
                 text = _extract_user_text(message)
                 if not text.strip():
+                    continue
+                if any(marker in text for marker in HARNESS_TURN_MARKERS):
                     continue
                 phrase = _task_phrase(text)
                 if phrase:

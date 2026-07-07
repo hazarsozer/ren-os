@@ -88,9 +88,13 @@ def install_state(wiki_root: Path | None = None) -> dict:
     except Exception:  # noqa: BLE001 - install_state must never raise
         configured = False
 
+    # Only project maps count — the master index.md is itself `type: l2-map`
+    # (it IS the wiki's own map) and must not read as "a project exists"
+    # on a fresh install (dogfood finding F3, 2026-07-07).
     l2_maps = 0
-    if root.is_dir():
-        for md_path in root.rglob("*.md"):
+    projects_dir = root / "projects"
+    if projects_dir.is_dir():
+        for md_path in projects_dir.rglob("*.md"):
             try:
                 text = md_path.read_text(encoding="utf-8")
             except (OSError, UnicodeDecodeError):
@@ -136,7 +140,11 @@ def stamp_wiki(profile: str = "master") -> StampResult:
         skeleton_root=skeleton_root,
         target_root=ren_paths.wiki_root(),
         profile=profile,
-        placeholders={"name": "Friend", "handle": "friend"},
+        placeholders={
+            "name": "Friend",
+            "handle": "friend",
+            "framework_version": ren_paths.framework_version(),
+        },
     )
 
 

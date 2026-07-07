@@ -8,6 +8,22 @@ carried and renamed (identifiers, env vars, path conventions: `sf-` → `ren-`,
 `~/.startup-framework` → `~/.renos`); everything else was rebuilt against the frozen
 `0.2` interfaces defined in the Phase 1 write-safety substrate.
 
+**Dogfood fixes (2026-07-07, live fresh-install drive):**
+
+- `stamp_wiki` now binds `framework_version` — fresh installs no longer leave a
+  literal `{{framework_version}}` in every stamped page (F1).
+- `install_state().l2_maps` counts only `projects/` maps — the master `index.md`
+  (itself `type: l2-map`) no longer reads as "a project exists" on a virgin
+  install (F3).
+- L2 pointer rendering omits the `#anchor` fragment when the anchor is null —
+  no more literal `…/architecture.md#None` in queued maps (F4).
+- Retrospective task-shape mining skips harness-injected turns (`isMeta`,
+  `<command-name>`/caveat/system-reminder markers) — no more junk
+  skill-candidates like `resume-session-command` mined from every session's
+  boilerplate (F5).
+- install SKILL.md contract now lists the directories the skeleton actually
+  stamps (F2).
+
 **Finalize pass (2026-07-07):**
 
 - **Hierarchical CLAUDE.md pointer layer** (`lib/adapter/claude_md.py`) — always-on
