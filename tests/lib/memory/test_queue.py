@@ -327,3 +327,17 @@ def test_quarantine_banner_does_not_break_frontmatter_stamping(wiki):
     read_prov = read_frontmatter_provenance(text)
     assert read_prov["write_id"] == prov.write_id
     assert read_prov["op"] == "ADD"
+
+
+def test_corrupt_entry_file_does_not_take_down_pending(wiki, capsys):
+    """Final-verification regression: one hand-corrupted queue JSON must not
+    crash whole-queue listing — it's skipped with a warning; healthy entries
+    still list; the corrupt file is left in place for inspection."""
+    good = queue.propose(_proposal(page="notes/good.md", content="a healthy entry"))
+    corrupt_path = state_dir() / "queue" / "q-00000000000000000000000000.json"
+    corrupt_path.write_text("{ this is not json", encoding="utf-8")
+
+    listed = queue.pending()
+    assert [e.qid for e in listed] == [good.qid]
+    assert corrupt_path.exists()
+    assert "skipping unparsable entry file" in capsys.readouterr().err

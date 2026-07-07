@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import sys
 import os
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
@@ -152,7 +153,18 @@ def _load(qid: str) -> QueueEntry:
 
 
 def _all_entries() -> list[QueueEntry]:
-    return [_entry_from_dict(json.loads(p.read_text(encoding="utf-8"))) for p in _queue_dir().glob("*.json")]
+    """One corrupted entry file must never take down whole-queue listing
+    (final-verification finding): unparsable files are skipped with a stderr
+    warning — same torn-file tolerance locks._read_holder applies to a torn
+    lockfile. Single-entry reads by qid (`get`) still surface the corruption
+    for that entry specifically."""
+    entries: list[QueueEntry] = []
+    for path in _queue_dir().glob("*.json"):
+        try:
+            entries.append(_entry_from_dict(json.loads(path.read_text(encoding="utf-8"))))
+        except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
+            print(f"ren queue: skipping unparsable entry file {path.name}: {exc}", file=sys.stderr)
+    return entries
 
 
 def propose(p: Proposal) -> QueueEntry:
