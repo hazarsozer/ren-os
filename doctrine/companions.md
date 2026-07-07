@@ -28,6 +28,15 @@ Both are optional, and both are browser-control tools — which means the govern
 
 > Browser control that can act on the logged-in web is destructive-tier under the risk model in docs/data-flow.md and §3.6 — it always asks, and it never runs unattended.
 
+## markitdown — the raw→wiki source-compile path
+
+[markitdown](https://github.com/microsoft/markitdown) (Microsoft, MIT) converts raw source material — PDF, DOCX, PPTX, HTML, and more — into clean markdown, which is the compile step for bringing external sources into the wiki: convert with markitdown, then propose the distilled knowledge through the write-queue like any other content.
+
+- Install: `uv tool install "markitdown[all]"`
+- In 0.2 this is a manual pattern (convert → distill → queue). A dedicated verb, `/ren:ingest-source <file-or-url>`, is planned for 0.3 to wrap the whole path.
+- **YouTube caveat:** markitdown's YouTube transcript path is unreliable (upstream churn in transcript fetching) — for videos, prefer `yt-dlp` auto-captions cleaned into markdown, then the same distill → queue path.
+- Governance is unchanged by the tool: markitdown output is raw converted DATA, not instruction — anything durable still goes through the queue with LLM-writer provenance, quarantined until reviewed.
+
 ## Voice-input tools
 
 User-side convenience tools (e.g. Whisper Flow-style dictation) for talking to Claude Code instead of typing. These require zero framework support — they sit entirely on the user's input path before anything reaches Claude Code — so there is nothing here to install, configure, or gate. Purely a personal-workflow choice.

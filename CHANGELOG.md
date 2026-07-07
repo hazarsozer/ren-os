@@ -8,6 +8,26 @@ carried and renamed (identifiers, env vars, path conventions: `sf-` → `ren-`,
 `~/.startup-framework` → `~/.renos`); everything else was rebuilt against the frozen
 `0.2` interfaces defined in the Phase 1 write-safety substrate.
 
+**Finalize pass (2026-07-07):**
+
+- **Hierarchical CLAUDE.md pointer layer** (`lib/adapter/claude_md.py`) — always-on
+  doctrine now DELIVERED via the harness's native global→project instruction-file
+  hierarchy: install manages a marker block in the user-level file (tailored
+  behavioral core with attribution to Karpathy's public guidelines, dedup-aware;
+  the recall doctrine; wiki navigation; a doctrine index generated from
+  `lib.doctrine.loader` — its first real consumer), and ingest/bootstrap stamp a
+  thin per-repo pointer block at the project's L2 map. Additive, never-overwrite:
+  only the managed block is ever touched.
+- **Skill execution tiers** — every SKILL.md declares
+  `execution_tier: deterministic | worker | judgment`; worker skills
+  (ingest-project drafting, retrospective enrichment) delegate to cheap
+  worker-model subagents; judgment (queue approvals, wrap's L1 narrative) stays
+  with the main model. Doctor lints the declaration (`check_execution_tiers`).
+- **Retrospective scaffolds** — skill-candidate findings now include an executable
+  script scaffold (`proposed_scaffold`), not just an idea.
+- **markitdown companion** documented as the raw→wiki source-compile path
+  (`/ren:ingest-source` verb planned for 0.3).
+
 **Headline features:**
 
 - **The single write queue** (`lib/memory/queue.py`) — every producer (pin, wrap,

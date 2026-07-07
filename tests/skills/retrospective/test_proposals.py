@@ -217,3 +217,39 @@ def test_proposed_lesson_approve_apply_lands_with_retrospective_provenance(wiki)
     journal_entries = journal.entries(page=entry.proposal.page)
     assert len(journal_entries) == 1
     assert journal_entries[0]["writer"] == "retrospective"
+
+# ------------------------------------------- skill-candidate scaffold (item 5)
+
+
+def test_skill_candidate_includes_executable_scaffold(wiki, tmp_path):
+    """Finalize-v0.2 agenda item 5: a skill-candidate proposes an executable
+    script scaffold, not just an idea."""
+    claude_dir = tmp_path / "claude-home"
+    cwd = "/home/tester/Dev/widget"
+    for i in range(3):
+        _fixture_transcript(claude_dir, cwd, f"session-{i}", ["deploy staging environment please"])
+
+    gathered = retro.gather(claude_dir=claude_dir, cwd=cwd)
+    findings = retro.analyze(gathered)
+
+    candidate = next(f for f in findings if f["kind"] == "skill-candidate")
+    scaffold = candidate["proposed_scaffold"]
+    assert "skills/deploy-staging-environment/SKILL.md" in scaffold
+    assert "skills/deploy-staging-environment/lib/run.py" in scaffold
+    assert "def run(" in scaffold
+
+
+def test_render_finding_puts_scaffold_in_code_block(wiki, tmp_path):
+    claude_dir = tmp_path / "claude-home"
+    cwd = "/home/tester/Dev/widget"
+    for i in range(3):
+        _fixture_transcript(claude_dir, cwd, f"session-{i}", ["deploy staging environment please"])
+
+    findings = retro.analyze(retro.gather(claude_dir=claude_dir, cwd=cwd))
+    candidate = next(f for f in findings if f["kind"] == "skill-candidate")
+
+    rendered = retro._render_finding(candidate)
+    assert "```" in rendered
+    assert "def run(" in rendered
+    # scaffold must not leak into the bullet list as a one-line value
+    assert "- **proposed_scaffold**" not in rendered

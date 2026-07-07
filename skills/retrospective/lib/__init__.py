@@ -258,10 +258,31 @@ def analyze(gathered: dict) -> list[dict]:
                     "task": phrase,
                     "frequency": len(sessions),
                     "proposed_shape": f"skill: {phrase}",
+                    "proposed_scaffold": _script_scaffold(phrase),
                 }
             )
 
     return findings
+
+
+def _script_scaffold(phrase: str) -> str:
+    """Finalize-v0.2 agenda item 5: a skill-candidate proposes an EXECUTABLE
+    starting point, not just an idea — the reviewer approving the finding
+    should be able to see exactly what would be built. Pure string assembly
+    (deterministic, like everything else in this lib); pairs with 0.3's
+    improve-skill loop, which would iterate on the generated skill."""
+    slug = _slugify(phrase)
+    return f"""\
+# proposed layout
+skills/{slug}/SKILL.md        # frontmatter: type: skill, execution_tier: <deterministic|worker|judgment>
+skills/{slug}/lib/run.py      # the mechanical core — start here
+
+# skills/{slug}/lib/run.py stub
+def run(args: list[str]) -> int:
+    \"\"\"TODO: the repeated task ('{phrase}') as a deterministic script.
+    Return 0 on success; print human-readable progress to stdout.\"\"\"
+    raise NotImplementedError
+"""
 
 
 def _slugify(text: str) -> str:
@@ -283,9 +304,12 @@ def _slug_for(finding: dict) -> str:
 def _render_finding(finding: dict) -> str:
     lines = ["---", "type: retrospective-finding", f"kind: {finding['kind']}", "---", "", f"# Retrospective finding: {finding['kind']}", ""]
     for key, value in finding.items():
-        if key == "kind":
+        if key in ("kind", "proposed_scaffold"):
             continue
         lines.append(f"- **{key}**: {value}")
+    scaffold = finding.get("proposed_scaffold")
+    if scaffold:
+        lines += ["", "## Proposed scaffold", "", "```", scaffold.rstrip("\n"), "```"]
     return "\n".join(lines) + "\n"
 
 

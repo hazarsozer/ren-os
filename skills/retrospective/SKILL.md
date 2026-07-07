@@ -48,7 +48,7 @@ Spec §3.7's minimal retrospective engine + v2.1 D-2's skill-candidate mining, i
 |---|---|---|
 | `lesson` | A page has been corrected (journaled UPDATE with `supersedes`) ≥2 times | "This page keeps being corrected — capture the stable truth" |
 | `instruction-tweak` | ≥3 classifier `fail_closed` events recorded | "Wrap gate failing often — check llm_call wiring" |
-| `skill-candidate` (D-2) | A task-shape phrase recurs across ≥3 distinct sessions | `{task, frequency, proposed_shape}` — a repeated pattern that isn't a skill yet |
+| `skill-candidate` (D-2) | A task-shape phrase recurs across ≥3 distinct sessions | `{task, frequency, proposed_shape, proposed_scaffold}` — a repeated pattern that isn't a skill yet, with an executable script scaffold (SKILL.md layout + `lib/run.py` stub) so the reviewer sees exactly what would be built |
 
 All three are pure, deterministic functions over `gather()`'s output — no LLM call inside `lib.analyze`. The judgment layer belongs to the LIVE SESSION running this skill, not the library: read each finding, optionally enrich it (a sharper lesson statement, a more concrete proposed skill shape) before calling `propose_all`.
 
