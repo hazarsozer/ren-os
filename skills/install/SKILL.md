@@ -16,6 +16,7 @@ type: skill
 contract:
   required_outputs:
     - "Master wiki stamped at wiki_root() (index.md, log.md, identity.md, decisions/, patterns/, research/, global/)"
+    - "RenOS managed block present in claude_user_dir()/CLAUDE.md (markers only — content outside them untouched)"
     - "A closing summary naming what the friend can now do (pin/recall/wrap/remember)"
     - "state_dir()/install.json recording the installed version"
   budgets:
@@ -28,12 +29,14 @@ contract:
     write:
       - "~/.renos/wiki/**"
       - "~/.renos/wiki/.ren/install.json"
+      - "~/.claude/CLAUDE.md"
   completion_conditions:
     - "install_state(wiki_root()).wiki_stamped is True"
     - "state_dir()/install.json exists with the current framework_version"
   output_paths:
     - "~/.renos/wiki/"
     - "~/.renos/wiki/.ren/install.json"
+    - "~/.claude/CLAUDE.md"
 
 tags: [onboarding, install, idempotent, first-session]
 related_skills: [interview, ingest-project, bootstrap-project, backup]
@@ -49,10 +52,11 @@ First-time setup, or resuming a partial one. `skills.install.lib.install_state()
 
 1. **Doctor quick-pass.** A fast environment sanity check (framework version reachable, wiki root resolvable). Not a full `/ren:doctor` run — just enough to know setup can proceed.
 2. **Stamp wiki** — `skills.install.lib.stamp_wiki()`. Additive-only (per `lib.skeleton`'s contract): if `install_state().wiki_stamped` is already `True`, this is a no-op report, not a re-stamp. This is the ONE non-skippable stage — nothing else here means anything without a wiki root to write into.
-3. **Interview** — delegates entirely to `/ren:interview` (see that skill). MAY BE SKIPPED ENTIRELY: if the friend says "skip to coding" (or equivalent), print exactly which defaults were assumed (`skills.interview.lib.QUESTIONS`' `default` values) and move on. `identity.md` already exists as a stub after stage 2 either way (the skeleton's `copy_if_missing` stamp) — the interview only UPDATEs it with real answers.
-4. **Backup setup offer.** If `install_state().backup_configured` is `True`, skip silently. Otherwise offer to configure a `backup` git remote (see `/ren:backup`) and note that install nags until it's configured — this is the one recurring nag in the flow, per spec §3.9 "backup first-class."
-5. **First project.** Offer `/ren:ingest-project <path>` (an existing repo) or `/ren:bootstrap-project <name>` (a fresh idea) — either one ends with the FIRST-SESSION ARTIFACT (Task 4.4's `ingest()`/L2-map assembly): "I set up your project memory — here's what I captured," rendered from the real map that was just written. This is the cheapest trust-builder in the whole system (spec §3.8 A-10) — don't skip presenting it even if the friend picks "skip everything else."
-6. **Record + closing summary.** `skills.install.lib.record_install(current_framework_version)`, then a short summary: what you can do now — `/ren:pin` (remember something), `/ren:recall` (look something up), `/ren:wrap` (end-of-session consolidation), and re-running `/ren:interview` anytime to fill in more identity detail.
+3. **Global instruction layer** — `lib.adapter.claude_md.write_global_claude_md()`. Writes/refreshes the RenOS managed block (between `<!-- ren:begin -->`/`<!-- ren:end -->` markers) in the user-level `CLAUDE.md`: the tailored behavioral core (omitted automatically if the friend's file already carries the Karpathy guidelines), the recall doctrine, wiki navigation, and the doctrine index (generated from `lib.doctrine.loader` — this is how always-on doctrine reaches every session). ONLY the marker block is ever touched — everything else in the friend's file is preserved byte-for-byte. If it returns `"conflict"` (torn markers from a hand edit), tell the friend which file to fix and move on; never force it. Skip silently when `install_state().global_claude_md` is `True` and the framework version hasn't changed.
+4. **Interview** — delegates entirely to `/ren:interview` (see that skill). MAY BE SKIPPED ENTIRELY: if the friend says "skip to coding" (or equivalent), print exactly which defaults were assumed (`skills.interview.lib.QUESTIONS`' `default` values) and move on. `identity.md` already exists as a stub after stage 2 either way (the skeleton's `copy_if_missing` stamp) — the interview only UPDATEs it with real answers.
+5. **Backup setup offer.** If `install_state().backup_configured` is `True`, skip silently. Otherwise offer to configure a `backup` git remote (see `/ren:backup`) and note that install nags until it's configured — this is the one recurring nag in the flow, per spec §3.9 "backup first-class."
+6. **First project.** Offer `/ren:ingest-project <path>` (an existing repo) or `/ren:bootstrap-project <name>` (a fresh idea) — either one ends with the FIRST-SESSION ARTIFACT (Task 4.4's `ingest()`/L2-map assembly): "I set up your project memory — here's what I captured," rendered from the real map that was just written. This is the cheapest trust-builder in the whole system (spec §3.8 A-10) — don't skip presenting it even if the friend picks "skip everything else."
+7. **Record + closing summary.** `skills.install.lib.record_install(current_framework_version)`, then a short summary: what you can do now — `/ren:pin` (remember something), `/ren:recall` (look something up), `/ren:wrap` (end-of-session consolidation), and re-running `/ren:interview` anytime to fill in more identity detail.
 
 ## Idempotency contract
 
@@ -60,5 +64,5 @@ Every stage above is a no-op if `install_state()` already reports it done — re
 
 ## Design notes
 
-- Donor's 7-stage flow (env, required plugins, conditional plugins, identity, wiki bootstrap, doctor verify, walkthrough) collapses to 6 here — RenOS ships as one plugin, so donor's plugin-negotiation stages (2 and 3) don't apply.
+- Donor's 7-stage flow (env, required plugins, conditional plugins, identity, wiki bootstrap, doctor verify, walkthrough) maps to 7 stages here — RenOS ships as one plugin, so donor's plugin-negotiation stages don't apply; the global instruction layer (stage 3, finalize-v0.2 agenda item 1) takes their slot as the doctrine-delivery stage.
 - The question budget (`skills.install.lib.QUESTION_BUDGET = 10`) is enforced by `skills.interview.lib.QUESTIONS`'s length, not re-checked here — install just delegates and trusts the cap.

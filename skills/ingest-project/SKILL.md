@@ -20,6 +20,7 @@ contract:
   required_outputs:
     - "One Proposal queued: ADD (or UPDATE) projects/<slug>/map.md, populated from real repo facts"
     - "The first-session artifact text shown to the user verbatim"
+    - "RenOS pointer block present in <project-path>/CLAUDE.md (markers only — content outside them untouched)"
   budgets:
     turns: 4
     files_written: 0
@@ -28,7 +29,8 @@ contract:
     read:
       - "<project-path>/**"
       - "~/.renos/wiki/**"
-    write: []
+    write:
+      - "<project-path>/CLAUDE.md"
     execute: []
   completion_conditions:
     - "A QueueEntry exists at state_dir()/queue/<qid>.json with status=pending, writer=llm-auto"
@@ -63,7 +65,8 @@ Bringing an existing repo's context into the wiki, in one visible artifact. `sca
    - `knowledge: list[str]` — compact, general facts worth remembering (e.g. "Python project using FastAPI + PostgreSQL", "138 commits since 2025-03")
    - `pointers: list[dict]` — `{"topic": ..., "path": ..., "anchor": ..., "write_id": None}` entries pointing at wiki pages worth cross-referencing (decisions, patterns, research) — `write_id` is `None` until that target page has actually been through the write-queue (renders as `unstamped`)
 4. Call `skills.ingest-project.lib.ingest(project_slug, knowledge, pointers, session)` — assembles the L2 map, proposes it (`producer="promotion"`, `writer="llm-auto"` — scan-derived content is LLM-shaped, so it's quarantined on apply until a human reviews it), and returns `{"qid": ..., "artifact": ...}`.
-5. **Show the friend `artifact` verbatim.** This is the first-session artifact (exit criterion 6's "wow moment") — it always starts with the exact sentence `"I set up your project memory — here's what I captured:"` followed by the full map body.
+5. Call `lib.adapter.claude_md.write_project_claude_md(repo_root, project_slug)` — stamps the thin RenOS pointer block (managed `ren:` markers) into `<repo_root>/CLAUDE.md`: a pointer to the project's L2 map plus the recall-doctrine reminder, deferring everything else to the global tier. ONLY the marker block is ever touched; on `"conflict"` (torn markers), tell the friend which file to fix and continue — never force it.
+6. **Show the friend `artifact` verbatim.** This is the first-session artifact (exit criterion 6's "wow moment") — it always starts with the exact sentence `"I set up your project memory — here's what I captured:"` followed by the full map body.
 
 ## Why `writer="llm-auto"` (and bootstrap's is `"human"`)
 
@@ -71,7 +74,7 @@ The knowledge/pointers here are synthesized from raw scan facts by the live sess
 
 ## What this skill does NOT do
 
-- Modify anything in the scanned project. `scan_repo` is read-only, full stop — see `scan.py`'s own INVARIANTS block.
+- Modify anything in the scanned project beyond the `CLAUDE.md` marker block (step 5). `scan_repo` itself is read-only, full stop — see `scan.py`'s own INVARIANTS block.
 - Draft the knowledge/pointers itself. That synthesis is the live session's job (it has the facts JSON and the framework's judgment); this skill's `lib` only assembles and queues what it's given.
 - Auto-approve the queued map. Scan-derived content lands `pending`, then quarantined on apply — a human reviews it like any other llm-auto write.
 - Port the old ADR-014 7-file taxonomy. That's dead for 0.2; the L2 map is the whole per-project artifact now.

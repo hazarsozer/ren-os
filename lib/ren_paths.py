@@ -133,6 +133,23 @@ def framework_root() -> Path:
     return DEFAULT_FRAMEWORK_ROOT
 
 
+CLAUDE_DIR_ENV = "REN_CLAUDE_DIR"
+"""Override for the user-level Claude config dir (tests + unusual homes)."""
+
+
+def claude_user_dir() -> Path:
+    """Return the user-level Claude config directory (`~/.claude` by default).
+
+    Honors `REN_CLAUDE_DIR` if set — same override pattern as
+    `REN_FRAMEWORK_ROOT`. This is where the global CLAUDE.md pointer layer
+    (`lib.adapter.claude_md`) manages its marker block.
+    """
+    override = _resolve_path_env(CLAUDE_DIR_ENV)
+    if override is not None:
+        return override
+    return Path.home() / ".claude"
+
+
 def _resolve_path_env(name: str) -> Path | None:
     """Read env var `name` as a path; return None when unset or blank.
 
@@ -374,6 +391,8 @@ __all__ = [
     "code_map_cache_dir",
     "code_map_path",
     "framework_root",
+    "CLAUDE_DIR_ENV",
+    "claude_user_dir",
     "wiki_root",
     "state_dir",
     "PathTraversalError",

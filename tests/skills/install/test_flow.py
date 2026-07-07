@@ -125,3 +125,27 @@ def test_install_state_never_raises_on_missing_wiki_root(tmp_path):
     state = install_state(missing)
     assert state["wiki_stamped"] is False
     assert state["l2_maps"] == 0
+
+# --- global CLAUDE.md layer (finalize-v0.2 agenda item 1) ---------------------
+
+
+def test_install_state_reports_global_claude_md(wiki, monkeypatch, tmp_path):
+    claude_dir = tmp_path / "claude-home"
+    monkeypatch.setenv("REN_CLAUDE_DIR", str(claude_dir))
+
+    assert install_state(wiki)["global_claude_md"] is False
+
+    from lib.adapter.claude_md import write_global_claude_md
+
+    write_global_claude_md(wiki_root=wiki)
+    assert install_state(wiki)["global_claude_md"] is True
+
+
+def test_install_state_global_claude_md_ignores_unmanaged_file(wiki, monkeypatch, tmp_path):
+    """A pre-existing user CLAUDE.md without our markers is NOT 'done'."""
+    claude_dir = tmp_path / "claude-home"
+    claude_dir.mkdir()
+    (claude_dir / "CLAUDE.md").write_text("my own rules\n", encoding="utf-8")
+    monkeypatch.setenv("REN_CLAUDE_DIR", str(claude_dir))
+
+    assert install_state(wiki)["global_claude_md"] is False

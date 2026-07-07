@@ -30,6 +30,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from lib import ren_paths
+from lib.adapter.claude_md import MARKER_BEGIN, MARKER_END
+from lib.ren_paths import claude_user_dir
 from lib.skeleton import StampResult, stamp_skeleton
 from skills.backup.lib import backup_configured
 
@@ -74,7 +76,7 @@ def install_state(wiki_root: Path | None = None) -> dict:
     never blocks the guided flow from re-running the affected stage.
 
     Returns `{"wiki_stamped", "identity_present", "backup_configured",
-    "l2_maps", "installed_version"}`.
+    "l2_maps", "installed_version", "global_claude_md"}`.
     """
     root = Path(wiki_root) if wiki_root is not None else ren_paths.wiki_root()
 
@@ -105,12 +107,22 @@ def install_state(wiki_root: Path | None = None) -> dict:
         except (OSError, json.JSONDecodeError):
             installed_version = None
 
+    global_claude_md = False
+    try:
+        global_md = claude_user_dir() / "CLAUDE.md"
+        if global_md.is_file():
+            text = global_md.read_text(encoding="utf-8")
+            global_claude_md = MARKER_BEGIN in text and MARKER_END in text
+    except (OSError, UnicodeDecodeError):
+        global_claude_md = False
+
     return {
         "wiki_stamped": wiki_stamped,
         "identity_present": identity_present,
         "backup_configured": configured,
         "l2_maps": l2_maps,
         "installed_version": installed_version,
+        "global_claude_md": global_claude_md,
     }
 
 

@@ -59,7 +59,8 @@ The fresh-project half of the L2 pair. `/ren:ingest-project` scans an existing r
    - Stamps the shared skeleton (`lib/skeleton.py` against `wiki-skeleton/manifest.yaml`'s `master` profile) into the wiki root — additive only; an already-onboarded wiki is untouched.
    - Assembles an empty L2 map (`skills.ingest-project.lib.assemble_l2` — same frozen schema `ingest` uses, just with empty `knowledge`/`pointers` and a single "project bootstrapped" log line) and proposes it (`ADD` if the map doesn't exist yet, `UPDATE` if it does) at `lib.memory.queue`.
    - Always `producer="promotion"`, `writer="human"` — a human directly asked for this, so it's never quarantined on apply.
-3. Confirm to the user: `Queued <qid> — bootstrapped projects/<slug>/map.md`.
+3. If the project already has a repo directory on disk, call `lib.adapter.claude_md.write_project_claude_md(repo_root, project_slug)` — stamps the thin RenOS pointer block (managed `ren:` markers, only the block is ever touched) into `<repo_root>/CLAUDE.md`. No repo yet → skip; `/ren:ingest-project` stamps it later.
+4. Confirm to the user: `Queued <qid> — bootstrapped projects/<slug>/map.md`.
 
 ## Why this reuses `ingest-project`'s `assemble_l2`
 
