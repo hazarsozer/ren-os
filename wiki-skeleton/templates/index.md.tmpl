@@ -12,7 +12,7 @@ updated: {{today}}
 
 Reshaped (Task 4.4) to the L2 pointer-map schema (spec §3.1 L2): "a compact per-project page holding general project knowledge plus an index of pointers — a map, not the territory." This file plays that role for the wiki as a whole; per-project maps live at `projects/<slug>/map.md`, assembled by `skills/ingest-project/lib/assemble_l2` (same schema, one map per project).
 
-This file is updated by `/ren:wrap` whenever a session promotes content to the wiki. You can also edit it by hand.
+This file is updated by the session-wrap flow whenever a session promotes content to the wiki. You can also edit it by hand.
 
 ## Knowledge
 
@@ -32,4 +32,4 @@ _A short pointer-level summary of recent events. See [`log.md`](log.md) for the 
 
 - [`log.md`](log.md) — chronological event log for this wiki
 - [`identity.md`](identity.md) — {{handle}}'s identity + working-style profile
-- `projects/<slug>/map.md` — per-project knowledge maps (`/ren:bootstrap-project <slug>` or `/ren:ingest-project [path]` to create one)
+- `projects/<slug>/map.md` — per-project knowledge maps (created by the bootstrap-project or ingest-project flow)
