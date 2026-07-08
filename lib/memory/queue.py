@@ -333,6 +333,30 @@ def apply_auto(qid: str) -> Provenance:
     return prov
 
 
+def propose_and_apply(p: Proposal) -> tuple[QueueEntry, Provenance | None]:
+    """v2.2 data-plane door: propose, then auto-apply when policy allows.
+
+    Holds (returns (entry, None), status stays pending) in exactly three cases:
+      1. instruction-plane target (tier model says not auto — global/ pages),
+      2. a `contradicts` conflict was detected — the live session must REASON
+         about it (revise the proposal, or resolve_and_apply with a note);
+         supersedes/duplicate conflicts do NOT hold (UPDATE-supersede is the
+         normal shape of a changing fact, journal records the lineage),
+      3. idempotent-propose returned an entry that isn't pending anymore.
+    """
+    from lib.governance.tiers import queue_auto_apply_allowed
+
+    entry = propose(p)
+    if entry.status != _PENDING:
+        return entry, None
+    if any(c.get("kind") == "contradicts" for c in entry.conflicts):
+        return entry, None
+    if not queue_auto_apply_allowed(entry.proposal):
+        return entry, None
+    prov = apply_auto(entry.qid)
+    return get(entry.qid), prov
+
+
 def reject(qid: str, why: str) -> None:
     """Reject a pending or approved entry, recording `why`."""
     entry = _load(qid)
@@ -353,5 +377,6 @@ __all__ = [
     "approve",
     "apply",
     "apply_auto",
+    "propose_and_apply",
     "reject",
 ]

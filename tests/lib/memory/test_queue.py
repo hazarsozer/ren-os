@@ -339,6 +339,39 @@ def test_quarantine_banner_does_not_break_frontmatter_stamping(wiki):
     assert read_prov["op"] == "ADD"
 
 
+# ------------------------------------------------ propose_and_apply (Task 3)
+
+
+def test_propose_and_apply_data_plane_applies_immediately(wiki):
+    entry, prov = queue.propose_and_apply(_proposal(page="lessons/y.md", content="f"))
+
+    assert prov is not None and entry.status == "applied"
+    assert (wiki / "lessons/y.md").exists()
+
+
+def test_propose_and_apply_global_page_stays_pending(wiki):
+    entry, prov = queue.propose_and_apply(
+        _proposal(page="global/rule.md", content="r", producer="promotion")
+    )
+
+    assert prov is None and entry.status == "pending"
+
+
+def test_propose_and_apply_contradiction_holds_for_reasoning(wiki, monkeypatch):
+    class _FakeSemantics:
+        @staticmethod
+        def detect(op, page, content, wiki_root):
+            return [_FakeConflict(kind="contradicts", page=page, write_id=None, evidence="opposite claim")]
+
+    monkeypatch.setattr(queue, "_semantics", _FakeSemantics)
+
+    entry, prov = queue.propose_and_apply(
+        _proposal(page="lessons/z.md", content="g", writer="llm-auto")
+    )
+
+    assert prov is None and entry.status == "pending"
+
+
 def test_corrupt_entry_file_does_not_take_down_pending(wiki, capsys):
     """Final-verification regression: one hand-corrupted queue JSON must not
     crash whole-queue listing — it's skipped with a warning; healthy entries
