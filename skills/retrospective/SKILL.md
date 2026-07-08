@@ -62,7 +62,7 @@ All three are pure, deterministic functions over `gather()`'s output — no LLM 
 
 1. Call `skills.retrospective.lib.gather(since=...)`.
 2. Call `analyze(gathered)` — get the deterministic findings list.
-3. **Enrich each finding — in a worker subagent when possible** (`execution_tier: worker`): findings are self-contained, so spawn a cheap worker-model subagent (Sonnet/Haiku-class) to sharpen messages and refine proposed skill shapes, and take its output back. Fall back to enriching inline only when subagents aren't available; the lib layer stays mechanical either way.
+3. **Enrich each finding — in a worker subagent when possible** (`execution_tier: worker`): findings are self-contained, so spawn a cheap worker-model subagent (Sonnet/Haiku-class) to sharpen messages and refine proposed skill shapes, and take its output back. Parse its returned JSON with `lib.adapter.worker.parse_worker_json` — it tolerates a ```json fence or leading prose despite raw-JSON-only instructions, and raises `WorkerOutputError` (carrying the raw text) if the output still isn't valid JSON. Fall back to enriching inline only when subagents aren't available; the lib layer stays mechanical either way.
 4. Call `propose_all(findings, session)` — queues one `ADD` proposal per finding, `producer="retrospective"`, `writer="retrospective"`. Per the v2.2 two-plane pivot: `lesson`/`instruction-tweak` are data-plane (descriptive) and auto-apply immediately; `skill-candidate` is an instruction-plane suggestion by intent, so it stays `pending` for a human to approve.
 5. Render the result to the friend: what auto-applied (already saved — say "undo \<write_id>" to revert), and which skill-candidate suggestions are waiting for their OK, answered in chat.
 

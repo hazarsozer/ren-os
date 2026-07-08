@@ -30,10 +30,10 @@ work (L1) and item extraction itself; this module only gates.
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from typing import Callable, Final
 
+from lib.adapter.worker import WorkerOutputError, parse_worker_json
 from lib.instrument import collect
 from lib.memory import scrub
 
@@ -95,25 +95,6 @@ def build_classifier_prompt(item_text: str) -> str:
     return _CLASSIFIER_PROMPT_TEMPLATE.format(item_text=text)
 
 
-def _extract_json_block(text: str) -> str:
-    """Best-effort recovery if the LLM ignored "JSON ONLY" and wrapped its
-    answer in a code fence or added prose around it: prefer a fenced block,
-    else slice from the first `{` to the last `}`. Returns `text` unchanged
-    if no recognizable JSON boundary is found (json.loads will then raise
-    with a clear message)."""
-    for fence in ("```json\n", "```\n"):
-        if fence in text:
-            start = text.index(fence) + len(fence)
-            end = text.find("```", start)
-            if end != -1:
-                return text[start:end].strip()
-
-    first, last = text.find("{"), text.rfind("}")
-    if first != -1 and last != -1 and last > first:
-        return text[first : last + 1]
-    return text
-
-
 def classify_llm(item_text: str, llm_call: Callable[[str], str]) -> Decision:
     """The REAL gate: ask `llm_call` to classify `item_text`, parse STRICTLY.
 
@@ -129,10 +110,9 @@ def classify_llm(item_text: str, llm_call: Callable[[str], str]) -> Decision:
     if not isinstance(raw, str):
         raise ClassifierError(f"llm_call must return str, got {type(raw).__name__}")
 
-    text = _extract_json_block(raw.strip())
     try:
-        data = json.loads(text)
-    except json.JSONDecodeError as exc:
+        data = parse_worker_json(raw)
+    except WorkerOutputError as exc:
         raise ClassifierError(f"classifier output is not valid JSON: {exc}") from exc
 
     if not isinstance(data, dict):
