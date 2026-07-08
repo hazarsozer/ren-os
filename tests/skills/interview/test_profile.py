@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from lib.memory import queue, quarantine
+from lib.memory import quarantine
 from lib.memory.provenance import read_frontmatter_provenance
 from lib.ren_paths import wiki_root
 from skills.install.lib import QUESTION_BUDGET
@@ -123,28 +123,28 @@ def test_render_identity_partial_answers_merge_correctly():
 # --- save_identity: queues human-writer ADD/UPDATE, applies clean ----------
 
 
-def test_save_identity_queues_human_add_and_applies_clean(wiki):
+def test_save_identity_auto_applies_human_add_clean(wiki):
+    # v2.2: identity.md is a non-global (data-plane) page — save_identity now
+    # auto-applies through propose_and_apply instead of landing pending.
     entry = save_identity({"name": "Hazar", "handle": "hazar"}, session="sess-1")
 
-    assert entry.status == "pending"
+    assert entry.status == "applied"
+    assert entry.write_id is not None
     assert entry.proposal.page == "identity.md"
     assert entry.proposal.op == "ADD"
     assert entry.proposal.writer == "human"
 
-    queue.approve(entry.qid, approved_by="hazar")
-    prov = queue.apply(entry.qid)
-
     page_text = (wiki / "identity.md").read_text(encoding="utf-8")
     assert quarantine.is_quarantined(page_text) is False
     read_prov = read_frontmatter_provenance(page_text)
-    assert read_prov["write_id"] == prov.write_id
+    assert read_prov["write_id"] == entry.write_id
     assert read_prov["writer"] == "human"
 
 
 def test_save_identity_update_path_when_identity_already_exists(wiki):
     first = save_identity({"name": "Hazar"}, session="sess-1")
-    queue.approve(first.qid, approved_by="hazar")
-    queue.apply(first.qid)
+    assert first.status == "applied"  # v2.2: no separate approve()/apply() step
 
     second = save_identity({"name": "Hazar", "working_style": "structured"}, session="sess-2")
     assert second.proposal.op == "UPDATE"
+    assert second.status == "applied"

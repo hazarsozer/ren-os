@@ -17,7 +17,7 @@ execution_tier: judgment
 
 contract:
   required_outputs:
-    - "One Proposal submitted to lib.memory.queue (ADD or UPDATE identity.md), pending approval"
+    - "One Proposal submitted to lib.memory.queue (ADD or UPDATE identity.md), auto-applied through the data-plane door"
     - "Confirmation line naming the queue id and which fields were answered vs. defaulted"
   budgets:
     turns: 1
@@ -29,7 +29,7 @@ contract:
     write: []
     execute: []
   completion_conditions:
-    - "A QueueEntry exists at state_dir()/queue/<qid>.json with status=pending, page=identity.md"
+    - "A QueueEntry exists at state_dir()/queue/<qid>.json with status=applied, page=identity.md"
     - "Fewer than or equal to skills.install.lib.QUESTION_BUDGET questions were asked"
   output_paths: []
 
@@ -58,7 +58,7 @@ Builds or updates the friend's identity page. Asks from `skills.interview.lib.QU
 1. State up front, plainly: every question below is optional, and the friend can say "skip to coding" (or equivalent) at any point to stop the whole interview — whatever wasn't answered gets a sane default, no exceptions.
 2. Ask each entry in `skills.interview.lib.QUESTIONS`, in order, using its `options` (if any) to offer a small closed set — free text otherwise. Never exceed the list; never invent additional questions beyond it.
 3. Collect a `dict` of `{key: answer}` for whatever was actually answered (skipped keys simply absent, or `None`).
-4. Call `skills.interview.lib.save_identity(answers, session)`. This queues (never auto-applies) an `ADD` (fresh identity) or `UPDATE` (re-run) of `identity.md`, `writer="human"` — the interview is the friend's own input, always human-provenance.
+4. Call `skills.interview.lib.save_identity(answers, session)`. This queues an `ADD` (fresh identity) or `UPDATE` (re-run) of `identity.md`, `writer="human"` — the interview is the friend's own input, always human-provenance — and auto-applies immediately through the data-plane door (`identity.md` is a non-global page, v2.2 pivot).
 5. Confirm: the queue id, and a one-line breakdown of which fields were answered vs. defaulted (mirrors what `render_identity`'s `skipped_questions` field records).
 
 ## Design notes

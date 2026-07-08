@@ -28,7 +28,7 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Any
 
-from lib.memory.queue import Proposal, QueueEntry, propose
+from lib.memory.queue import Proposal, QueueEntry, propose_and_apply
 from lib.ren_paths import safe_join, wiki_root
 
 IDENTITY_PAGE = "identity.md"
@@ -224,11 +224,15 @@ def save_identity(answers: dict, session: str) -> QueueEntry:
     memory, same shape as `lib.memory.promotion`'s human-approved writes.
 
     `op` is `UPDATE` if `identity.md` already exists, else `ADD` — same
-    exists-check pattern `skills.pin.lib.pin` uses.
+    exists-check pattern `skills.pin.lib.pin` uses. `identity.md` is a
+    non-global (data-plane) page, so — like every other data-plane producer
+    (v2.2 pivot) — this goes through `lib.memory.queue.propose_and_apply` and
+    auto-applies immediately; the returned entry's `write_id` is set once
+    applied.
     """
     content = render_identity(answers)
     op = "UPDATE" if _identity_exists() else "ADD"
-    return propose(
+    entry, _ = propose_and_apply(
         Proposal(
             op=op,
             page=IDENTITY_PAGE,
@@ -239,6 +243,7 @@ def save_identity(answers: dict, session: str) -> QueueEntry:
             session=session,
         )
     )
+    return entry
 
 
 def _identity_exists() -> bool:
