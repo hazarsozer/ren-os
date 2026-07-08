@@ -339,6 +339,34 @@ def test_quarantine_banner_does_not_break_frontmatter_stamping(wiki):
     assert read_prov["op"] == "ADD"
 
 
+# --------------------------------------------- auto_apply_eligible (Task 10)
+
+
+def test_auto_apply_eligible_true_for_data_plane_no_conflicts(wiki):
+    entry = queue.propose(_proposal(page="lessons/eligible.md", content="x"))
+    assert queue.auto_apply_eligible(entry) is True
+
+
+def test_auto_apply_eligible_false_for_global_page(wiki):
+    entry = queue.propose(
+        _proposal(page="global/rule.md", producer="promotion", content="r")
+    )
+    assert queue.auto_apply_eligible(entry) is False
+
+
+def test_auto_apply_eligible_false_for_contradicts_conflict(wiki, monkeypatch):
+    class _FakeSemantics:
+        @staticmethod
+        def detect(op, page, content, wiki_root):
+            return [_FakeConflict(kind="contradicts", page=page, write_id=None, evidence="opposite claim")]
+
+    monkeypatch.setattr(queue, "_semantics", _FakeSemantics)
+
+    entry = queue.propose(_proposal(page="lessons/held.md", content="g", writer="llm-auto"))
+
+    assert queue.auto_apply_eligible(entry) is False
+
+
 # ------------------------------------------------ propose_and_apply (Task 3)
 
 

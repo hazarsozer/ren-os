@@ -391,6 +391,27 @@ def resolve_and_apply(qid: str, resolution: str) -> Provenance:
     return prov
 
 
+def auto_apply_eligible(entry: QueueEntry) -> bool:
+    """True iff a PENDING `entry` may be released via `apply_auto` under
+    v2.2 policy: no `contradicts` conflict, and the tier model resolves the
+    proposal to "auto" (a bounded, non-global memory write). Factored out of
+    `propose_and_apply` (Task 3) so the hold logic has exactly one
+    implementation — the queue-governance-2-to-3 migration (Task 10) reuses
+    this same function to decide which 0.2-gated pending entries to release,
+    so the two call sites cannot drift.
+
+    Does NOT check `entry.status` itself — callers that only care about
+    pending entries should filter via `pending()` first (as `propose_and_apply`
+    and the migration both do); a caller that passes a non-pending entry gets
+    whatever this predicate says about its proposal/conflicts alone.
+    """
+    from lib.governance.tiers import queue_auto_apply_allowed
+
+    if any(c.get("kind") == "contradicts" for c in entry.conflicts):
+        return False
+    return queue_auto_apply_allowed(entry.proposal)
+
+
 def propose_and_apply(p: Proposal) -> tuple[QueueEntry, Provenance | None]:
     """v2.2 data-plane door: propose, then auto-apply when policy allows.
 
@@ -401,15 +422,14 @@ def propose_and_apply(p: Proposal) -> tuple[QueueEntry, Provenance | None]:
          supersedes/duplicate conflicts do NOT hold (UPDATE-supersede is the
          normal shape of a changing fact, journal records the lineage),
       3. idempotent-propose returned an entry that isn't pending anymore.
-    """
-    from lib.governance.tiers import queue_auto_apply_allowed
 
+    Cases 1-2 are `auto_apply_eligible`; case 3 is checked here since
+    `auto_apply_eligible` doesn't look at `entry.status`.
+    """
     entry = propose(p)
     if entry.status != _PENDING:
         return entry, None
-    if any(c.get("kind") == "contradicts" for c in entry.conflicts):
-        return entry, None
-    if not queue_auto_apply_allowed(entry.proposal):
+    if not auto_apply_eligible(entry):
         return entry, None
     prov = apply_auto(entry.qid)
     return get(entry.qid), prov
@@ -448,6 +468,7 @@ __all__ = [
     "apply",
     "apply_auto",
     "resolve_and_apply",
+    "auto_apply_eligible",
     "propose_and_apply",
     "approve_and_apply",
     "reject",

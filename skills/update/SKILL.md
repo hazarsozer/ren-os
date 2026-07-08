@@ -74,6 +74,19 @@ Carried near-verbatim from donor `skills/update/` (Task 7.3) — the migration s
 - Auto-rollback on new post-update doctor issues. The snapshot is retained and named; the human decides whether to restore.
 - Force-push or touch the backup remote. That's `skills/backup`'s scope entirely.
 
+## 0.3 update notes
+
+- **queue-governance 2→3 (Task 10):** a friend upgrading past 0.3 has queue
+  entries left `pending` for the OLD reason (0.2 gated every write) rather
+  than the new one (v2.2's instruction-plane/contradiction holds only). Run
+  `migrations/queue-governance-2-to-3/migrate.py` once as a post-update step
+  after the version bump lands — it is NOT part of the `skills/wiki-migration`
+  page-type chain (it walks queue state under `state_dir()/queue/`, not wiki
+  pages), so `/ren:doctor`'s schema-drift check does not surface it; invoke it
+  directly. `--check` previews what would be released with zero writes.
+  Idempotent — safe to (re-)run even if a friend already updated once without
+  it. See that migration's README.md for the shape-decision rationale.
+
 ## Overlap note: snapshot substrate vs. Task 1.2's per-write snapshots
 
 `lib/memory/snapshot.py` (Task 1.2, G9) is a DIFFERENT snapshot mechanism: per-write-id, page-granularity snapshots for the write-safety substrate (revert a single memory write in one step). `scripts/snapshot.sh` here is whole-wiki, version-bump-granularity, for migration rollback. They serve genuinely different purposes at different granularities — this skill's carried snapshot logic is NOT rewritten to unify with Task 1.2's substrate; that unification (if it's ever worth doing) is a 0.3-scoped ADR decision, not something to improvise here. Noted per the task brief's explicit instruction not to rewrite working carried code.
@@ -81,5 +94,6 @@ Carried near-verbatim from donor `skills/update/` (Task 7.3) — the migration s
 ## References
 
 - `skills/wiki-migration/` — the migration registry + verify/apply primitive this skill drives
+- `migrations/queue-governance-2-to-3/` — the standalone (non-chain) queue-state migration named in the 0.3 update notes above
 - `lib/memory/snapshot.py` (Task 1.2) — the OTHER snapshot mechanism (per-write, not whole-wiki); see overlap note above
 - `skills/doctor/` — the post-update health check this skill's flow ends with
