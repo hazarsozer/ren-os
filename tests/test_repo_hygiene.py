@@ -188,3 +188,24 @@ def test_every_referenced_ren_verb_is_registered():
         "friend-facing /ren: verbs that no skill or commands/*.md registers "
         f"(the loader will say 'Unknown command'): {offenders}"
     )
+
+
+# --- plugin manifest regression (Task 12) -----------------------------------
+#
+# The 0.2 rebuild silently LOST `.claude-plugin/marketplace.json` and shipped
+# a nonstandard `config` key instead of `userConfig` in plugin.json — either
+# regression makes the marketplace uninstallable for a friend. Pin both.
+
+
+def test_marketplace_json_exists_and_parses():
+    marketplace_path = REPO_ROOT / ".claude-plugin" / "marketplace.json"
+    assert marketplace_path.is_file(), f"missing {marketplace_path}"
+    data = json.loads(marketplace_path.read_text(encoding="utf-8"))
+    assert data["plugins"][0]["name"] == "ren"
+
+
+def test_plugin_json_uses_user_config_not_legacy_config_key():
+    plugin_path = REPO_ROOT / ".claude-plugin" / "plugin.json"
+    data = json.loads(plugin_path.read_text(encoding="utf-8"))
+    assert "userConfig" in data
+    assert "config" not in data
