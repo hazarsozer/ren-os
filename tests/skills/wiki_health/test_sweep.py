@@ -48,10 +48,10 @@ def wiki(clean_path_env, tmp_path):
 
 def test_sweep_returns_all_dict_keys(wiki):
     result = wiki_health.sweep()
-    assert {
-        "dangling_pointers", "contradiction_pairs", "mass_deletions",
-        "quarantined_pages", "generated_at",
-    } <= result.keys()
+    assert set(result.keys()) == {
+        "dangling_pointers", "contradiction_pairs", "contradiction_scan_note",
+        "mass_deletions", "quarantined_pages", "generated_at",
+    }
     assert result["generated_at"]
     assert result["contradiction_scan_note"] is None
 
