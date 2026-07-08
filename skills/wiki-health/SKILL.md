@@ -92,9 +92,11 @@ used to catch, by sweeping periodically instead of gating continuously.
 
 - Schedule itself. No cron/routine wiring in this minimal version — 0.3
   runs it on explicit invocation only; periodic scheduling is future work.
-- Cross-reference facts beyond what `lib.memory.semantics.detect` already
-  gives it. No new contradiction-detection intelligence lives here — this
-  skill is a consumer of that heuristic, not an extension of it.
+- Cross-reference facts beyond what `lib.memory.semantics
+  .contradiction_evidence` already gives it. No new contradiction-detection
+  intelligence lives here — this skill is a consumer of that heuristic
+  (wiki-wide, all-pairs, not `detect`'s single-write sibling-glob scope),
+  not an extension of it.
 - Add a dedicated `"wiki-health"` producer to `lib.memory.queue`'s
   `_PRODUCERS` tuple. Repairs this skill drives go through
   `propose_and_apply`/`resolve_and_apply` under the `"retrospective"`
@@ -118,8 +120,10 @@ used to catch, by sweeping periodically instead of gating continuously.
 - `skills/doctor/lib/__init__.py` (`check_dangling_pointers`) — the L2
   pointer-map check this skill's dangling-pointer walk mirrors structurally
   (message-per-CheckResult there vs. one record per finding here)
-- `lib/memory/semantics.py` (`detect`) — the three-heuristic conflict
-  screen `contradiction_pairs` reuses
+- `lib/memory/semantics.py` (`detect`, `contradiction_evidence`) — the
+  three-heuristic conflict screen; `contradiction_pairs` uses the pairwise
+  `contradiction_evidence` core directly for its wiki-wide all-pairs scan
+  rather than `detect`'s sibling-directory candidate set
 - `lib/memory/queue.py` (`propose_and_apply`, `resolve_and_apply`) — the
   write-safety substrate any mechanical fix goes through
 - v2.2 doctrine (spec §10, two-plane governance) — why this skill exists:

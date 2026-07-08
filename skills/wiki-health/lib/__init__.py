@@ -17,11 +17,17 @@ mechanics only — it never writes anything itself.
     live session can act on each individually. Keep the two walks in sync if
     the L2 pointer-map schema (`## Decision map` / `- [x] → path#anchor`)
     ever changes.
-  - `contradiction_pairs` — cheap reuse of `lib.memory.semantics.detect`:
-    for every wiki page whose body has a "## Knowledge" section, run
-    `detect(op="UPDATE", page=<page>, content=<its own text>, wiki_root=...)`
-    and keep the `"contradicts"` hits against OTHER pages. Symmetric pairs
-    (A-contradicts-B is found scanning both A and B) are deduped.
+  - `contradiction_pairs` — wiki-WIDE, not sibling-directory-only: every
+    pair of pages whose body has a "## Knowledge" section is compared via
+    `lib.memory.semantics.contradiction_evidence` (the pairwise core factored
+    out of `detect`, so this can't drift from the write-time check's
+    heuristic). `detect`'s own candidate set (target + same-directory
+    siblings) is a sibling glob built for a single proposed write, not a
+    wiki-wide auditor — this module builds its own all-pairs candidate set
+    instead of calling `detect` directly. All-pairs is O(n^2); above
+    `_CONTRADICTION_PAGE_CAP` pages, the scan narrows to pairs sharing a
+    frontmatter `type` or a directory, and `contradiction_scan_note` in the
+    returned dict records that the scan was capped (no silent truncation).
   - `mass_deletions` — journal scan: more than 5 DELETE ops inside any
     rolling 24h window is an anomaly worth a friend's eyes, not proof of
     anything wrong on its own.
@@ -80,27 +86,75 @@ def _dangling_pointers(wiki_root: Path) -> list[dict]:
     return dangling
 
 
-def _contradiction_pairs(wiki_root: Path) -> list[dict]:
-    """For each page with a "## Knowledge" section, run `semantics.detect`
-    against its own content and keep `"contradicts"` hits against other
-    pages. Deduped so an A<->B contradiction surfaces once, not twice."""
-    pairs: list[dict] = []
-    seen: set[frozenset] = set()
+_CONTRADICTION_PAGE_CAP = 200  # above this many candidate pages, narrow the all-pairs scan
+
+
+def _knowledge_pages(wiki_root: Path) -> list[tuple[str, str, str | None]]:
+    """(rel_path, text, frontmatter_type) for every page with a "## Knowledge"
+    section, skipping the `.ren/` metrics tree."""
+    pages: list[tuple[str, str, str | None]] = []
     for md_path in sorted(wiki_root.rglob("*.md")):
+        rel_path = md_path.relative_to(wiki_root)
+        if ".ren" in rel_path.parts:
+            continue
         text = md_path.read_text(encoding="utf-8", errors="replace")
         if "## Knowledge" not in text:
             continue
-        rel = str(md_path.relative_to(wiki_root))
-        conflicts = semantics.detect(op="UPDATE", page=rel, content=text, wiki_root=wiki_root)
-        for c in conflicts:
-            if c.kind != "contradicts" or c.page == rel:
+        pages.append((str(rel_path), text, _frontmatter_type(text)))
+    return pages
+
+
+def _contradiction_pairs(wiki_root: Path) -> tuple[list[dict], dict | None]:
+    """Wiki-wide all-pairs contradiction scan across every "## Knowledge"
+    page (see module docstring — NOT limited to `detect`'s sibling-directory
+    candidate set). Returns `(pairs, cap_note)`; `cap_note` is `None` unless
+    the page count exceeded `_CONTRADICTION_PAGE_CAP`, in which case pairs
+    were narrowed to same-`type`-or-same-directory and the note records how
+    many pairs that skipped."""
+    pages = _knowledge_pages(wiki_root)
+    n = len(pages)
+    capped = n > _CONTRADICTION_PAGE_CAP
+
+    pairs: list[dict] = []
+    seen: set[frozenset] = set()
+    pairs_checked = 0
+    pairs_skipped = 0
+
+    for i in range(n):
+        rel_a, text_a, type_a = pages[i]
+        dir_a = str(Path(rel_a).parent)
+        for j in range(i + 1, n):
+            rel_b, text_b, type_b = pages[j]
+            if capped:
+                same_type = type_a is not None and type_a == type_b
+                same_dir = dir_a == str(Path(rel_b).parent)
+                if not (same_type or same_dir):
+                    pairs_skipped += 1
+                    continue
+            pairs_checked += 1
+            evidence = semantics.contradiction_evidence(text_a, text_b)
+            if evidence is None:
                 continue
-            key = frozenset((rel, c.page))
+            key = frozenset((rel_a, rel_b))
             if key in seen:
                 continue
             seen.add(key)
-            pairs.append({"page": rel, "with": c.page, "evidence": c.evidence})
-    return pairs
+            pairs.append({"page": rel_a, "with": rel_b, "evidence": evidence})
+
+    cap_note = None
+    if capped:
+        cap_note = {
+            "page_count": n,
+            "cap": _CONTRADICTION_PAGE_CAP,
+            "pairs_checked": pairs_checked,
+            "pairs_skipped": pairs_skipped,
+            "reason": (
+                f"{n} '## Knowledge' pages exceeds the {_CONTRADICTION_PAGE_CAP}-page "
+                "all-pairs cap — scan narrowed to pairs sharing a frontmatter type "
+                "or a directory; other pairs were not compared."
+            ),
+        }
+    return pairs, cap_note
 
 
 def _parse_journal_ts(ts: str) -> datetime:
@@ -151,19 +205,28 @@ def _now_iso() -> str:
 
 def sweep(wiki_root: Path | None = None) -> dict:
     """Run the full read-only coherence sweep. Never writes anything —
-    fixing findings is the live session's job (see SKILL.md)."""
+    fixing findings is the live session's job (see SKILL.md).
+
+    Returns the 5 documented keys (`dangling_pointers`, `contradiction_pairs`,
+    `mass_deletions`, `quarantined_pages`, `generated_at`) plus
+    `contradiction_scan_note` — `None` unless the wiki-wide contradiction
+    scan was capped (see `_contradiction_pairs`), in which case it's a dict
+    naming what was skipped and why."""
     wiki_root = wiki_root or ren_paths.wiki_root()
     if not wiki_root.is_dir():
         return {
             "dangling_pointers": [],
             "contradiction_pairs": [],
+            "contradiction_scan_note": None,
             "mass_deletions": _mass_deletions(),
             "quarantined_pages": {"count": 0, "pages": []},
             "generated_at": _now_iso(),
         }
+    contradiction_pairs, contradiction_scan_note = _contradiction_pairs(wiki_root)
     return {
         "dangling_pointers": _dangling_pointers(wiki_root),
-        "contradiction_pairs": _contradiction_pairs(wiki_root),
+        "contradiction_pairs": contradiction_pairs,
+        "contradiction_scan_note": contradiction_scan_note,
         "mass_deletions": _mass_deletions(),
         "quarantined_pages": _quarantined_pages(wiki_root),
         "generated_at": _now_iso(),
@@ -190,6 +253,9 @@ def render_report(findings: dict) -> str:
         lines.extend(f"- {c['page']} ↔ {c['with']}: {c['evidence']}" for c in pairs)
     else:
         lines.append("- none")
+    scan_note = findings.get("contradiction_scan_note")
+    if scan_note:
+        lines.append(f"- NOTE (scan capped): {scan_note['reason']}")
     lines.append("")
 
     lines.append("## Mass deletions")

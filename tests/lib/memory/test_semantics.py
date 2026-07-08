@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 
 from lib.memory.provenance import new_provenance, stamp_frontmatter
-from lib.memory.semantics import Conflict, detect
+from lib.memory.semantics import Conflict, contradiction_evidence, detect
 
 
 def _write(root: Path, rel: str, text: str) -> Path:
@@ -255,3 +255,18 @@ def test_conflict_is_frozen_dataclass_with_expected_fields():
     assert c.evidence == "line"
     with pytest.raises(Exception):
         c.page = "other.md"  # type: ignore[misc]
+
+
+# --- contradiction_evidence: direct pairwise check (no wiki_root, no globbing) --
+
+
+def test_contradiction_evidence_finds_direct_contradiction():
+    a = "The pricing model always uses monthly billing cycles.\n"
+    b = "The pricing model never uses monthly billing cycles.\n"
+    assert contradiction_evidence(a, b) is not None
+
+
+def test_contradiction_evidence_none_when_no_contradiction():
+    a = "Use tabs here.\n"
+    b = "Use spaces there.\n"
+    assert contradiction_evidence(a, b) is None

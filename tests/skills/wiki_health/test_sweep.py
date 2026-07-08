@@ -48,11 +48,12 @@ def wiki(clean_path_env, tmp_path):
 
 def test_sweep_returns_all_dict_keys(wiki):
     result = wiki_health.sweep()
-    assert set(result.keys()) == {
+    assert {
         "dangling_pointers", "contradiction_pairs", "mass_deletions",
         "quarantined_pages", "generated_at",
-    }
+    } <= result.keys()
     assert result["generated_at"]
+    assert result["contradiction_scan_note"] is None
 
 
 def test_sweep_finds_dangling_pointer(wiki):
@@ -93,6 +94,41 @@ def test_sweep_finds_contradiction_pair(wiki):
     result = wiki_health.sweep()
     pages = {frozenset((c["page"], c["with"])) for c in result["contradiction_pairs"]}
     assert frozenset(("knowledge/pricing-a.md", "knowledge/pricing-b.md")) in pages
+
+
+def test_sweep_finds_cross_directory_contradiction_pair(wiki):
+    # Reviewer's exact repro: same-dir-only coverage misses this pair.
+    (wiki / "knowledge").mkdir()
+    (wiki / "decisions").mkdir()
+    (wiki / "knowledge" / "pricing-a.md").write_text(
+        "## Knowledge\nThe pricing model always uses monthly billing cycles.\n",
+        encoding="utf-8",
+    )
+    (wiki / "decisions" / "pricing-b.md").write_text(
+        "## Knowledge\nThe pricing model never uses monthly billing cycles.\n",
+        encoding="utf-8",
+    )
+    result = wiki_health.sweep()
+    pages = {frozenset((c["page"], c["with"])) for c in result["contradiction_pairs"]}
+    assert frozenset(("knowledge/pricing-a.md", "decisions/pricing-b.md")) in pages
+    assert result["contradiction_scan_note"] is None
+
+
+def test_sweep_caps_contradiction_scan_above_page_count_and_records_note(wiki, monkeypatch):
+    monkeypatch.setattr(wiki_health, "_CONTRADICTION_PAGE_CAP", 5)
+    for i in range(7):
+        d = wiki / f"filler-dir-{i}"
+        d.mkdir()
+        (d / "page.md").write_text(
+            f"## Knowledge\nFiller page number {i} says nothing contradictory.\n",
+            encoding="utf-8",
+        )
+    result = wiki_health.sweep()
+    note = result["contradiction_scan_note"]
+    assert note is not None
+    assert note["page_count"] == 7
+    assert note["pairs_skipped"] > 0
+    assert "capped" in wiki_health.render_report(result).lower() or "cap" in note["reason"].lower()
 
 
 def test_sweep_lists_quarantined_pages(wiki):

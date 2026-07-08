@@ -174,6 +174,22 @@ def _detect_contradictions(
     return hits
 
 
+def contradiction_evidence(text_a: str, text_b: str) -> str | None:
+    """Direct pairwise contradiction check between two page bodies, for
+    callers that need an all-pairs sweep rather than `detect`'s sibling-glob
+    candidate set (e.g. `skills.wiki-health`'s wiki-wide scan). Shares the
+    exact same core (`_detect_contradictions`) `detect` uses internally for
+    its per-candidate contradiction check, so the two paths can't drift.
+
+    Returns the first contradicting line found (from `text_b`'s side, by
+    `_detect_contradictions`'s convention), or `None` if neither text
+    contradicts the other."""
+    lines_a = _normalized_lines(_strip_frontmatter(text_a or ""))
+    lines_b = _normalized_lines(_strip_frontmatter(text_b or ""))
+    hits = _detect_contradictions(lines_a, lines_b)
+    return hits[0] if hits else None
+
+
 def detect(op: str, page: str, content: str | None, wiki_root: Path) -> list[Conflict]:
     """Run the three deterministic conflict checks for a proposed write.
 
@@ -235,4 +251,4 @@ def detect(op: str, page: str, content: str | None, wiki_root: Path) -> list[Con
     return conflicts
 
 
-__all__ = ["Conflict", "ConflictKind", "detect"]
+__all__ = ["Conflict", "ConflictKind", "detect", "contradiction_evidence"]
