@@ -191,3 +191,19 @@ def test_render_report_lists_sections(wiki):
     text = wiki_health.render_report(wiki_health.sweep())
     for header in ("Dangling pointers", "Contradiction pairs", "Mass deletions", "Quarantined (unreviewed)"):
         assert header in text
+
+
+def test_sweep_records_path_escaping_pointer_as_finding_not_crash(wiki):
+    # Malicious/broken l2-map pointer that would escape the wiki root via
+    # ren_paths.safe_join — must be recorded as a finding, not raise.
+    (wiki / "projects" / "p").mkdir(parents=True)
+    (wiki / "projects" / "p" / "map.md").write_text(
+        "---\ntype: l2-map\nproject: p\n---\n"
+        "## Decision map\n"
+        "- [topic] → ../../outside.md#a (w-1)\n",
+        encoding="utf-8",
+    )
+    result = wiki_health.sweep()
+    matches = [d for d in result["dangling_pointers"] if "../../outside.md" in d["target"]]
+    assert matches
+    assert matches[0].get("reason") == "path-escaping"

@@ -55,6 +55,7 @@ from typing import Final
 from lib import ren_paths
 from lib.instrument import collect
 from lib.memory import promotion
+from lib.ren_paths import PathTraversalError
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]  # lib -> doctor -> skills -> repo root
 
@@ -232,9 +233,16 @@ def check_dangling_pointers(wiki_root: Path | None = None) -> CheckResult:
             if not m:
                 continue
             target = m.group(1)
-            target_path = ren_paths.safe_join(wiki_root, target) if not target.startswith("/") else None
-            if target_path is None or not target_path.is_file():
-                rel = md_path.relative_to(wiki_root)
+            rel = md_path.relative_to(wiki_root)
+            if target.startswith("/"):
+                dangling.append(f"{rel} → {target}")
+                continue
+            try:
+                target_path = ren_paths.safe_join(wiki_root, target)
+            except PathTraversalError:
+                dangling.append(f"{rel} → {target} (path-escaping)")
+                continue
+            if not target_path.is_file():
                 dangling.append(f"{rel} → {target}")
 
     if dangling:

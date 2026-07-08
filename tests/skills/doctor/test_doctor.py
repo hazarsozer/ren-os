@@ -201,6 +201,18 @@ def test_check_dangling_pointers_warns_on_missing_target(wiki):
     assert result.status == "warn"
 
 
+def test_check_dangling_pointers_warns_not_crashes_on_path_escaping_target(wiki):
+    (wiki / "map.md").write_text(
+        "---\ntype: l2-map\nproject: p\n---\n"
+        "## Decision map\n"
+        "- [topic] → ../../outside.md#a (w-1)\n",
+        encoding="utf-8",
+    )
+    result = doctor.check_dangling_pointers(wiki)
+    assert result.status == "warn"
+    assert "../../outside.md" in result.message
+
+
 # ------------------------------------------------------------ check_graphify_status
 
 

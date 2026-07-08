@@ -44,6 +44,7 @@ from pathlib import Path
 
 from lib import ren_paths
 from lib.memory import journal, quarantine, semantics
+from lib.ren_paths import PathTraversalError
 
 _FRONTMATTER_RE = re.compile(r"\A---\n(.*?)\n---\n?", re.DOTALL)
 _FM_TYPE_RE = re.compile(r"^type:\s*(.+)$", re.MULTILINE)
@@ -80,9 +81,17 @@ def _dangling_pointers(wiki_root: Path) -> list[dict]:
             if not m:
                 continue
             target = m.group(1)
-            target_path = ren_paths.safe_join(wiki_root, target) if not target.startswith("/") else None
-            if target_path is None or not target_path.is_file():
-                dangling.append({"page": str(md_path.relative_to(wiki_root)), "target": target})
+            page = str(md_path.relative_to(wiki_root))
+            if target.startswith("/"):
+                dangling.append({"page": page, "target": target})
+                continue
+            try:
+                target_path = ren_paths.safe_join(wiki_root, target)
+            except PathTraversalError:
+                dangling.append({"page": page, "target": target, "reason": "path-escaping"})
+                continue
+            if not target_path.is_file():
+                dangling.append({"page": page, "target": target})
     return dangling
 
 
