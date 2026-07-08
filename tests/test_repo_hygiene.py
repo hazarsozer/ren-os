@@ -16,6 +16,7 @@ Run with: uv run pytest tests/test_repo_hygiene.py -v
 from __future__ import annotations
 
 import importlib
+import json
 import re
 import subprocess
 import sys
@@ -85,6 +86,21 @@ def test_dev_content_lint_passes():
     script = REPO_ROOT / "scripts" / "lint_no_dev_wiki_content.py"
     proc = subprocess.run(["python3", str(script)], capture_output=True, text=True, cwd=REPO_ROOT)
     assert proc.returncode == 0, f"dev-content lint failed:\n{proc.stdout}\n{proc.stderr}"
+
+
+def test_version_literals_agree_with_plugin_json():
+    """.claude-plugin/plugin.json is the version SSOT (Task 11). Every other
+    version-bearing site (pyproject.toml, lib/ren_paths.py fallback, the
+    interview skill's FRAMEWORK_VERSION, the ingest-project scan fallback,
+    the README badge, every SKILL.md's version/framework_version fields)
+    must agree with it — this fails CI on drift instead of surfacing it on
+    release day."""
+    ssot = json.loads((REPO_ROOT / ".claude-plugin" / "plugin.json").read_text())["version"]
+
+    from scripts.bump_version import version_sites
+
+    mismatches = [f"{site}: {found}" for site, found in version_sites(REPO_ROOT) if found != ssot]
+    assert not mismatches, f"version drift vs plugin.json ({ssot}): {mismatches}"
 
 
 def _skill_lib_module_names() -> list[str]:
