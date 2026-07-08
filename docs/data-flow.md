@@ -38,7 +38,7 @@ That's the entire list. No background jobs, no separate service, no telemetry en
 
 ## Cross-references
 
-- `lib/governance/tiers.py` (Task 6.1) — the risk-tier gate this statement's "what requires a human" boundary maps onto (`ask` tier = destructive, always human; `diff_approved` = durable/code/config, human reviews the diff; `auto` = routine bounded memory writes only)
+- `lib/governance/tiers.py` (Task 6.1; pivoted to the two-plane model in v2.2, spec §10) — the risk-tier gate this statement's "what requires a human" boundary maps onto: `auto` = any non-global memory write (the data plane — every writer, including unattended ones), auto-applied but always provenance-tagged, snapshotted, and one-step revertible; `diff_approved` = `global/` pages (the instruction plane — promotion, human, and conversational alike) plus all code/config writes, queued for a human diff review; `ask` = destructive actions, always an explicit human ask, flatly refused (never downgraded) when unattended. Contradictions are model-resolved with recorded reasoning, not queued for a human.
 - `lib/instrument/collect.py` (Task 3.1) — the metrics surface this statement's "stays local" section describes
 - `skills/wrap/lib/classifier.py` (exit criterion 4) — the one place an LLM call happens outside the session's own conversation turn
 - `hooks/wake-up/wakeup/__init__.py` (Task 5.1) — the no-LLM-at-session-start invariant

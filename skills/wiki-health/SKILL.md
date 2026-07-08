@@ -25,7 +25,7 @@ contract:
   permissions:
     read:
       - "~/.renos/wiki/**"
-      - "~/.renos/state/journal.jsonl"
+      - "~/.renos/wiki/.ren/journal.jsonl"
     write: []
     execute: []
   completion_conditions:

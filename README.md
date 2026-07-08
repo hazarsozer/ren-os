@@ -111,7 +111,7 @@ touches a wiki page.
 
 ## The skill surface
 
-Sixteen skills, each declaring an **execution tier** — deterministic scripts run as
+Seventeen skills, each declaring an **execution tier** — deterministic scripts run as
 scripts, worker-shaped drafting delegates to cheap subagent models, and judgment
 (approvals, session narrative) stays with the main model.
 
@@ -142,6 +142,7 @@ scripts, worker-shaped drafting delegates to cheap subagent models, and judgment
 | Skill | What it's for |
 |---|---|
 | `/ren:doctor` | Twelve isolated health checks — env, wiki structure, frontmatter, schema versions, budgets, dangling pointers, execution tiers, backup config, global-tier drift, harness neutrality |
+| `/ren:wiki-health` | Coherence auditor: dangling pointers, contradictions, mass-deletion anomaly, quarantine inventory |
 | `/ren:backup` | Git-push-to-`backup`-remote primary, tarball fallback, retention |
 | `/ren:update` | Snapshot → migrate → verify → diff-approve → apply, rollback built in |
 | `/ren:retrospective [--since]` | Mine instrumentation + journal + session history for lessons and skill candidates (with executable scaffolds) |
@@ -179,7 +180,7 @@ ren-os/
 ├── hooks/              # wake-up + pre-push content guard
 ├── migrations/         # scripted schema migrations with verification
 ├── docs/               # data-flow, exit criteria, Codex read proof
-└── tests/              # 695 tests — every DONE claim below has one
+└── tests/              # 749 tests — every DONE claim below has one
 ```
 
 ---
@@ -220,7 +221,7 @@ elapsed usage, not more code).
 ```bash
 git clone https://github.com/hazarsozer/ren-os.git && cd ren-os
 uv sync
-uv run pytest            # 695 tests
+uv run pytest            # 749 tests
 uv run python scripts/lint-yaml-frontmatter.py
 ```
 

@@ -60,8 +60,8 @@ Reactive memory control, mid-session. The friend says "remember it like THIS" or
    - `pin` proposes `ADD` if the page doesn't exist yet, `UPDATE` if it does.
    - `correct` proposes `DELETE` when no replacement text is given, else `UPDATE`.
    - Both always set `producer="pin"`, `writer="human"`, `salience=True`.
-3. Both calls go through `lib.memory.queue.propose_and_apply`, which scrubs secrets, dedups against existing pending entries, and runs conflict detection exactly like any other producer — pin gets no special exemption.
-4. Confirm to the user: `Queued <qid> — <op> <page> (pin)` or `... (correction)`.
+3. Both calls go through `lib.memory.queue.propose_and_apply`, which scrubs secrets, dedups against existing pending entries, and runs conflict detection exactly like any other producer — pin gets no special exemption. Per the v2.2 pivot, a pin/correction is a non-global page write, so it auto-applies immediately (provenance-tagged, one-step revertible) unless a `contradicts` conflict holds it for the model to resolve.
+4. Confirm to the user: `Saved (write <write_id>) — <op> <page> (pin)`, or `... (correction)`, and mention saying "undo <write_id>" to revert — matching `ingest`'s conversational closing copy.
 
 ## Why `salience=True`
 
@@ -69,8 +69,8 @@ Per spec §3.2, a pinned or corrected page is something the friend explicitly ca
 
 ## What this skill does NOT do
 
-- Write to a wiki page directly. Every pin/correction is a `Proposal` at the queue door (Task 2.1) — approve/apply is a separate step owned by the queue, not this skill.
-- Run any pipeline, retry loop, or multi-step flow. One invocation → one proposal. If that proposal conflicts with something, `queue.propose_and_apply` attaches the conflict for a human to resolve later; this skill doesn't try to resolve it.
+- Write to a wiki page directly. Every pin/correction is a `Proposal` at the data-plane door (`propose_and_apply`) — applying (or holding on a contradiction) is owned by the queue/tier machinery, not this skill.
+- Run any pipeline, retry loop, or multi-step flow. One invocation → one proposal. If that proposal conflicts with something, `queue.propose_and_apply` attaches the conflict; a `contradicts` conflict is held for the model to reason about and resolve (recording that reasoning), with the friend asked only on genuine ambiguity — this skill doesn't try to resolve it itself.
 - Maintain its own state file, hot tier, or session-notes equivalent. There is no `--instinct` mode in 0.2 (donor `skills/note`'s instincts hot tier is out of scope here — see the harvest map).
 - Decide apply policy. Whether a pin's entry applies immediately or is held pending (a `global/` target, or a detected `contradicts` conflict) is governed by the memory write path, not by this skill.
 
