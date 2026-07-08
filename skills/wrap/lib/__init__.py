@@ -11,17 +11,16 @@ narrative and proposes candidate durable items; this module is the part that
 actually touches the single write-queue (Task 2.1) and the classifier gate
 (`.classifier.gate`).
 
-Two different risk tiers, per §3.6's risk-tiered approval gates:
-  - L1 (the session narrative) is a ROUTINE BOUNDED WRITE: it always
-    auto-applies (propose -> approve -> apply, right here), tagged
-    `writer="llm-auto"`, which the queue's Task-2.4 wiring auto-quarantines —
-    it is data, not instruction, until a human reviews it. One-step revert
-    (Task 2.3) is what makes "auto-apply" safe here.
-  - Durable items are DURABLE KNOWLEDGE: they only ever get `queue.propose()`'d
-    here, never auto-approved/applied. They sit pending for a human's OK — the
-    unified end-of-wrap approval screen (Task 8.2, not yet built) is where
-    that OK happens; this module just gets them correctly queued or correctly
-    turned away (gated out, or refused for a planted secret).
+Per the v2.2 two-plane governance pivot (data plane auto-applies), both the
+L1 narrative and gated-durable items go through the single data-plane door,
+`lib.memory.queue.propose_and_apply`, tagged `writer="llm-auto"`, which the
+queue's auto-quarantine wiring quarantines on write — it is data, not
+instruction, until a human reviews it. One-step revert is what makes
+"auto-apply" safe here. `propose_and_apply` itself holds an entry pending
+(rather than applying) when the target is instruction-plane (`global/`) or a
+`contradicts` conflict was detected — those cases surface in this module's
+`held` list for a human to reason about; items gated out as non-durable, or
+refused for a planted secret, never reach the queue at all.
 
 Donor `skills/wrap/lib/{classifier.py,types.py,diff_plan.py}` is NOT ported
 wholesale — its CONTEXT.md-rewrite / diff_plan machinery assumed direct wiki
@@ -40,7 +39,7 @@ from typing import Callable
 
 from lib import ren_paths
 from lib.instrument import collect
-from lib.memory.queue import Proposal, apply, approve, propose
+from lib.memory.queue import Proposal, propose_and_apply
 from lib.memory.scrub import SecretsFound
 
 from .classifier import gate
@@ -67,8 +66,12 @@ def wrap_session(
 
     Returns a dict:
       - "l1_qid": qid of the (already applied + quarantined) L1 entry
-      - "durable_qids": qids of items gated "durable" and successfully queued
-        (pending human approval — NOT auto-applied)
+      - "applied": [{"qid", "write_id", "page"}] for items gated "durable"
+        that auto-applied through the data-plane door
+      - "held": [{"qid", "page", "conflicts"}] for items gated "durable" that
+        `propose_and_apply` held pending instead of applying (instruction-
+        plane target, or a detected `contradicts` conflict — a human/the live
+        session needs to reason about these)
       - "gated_out": [{"item", "verdict", "reason"}] for non-durable items
       - "refused": [{"item", "reason"}] for durable items the queue itself
         refused (currently: a planted secret — `SecretsFound` propagates from
@@ -78,7 +81,7 @@ def wrap_session(
         deterministic path (due to an LLM error) for at least one durable
         candidate during this call
     """
-    l1_entry = propose(
+    l1_entry, _ = propose_and_apply(
         Proposal(
             op="ADD",
             page=f"l1/session-{session}.md",
@@ -89,12 +92,11 @@ def wrap_session(
             session=session,
         )
     )
-    approve(l1_entry.qid, approved_by="wrap-auto")
-    apply(l1_entry.qid)
 
     events_before = collect.read(kind=collect.KIND_CLASSIFIER_EVENT)
 
-    durable_qids: list[str] = []
+    applied: list[dict] = []
+    held: list[dict] = []
     gated_out: list[dict] = []
     refused: list[dict] = []
 
@@ -109,7 +111,7 @@ def wrap_session(
 
         page = f"lessons/{_slugify(item)}.md"
         try:
-            entry = propose(
+            entry, prov = propose_and_apply(
                 Proposal(
                     op="ADD",
                     page=page,
@@ -124,7 +126,10 @@ def wrap_session(
             refused.append({"item": item, "reason": str(exc)})
             continue
 
-        durable_qids.append(entry.qid)
+        if prov is not None:
+            applied.append({"qid": entry.qid, "write_id": prov.write_id, "page": page})
+        else:
+            held.append({"qid": entry.qid, "page": page, "conflicts": entry.conflicts})
 
     events_after = collect.read(kind=collect.KIND_CLASSIFIER_EVENT)
     new_events = events_after[len(events_before):]
@@ -132,7 +137,8 @@ def wrap_session(
 
     return {
         "l1_qid": l1_entry.qid,
-        "durable_qids": durable_qids,
+        "applied": applied,
+        "held": held,
         "gated_out": gated_out,
         "refused": refused,
         "fail_closed": fail_closed,

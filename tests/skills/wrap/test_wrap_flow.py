@@ -13,6 +13,7 @@ import json
 
 import pytest
 
+from lib import ren_paths
 from lib.memory import queue, quarantine
 from lib.memory.provenance import read_frontmatter_provenance
 from lib.memory.queue import Proposal
@@ -75,13 +76,26 @@ def test_l1_is_queued_applied_and_quarantined_as_llm_auto(wiki):
 
 def test_wrap_with_no_durable_items_has_empty_lists(wiki):
     result = wrap_session(narrative_md="Nothing much happened.\n", durable_items=[], session="sess-1")
-    assert result["durable_qids"] == []
+    assert result["applied"] == []  # v2.2: durable_qids -> applied/held
+    assert result["held"] == []
     assert result["gated_out"] == []
     assert result["refused"] == []
     assert result["fail_closed"] is False
 
 
 # --- durable routing ---------------------------------------------------------
+
+
+def test_wrap_durable_items_auto_apply(wiki):
+    result = wrap_session(
+        "# session\nnarrative",
+        ["always run the linter before commit"],
+        session="s-wrap-1",
+        llm_call=_llm_by_lookup({"always run the linter before commit": "durable"}),
+    )
+    assert len(result["applied"]) == 1 and result["held"] == []
+    page = result["applied"][0]["page"]
+    assert (ren_paths.wiki_root() / page).exists()
 
 
 def test_only_durable_verdict_items_are_queued_rest_are_gated_out(wiki):
@@ -97,14 +111,17 @@ def test_only_durable_verdict_items_are_queued_rest_are_gated_out(wiki):
         llm_call=llm_call,
     )
 
-    assert len(result["durable_qids"]) == 1
+    assert len(result["applied"]) == 1  # v2.2: durable_qids -> applied/held
+    assert result["held"] == []
     assert len(result["gated_out"]) == 1
     assert result["gated_out"][0]["item"] == chatter_item
     assert result["gated_out"][0]["verdict"] == "discard"
 
-    # Durable items are QUEUED, not auto-applied — pending human approval.
-    durable_entry = queue.get(result["durable_qids"][0])
-    assert durable_entry.status == "pending"
+    # Durable items now auto-apply through the data-plane door (v2.2 pivot):
+    # non-global pages resolve to the "auto" tier, so they land applied +
+    # quarantined, not pending for human approval.
+    durable_entry = queue.get(result["applied"][0]["qid"])
+    assert durable_entry.status == "applied"
     assert durable_entry.proposal.writer == "llm-auto"
     assert durable_entry.proposal.producer == "wrap"
 
@@ -124,7 +141,8 @@ def test_fail_closed_flag_is_true_when_llm_call_crashes_for_any_item(wiki):
 
     assert result["fail_closed"] is True
     # Fell back to deterministic -> never durable -> gated out, not queued.
-    assert result["durable_qids"] == []
+    assert result["applied"] == []  # v2.2: durable_qids -> applied/held
+    assert result["held"] == []
     assert len(result["gated_out"]) == 1
 
 
@@ -138,7 +156,8 @@ def test_fail_closed_flag_is_false_with_no_llm_call_at_all(wiki):
     # No LLM attempted at all -> not a "failure", just an absence. Still never
     # durable, but fail_closed specifically tracks LLM-path failures.
     assert result["fail_closed"] is False
-    assert result["durable_qids"] == []
+    assert result["applied"] == []  # v2.2: durable_qids -> applied/held
+    assert result["held"] == []
 
 
 # --- secret refusal -----------------------------------------------------------
@@ -161,8 +180,8 @@ def test_durable_item_with_planted_secret_is_refused_not_crashed(wiki):
     assert result["refused"][0]["item"] == secret_item
 
     # The clean item still made it through fine — one bad item doesn't crash the wrap.
-    assert len(result["durable_qids"]) == 1
-    entry = queue.get(result["durable_qids"][0])
+    assert len(result["applied"]) == 1  # v2.2: durable_qids -> applied/held
+    entry = queue.get(result["applied"][0]["qid"])
     assert entry.proposal.content == clean_item
 
 
@@ -191,16 +210,14 @@ def test_wrap_screen_all_sections_with_real_session_state(wiki):
         session=session,
         llm_call=llm_call,
     )
-    assert len(result["durable_qids"]) == 1
-
-    # Give the pending durable entry a supersedes conflict by pre-seeding the
-    # SAME target page with a stamped write, so lib.memory.semantics attaches
-    # a real "supersedes" conflict at propose() time.
-    durable_qid = result["durable_qids"][0]
-    durable_page = queue.get(durable_qid).proposal.page
+    # v2.2: durable items auto-apply through the data-plane door (non-global
+    # page, no contradiction), so they land in "applied", not held pending.
+    assert len(result["applied"]) == 1
+    assert result["held"] == []
+    durable_write_id = result["applied"][0]["write_id"]
 
     # A second, independent pending entry (a "pin"-shaped human proposal) —
-    # this is the second "needs your OK" item.
+    # this is the "needs your OK" item.
     pin_entry = queue.propose(
         Proposal(
             op="ADD",
@@ -241,7 +258,8 @@ def test_wrap_screen_all_sections_with_real_session_state(wiki):
 
     merged_result = {
         "l1_qid": result["l1_qid"],
-        "durable_qids": result["durable_qids"] + result2["durable_qids"],
+        "applied": result["applied"] + result2["applied"],
+        "held": result["held"] + result2["held"],
         "gated_out": [],
         "refused": result2["refused"],
         "fail_closed": False,
@@ -255,10 +273,10 @@ def test_wrap_screen_all_sections_with_real_session_state(wiki):
 
     assert "## Auto-saved (revertible)" in screen
     assert auto_prov.write_id in screen
+    assert durable_write_id in screen  # the auto-applied durable item too
     assert "revert with: /ren:revert" in screen
 
     assert "## Needs your OK" in screen
-    assert durable_qid in screen
     assert pin_entry.qid in screen
 
     assert "## Refused (not queued)" in screen
@@ -299,7 +317,9 @@ def test_wrap_screen_supersedes_conflict_flag_present(wiki):
 
     result = {
         "l1_qid": "q-does-not-exist",
-        "durable_qids": [conflicting_entry.qid],
+        "applied": [],
+        "held": [{"qid": conflicting_entry.qid, "page": conflicting_entry.proposal.page,
+                  "conflicts": conflicting_entry.conflicts}],
         "gated_out": [],
         "refused": [],
         "fail_closed": False,
@@ -312,7 +332,8 @@ def test_wrap_screen_supersedes_conflict_flag_present(wiki):
 def test_wrap_screen_empty_session_is_graceful_minimal(wiki):
     result = {
         "l1_qid": "q-does-not-exist",
-        "durable_qids": [],
+        "applied": [],
+        "held": [],
         "gated_out": [],
         "refused": [],
         "fail_closed": False,

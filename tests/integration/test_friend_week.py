@@ -36,7 +36,7 @@ from skills.doctor.lib import run_checks
 from skills.install.lib import install_state, record_install, stamp_wiki
 from skills.interview.lib import save_identity
 from skills.pin.lib import correct, pin
-from skills.queue.lib import approve_and_apply, revert_write
+from skills.queue.lib import revert_write
 from skills.recall.lib import fetch as recall_fetch
 from skills.remember.lib import remember
 from skills.retrospective.lib import analyze, gather, propose_all
@@ -195,7 +195,10 @@ def test_friend_week_end_to_end(sandbox, tmp_path):
         session=session2,
         llm_call=llm_call,
     )
-    assert len(wrap_result["durable_qids"]) == 1
+    # v2.2: durable_qids -> applied/held; the durable item auto-applies
+    # through the data-plane door (non-global page, no contradiction).
+    assert len(wrap_result["applied"]) == 1
+    assert wrap_result["held"] == []
     assert len(wrap_result["gated_out"]) == 1
 
     l1_entry = queue.get(wrap_result["l1_qid"])
@@ -207,12 +210,8 @@ def test_friend_week_end_to_end(sandbox, tmp_path):
     assert "## What I learned" in screen
     assert "## Auto-saved (revertible)" in screen
     assert "## Needs your OK" in screen
-    assert wrap_result["durable_qids"][0] in screen
-
-    durable_qid = wrap_result["durable_qids"][0]
-    confirmation = approve_and_apply(durable_qid, "hazar", session2)
-    assert "Applied" in confirmation
-    durable_write_id = confirmation.split("write_id=")[1].split(")")[0]
+    durable_write_id = wrap_result["applied"][0]["write_id"]
+    assert durable_write_id in screen
 
     # =========================================================================
     # DAY 3 — correction
