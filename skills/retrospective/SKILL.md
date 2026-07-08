@@ -33,7 +33,7 @@ contract:
   output_paths: []
 
 tags: [retrospective, self-improvement, skill-candidate, queue]
-related_skills: [queue, wrap]
+related_skills: [wrap]
 references_required: []
 references_on_demand: []
 ---
@@ -64,7 +64,7 @@ All three are pure, deterministic functions over `gather()`'s output — no LLM 
 2. Call `analyze(gathered)` — get the deterministic findings list.
 3. **Enrich each finding — in a worker subagent when possible** (`execution_tier: worker`): findings are self-contained, so spawn a cheap worker-model subagent (Sonnet/Haiku-class) to sharpen messages and refine proposed skill shapes, and take its output back. Fall back to enriching inline only when subagents aren't available; the lib layer stays mechanical either way.
 4. Call `propose_all(findings, session)` — queues one `ADD` proposal per finding, `producer="retrospective"`, `writer="retrospective"`. Per the v2.2 two-plane pivot: `lesson`/`instruction-tweak` are data-plane (descriptive) and auto-apply immediately; `skill-candidate` is an instruction-plane suggestion by intent, so it stays `pending` for a human to approve.
-5. Render the result to the friend: what auto-applied (already saved, one-step revertible), and which skill-candidate suggestions are waiting for their OK.
+5. Render the result to the friend: what auto-applied (already saved — say "undo \<write_id>" to revert), and which skill-candidate suggestions are waiting for their OK, answered in chat.
 
 ## Why `writer="retrospective"` is not quarantined
 
@@ -82,4 +82,4 @@ All three are pure, deterministic functions over `gather()`'s output — no LLM 
 - Task 2.1 (`lib/memory/queue.py`) — the single write-queue every finding proposes through
 - Task 2.4 (queue's auto-quarantine) — why `writer="retrospective"` bypasses it, see above
 - `skills/insights/scripts/collect.py` (donor, `~/Dev/startup-framework`) — the topic-extraction pieces (STOPWORDS, word regex, secret guard) adapted here
-- `skills/queue/` — the review/approve/reject/revert verbs a friend uses on what this skill proposes
+- `lib/memory/revert.py` — the one-step undo a friend uses on what this skill auto-applies, invoked conversationally ("undo \<write_id>"), not through a queue skill

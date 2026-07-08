@@ -95,12 +95,11 @@ instead of injecting context at wake-up:
 flowchart LR
     P["producers<br/>pin · wrap · ingest<br/>retrospective · routines"] --> Q["write queue<br/>propose"]
     Q --> T{"risk tier"}
-    T -- free / auto --> A["apply"]
-    T -- diff_approved --> R["you review<br/>/ren:queue → approve/reject"] --> A
-    T -- ask --> R
+    T -- data plane --> A["auto-apply"]
+    T -- instruction plane --> R["you're asked in chat<br/>at wake-up/wrap"] --> A
     A --> W["wiki page"]
     A -.-> J["journal + provenance<br/>+ per-write snapshot"]
-    J -.-> V["/ren:revert &lt;write_id&gt;<br/>one-step undo"]
+    J -.-> V["say 'undo &lt;write_id&gt;' in chat<br/>one-step revert"]
 ```
 
 Provenance on every write, an append-only journal, per-write snapshots, file leases
@@ -112,7 +111,7 @@ touches a wiki page.
 
 ## The skill surface
 
-Seventeen skills, each declaring an **execution tier** — deterministic scripts run as
+Sixteen skills, each declaring an **execution tier** — deterministic scripts run as
 scripts, worker-shaped drafting delegates to cheap subagent models, and judgment
 (approvals, session narrative) stays with the main model.
 
@@ -135,7 +134,7 @@ scripts, worker-shaped drafting delegates to cheap subagent models, and judgment
 ### Governance
 | Skill | What it's for |
 |---|---|
-| `/ren:queue` · `approve` · `reject` · `revert` | Review, approve, reject, and one-step-undo queued writes |
+| _(conversational)_ | Suggestions surface at wake-up and wrap; answer in chat — no queue verbs. Say "undo \<write_id>" to revert a write |
 | `/ren:routine-init` | Declare a bounded routine: schedule, exit criterion, failure handler, capability/path allowlist |
 | `/ren:metric-watch` | The minimal watch routine: budget growth, memory growth, gate failures → journal findings |
 
@@ -173,7 +172,7 @@ scripts, worker-shaped drafting delegates to cheap subagent models, and judgment
 ```
 ren-os/
 ├── .claude-plugin/     # plugin + marketplace manifests
-├── skills/             # the 17 /ren: skills (SKILL.md contract + lib/ core each)
+├── skills/             # the 16 /ren: skills (SKILL.md contract + lib/ core each)
 ├── lib/                # memory substrate, governance, instrumentation, adapters
 ├── doctrine/           # always-on + on-demand operating doctrine
 ├── wiki-skeleton/      # the templates /ren:install stamps (never dev content)

@@ -404,6 +404,34 @@ def test_resolve_and_apply_rejects_blank_resolution(wiki):
         queue.resolve_and_apply(entry.qid, "   ")
 
 
+# ------------------------------------------------- approve_and_apply (Task 8)
+
+
+def test_approve_and_apply_is_a_queue_function(wiki):
+    entry = queue.propose(_proposal(page="global/rule.md", producer="promotion"))
+
+    prov = queue.approve_and_apply(entry.qid, who="hazar")
+
+    assert prov.write_id
+    reloaded = queue.get(entry.qid)
+    assert reloaded.status == "applied"
+    assert reloaded.approved_by == "hazar"
+    assert reloaded.write_id == prov.write_id
+
+
+def test_approve_and_apply_unknown_qid_raises_key_error(wiki):
+    with pytest.raises(KeyError):
+        queue.approve_and_apply("q-does-not-exist", who="hazar")
+
+
+def test_approve_and_apply_twice_raises_queue_state_error(wiki):
+    entry = queue.propose(_proposal(page="global/twice.md", producer="promotion"))
+    queue.approve_and_apply(entry.qid, who="hazar")
+
+    with pytest.raises(QueueStateError):
+        queue.approve_and_apply(entry.qid, who="hazar")
+
+
 def test_corrupt_entry_file_does_not_take_down_pending(wiki, capsys):
     """Final-verification regression: one hand-corrupted queue JSON must not
     crash whole-queue listing — it's skipped with a warning; healthy entries

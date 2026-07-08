@@ -415,6 +415,18 @@ def propose_and_apply(p: Proposal) -> tuple[QueueEntry, Provenance | None]:
     return get(entry.qid), prov
 
 
+def approve_and_apply(qid: str, who: str) -> Provenance:
+    """Approve then apply `qid` in one step — the explicit human-approval
+    path for instruction-plane (`global/`) proposals, now that per-write
+    gating is gone for everything else (v2.2, Task 8: relocated from the
+    deleted `skills.queue.lib`, session param dropped since provenance
+    already carries the proposal's session). Raises `KeyError` for an
+    unknown qid, `QueueStateError` for an illegal transition (e.g. already
+    applied) — same as the two calls it wraps."""
+    approve(qid, approved_by=who)
+    return apply(qid)
+
+
 def reject(qid: str, why: str) -> None:
     """Reject a pending or approved entry, recording `why`."""
     entry = _load(qid)
@@ -437,5 +449,6 @@ __all__ = [
     "apply_auto",
     "resolve_and_apply",
     "propose_and_apply",
+    "approve_and_apply",
     "reject",
 ]

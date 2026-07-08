@@ -31,12 +31,12 @@ import pytest
 
 from lib.instrument import collect
 from lib.memory import journal, queue, quarantine
+from lib.memory.revert import revert
 from lib.ren_paths import state_dir, wiki_root
 from skills.doctor.lib import run_checks
 from skills.install.lib import install_state, record_install, stamp_wiki
 from skills.interview.lib import save_identity
 from skills.pin.lib import correct, pin
-from skills.queue.lib import revert_write
 from skills.recall.lib import fetch as recall_fetch
 from skills.remember.lib import remember
 from skills.retrospective.lib import analyze, gather, propose_all
@@ -279,8 +279,8 @@ def test_friend_week_end_to_end(sandbox, tmp_path):
     # =========================================================================
     session5 = "sess-day5"
 
-    revert_confirmation = revert_write(durable_write_id)
-    assert "Reverted" in revert_confirmation
+    revert_result = revert(durable_write_id)
+    assert revert_result.write_id == durable_write_id
 
     watch_findings = _metric_watch.watch(session5)
     backup_findings = [f for f in watch_findings if f.get("kind") == "backup-unconfigured"]

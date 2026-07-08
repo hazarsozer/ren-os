@@ -48,6 +48,7 @@ from typing import Final
 
 from lib import ren_paths
 from lib.instrument import collect, miss_log
+from lib.memory import queue
 
 logger = logging.getLogger(__name__)
 
@@ -193,6 +194,21 @@ def read_live_routines(wiki_root: Path) -> str:
         repo = fm.get("linked_repo", "?")
         rows.append(f"- **{name}** · {trigger} · {repo}")
     return "\n".join(rows)
+
+
+def suggestion_line() -> str:
+    """One line announcing pending queue entries (v2.2: suggestions are
+    conversational, not a queue verb — Task 8). Returns "" when nothing is
+    pending, so the payload gains nothing on the common case."""
+    try:
+        count = len(queue.pending())
+    except Exception:  # noqa: BLE001 - never let this abort the wake-up payload
+        logger.debug("queue.pending() failed", exc_info=True)
+        return ""
+    if not count:
+        return ""
+    plural = "" if count == 1 else "s"
+    return f"{count} suggestion{plural} waiting — I'll list them; answer in chat or ignore."
 
 
 def _git(cwd: Path, args: list[str]) -> str:
@@ -361,6 +377,10 @@ def compose_wake_up_context(
         sections.append("### Live automations (routine-specs)")
         sections.append(truncate_text_to_tokens(live_routines, ROUTINE_SPEC_BUDGET))
 
+    suggestion = suggestion_line()
+    if suggestion:
+        sections.append(suggestion)
+
     try:
         query = _build_rank_query(project, cwd)
         extras = rank_extras(query, wiki_root, exclude=set(surfaced_pages))
@@ -412,6 +432,7 @@ __all__ = [
     "read_l1",
     "read_l2_map",
     "read_live_routines",
+    "suggestion_line",
     "rank_extras",
     "compose_wake_up_context",
 ]

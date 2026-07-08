@@ -181,6 +181,29 @@ def test_missing_wiki_root_returns_empty_string(clean_path_env, tmp_path):
     assert payload == ""
 
 
+# ------------------------------------------------------- suggestion announcement
+
+
+def test_pending_suggestion_announced_at_wake_up(project):
+    from lib.memory.queue import Proposal, propose
+
+    propose(Proposal(
+        op="ADD", page="global/rule.md", content="r", reason="t",
+        producer="promotion", writer="human", session="s1",
+    ))
+
+    payload = wakeup.compose_wake_up_context(cwd=project["cwd"], wiki_root=wiki_root(), session="sess-1")
+
+    assert "1 suggestion" in payload
+    assert "answer in chat or ignore" in payload
+
+
+def test_no_suggestion_line_when_queue_is_empty(project):
+    payload = wakeup.compose_wake_up_context(cwd=project["cwd"], wiki_root=wiki_root(), session="sess-1")
+
+    assert "suggestion(s) waiting" not in payload
+
+
 # ---------------------------------------------------------------- rank_extras
 
 
