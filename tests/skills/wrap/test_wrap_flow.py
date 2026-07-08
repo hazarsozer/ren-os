@@ -379,6 +379,51 @@ def test_wrap_screen_supersedes_conflict_flag_present(wiki):
     assert "supersedes" in screen
 
 
+def test_wrap_screen_contradiction_hold_outranks_retrospective_suggestion(wiki):
+    # A pending entry produced by "retrospective" (normally a suggestion)
+    # that ALSO carries a `contradicts` conflict must render under "Held —
+    # contradictions to resolve", not "Suggestions" — otherwise the SKILL.md
+    # "yes" path would apply it without a contradiction_resolution record.
+    session = "sess-screen-hold-vs-suggestion"
+
+    (wiki_root() / "knowledge").mkdir(parents=True, exist_ok=True)
+    seed = queue.propose(
+        Proposal(
+            op="ADD", page="knowledge/pricing-a.md",
+            content="## Knowledge\nThe pricing model always uses monthly billing cycles.\n",
+            reason="seed", producer="wrap", writer="llm-auto", session="seed-session",
+        )
+    )
+    queue.approve(seed.qid, approved_by="hazar")
+    queue.apply(seed.qid)
+
+    retro_entry = queue.propose(
+        Proposal(
+            op="ADD", page="knowledge/pricing-b.md",
+            content="## Knowledge\nThe pricing model never uses monthly billing cycles.\n",
+            reason="skill-candidate promotion", producer="retrospective", writer="llm-auto",
+            session=session,
+        )
+    )
+    assert any(c.get("kind") == "contradicts" for c in retro_entry.conflicts)
+
+    result = {
+        "l1_qid": "q-does-not-exist",
+        "applied": [],
+        "held": [],
+        "gated_out": [],
+        "refused": [],
+        "fail_closed": False,
+    }
+
+    screen = render_wrap_screen(result, session)
+
+    held_idx = screen.index("## Held — contradictions to resolve")
+    assert retro_entry.qid in screen[held_idx:]
+    suggestions_idx = screen.index("## Suggestions")
+    assert retro_entry.qid not in screen[suggestions_idx:]
+
+
 def test_wrap_screen_empty_session_is_graceful_minimal(wiki):
     result = {
         "l1_qid": "q-does-not-exist",

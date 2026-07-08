@@ -240,20 +240,23 @@ def render_wrap_screen(wrap_result: dict, session: str) -> str:
     lines.append("")
 
     # --- Classify this session's still-pending entries into held/suggestions ---
-    # A pending entry is a *suggestion* iff it targets the instruction plane
-    # (global/) or was produced by the retrospective skill-candidate flow; a
-    # *hold* iff any conflict is a `contradicts`; otherwise (rare residue —
-    # e.g. a plain pin awaiting a human) it lists under suggestions too.
+    # A pending entry is a *hold* iff any conflict is a `contradicts` —
+    # checked FIRST, so a contradiction-held retrospective/global candidate
+    # never renders as a "yes"-able suggestion (that path skips recording a
+    # contradiction_resolution). Otherwise it's a *suggestion* iff it targets
+    # the instruction plane (global/) or was produced by the retrospective
+    # skill-candidate flow; any other residue (e.g. a plain pin awaiting a
+    # human) lists under suggestions too.
     pending_entries = [e for e in entries if e.get("status") == "pending"]
     held_entries: list[dict] = []
     suggestion_entries: list[dict] = []
     for entry in pending_entries:
         page = entry["proposal"]["page"]
         producer = entry["proposal"].get("producer")
-        if page.startswith("global/") or producer == "retrospective":
-            suggestion_entries.append(entry)
-        elif any(c.get("kind") == "contradicts" for c in (entry.get("conflicts") or [])):
+        if any(c.get("kind") == "contradicts" for c in (entry.get("conflicts") or [])):
             held_entries.append(entry)
+        elif page.startswith("global/") or producer == "retrospective":
+            suggestion_entries.append(entry)
         else:
             suggestion_entries.append(entry)
 
