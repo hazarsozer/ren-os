@@ -60,7 +60,7 @@ Calls `review()` — renders every pending entry: qid, op, page, producer, write
 
 ### `/ren:approve <qid>`
 
-Calls `approve_and_apply(qid, who, session)` — approves then applies in one step (no separate `/ren:approve` + `/ren:apply`; per spec, approval IS the trigger to write). Returns the resulting `write_id` and a one-line revert hint.
+Calls `approve_and_apply(qid, who, session)` — approves then applies in one step (no separate apply step after `/ren:approve`; per spec, approval IS the trigger to write). Returns the resulting `write_id` and a one-line revert hint.
 
 ### `/ren:reject <qid> <why>`
 

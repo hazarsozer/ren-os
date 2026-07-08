@@ -113,3 +113,52 @@ def test_at_least_expected_number_of_skill_libs_discovered():
     """Sanity guard: if module discovery silently found zero modules, every
     parametrized import test above passes vacuously and hides real rot."""
     assert len(_skill_lib_module_names()) >= 10
+
+
+# --- /ren:<verb> reference integrity (Gate 0 finding, 2026-07-08) ------------
+#
+# Every /ren:X the plugin can show a friend (runtime strings in skills/lib,
+# hook output, SKILL.md guidance, README) must resolve to something the
+# Claude Code loader actually registers: a skills/<X>/ directory or a
+# commands/<X>.md file. Gate 0 proved the failure mode live: the ingest
+# artifact told the friend to run /ren:approve and the loader answered
+# "Unknown command".
+
+_REN_REF_RE = re.compile(r"/ren:([a-z][a-z0-9-]*)")
+# Verbs documented as future work (doctrine/companions.md: "planned for 0.3").
+_PLANNED_VERBS = {"ingest-source"}
+
+
+def _referenced_ren_verbs() -> dict[str, set[str]]:
+    """verb -> set of files (relative) that mention it, across friend-facing sources."""
+    sources: list[Path] = [REPO_ROOT / "README.md"]
+    for rel in ("skills", "lib", "hooks"):
+        root = REPO_ROOT / rel
+        sources.extend(p for p in root.rglob("*") if p.is_file() and p.suffix in {".py", ".md"})
+    refs: dict[str, set[str]] = {}
+    for path in sources:
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        for verb in _REN_REF_RE.findall(text):
+            refs.setdefault(verb, set()).add(str(path.relative_to(REPO_ROOT)))
+    return refs
+
+
+def _registered_ren_verbs() -> set[str]:
+    verbs = {p.name for p in (REPO_ROOT / "skills").iterdir() if p.is_dir()}
+    commands_dir = REPO_ROOT / "commands"
+    if commands_dir.is_dir():
+        verbs |= {p.stem for p in commands_dir.glob("*.md")}
+    return verbs
+
+
+def test_every_referenced_ren_verb_is_registered():
+    registered = _registered_ren_verbs()
+    offenders = {
+        verb: sorted(files)
+        for verb, files in _referenced_ren_verbs().items()
+        if verb not in registered and verb not in _PLANNED_VERBS
+    }
+    assert not offenders, (
+        "friend-facing /ren: verbs that no skill or commands/*.md registers "
+        f"(the loader will say 'Unknown command'): {offenders}"
+    )
