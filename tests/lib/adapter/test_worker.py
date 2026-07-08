@@ -46,6 +46,16 @@ def test_strips_leading_prose_and_fence_together():
     assert parse_worker_json(raw) == {"verdict": "durable"}
 
 
+def test_strips_trailing_prose_after_object():
+    raw = '{"verdict": "durable", "reason": "because"}\nHope this helps!'
+    assert parse_worker_json(raw) == {"verdict": "durable", "reason": "because"}
+
+
+def test_strips_trailing_prose_after_array():
+    raw = '[1, 2, 3]\nLet me know if you need anything else.'
+    assert parse_worker_json(raw) == [1, 2, 3]
+
+
 def test_invalid_json_raises_worker_output_error_with_raw_preserved():
     raw = "not json at all, no braces here"
     with pytest.raises(WorkerOutputError) as exc_info:

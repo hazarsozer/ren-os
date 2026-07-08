@@ -86,6 +86,22 @@ def test_classify_llm_recovers_fenced_json(wiki):
     assert decision.verdict == "discard"
 
 
+def test_classify_llm_recovers_trailing_prose_and_still_returns_durable(wiki):
+    """Regression: a chatty sign-off after valid JSON must not degrade the
+    gate to the never-durable deterministic fallback."""
+    def llm_call(prompt: str) -> str:
+        return '{"verdict": "durable", "reason": "genuine lesson"}\nHope this helps!'
+    decision = classify_llm("some item", llm_call)
+    assert decision.verdict == "durable"
+
+
+def test_gate_recovers_trailing_prose_and_still_returns_durable(wiki):
+    def llm_call(prompt: str) -> str:
+        return '{"verdict": "durable", "reason": "genuine lesson"}\nHope this helps!'
+    decision = gate("some item", llm_call)
+    assert decision.verdict == "durable"
+
+
 # --- classify_deterministic: never raises, never durable -------------------
 
 
