@@ -54,7 +54,7 @@ def test_run_checks_returns_one_result_per_check(wiki):
     names = {r.name for r in results}
     assert names == {
         "env", "wiki_structure", "frontmatter", "schema_versions",
-        "budget_lint", "dangling_pointers", "graphify_status",
+        "budget_lint", "dangling_pointers", "graphify_status", "companions",
         "backup_configured", "execution_tiers", "global_drift", "harness_neutrality", "guard_health",
     }
 
@@ -208,6 +208,34 @@ def test_check_graphify_status_info_when_not_installed(tmp_path, monkeypatch):
     monkeypatch.setattr("shutil.which", lambda name: None)
     result = doctor.check_graphify_status(tmp_path)
     assert result.status == "info"
+
+
+# ------------------------------------------------------------- check_companions
+
+
+def test_check_companions_info_when_absent(monkeypatch):
+    monkeypatch.setattr("shutil.which", lambda name: None)
+    result = doctor.check_companions()
+    assert result.status == "info"
+    assert "markitdown" in result.message
+    assert "yt-dlp" in result.message
+    assert "absent (optional companion)" in result.message
+
+
+def test_check_companions_ok_when_present(monkeypatch):
+    monkeypatch.setattr("shutil.which", lambda name: f"/usr/bin/{name}")
+    result = doctor.check_companions()
+    assert result.status == "ok"
+    assert "/usr/bin/markitdown" in result.message
+    assert "/usr/bin/yt-dlp" in result.message
+
+
+def test_check_companions_never_fails_the_doctor_run(monkeypatch):
+    """Graceful-absence doctrine: absent companions are informational, never
+    a warn/error that would make the doctor run look unhealthy."""
+    monkeypatch.setattr("shutil.which", lambda name: None)
+    result = doctor.check_companions()
+    assert result.status not in ("warn", "error")
 
 
 # ----------------------------------------------------------- check_backup_configured

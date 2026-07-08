@@ -50,6 +50,7 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Final
 
 from lib import ren_paths
 from lib.instrument import collect
@@ -255,6 +256,28 @@ def check_graphify_status(repo_root: Path | None = None) -> CheckResult:
     return CheckResult("graphify_status", "ok", f"graphify {status.version}, graph fresh")
 
 
+_COMPANION_TOOLS: Final[tuple[str, ...]] = ("markitdown", "yt-dlp")
+
+
+def check_companions() -> CheckResult:
+    """Presence check for optional companion CLIs (`markitdown`, `yt-dlp`)
+    used by ingest-source-adjacent workflows. Graceful-absence doctrine — a
+    friend without either installed is not broken, so this is always `info`
+    (absent) or `ok` (present), NEVER `warn`/`error`; it must never fail the
+    doctor run."""
+    lines = []
+    all_present = True
+    for tool in _COMPANION_TOOLS:
+        found = shutil.which(tool)
+        if found:
+            lines.append(f"{tool}: ok: {found}")
+        else:
+            all_present = False
+            lines.append(f"{tool}: absent (optional companion)")
+    status = "ok" if all_present else "info"
+    return CheckResult("companions", status, "; ".join(lines))
+
+
 def check_backup_configured(wiki_root: Path | None = None) -> CheckResult:
     backup_lib = importlib.import_module("skills.backup.lib")
     if backup_lib.backup_configured(wiki_root):
@@ -362,6 +385,7 @@ _ALL_CHECK_NAMES: tuple[str, ...] = (
     "check_budget_lint",
     "check_dangling_pointers",
     "check_graphify_status",
+    "check_companions",
     "check_backup_configured",
     "check_execution_tiers",
     "check_global_drift",
@@ -396,6 +420,7 @@ __all__ = [
     "check_budget_lint",
     "check_dangling_pointers",
     "check_graphify_status",
+    "check_companions",
     "check_backup_configured",
     "check_execution_tiers",
     "check_global_drift",
