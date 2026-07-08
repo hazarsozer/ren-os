@@ -47,7 +47,7 @@ stopped. End it with `/ren:ingest-project` on any existing repo and you get the
 |---|---|
 | 🧠 **Memory that compounds** | User-owned markdown every session reads *and extends* — with update/correct/revert semantics, never append-only. One write queue is the single door every producer writes through. |
 | 🪙 **Tokens that aren't wasted** | Every injected byte budgeted, cached, or pointed-to. No LLM call at session start, by design. Real cache-token accounting and a calibrated estimator replace guesswork. |
-| 🛡️ **Autonomy you can trust** | Writes gated by **risk tier + provenance**, not faith. Reads are free; bounded routine writes auto-apply (with one-step revert); durable knowledge is diff-approved; destructive actions always ask. |
+| 🛡️ **Autonomy you can trust** | Writes governed by **risk tier + provenance**, not faith. Reads are free; memory auto-applies with journal + one-step revert; only promotions into standing instructions ask you (in chat); code/config diffs and destructive actions still gate. |
 
 **The success bar is measured, not vibes** — per spec §2: *"if 0.2 ships and the
 pillars are still estimates, 0.2 failed."* See [Measured numbers](#measured-numbers)
