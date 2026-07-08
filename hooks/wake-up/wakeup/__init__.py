@@ -199,16 +199,39 @@ def read_live_routines(wiki_root: Path) -> str:
 def suggestion_line() -> str:
     """One line announcing pending queue entries (v2.2: suggestions are
     conversational, not a queue verb — Task 8). Returns "" when nothing is
-    pending, so the payload gains nothing on the common case."""
+    pending, so the payload gains nothing on the common case.
+
+    Counts only suggestion-classified entries (a `global/` target, or
+    produced by `"retrospective"`, WITHOUT a `contradicts` conflict) toward
+    "N suggestion(s)" — a contradiction hold is not a suggestion (matches
+    `skills.wrap.lib.render_wrap_screen`'s classification order: contradicts
+    wins first). If any contradiction holds exist, appends a second count."""
     try:
-        count = len(queue.pending())
+        entries = queue.pending()
     except Exception:  # noqa: BLE001 - never let this abort the wake-up payload
         logger.debug("queue.pending() failed", exc_info=True)
         return ""
-    if not count:
+    if not entries:
         return ""
-    plural = "" if count == 1 else "s"
-    return f"{count} suggestion{plural} waiting — I'll list them; answer in chat or ignore."
+
+    held = 0
+    suggested = 0
+    for entry in entries:
+        if any(c.get("kind") == "contradicts" for c in (entry.conflicts or [])):
+            held += 1
+        else:
+            suggested += 1
+
+    parts = []
+    if suggested:
+        plural = "" if suggested == 1 else "s"
+        parts.append(f"{suggested} suggestion{plural}")
+    if held:
+        plural = "" if held == 1 else "s"
+        parts.append(f"{held} contradiction hold{plural}")
+    if not parts:
+        return ""
+    return f"{' and '.join(parts)} waiting — I'll list them; answer in chat or ignore."
 
 
 def _git(cwd: Path, args: list[str]) -> str:

@@ -204,6 +204,37 @@ def test_no_suggestion_line_when_queue_is_empty(project):
     assert "suggestion(s) waiting" not in payload
 
 
+def test_suggestion_line_counts_contradiction_holds_separately(project):
+    # A pending queue includes both a plain suggestion (global/ target, no
+    # conflict) and a contradiction-held entry (a `contradicts` conflict) —
+    # only the former should count toward "N suggestion(s)"; the hold gets
+    # its own count, not folded into "suggestions".
+    from lib.memory.queue import Proposal, propose
+
+    wroot = wiki_root()
+    (wroot / "knowledge").mkdir(parents=True, exist_ok=True)
+    (wroot / "knowledge" / "pricing-a.md").write_text(
+        "## Knowledge\nThe pricing model always uses monthly billing cycles.\n",
+        encoding="utf-8",
+    )
+
+    propose(Proposal(
+        op="ADD", page="global/rule.md", content="r", reason="t",
+        producer="promotion", writer="human", session="s1",
+    ))
+    held = propose(Proposal(
+        op="ADD", page="knowledge/pricing-b.md",
+        content="## Knowledge\nThe pricing model never uses monthly billing cycles.\n",
+        reason="t", producer="retrospective", writer="llm-auto", session="s1",
+    ))
+    assert any(c.get("kind") == "contradicts" for c in held.conflicts)
+
+    line = wakeup.suggestion_line()
+
+    assert "1 suggestion" in line
+    assert "1 contradiction hold" in line
+
+
 # ---------------------------------------------------------------- rank_extras
 
 
