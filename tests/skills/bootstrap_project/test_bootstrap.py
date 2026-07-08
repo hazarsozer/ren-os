@@ -3,8 +3,9 @@ Tests for skills.bootstrap-project.lib — the empty-map, fresh-project verb
 (Task 4.4).
 
 `bootstrap` stamps the shared skeleton (additive) then queues an empty L2
-map with writer="human" (never quarantined on apply, unlike ingest-project's
-scan-derived writer="llm-auto" maps).
+map with writer="human" (never quarantined, unlike ingest-project's
+scan-derived writer="llm-auto" maps). It auto-applies through the data-plane
+door (v2.2 pivot) — the returned entry lands `applied`, not `pending`.
 
 Every test redirects ren_paths' framework root to tmp_path via
 REN_FRAMEWORK_ROOT — never the real ~/.renos.
@@ -18,7 +19,7 @@ import importlib
 
 import pytest
 
-from lib.memory import journal, quarantine, queue
+from lib.memory import journal, quarantine
 from lib.ren_paths import wiki_root
 
 bootstrap_lib = importlib.import_module("skills.bootstrap-project.lib")
@@ -41,10 +42,13 @@ def wiki(clean_path_env, tmp_path):
     return root
 
 
-def test_bootstrap_creates_pending_add_with_empty_map(wiki):
+def test_bootstrap_auto_applies_add_with_empty_map(wiki):
+    # v2.2: bootstrap is a data-plane write (non-global page) — it now
+    # auto-applies through propose_and_apply instead of landing pending.
     entry = bootstrap("new-idea", session="sess-1")
 
-    assert entry.status == "pending"
+    assert entry.status == "applied"
+    assert entry.write_id is not None
     assert entry.proposal.op == "ADD"
     assert entry.proposal.page == "projects/new-idea/map.md"
     assert entry.proposal.producer == "promotion"
@@ -54,22 +58,23 @@ def test_bootstrap_creates_pending_add_with_empty_map(wiki):
     assert "## Log" in entry.proposal.content
     assert "type: l2-map" in entry.proposal.content
 
+    page_text = (wiki / "projects" / "new-idea" / "map.md").read_text(encoding="utf-8")
+    assert "## Knowledge" in page_text
 
-def test_bootstrap_on_existing_map_proposes_update(wiki):
+
+def test_bootstrap_on_existing_map_auto_applies_update(wiki):
     first = bootstrap("existing-idea", session="sess-1")
-    queue.approve(first.qid, approved_by="hazar")
-    queue.apply(first.qid)
+    assert first.status == "applied"  # v2.2: no separate approve()/apply() step
 
     second = bootstrap("existing-idea", session="sess-2")
     assert second.proposal.op == "UPDATE"
+    assert second.status == "applied"
 
 
 def test_bootstrap_applies_clean_human_provenance_not_quarantined(wiki):
     entry = bootstrap("clean-idea", session="sess-1")
-    queue.approve(entry.qid, approved_by="hazar")
-    prov = queue.apply(entry.qid)
 
-    assert prov.writer == "human"
+    assert entry.status == "applied"  # v2.2: no separate approve()/apply() step
 
     page_text = (wiki / "projects" / "clean-idea" / "map.md").read_text(encoding="utf-8")
     assert not quarantine.is_quarantined(page_text)

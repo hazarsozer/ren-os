@@ -16,7 +16,7 @@ framework_version: "0.2.1"
 
 contract:
   required_outputs:
-    - "Zero or more Proposals queued at retrospective/<date>-<kind>-<slug>.md, all pending"
+    - "Zero or more Proposals queued at retrospective/<date>-<kind>-<slug>.md — lesson/instruction-tweak findings applied, skill-candidate findings pending"
     - "A rendered list of what was proposed, shown to the friend at the end"
   budgets:
     turns: 3
@@ -29,7 +29,7 @@ contract:
     write: []
     execute: []
   completion_conditions:
-    - "Every finding from analyze() (as enriched by the live session) has a corresponding pending QueueEntry"
+    - "Every finding from analyze() (as enriched by the live session) has a corresponding QueueEntry — applied for lesson/instruction-tweak, pending for skill-candidate"
   output_paths: []
 
 tags: [retrospective, self-improvement, skill-candidate, queue]
@@ -63,16 +63,16 @@ All three are pure, deterministic functions over `gather()`'s output — no LLM 
 1. Call `skills.retrospective.lib.gather(since=...)`.
 2. Call `analyze(gathered)` — get the deterministic findings list.
 3. **Enrich each finding — in a worker subagent when possible** (`execution_tier: worker`): findings are self-contained, so spawn a cheap worker-model subagent (Sonnet/Haiku-class) to sharpen messages and refine proposed skill shapes, and take its output back. Fall back to enriching inline only when subagents aren't available; the lib layer stays mechanical either way.
-4. Call `propose_all(findings, session)` — queues one `ADD` proposal per finding, `producer="retrospective"`, `writer="retrospective"`.
-5. Render the pending list to the friend: what was proposed, and that it's sitting in the queue awaiting `/ren:approve`.
+4. Call `propose_all(findings, session)` — queues one `ADD` proposal per finding, `producer="retrospective"`, `writer="retrospective"`. Per the v2.2 two-plane pivot: `lesson`/`instruction-tweak` are data-plane (descriptive) and auto-apply immediately; `skill-candidate` is an instruction-plane suggestion by intent, so it stays `pending` for a human to approve.
+5. Render the result to the friend: what auto-applied (already saved, one-step revertible), and which skill-candidate suggestions are waiting for their OK.
 
 ## Why `writer="retrospective"` is not quarantined
 
-`lib.memory.queue.apply`'s auto-quarantine (Task 2.4) only fires for `writer="llm-auto"`. Retrospective findings are their OWN provenance class — a deterministic mining pass, judgment-enriched by a live session, is a different trust shape than raw unreviewed LLM output. The queue itself (every proposal lands `pending`, diff-approved) is already the human gate here; quarantine would be a redundant, mismatched second gate for content that was never "LLM-authored and unreviewed" in the same sense `llm-auto` content is.
+`lib.memory.queue.apply`/`apply_auto`'s auto-quarantine (Task 2.4) only fires for `writer="llm-auto"`. Retrospective findings are their OWN provenance class — a deterministic mining pass, judgment-enriched by a live session, is a different trust shape than raw unreviewed LLM output. Whether a finding auto-applies or waits `pending` is governed by the v2.2 two-plane intent split (data vs. instruction), not by quarantine — see the Behavior section above.
 
 ## What this skill does NOT do
 
-- Auto-apply anything. Every finding is a `Proposal`, always `pending`.
+- Auto-apply a skill-candidate finding. That's an instruction-plane suggestion by intent — it always stays `pending` for a human's OK, regardless of which page it targets.
 - Iterate against an eval score. That's explicitly out of scope per spec §3.7 — this is one pass, not a tuning loop.
 - Scan transcripts unboundedly. `gather()` caps at the last 10 transcripts for the current project (`MAX_SESSIONS_SCANNED`).
 

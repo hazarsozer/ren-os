@@ -16,8 +16,11 @@ scan yet. It does two things:
      fills it in).
 
 Always `producer="promotion"`, `writer="human"` (a human explicitly asked to
-start this project — nothing here is LLM-drafted), so `queue.apply` never
-quarantines it, unlike `ingest`'s scan-derived `writer="llm-auto"` maps.
+start this project — nothing here is LLM-drafted), so it's never quarantined,
+unlike `ingest`'s scan-derived `writer="llm-auto"` maps. Like every other
+data-plane producer (v2.2 pivot), this goes through
+`lib.memory.queue.propose_and_apply` — a non-global page write auto-applies,
+so `bootstrap` lands `applied` immediately, not pending for human approval.
 
 The directory name `bootstrap-project` isn't a valid Python identifier
 segment, so `assemble_l2` is reached via `importlib.import_module` (the same
@@ -33,7 +36,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from lib import ren_paths
-from lib.memory.queue import Proposal, QueueEntry, propose
+from lib.memory.queue import Proposal, QueueEntry, propose_and_apply
 from lib.skeleton import stamp_skeleton
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]  # lib -> bootstrap-project -> skills -> repo root
@@ -52,7 +55,9 @@ def bootstrap(project_slug: str, session: str) -> QueueEntry:
     `project_slug`.
 
     ADD if `projects/<project_slug>/map.md` doesn't exist yet, else UPDATE.
-    Always human-provenance — never quarantined on apply.
+    Always human-provenance — never quarantined. Auto-applies through the
+    data-plane door (v2.2); the returned entry's `write_id` is set once
+    applied.
     """
     stamp_skeleton(
         skeleton_root=_SKELETON_ROOT,
@@ -72,7 +77,7 @@ def bootstrap(project_slug: str, session: str) -> QueueEntry:
     page_abs = ren_paths.safe_join(ren_paths.wiki_root(), page)
     op = "UPDATE" if page_abs.exists() else "ADD"
 
-    return propose(
+    entry, _ = propose_and_apply(
         Proposal(
             op=op,
             page=page,
@@ -84,6 +89,7 @@ def bootstrap(project_slug: str, session: str) -> QueueEntry:
             salience=False,
         )
     )
+    return entry
 
 
 __all__ = ["bootstrap", "assemble_l2"]

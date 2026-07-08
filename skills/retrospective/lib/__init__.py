@@ -29,12 +29,17 @@ Three functions, each doing exactly one part of gather → analyze → propose:
          classifier `fail_closed` events recorded.
       3. "skill-candidate" (D-2) — a task phrase recurring across at least
          `SKILL_CANDIDATE_MIN_SESSIONS` distinct sessions.
-  - `propose_all` — queues each finding as `queue.propose(Proposal(op="ADD",
-    ..., producer="retrospective", writer="retrospective"))`. `writer=
-    "retrospective"` is NOT `"llm-auto"`, so `queue.apply`'s auto-quarantine
-    (Task 2.4) does not fire — this is correct: retrospective is its own
-    provenance class, and the queue itself (pending, diff-approved) is
-    already the human gate. Nothing here auto-applies.
+  - `propose_all` — queues each finding as a `Proposal(op="ADD", ...,
+    producer="retrospective", writer="retrospective")`. Per the v2.2
+    two-plane pivot, "lesson" and "instruction-tweak" findings are DATA-plane
+    (descriptive: a stable fact worth remembering) — they go through
+    `queue.propose_and_apply` and land `applied` immediately, one-step
+    revertible. "skill-candidate" (D-2) findings are INSTRUCTION-plane by
+    intent, not by page prefix: a skill-candidate is a suggestion that a
+    human approves at wrap time (Promotion suggestions), so it always keeps
+    the plain `queue.propose` door and stays `pending` regardless of which
+    page it targets. `writer="retrospective"` is NOT `"llm-auto"`, so
+    `queue.apply`'s auto-quarantine (Task 2.4) does not fire either way.
 """
 
 from __future__ import annotations
@@ -47,7 +52,7 @@ from pathlib import Path
 
 from lib.instrument import collect
 from lib.memory import journal
-from lib.memory.queue import Proposal, QueueEntry, propose
+from lib.memory.queue import Proposal, QueueEntry, propose, propose_and_apply
 
 CLAUDE_CONFIG_DIR_ENV = "CLAUDE_CONFIG_DIR"
 MAX_SESSIONS_SCANNED = 10
@@ -334,24 +339,31 @@ def _render_finding(finding: dict) -> str:
 def propose_all(findings: list[dict], session: str) -> list[QueueEntry]:
     """Queue each finding as an ADD proposal at
     `retrospective/<date>-<kind>-<slug>.md`, `producer="retrospective"`,
-    `writer="retrospective"`. Always lands `pending` — nothing here
-    auto-applies; the queue itself is the human gate."""
+    `writer="retrospective"`.
+
+    "lesson"/"instruction-tweak" findings are data-plane (descriptive) —
+    they go through `propose_and_apply` and land `applied` immediately. A
+    "skill-candidate" finding is an instruction-plane suggestion by intent
+    (a human approves it at wrap time, not by page prefix), so it always
+    stays on the plain `propose` door and lands `pending`."""
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     entries = []
     for finding in findings:
         page = f"retrospective/{today}-{finding['kind']}-{_slug_for(finding)}.md"
-        entry = propose(
-            Proposal(
-                op="ADD",
-                page=page,
-                content=_render_finding(finding),
-                reason=f"retrospective: {finding['kind']}",
-                producer="retrospective",
-                writer="retrospective",
-                session=session,
-                salience=False,
-            )
+        proposal = Proposal(
+            op="ADD",
+            page=page,
+            content=_render_finding(finding),
+            reason=f"retrospective: {finding['kind']}",
+            producer="retrospective",
+            writer="retrospective",
+            session=session,
+            salience=False,
         )
+        if finding["kind"] == "skill-candidate":
+            entry = propose(proposal)
+        else:
+            entry, _ = propose_and_apply(proposal)
         entries.append(entry)
     return entries
 

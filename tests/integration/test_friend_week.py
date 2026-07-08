@@ -131,12 +131,12 @@ def test_friend_week_end_to_end(sandbox, tmp_path):
         {"topic": "framework choice", "path": "projects/falcon/map.md",
          "anchor": "framework", "write_id": None},
     ]
+    # v2.2: ingest is a data-plane write — it auto-applies through
+    # propose_and_apply, no separate approve()/apply() step.
     ingest_result = _ingest_lib.ingest("falcon", knowledge, pointers, session0)
     assert _ingest_lib.FIRST_SESSION_LEAD in ingest_result["artifact"]
     assert "Falcon is a Python project using FastAPI." in ingest_result["artifact"]
-
-    queue.approve(ingest_result["qid"], approved_by="hazar")
-    queue.apply(ingest_result["qid"])
+    assert ingest_result["write_id"] is not None
 
     remembered = remember("falcon")
     assert "Here's what I remember about falcon:" in remembered
@@ -148,9 +148,9 @@ def test_friend_week_end_to_end(sandbox, tmp_path):
     # =========================================================================
     session1 = "sess-day1"
 
+    # v2.2: pin auto-applies through propose_and_apply.
     pin_entry = pin("Always use uv, never pip.", "projects/falcon/preferences.md", session1)
-    queue.approve(pin_entry.qid, approved_by="hazar")
-    queue.apply(pin_entry.qid)
+    assert pin_entry.status == "applied"
 
     l3_before = collect.read(kind=collect.KIND_L3_FETCH)
     recall_results = recall_fetch("FastAPI", session1, k=3)
@@ -219,15 +219,14 @@ def test_friend_week_end_to_end(sandbox, tmp_path):
     # =========================================================================
     session3 = "sess-day3"
 
+    # v2.2: pin/correct auto-apply through propose_and_apply.
     fact_page = "projects/falcon/facts.md"
     fact_entry = pin("The default port is 8080.", fact_page, session3)
-    queue.approve(fact_entry.qid, approved_by="hazar")
-    queue.apply(fact_entry.qid)
+    assert fact_entry.status == "applied"
 
     correction_entry = correct(fact_page, "The default port is 9090.", session3)
     assert correction_entry.proposal.op == "UPDATE"
-    queue.approve(correction_entry.qid, approved_by="hazar")
-    queue.apply(correction_entry.qid)
+    assert correction_entry.status == "applied"
 
     fact_journal = journal.entries(page=fact_page)
     supersede_entries = [e for e in fact_journal if e.get("op") == "UPDATE" and e.get("supersedes")]
@@ -245,24 +244,29 @@ def test_friend_week_end_to_end(sandbox, tmp_path):
     # =========================================================================
     session4 = "sess-day4"
 
+    # v2.2: pin/correct auto-apply through propose_and_apply.
     lesson_page = "projects/falcon/gotcha.md"
     seed_entry = pin("Watch out for timezone bugs.", lesson_page, session4)
-    queue.approve(seed_entry.qid, approved_by="hazar")
-    queue.apply(seed_entry.qid)
+    assert seed_entry.status == "applied"
 
     for i in range(2):  # 2 corrections on ONE page -> crosses LESSON_MIN_CORRECTIONS (2)
         corr = correct(lesson_page, f"Watch out for timezone bugs (correction {i}).", session4)
-        queue.approve(corr.qid, approved_by="hazar")
-        queue.apply(corr.qid)
+        assert corr.status == "applied"
 
     gathered = gather()
     findings = analyze(gathered)
     lesson_findings = [f for f in findings if f["kind"] == "lesson"]
     assert any(f.get("page") == lesson_page for f in lesson_findings)
 
+    # v2.2: lesson/instruction-tweak findings are data-plane (auto-apply);
+    # skill-candidate findings are instruction-plane by intent (stay pending).
     proposed_entries = propose_all(findings, session4)
     assert proposed_entries
-    assert all(e.status == "pending" for e in proposed_entries)
+    for entry, finding in zip(proposed_entries, findings):
+        if finding["kind"] == "skill-candidate":
+            assert entry.status == "pending"
+        else:
+            assert entry.status == "applied"
     assert all(e.proposal.writer == "retrospective" for e in proposed_entries)
     assert all(e.proposal.producer == "retrospective" for e in proposed_entries)
 

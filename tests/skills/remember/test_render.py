@@ -44,10 +44,9 @@ def wiki(clean_path_env, tmp_path):
 
 
 def _ingest_and_apply(project_slug, knowledge, pointers, session="sess-1"):
-    result = _ingest_lib.ingest(project_slug, knowledge, pointers, session)
-    queue.approve(result["qid"], approved_by="hazar")
-    prov = queue.apply(result["qid"])
-    return prov
+    # v2.2: ingest is a data-plane write — it auto-applies through
+    # propose_and_apply, no separate approve()/apply() step needed.
+    return _ingest_lib.ingest(project_slug, knowledge, pointers, session)
 
 
 # --- real fixture map: all sections + write_id stripped + quarantine warning ---

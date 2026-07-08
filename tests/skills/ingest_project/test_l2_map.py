@@ -5,8 +5,10 @@ ingest verb (Task 4.4).
 `assemble_l2` is pure (golden-string schema test). `scan_repo` is carried
 donor `scan.py` against a tiny synthetic fixture repo built in tmp_path.
 `ingest` queues the assembled map through lib.memory.queue with
-writer="llm-auto" (quarantined on apply, since scan-derived content is
-LLM-shaped) and returns the first-session artifact text.
+writer="llm-auto" (quarantined, since scan-derived content is LLM-shaped)
+and auto-applies it through the data-plane door (v2.2 pivot — a non-global
+page write, so it lands `applied` immediately, not pending), returning the
+first-session artifact text.
 
 Every test redirects ren_paths' framework root to tmp_path via
 REN_FRAMEWORK_ROOT — never the real ~/.renos.
@@ -144,19 +146,28 @@ def test_scan_repo_never_raises_on_non_project_path(tmp_path):
 # ------------------------------------------------------------------------ ingest
 
 
-def test_ingest_queues_llm_auto_map_with_artifact(wiki):
+def test_ingest_auto_applies_llm_auto_map_with_artifact(wiki):
+    # v2.2: ingest is a data-plane write (non-global page) — it now
+    # auto-applies through propose_and_apply and the return dict gains
+    # "write_id" instead of leaving the entry pending for human approval.
     knowledge = ["Python project using FastAPI", "12 commits since 2026-01-01"]
     pointers = [{"topic": "stack", "path": "decisions/stack.md", "anchor": "fastapi", "write_id": None}]
 
     result = ingest("fixture-widget", knowledge, pointers, session="sess-1")
 
     assert "qid" in result
+    assert "write_id" in result
+    assert result["write_id"] is not None
     assert "artifact" in result
     assert result["artifact"].startswith(FIRST_SESSION_LEAD)
     assert "Python project using FastAPI" in result["artifact"]
     assert "## Knowledge" in result["artifact"]
+    assert "saved" in result["artifact"]
+    assert result["write_id"] in result["artifact"]
+    assert "/ren:" not in result["artifact"]
 
     entry = queue.get(result["qid"])
+    assert entry.status == "applied"
     assert entry.proposal.op == "ADD"
     assert entry.proposal.producer == "promotion"
     assert entry.proposal.writer == "llm-auto"
@@ -165,10 +176,8 @@ def test_ingest_queues_llm_auto_map_with_artifact(wiki):
 
 def test_ingest_applies_quarantined(wiki):
     result = ingest("fixture-widget", ["some fact"], [], session="sess-1")
-    queue.approve(result["qid"], approved_by="hazar")
-    prov = queue.apply(result["qid"])
 
-    assert prov.writer == "llm-auto"
+    assert result["write_id"] is not None  # v2.2: no separate approve()/apply() step
 
     page_text = (wiki / "projects" / "fixture-widget" / "map.md").read_text(encoding="utf-8")
     assert quarantine.is_quarantined(page_text)
@@ -178,22 +187,25 @@ def test_ingest_applies_quarantined(wiki):
     assert entries[0]["writer"] == "llm-auto"
 
 
-def test_ingest_on_existing_map_proposes_update_with_supersedes_conflict(wiki):
+def test_ingest_on_existing_map_auto_applies_update_with_supersedes_conflict(wiki):
     first = ingest("re-ingest-me", ["first pass knowledge"], [], session="sess-1")
-    queue.approve(first["qid"], approved_by="hazar")
-    queue.apply(first["qid"])
+    assert first["write_id"] is not None  # v2.2: no separate approve()/apply() step
 
     second = ingest("re-ingest-me", ["second pass knowledge, more complete"], [], session="sess-2")
 
     entry = queue.get(second["qid"])
     assert entry.proposal.op == "UPDATE"
     assert any(c["kind"] == "supersedes" for c in entry.conflicts)
+    # supersedes doesn't hold auto-apply — it's the normal shape of an update.
+    assert entry.status == "applied"
+    assert second["write_id"] is not None
 
 
-def test_ingest_on_empty_repo_facts_still_queues_something(wiki):
+def test_ingest_on_empty_repo_facts_still_auto_applies(wiki):
     result = ingest("bare-project", [], [], session="sess-1")
     entry = queue.get(result["qid"])
-    assert entry.status == "pending"
+    assert entry.status == "applied"  # v2.2: durable_qids -> applied via propose_and_apply
+    assert result["write_id"] is not None
     assert "## Knowledge" in result["artifact"]
 
 

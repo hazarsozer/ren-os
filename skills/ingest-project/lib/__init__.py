@@ -15,16 +15,21 @@ repo becomes that artifact:
      (topic → wiki-path#anchor pointers).
   3. `assemble_l2` — pure, deterministic rendering of the frozen L2 schema
      from those drafted pieces. No LLM call happens inside this module.
-  4. `ingest` — queues the assembled map through `lib.memory.queue.propose`
-     (never a direct write) and returns the first-session artifact text —
-     exactly what `/ren:install`/`/ren:ingest-project` shows the friend at
-     the end (exit criterion 6's "wow moment").
+  4. `ingest` — queues the assembled map through
+     `lib.memory.queue.propose_and_apply` (never a direct write) and returns
+     the first-session artifact text — exactly what
+     `/ren:install`/`/ren:ingest-project` shows the friend at the end (exit
+     criterion 6's "wow moment").
 
 Scan-derived content is LLM-shaped (the live session synthesized it from raw
 facts), so `ingest` always proposes with `writer="llm-auto"` — per spec
 §3.10, that content is data-not-instruction until a human reviews it, and
-`lib.memory.queue.apply` quarantine-marks it automatically for exactly that
-reason. `bootstrap` (sibling skill, `skills/bootstrap-project/lib`) is the
+`lib.memory.queue.apply_auto`/`apply` quarantine-mark it automatically for
+exactly that reason. Per the v2.2 two-plane pivot, the map is a non-global
+(data-plane) page, so it auto-applies immediately through
+`propose_and_apply` — the first-session artifact tells the friend it's
+already saved and one-step revertible, not that it's waiting on a human's
+approval. `bootstrap` (sibling skill, `skills/bootstrap-project/lib`) is the
 opposite case: an EMPTY map created directly by/for the human, so it proposes
 with `writer="human"` and is never quarantined.
 """
@@ -35,7 +40,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from lib import ren_paths
-from lib.memory.queue import Proposal, QueueEntry, propose
+from lib.memory.queue import Proposal, QueueEntry, propose_and_apply
 
 from . import scan as _scan_module
 
@@ -99,14 +104,18 @@ def ingest(
 
     ADD if `projects/<project_slug>/map.md` doesn't exist yet, else UPDATE
     (which will surface a `supersedes` conflict against the prior map via
-    `lib.memory.semantics`, since the target already exists). Always
-    `producer="promotion"`, `writer="llm-auto"` — quarantined on apply until a
-    human reviews it, per spec §3.10.
+    `lib.memory.semantics`, since the target already exists — `supersedes`
+    doesn't hold the auto-apply, it's the normal shape of a changing map).
+    Always `producer="promotion"`, `writer="llm-auto"` — quarantined on
+    write until a human reviews it, per spec §3.10, but auto-applied
+    immediately through the data-plane door (non-global page, v2.2 pivot).
 
-    Returns `{"qid": <queue id>, "artifact": <first-session artifact text>}`.
-    The artifact text is EXACTLY `FIRST_SESSION_LEAD` + a blank line + the
-    assembled map body — this is what `/ren:install`/`/ren:ingest-project`
-    shows the friend (exit criterion 6).
+    Returns `{"qid": <queue id>, "write_id": <write id or None if held>,
+    "artifact": <first-session artifact text>}`. The artifact text is
+    `FIRST_SESSION_LEAD` + a blank line + the assembled map body + a closing
+    line telling the friend it's already saved and one-step revertible (or,
+    on the rare held case — a detected contradiction — that it's waiting for
+    review instead).
     """
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     content = assemble_l2(project_slug, knowledge, pointers, f"{today}: ingested from existing repository")
@@ -115,7 +124,7 @@ def ingest(
     page_abs = ren_paths.safe_join(ren_paths.wiki_root(), page)
     op = "UPDATE" if page_abs.exists() else "ADD"
 
-    entry = propose(
+    entry, _ = propose_and_apply(
         Proposal(
             op=op,
             page=page,
@@ -128,8 +137,13 @@ def ingest(
         )
     )
 
-    artifact = f"{FIRST_SESSION_LEAD}\n\n{content}"
-    return {"qid": entry.qid, "artifact": artifact}
+    write_id = entry.write_id
+    if write_id:
+        closing = f"This is saved (write {write_id}) — one step to revert, just say \"undo\" if it's wrong."
+    else:
+        closing = "This is held for review — a conflict was flagged that needs your input before it's saved."
+    artifact = f"{FIRST_SESSION_LEAD}\n\n{content}\n\n{closing}"
+    return {"qid": entry.qid, "write_id": write_id, "artifact": artifact}
 
 
 __all__ = ["FIRST_SESSION_LEAD", "scan_repo", "assemble_l2", "ingest"]

@@ -8,9 +8,11 @@ Public entries: `pin(text, page, session) -> QueueEntry`,
 Per spec §3.1 producer 3 (the pin/correction verb): reactive "remember it
 like THIS" / "that's wrong, drop it". Human provenance, the `salience` flag
 set (wake-up ranking boosts pinned/corrected pages per §3.2), and — like
-every other producer — this goes through `lib.memory.queue.propose`, never a
-direct wiki write. It is NOT a pipeline: one invocation, one `Proposal`,
-queued for approve/apply exactly like wrap/retrospective/routine output.
+every other data-plane producer — this goes through
+`lib.memory.queue.propose_and_apply`, never a direct wiki write. It is NOT a
+pipeline: one invocation, one `Proposal`, auto-applied through the data-plane
+door (v2.2 pivot: any non-global page write auto-applies, provenance +
+one-step revert are the accountability mechanism).
 
 This is donor `skills/note`'s shape SHRUNK for 0.2: no `--instinct`, no
 `instincts.md` hot tier, no `.session-notes/`, no template/scope machinery.
@@ -21,7 +23,7 @@ single write-queue (Task 2.1) is 0.2's one door to a wiki page.
 from __future__ import annotations
 
 from lib import ren_paths
-from lib.memory.queue import Proposal, QueueEntry, propose
+from lib.memory.queue import Proposal, QueueEntry, propose_and_apply
 
 
 def _page_exists(page: str) -> bool:
@@ -37,7 +39,7 @@ def pin(text: str, page: str, session: str) -> QueueEntry:
     Always human-provenance, always salient (boosts wake-up ranking).
     """
     op = "UPDATE" if _page_exists(page) else "ADD"
-    return propose(
+    entry, _ = propose_and_apply(
         Proposal(
             op=op,
             page=page,
@@ -49,6 +51,7 @@ def pin(text: str, page: str, session: str) -> QueueEntry:
             salience=True,
         )
     )
+    return entry
 
 
 def correct(page: str, replacement: str | None, session: str) -> QueueEntry:
@@ -58,7 +61,7 @@ def correct(page: str, replacement: str | None, session: str) -> QueueEntry:
     Always human-provenance, always salient.
     """
     if replacement is None:
-        return propose(
+        entry, _ = propose_and_apply(
             Proposal(
                 op="DELETE",
                 page=page,
@@ -70,7 +73,8 @@ def correct(page: str, replacement: str | None, session: str) -> QueueEntry:
                 salience=True,
             )
         )
-    return propose(
+        return entry
+    entry, _ = propose_and_apply(
         Proposal(
             op="UPDATE",
             page=page,
@@ -82,6 +86,7 @@ def correct(page: str, replacement: str | None, session: str) -> QueueEntry:
             salience=True,
         )
     )
+    return entry
 
 
 __all__ = ["pin", "correct"]

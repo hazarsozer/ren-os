@@ -173,7 +173,9 @@ def test_skill_candidate_no_transcripts_returns_empty_sessions(wiki, tmp_path):
 # ----------------------------------------------------------------- propose_all
 
 
-def test_propose_all_queues_pending_entries_with_retrospective_provenance(wiki):
+def test_propose_all_queues_data_plane_findings_applied_with_retrospective_provenance(wiki):
+    # v2.2: "lesson"/"instruction-tweak" are data-plane findings — they now
+    # auto-apply through propose_and_apply instead of landing pending.
     findings = [
         {"kind": "lesson", "page": "projects/x/notes.md", "count": 2, "message": "m"},
         {"kind": "instruction-tweak", "count": 3, "message": "m"},
@@ -182,14 +184,19 @@ def test_propose_all_queues_pending_entries_with_retrospective_provenance(wiki):
 
     assert len(entries) == 2
     for entry in entries:
-        assert entry.status == "pending"
+        assert entry.status == "applied"
+        assert entry.write_id is not None
         assert entry.proposal.producer == "retrospective"
         assert entry.proposal.writer == "retrospective"
         assert entry.proposal.page.startswith("retrospective/")
 
 
-def test_propose_all_nothing_auto_applies(wiki):
-    findings = [{"kind": "instruction-tweak", "count": 5, "message": "m"}]
+def test_propose_all_skill_candidate_stays_pending_instruction_plane(wiki):
+    # v2.2 nuance: skill-candidate is an instruction-plane suggestion by
+    # INTENT (a human approves at wrap time), not by page prefix — it must
+    # stay pending even though its page is retrospective/ (non-global).
+    findings = [{"kind": "skill-candidate", "task": "deploy-staging", "frequency": 3,
+                 "proposed_shape": "skill: deploy-staging", "proposed_scaffold": "# stub"}]
     entries = retro.propose_all(findings, session="sess-1")
 
     reloaded = queue.get(entries[0].qid)
@@ -198,15 +205,12 @@ def test_propose_all_nothing_auto_applies(wiki):
     assert not page_abs.exists()
 
 
-def test_proposed_lesson_approve_apply_lands_with_retrospective_provenance(wiki):
+def test_proposed_lesson_auto_applies_with_retrospective_provenance(wiki):
     findings = [{"kind": "lesson", "page": "projects/x/notes.md", "count": 2, "message": "capture the truth"}]
     entries = retro.propose_all(findings, session="sess-1")
     entry = entries[0]
 
-    queue.approve(entry.qid, approved_by="hazar")
-    prov = queue.apply(entry.qid)
-
-    assert prov.writer == "retrospective"
+    assert entry.status == "applied"  # v2.2: no separate approve()/apply() step
 
     page_abs = wiki / entry.proposal.page
     assert page_abs.exists()
