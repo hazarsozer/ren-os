@@ -102,17 +102,12 @@ def test_friend_week_end_to_end(sandbox, tmp_path):
     # Partial interview: 2 of 10 questions answered, the rest skipped.
     partial_answers = {"name": "Hazar", "handle": "hazar"}
     # v2.2: identity.md is a non-global (data-plane) page — save_identity
-    # now auto-applies through propose_and_apply, UNLESS the queue's real
-    # semantics detection flags a `contradicts` conflict against the fresh
-    # stub wiki content (it does here), in which case it's held pending for
-    # a human to reason about, same as any other data-plane write with a
-    # detected contradiction.
+    # auto-applies through propose_and_apply. (The stub wiki content used to
+    # trip a false `contradicts` conflict here — index.md.tmpl's "whenever"
+    # was misread as a negated "never" line; fixed in lib.memory.semantics
+    # via word-boundary negation matching, so this is now deterministic.)
     identity_entry = save_identity(partial_answers, session=session0)
-    if identity_entry.status == "pending":
-        queue.approve(identity_entry.qid, approved_by="hazar")
-        queue.apply(identity_entry.qid)
-    else:
-        assert identity_entry.status == "applied"
+    assert identity_entry.status == "applied"
 
     record_install("0.2.0")
 

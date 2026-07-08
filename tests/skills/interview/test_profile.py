@@ -148,3 +148,27 @@ def test_save_identity_update_path_when_identity_already_exists(wiki):
     second = save_identity({"name": "Hazar", "working_style": "structured"}, session="sess-2")
     assert second.proposal.op == "UPDATE"
     assert second.status == "applied"
+
+
+def test_save_identity_auto_applies_after_stamp_wiki_fresh_install(wiki):
+    # Regression for the false `contradicts` conflict found on every fresh
+    # install: identity.md.tmpl and index.md.tmpl share stock boilerplate
+    # ("...edit ... by hand") and index.md.tmpl's line contains "whenever",
+    # which used to be misread as a negated "never" line (fixed in
+    # lib.memory.semantics — word-boundary negation matching). With the fix,
+    # the real fresh-install path (stamp_wiki() then the interview's first
+    # save_identity()) must auto-apply deterministically, not land pending.
+    from skills.install.lib import stamp_wiki
+
+    stamp_wiki()
+    entry = save_identity({"name": "Hazar", "handle": "hazar"}, session="sess-1")
+    assert entry.status == "applied"
+
+    # Re-running the interview (changed answers) must also auto-apply: the
+    # only overlap with the existing identity.md is boilerplate, not a real
+    # contradiction.
+    second = save_identity(
+        {"name": "Hazar", "handle": "hazar", "working_style": "structured"},
+        session="sess-2",
+    )
+    assert second.status == "applied"

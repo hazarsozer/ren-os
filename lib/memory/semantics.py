@@ -45,6 +45,15 @@ _NEGATION_MARKERS: tuple[str, ...] = (
     "avoid ",
 )
 
+# Word-boundary version of each marker (`\b` before the leading word char) so
+# a marker can't match as a substring of a larger word — e.g. "never " must
+# NOT match inside "whenever ", and "not " must NOT match inside "cannot ".
+# The trailing space in each marker already guarantees a boundary on the
+# right; only the left edge needs the explicit `\b`.
+_NEGATION_MARKER_PATTERNS: tuple[re.Pattern[str], ...] = tuple(
+    re.compile(r"\b" + re.escape(marker)) for marker in _NEGATION_MARKERS
+)
+
 # Small, deliberate stopword list for the "significant token" overlap gate.
 # Not exhaustive NLP — just enough that short connector words don't count
 # toward the >=3 shared-token contradiction threshold.
@@ -89,12 +98,14 @@ def _normalized_lines(body: str) -> list[str]:
 
 
 def _strip_negation(line: str) -> str | None:
-    """If `line` contains a negation marker, return the line with the FIRST
-    matching marker removed. Returns None if no marker is present."""
-    for marker in _NEGATION_MARKERS:
-        idx = line.find(marker)
-        if idx != -1:
-            return line[:idx] + line[idx + len(marker):]
+    """If `line` contains a negation marker as a whole word (not merely a
+    substring of a larger word — see `_NEGATION_MARKER_PATTERNS`), return the
+    line with the FIRST matching marker removed. Returns None if no marker is
+    present."""
+    for pattern in _NEGATION_MARKER_PATTERNS:
+        match = pattern.search(line)
+        if match:
+            return line[:match.start()] + line[match.end():]
     return None
 
 

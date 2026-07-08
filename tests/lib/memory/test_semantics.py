@@ -139,6 +139,63 @@ def test_negation_with_fewer_than_three_shared_tokens_does_not_contradict(tmp_pa
     assert [c for c in conflicts if c.kind == "contradicts"] == []
 
 
+# --- 8b. negation marker must match a whole word, not a substring (bug fix) -
+
+
+def test_whenever_is_not_treated_as_never(tmp_path):
+    # Regression for the exact false-positive found on fresh installs:
+    # index.md.tmpl's "...whenever a session promotes... You can also edit it
+    # by hand." shares >=3 tokens (file/edit/hand) with identity.md.tmpl's
+    # "...or edit any field by hand." "whenever" contains "never " as a
+    # substring, but is not a negation of anything — this must not fire.
+    existing = (
+        "This file is filled in by /ren:interview during onboarding. "
+        "You can re-run the interview anytime, or edit any field by hand.\n"
+    )
+    _write(tmp_path, "projects/demo/notes.md", existing)
+
+    proposed = (
+        "This file is updated by the session-wrap flow whenever a session "
+        "promotes content to the wiki. You can also edit it by hand.\n"
+    )
+    conflicts = detect("ADD", "projects/demo/fresh.md", proposed, tmp_path)
+
+    assert [c for c in conflicts if c.kind == "contradicts"] == []
+
+
+def test_nonstop_is_not_treated_as_stop(tmp_path):
+    existing = "Always use spaces for indentation in Python files.\n"
+    _write(tmp_path, "projects/demo/style.md", existing)
+
+    proposed = "This nonstop use of spaces for indentation in Python files works.\n"
+    conflicts = detect("UPDATE", "projects/demo/style.md", proposed, tmp_path)
+
+    assert [c for c in conflicts if c.kind == "contradicts"] == []
+
+
+def test_cannot_is_not_treated_as_not(tmp_path):
+    existing = "Use tabs for indentation in Python files.\n"
+    _write(tmp_path, "projects/demo/style.md", existing)
+
+    proposed = "You cannot use tabs for indentation in Python files.\n"
+    conflicts = detect("UPDATE", "projects/demo/style.md", proposed, tmp_path)
+
+    assert [c for c in conflicts if c.kind == "contradicts"] == []
+
+
+def test_standalone_never_still_contradicts(tmp_path):
+    # The word-boundary fix must not weaken real "never" detection.
+    existing = "Always use spaces for indentation in Python files.\n"
+    _write(tmp_path, "projects/demo/style.md", existing)
+
+    proposed = "Never use spaces for indentation in Python files.\n"
+    conflicts = detect("UPDATE", "projects/demo/style.md", proposed, tmp_path)
+
+    con = [c for c in conflicts if c.kind == "contradicts"]
+    assert len(con) == 1
+    assert con[0].evidence == "always use spaces for indentation in python files."
+
+
 # --- 9. unstamped existing page → supersedes with write_id=None ------------
 
 

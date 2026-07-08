@@ -15,7 +15,6 @@ import json
 
 import pytest
 
-from lib.memory import queue
 from lib.ren_paths import state_dir, wiki_root
 from skills.install.lib import install_state, record_install, stamp_wiki
 from skills.interview.lib import save_identity
@@ -85,17 +84,12 @@ def test_full_flow_flips_expected_fields(wiki):
     stamp_wiki()
 
     # v2.2: identity.md is a non-global (data-plane) page — save_identity
-    # now auto-applies through propose_and_apply, UNLESS the queue's real
-    # semantics detection flags a `contradicts` conflict against the fresh
-    # stub wiki content (it does here), in which case it's held pending for
-    # a human/live-session to reason about, same as any other data-plane
-    # write with a detected contradiction.
+    # auto-applies through propose_and_apply. (The stub wiki content used to
+    # trip a false `contradicts` conflict here — index.md.tmpl's "whenever"
+    # was misread as a negated "never" line; fixed in lib.memory.semantics
+    # via word-boundary negation matching, so this is now deterministic.)
     entry = save_identity({"name": "Hazar", "handle": "hazar"}, session="sess-1")
-    if entry.status == "pending":
-        queue.approve(entry.qid, approved_by="hazar")
-        queue.apply(entry.qid)
-    else:
-        assert entry.status == "applied"
+    assert entry.status == "applied"
 
     record_install("0.2.0")
 
