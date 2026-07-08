@@ -192,15 +192,21 @@ def render_wrap_screen(wrap_result: dict, session: str) -> str:
 
     PURE PRESENTATION: reads queue state on disk via `_session_queue_entries`
     and the given `wrap_result` (the return value of `wrap_session`); writes
-    NOTHING. Three sections plus a refused note and a footer:
+    NOTHING. Per the v2.2 two-plane pivot's conversational gate (no
+    slash-command hints anywhere on this screen):
       - "What I learned" — the L1 entry's qid + one-line status.
-      - "Auto-saved (revertible)" — this session's entries with
-        `approved_by == "auto-tier"` (routine bounded writes that
-        auto-applied), each with its write_id and a revert hint.
-      - "Needs your OK" — this session's still-PENDING entries (durable
-        candidates, pins, anything awaiting a human), each with its target
-        page, reason, and any conflict flags (supersedes/contradicts/
-        duplicate) from `lib.memory.semantics`.
+      - "Saved this session (revertible)" — this session's entries with
+        `status == "applied"` and `approved_by in ("auto-tier",
+        "model-resolved")`, each with its write_id and a spoken revert hint
+        ("say ... to revert" — never a slash command).
+      - "Held — contradictions to resolve" — still-PENDING entries with a
+        detected `contradicts` conflict; the section is OMITTED entirely
+        when there are none (nothing to resolve, nothing to show).
+      - "Suggestions" — still-PENDING entries targeting an instruction-plane
+        `global/` page or produced by `"retrospective"` (skill-candidate
+        promotions), plus any pending residue that isn't a contradiction
+        hold; renders "- (none)" when empty. These are resolved by asking
+        the friend in chat (see SKILL.md), never by a slash command.
     """
     entries = _session_queue_entries(session)
     by_qid = {e["qid"]: e for e in entries}
@@ -218,30 +224,61 @@ def render_wrap_screen(wrap_result: dict, session: str) -> str:
         lines.append("- session summary: (not found)")
     lines.append("")
 
-    # --- Auto-saved (revertible) ---
-    lines.append("## Auto-saved (revertible)")
-    auto_entries = [e for e in entries if e.get("approved_by") == "auto-tier"]
-    if auto_entries:
-        for entry in auto_entries:
+    # --- Saved this session (revertible) ---
+    lines.append("## Saved this session (revertible)")
+    saved_entries = [
+        e for e in entries
+        if e.get("status") == "applied" and e.get("approved_by") in ("auto-tier", "model-resolved")
+    ]
+    if saved_entries:
+        for entry in saved_entries:
             write_id = entry.get("write_id")
             page = entry["proposal"]["page"]
-            lines.append(f"- {page} (write_id={write_id}) — revert with: /ren:revert {write_id}")
+            lines.append(f'- {page} (write_id={write_id}) — say "undo {write_id}" to revert')
     else:
         lines.append("- (none this session)")
     lines.append("")
 
-    # --- Needs your OK ---
-    lines.append("## Needs your OK")
+    # --- Classify this session's still-pending entries into held/suggestions ---
+    # A pending entry is a *suggestion* iff it targets the instruction plane
+    # (global/) or was produced by the retrospective skill-candidate flow; a
+    # *hold* iff any conflict is a `contradicts`; otherwise (rare residue —
+    # e.g. a plain pin awaiting a human) it lists under suggestions too.
     pending_entries = [e for e in entries if e.get("status") == "pending"]
-    if pending_entries:
-        for entry in pending_entries:
+    held_entries: list[dict] = []
+    suggestion_entries: list[dict] = []
+    for entry in pending_entries:
+        page = entry["proposal"]["page"]
+        producer = entry["proposal"].get("producer")
+        if page.startswith("global/") or producer == "retrospective":
+            suggestion_entries.append(entry)
+        elif any(c.get("kind") == "contradicts" for c in (entry.get("conflicts") or [])):
+            held_entries.append(entry)
+        else:
+            suggestion_entries.append(entry)
+
+    # --- Held — contradictions to resolve (omitted entirely when empty) ---
+    if held_entries:
+        lines.append("## Held — contradictions to resolve")
+        for entry in held_entries:
+            page = entry["proposal"]["page"]
+            reason = entry["proposal"].get("reason", "")
+            flags = _conflict_flags(entry.get("conflicts") or [])
+            flag_str = f" [{', '.join(flags)}]" if flags else ""
+            lines.append(f"- {entry['qid']} → {page} — {reason}{flag_str}")
+        lines.append("")
+
+    # --- Suggestions ---
+    lines.append("## Suggestions")
+    if suggestion_entries:
+        for entry in suggestion_entries:
             page = entry["proposal"]["page"]
             reason = entry["proposal"].get("reason", "")
             flags = _conflict_flags(entry.get("conflicts") or [])
             flag_str = f" [{', '.join(flags)}]" if flags else ""
             lines.append(f"- {entry['qid']} → {page} — {reason}{flag_str}")
     else:
-        lines.append("- (nothing pending)")
+        lines.append("- (none)")
     lines.append("")
 
     # --- Refused (never queued) ---
@@ -256,7 +293,7 @@ def render_wrap_screen(wrap_result: dict, session: str) -> str:
             lines.append(f"- refused: {item.get('reason', '')}")
         lines.append("")
 
-    lines.append("approve: /ren:approve <qid> · reject: /ren:reject <qid>")
+    lines.append("Answers to the suggestions above happen in chat — just tell me what to do.")
     return "\n".join(lines) + "\n"
 
 

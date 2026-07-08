@@ -217,7 +217,8 @@ def test_wrap_screen_all_sections_with_real_session_state(wiki):
     durable_write_id = result["applied"][0]["write_id"]
 
     # A second, independent pending entry (a "pin"-shaped human proposal) —
-    # this is the "needs your OK" item.
+    # v2.2: not a global/ or retrospective target and no contradiction, so
+    # it's the "rare residue" case and lists under Suggestions.
     pin_entry = queue.propose(
         Proposal(
             op="ADD",
@@ -271,18 +272,67 @@ def test_wrap_screen_all_sections_with_real_session_state(wiki):
     assert result["l1_qid"] in screen
     assert "applied (quarantined, unreviewed)" in screen
 
-    assert "## Auto-saved (revertible)" in screen
+    # v2.2: "Auto-saved" -> "Saved this session"; revert hint is spoken, not a slash command.
+    assert "## Saved this session (revertible)" in screen
     assert auto_prov.write_id in screen
     assert durable_write_id in screen  # the auto-applied durable item too
-    assert "revert with: /ren:revert" in screen
+    assert f'say "undo {auto_prov.write_id}" to revert' in screen
 
-    assert "## Needs your OK" in screen
+    # v2.2: "Needs your OK" is gone; the pin (no global/, no contradiction) is
+    # residue and lists under Suggestions instead.
+    assert "## Needs your OK" not in screen
+    assert "## Suggestions" in screen
     assert pin_entry.qid in screen
 
     assert "## Refused (not queued)" in screen
     assert "AKIAIOSFODNN7EXAMPLE" not in screen  # never the secret content itself
 
-    assert "approve: /ren:approve <qid> · reject: /ren:reject <qid>" in screen
+    # v2.2: no slash-command hints anywhere — answers are conversational.
+    assert "/ren:approve" not in screen
+    assert "/ren:reject" not in screen
+    assert "/ren:revert" not in screen
+    assert "happen in chat" in screen
+
+
+def test_wrap_screen_saved_and_suggestions_sections(wiki):
+    # v2.2: "Auto-saved" -> "Saved this session"; "Needs your OK" is gone;
+    # pending global/ (instruction-plane) entries surface as "Suggestions";
+    # the screen carries NO slash-command hints (answers are conversational).
+    session = "sess-screen-4"
+
+    durable_item = "We decided to standardize on Postgres for order-history joins."
+    llm_call = _llm_by_lookup({durable_item: "durable"})
+
+    result = wrap_session(
+        narrative_md="# Session summary\n",
+        durable_items=[durable_item],
+        session=session,
+        llm_call=llm_call,
+    )
+    assert len(result["applied"]) == 1
+    assert result["held"] == []
+
+    global_entry = queue.propose(
+        Proposal(
+            op="ADD",
+            page="global/naming-convention.md",
+            content="Prefer snake_case for Python module names.",
+            reason="candidate global convention",
+            producer="pin",
+            writer="human",
+            session=session,
+        )
+    )
+
+    screen = render_wrap_screen(result, session)
+
+    assert "Saved this session" in screen
+    assert "Suggestions" in screen
+    assert "Needs your OK" not in screen
+    assert "/ren:approve" not in screen
+
+    suggestions_idx = screen.index("## Suggestions")
+    assert global_entry.qid in screen[suggestions_idx:]
 
 
 def test_wrap_screen_supersedes_conflict_flag_present(wiki):
@@ -343,10 +393,14 @@ def test_wrap_screen_empty_session_is_graceful_minimal(wiki):
 
     assert "## What I learned" in screen
     assert "(not found)" in screen
-    assert "## Auto-saved (revertible)" in screen
+    # v2.2: "Auto-saved" -> "Saved this session"; "Needs your OK" is gone;
+    # Held is omitted entirely when empty, Suggestions renders "(none)".
+    assert "## Saved this session (revertible)" in screen
     assert "(none this session)" in screen
-    assert "## Needs your OK" in screen
-    assert "(nothing pending)" in screen
+    assert "## Needs your OK" not in screen
+    assert "## Held" not in screen
+    assert "## Suggestions" in screen
+    assert "- (none)" in screen
 
 
 def test_wrap_screen_writes_nothing(wiki):

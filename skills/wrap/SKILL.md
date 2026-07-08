@@ -18,10 +18,11 @@ execution_tier: judgment
 contract:
   required_outputs:
     - "One L1 narrative page queued, approved, and applied (writer=llm-auto), auto-quarantined by the queue"
-    - "Zero or more durable-candidate Proposals queued (pending human approval — never auto-applied)"
+    - "Zero or more durable-candidate Proposals queued through the data-plane door — auto-applied to 'Saved this session' unless held for a contradiction or surfaced as a 'Suggestion' (instruction-plane global/ target or a retrospective skill-candidate)"
     - "A gated_out list explaining why each non-durable candidate was turned away"
     - "A refused list for any durable candidate the queue itself rejected (e.g. a planted secret)"
     - "A fail_closed flag, accurate for this run, surfaced to the user when true"
+    - "An end screen with 'What I learned', 'Saved this session (revertible)', 'Held — contradictions to resolve' (omitted when empty), and 'Suggestions' sections — no slash-command hints anywhere; suggestions are resolved conversationally in chat"
   budgets:
     turns: 3
     files_written: 1
@@ -77,7 +78,9 @@ End-of-session consolidation. The friend runs `/ren:wrap`; this skill writes the
 
 ## End screen
 
-After `wrap_session()` returns, call `skills.wrap.lib.render_wrap_screen(wrap_result, session)` and print its output VERBATIM as the close-out — do not re-summarize or re-format it. The screen is pure presentation (spec §3.8's unified wrap surface): "what I learned" (the L1 summary's status), "auto-saved (revertible)" (this session's auto-tier applies, each with a one-step revert hint), "needs your OK" (this session's still-pending entries, with conflict flags when `lib.memory.semantics` flagged one), and a refused note when the classifier gate or the secrets scan turned something away — even though risk tiers fragment the underlying writes across auto-applied and pending state, the friend sees one legible screen.
+After `wrap_session()` returns, call `skills.wrap.lib.render_wrap_screen(wrap_result, session)` and print its output VERBATIM as the close-out — do not re-summarize or re-format it. The screen is pure presentation (spec §3.8's unified wrap surface): "What I learned" (the L1 summary's status), "Saved this session (revertible)" (this session's auto-applied entries — `auto-tier` or `model-resolved` — each with a spoken one-step revert hint, e.g. `say "undo <write_id>" to revert`), "Held — contradictions to resolve" (still-pending entries with a detected `contradicts` conflict, omitted entirely when there are none), and "Suggestions" (pending entries targeting an instruction-plane `global/` page or produced by the retrospective skill-candidate flow, rendering `- (none)` when empty), plus a refused note when the classifier gate or the secrets scan turned something away — even though risk tiers fragment the underlying writes across auto-applied and pending state, the friend sees one legible screen with **no slash-command hints anywhere**.
+
+**Then, ask about Suggestions in chat.** If the rendered screen's Suggestions section is non-empty, ask the friend about each one conversationally — e.g. "Suggest promoting X because \<reason + evidence> — yes/no?" Never auto-answer a suggestion. On "yes", call `queue.approve(qid, approved_by=<friend's handle>)` followed by `queue.apply(qid)`; on "no", call `queue.reject(qid, why=<their words>)`. Skipping is fine — a skipped suggestion just persists to the next session's screen.
 
 ## Design notes
 

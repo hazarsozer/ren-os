@@ -208,8 +208,9 @@ def test_friend_week_end_to_end(sandbox, tmp_path):
 
     screen = render_wrap_screen(wrap_result, session2)
     assert "## What I learned" in screen
-    assert "## Auto-saved (revertible)" in screen
-    assert "## Needs your OK" in screen
+    # v2.2: "Auto-saved" -> "Saved this session"; "Needs your OK" is gone.
+    assert "## Saved this session (revertible)" in screen
+    assert "## Suggestions" in screen
     durable_write_id = wrap_result["applied"][0]["write_id"]
     assert durable_write_id in screen
 
