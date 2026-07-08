@@ -229,6 +229,16 @@ def approve(qid: str, approved_by: str) -> None:
     _persist(entry)
 
 
+def _quarantined_content(proposal: Proposal) -> str | None:
+    """Read-time data-not-instruction (spec §10): llm-auto ADD/UPDATE content
+    is banner-marked at the one door every write passes through — on BOTH the
+    approved and the auto-applied paths. Promotion is the only exit."""
+    content = proposal.content
+    if proposal.writer == "llm-auto" and proposal.op in ("ADD", "UPDATE") and content is not None:
+        return quarantine.mark(content)
+    return content
+
+
 def apply(qid: str) -> Provenance:
     """Apply an approved entry through `write_apply.apply_write`.
 
@@ -254,15 +264,7 @@ def apply(qid: str) -> Provenance:
         supersedes=supersedes,
     )
 
-    content = proposal.content
-    if proposal.writer == "llm-auto" and proposal.op in ("ADD", "UPDATE") and content is not None:
-        # Spec §3.1/§3.10: LLM-auto content is data-not-instruction until a
-        # human reviews it. Quarantine-mark it here, at the one door every
-        # write passes through, rather than relying on every producer to
-        # remember to mark its own proposals.
-        content = quarantine.mark(content)
-
-    write_apply.apply_write(proposal.page, content, prov)
+    write_apply.apply_write(proposal.page, _quarantined_content(proposal), prov)
 
     entry.status = _APPLIED
     entry.write_id = prov.write_id
@@ -272,21 +274,23 @@ def apply(qid: str) -> Provenance:
 
 def apply_auto(qid: str) -> Provenance:
     """Apply a PENDING entry directly, bypassing the approve step — legal
-    ONLY when the risk-tier model (Task 6.1, `lib.governance.tiers`) resolves
-    the proposal to the "auto" tier (a routine's bounded, non-global-page
-    memory write). This is spec §3.6's "routine bounded writes auto-apply
-    with provenance tags + one-step revert" path: provenance (G2) and revert
-    (G4) already make an auto-applied write no less accountable than an
-    approved one, just skipping the human-approval step for the narrow case
-    the spec says is safe to skip it for.
+    whenever the risk-tier model (`lib.governance.tiers`) resolves the
+    proposal to the "auto" tier. Per spec §10's two-plane pivot, the DATA
+    plane (any non-global memory write) auto-applies for every writer class,
+    attended or not — provenance (G2) and one-step revert (G4) are the
+    accountability mechanism, not a human diff. llm-auto content still gets
+    the read-time quarantine banner here (via `_quarantined_content`), same
+    as on the `apply()` path — auto-apply skips the human gate, not the
+    quarantine.
 
     Raises `QueueStateError` if the entry isn't `pending`, or if the tier
-    model doesn't classify this proposal as "auto" (e.g. a human/llm-auto
-    writer, or a `global/` page — those always require the normal
-    `approve()`/`apply()` path). `lib.governance.tiers` is imported lazily
-    inside this function to avoid an import cycle (governance depends on
-    nothing in `lib.memory`, but keeping the import local here means queue.py
-    never has to import governance at module load time either).
+    model doesn't classify this proposal as "auto" (a `global/` page — the
+    INSTRUCTION plane — always requires the normal `approve()`/`apply()`
+    path; promotion through a human is the only door from remembered to
+    obeyed). `lib.governance.tiers` is imported lazily inside this function
+    to avoid an import cycle (governance depends on nothing in `lib.memory`,
+    but keeping the import local here means queue.py never has to import
+    governance at module load time either).
 
     On success: marks the entry `applied` with `approved_by="auto-tier"` and
     the resulting `write_id`, and the journal line for this write carries
@@ -318,7 +322,9 @@ def apply_auto(qid: str) -> Provenance:
         supersedes=supersedes,
     )
 
-    write_apply.apply_write(proposal.page, proposal.content, prov, journal_extra={"auto": True})
+    write_apply.apply_write(
+        proposal.page, _quarantined_content(proposal), prov, journal_extra={"auto": True}
+    )
 
     entry.status = _APPLIED
     entry.approved_by = "auto-tier"

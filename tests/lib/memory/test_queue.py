@@ -309,6 +309,16 @@ def test_human_add_is_not_quarantined(wiki):
     assert quarantine.is_quarantined(text) is False
 
 
+def test_apply_auto_quarantines_llm_auto_content(wiki):
+    entry = queue.propose(
+        _proposal(page="lessons/x.md", content="a fact", writer="llm-auto")
+    )
+    queue.apply_auto(entry.qid)
+
+    text = (wiki / "lessons/x.md").read_text(encoding="utf-8")
+    assert quarantine.is_quarantined(text) is True
+
+
 def test_quarantine_banner_does_not_break_frontmatter_stamping(wiki):
     entry = queue.propose(
         _proposal(
