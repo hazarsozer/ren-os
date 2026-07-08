@@ -144,7 +144,17 @@ def _referenced_ren_verbs() -> dict[str, set[str]]:
 
 
 def _registered_ren_verbs() -> set[str]:
-    verbs = {p.name for p in (REPO_ROOT / "skills").iterdir() if p.is_dir()}
+    """A verb is registered iff its skills/<verb>/ dir has a SKILL.md, or a
+    commands/<verb>.md exists. Requiring SKILL.md (not just dir-is-a-dir)
+    matters: a deleted skill can leave a stale `skills/<verb>/lib/__pycache__/`
+    behind (git rm doesn't remove bytecode caches), and a bare `.is_dir()`
+    check would count that leftover as still "registered" — exactly the gap
+    that let a queue-skill deletion pass this lint while `skills/queue/`
+    still existed on disk (Task 8 fix round)."""
+    verbs = {
+        p.name for p in (REPO_ROOT / "skills").iterdir()
+        if p.is_dir() and (p / "SKILL.md").is_file()
+    }
     commands_dir = REPO_ROOT / "commands"
     if commands_dir.is_dir():
         verbs |= {p.stem for p in commands_dir.glob("*.md")}
