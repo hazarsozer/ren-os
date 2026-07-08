@@ -48,4 +48,4 @@ Every RenOS skill declares `execution_tier` in its SKILL.md frontmatter (doctor 
 
 - **`deterministic`** — the skill's `lib/` scripts do the work; no LLM reasoning beyond invoking them. Run inline; never spawn an agent for these.
 - **`worker`** — the reasoning is self-contained (facts in → drafts out): delegate it to a cheap worker-model subagent (Sonnet/Haiku-class) and take the output back. Inline only when subagents aren't available.
-- **`judgment`** — main model only: queue approvals, durability calls, live dialog with the friend, and anything needing the conversation itself in context (wrap's L1 narrative is the canonical case — a subagent can't summarize a conversation it never saw).
+- **`judgment`** — main model only: promotion decisions, durability calls, live dialog with the friend, and anything needing the conversation itself in context (wrap's L1 narrative is the canonical case — a subagent can't summarize a conversation it never saw).

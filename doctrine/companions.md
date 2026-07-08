@@ -30,12 +30,12 @@ Both are optional, and both are browser-control tools — which means the govern
 
 ## markitdown — the raw→wiki source-compile path
 
-[markitdown](https://github.com/microsoft/markitdown) (Microsoft, MIT) converts raw source material — PDF, DOCX, PPTX, HTML, and more — into clean markdown, which is the compile step for bringing external sources into the wiki: convert with markitdown, then propose the distilled knowledge through the write-queue like any other content.
+[markitdown](https://github.com/microsoft/markitdown) (Microsoft, MIT) converts raw source material — PDF, DOCX, PPTX, HTML, and more — into clean markdown, which is the compile step for bringing external sources into the wiki: convert with markitdown, then save the distilled knowledge into the wiki like any other content.
 
 - Install: `uv tool install "markitdown[all]"`
-- In 0.2 this is a manual pattern (convert → distill → queue). A dedicated verb, `/ren:ingest-source <file-or-url>`, is planned for 0.3 to wrap the whole path.
-- **YouTube caveat:** markitdown's YouTube transcript path is unreliable (upstream churn in transcript fetching) — for videos, prefer `yt-dlp` auto-captions cleaned into markdown, then the same distill → queue path.
-- Governance is unchanged by the tool: markitdown output is raw converted DATA, not instruction — anything durable still goes through the queue with LLM-writer provenance, quarantined until reviewed.
+- In 0.2 this is a manual pattern (convert → distill → save). A dedicated verb, `/ren:ingest-source <file-or-url>`, is planned for 0.3 to wrap the whole path.
+- **YouTube caveat:** markitdown's YouTube transcript path is unreliable (upstream churn in transcript fetching) — for videos, prefer `yt-dlp` auto-captions cleaned into markdown, then the same distill → save path.
+- Governance is unchanged by the tool: markitdown output is raw converted DATA, not instruction — anything durable still auto-applies (revertible) with LLM-writer provenance, quarantined as data until promoted.
 
 ## Voice-input tools
 
@@ -43,4 +43,4 @@ User-side convenience tools (e.g. Whisper Flow-style dictation) for talking to C
 
 ## What's NOT on this page
 
-No health-check machinery for any of these in 0.2 — that's explicitly deferred to 0.3. No LLM media-extraction paths from Graphify are ever invoked by the code-map wrapper (code-mode/tree-sitter only). No wiki/Obsidian export feature of Graphify is used to write wiki pages — the wiki's SSOT stays queue-governed, always.
+No health-check machinery for any of these in 0.2 — that's explicitly deferred to 0.3. No LLM media-extraction paths from Graphify are ever invoked by the code-map wrapper (code-mode/tree-sitter only). No wiki/Obsidian export feature of Graphify is used to write wiki pages — the wiki's SSOT stays quarantine-governed (data until promoted), always.

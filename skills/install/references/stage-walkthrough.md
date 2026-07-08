@@ -9,7 +9,7 @@ After `skills.install.lib.record_install(framework_version)`, present:
 
 - **`/ren:pin "<text>"`** — remember something right now, mid-session.
 - **`/ren:recall <query>`** — look something up from the wiki.
-- **`/ren:wrap`** — end-of-session consolidation (an L1 narrative summary, plus any durable lessons the classifier gate approves for queuing).
+- **`/ren:wrap`** — end-of-session consolidation (an L1 narrative summary, plus any durable lessons the classifier gate saves to the wiki — revertible, and flagged for a promotion nudge if they look skill-worthy).
 - **`/ren:interview`** — re-run anytime to fill in more identity detail; every question is still skippable.
 
 If stage 5 (first project) produced a first-session artifact, reference it

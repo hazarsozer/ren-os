@@ -84,7 +84,7 @@ They bias toward caution over speed — for trivial tasks, use judgment.
 ### Surgical Changes
 - Touch only what the request requires; match existing style; mention unrelated dead code, don't delete it.
 - Remove only orphans YOUR change created.
-- Never hand-edit inside `ren:`-managed marker blocks, and never edit governed wiki pages directly — durable wiki changes go through the write-queue.
+- Never hand-edit inside `ren:`-managed marker blocks, and never edit governed wiki pages directly — durable wiki changes save automatically and revertibly through RenOS's memory write path.
 
 ### Goal-Driven Execution
 - Turn tasks into verifiable goals ("fix the bug" → "write a failing test, make it pass"); state a brief step → verify plan for multi-step work.
@@ -108,7 +108,7 @@ def _recall_section(wiki: Path) -> str:
 - When a topic touches known territory — a past decision, a project already in the wiki, a person, a preference — trigger `/ren:recall` yourself. Recall is agent-initiated; do not wait to be asked.
 - NEVER raw-Read wiki pages to answer memory questions. Recall goes through `/ren:recall` so misses are measured honestly; a raw Read is an unrecorded hit and poisons the metrics.
 - Durable facts learned mid-session: `/ren:pin` them. End-of-session consolidation: `/ren:wrap`.
-- All durable wiki writes go through the write-queue (propose → review → apply). Direct edits to governed pages are forbidden.
+- Durable wiki writes save themselves — revertible via provenance/journal/snapshot underneath. The only human gate is promotion into standing instructions or skills, asked in chat; contradictions are model-resolved with recorded reasoning. Direct edits to governed pages are forbidden.
 """
 
 
@@ -194,7 +194,7 @@ def render_project_block(project_slug: str, *, wiki_root: Path | None = None) ->
 
 - This project's knowledge map: `{map_path}` — recall its contents via `/ren:recall` (agent-initiated); never raw-Read wiki pages to answer memory questions.
 - Global RenOS doctrine (behavioral core, recall rules, wiki navigation) lives in the user-level CLAUDE.md — it is not repeated here.
-- Durable changes to the wiki go through the write-queue, never a direct file edit."""
+- Durable changes to the wiki save themselves (revertible), never a direct file edit."""
 
 
 def apply_block(path: Path, content: str) -> str:

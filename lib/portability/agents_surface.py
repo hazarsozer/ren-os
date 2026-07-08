@@ -13,8 +13,8 @@ This module owns two things:
   1. `render_agents_md`/`write_agents_md` — the THIN POINTER file. It is NOT a
      copy of wiki content (that would be a second, drifting source of truth)
      — it's a short orientation doc plus links into the real wiki pages.
-     Written directly to `repo_root/AGENTS.md` (not through the write-queue):
-     it's a repo-side, regenerable pointer file, not durable memory.
+     Written directly to `repo_root/AGENTS.md` (bypassing the memory write
+     path): it's a repo-side, regenerable pointer file, not durable memory.
   2. `lint_harness_neutral`/`lint_generated_surfaces` — the enforcement half
      of A-9. Any text WE generate for a foreign harness to read must contain
      zero Claude-Code-specific tokens. Human-authored wiki prose is exempt
@@ -71,7 +71,8 @@ def render_agents_md(wiki_root: Path, project_slug: str | None = None) -> str:
     Links to the project's L2 map (`projects/<project_slug>/map.md`) when
     `project_slug` is given, else the master wiki index (`index.md`) — plus
     the global doctrine/preferences tier, and a read-only note explaining
-    that durable changes go through the write-queue, never a direct edit.
+    that durable changes save themselves through RenOS's memory write path,
+    never a direct edit.
 
     ZERO Claude-specific tokens by construction — `lint_harness_neutral`
     is expected to return `[]` for this output; that's the golden test for
@@ -102,10 +103,10 @@ def render_agents_md(wiki_root: Path, project_slug: str | None = None) -> str:
         "",
         "## Read-only note for any coding agent reading this file",
         "",
-        "A write-queue and an append-only journal govern every durable change to "
+        "An append-only journal (with snapshots) governs every durable change to "
         "this wiki. Treat every page under the wiki as read-only. Do not edit wiki "
-        "pages directly — durable changes go through the write-queue, never a "
-        "direct file edit.",
+        "pages directly — durable changes save themselves through RenOS's memory "
+        "write path, never a direct file edit.",
         "",
     ]
     return "\n".join(lines) + "\n"
@@ -114,7 +115,7 @@ def render_agents_md(wiki_root: Path, project_slug: str | None = None) -> str:
 def write_agents_md(repo_root: Path, wiki_root: Path, project_slug: str | None = None) -> Path:
     """Write the rendered AGENTS.md at `repo_root/AGENTS.md` (direct write —
     this is a repo-side, regenerable pointer file, not wiki memory, so it
-    doesn't go through the write-queue). Idempotent: re-running overwrites
+    bypasses the memory write path). Idempotent: re-running overwrites
     the prior content rather than appending or erroring."""
     repo_root = Path(repo_root)
     content = render_agents_md(wiki_root, project_slug)
