@@ -372,6 +372,38 @@ def test_propose_and_apply_contradiction_holds_for_reasoning(wiki, monkeypatch):
     assert prov is None and entry.status == "pending"
 
 
+# -------------------------------------------------- resolve_and_apply (Task 4)
+
+
+def test_resolve_and_apply_records_resolution(wiki):
+    entry = queue.propose(
+        _proposal(page="lessons/z.md", content="new claim", writer="llm-auto")
+    )
+    entry.conflicts.append({"kind": "contradicts", "page": "lessons/z.md", "evidence": "old"})
+    queue._persist(entry)
+
+    prov = queue.resolve_and_apply(
+        entry.qid, "old claim was pre-refactor; new claim verified against src/"
+    )
+
+    lines = [l for l in journal.entries(page="lessons/z.md") if l.get("write_id") == prov.write_id]
+    assert len(lines) == 1
+    assert lines[0]["contradiction_resolution"].startswith("old claim was")
+    assert lines[0]["auto"] is True
+
+    reloaded = queue.get(entry.qid)
+    assert reloaded.status == "applied"
+    assert reloaded.approved_by == "model-resolved"
+    assert reloaded.write_id == prov.write_id
+
+
+def test_resolve_and_apply_rejects_blank_resolution(wiki):
+    entry = queue.propose(_proposal(page="lessons/w.md", content="c"))
+
+    with pytest.raises(ValueError):
+        queue.resolve_and_apply(entry.qid, "   ")
+
+
 def test_corrupt_entry_file_does_not_take_down_pending(wiki, capsys):
     """Final-verification regression: one hand-corrupted queue JSON must not
     crash whole-queue listing — it's skipped with a warning; healthy entries

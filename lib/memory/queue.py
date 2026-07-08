@@ -333,6 +333,64 @@ def apply_auto(qid: str) -> Provenance:
     return prov
 
 
+def resolve_and_apply(qid: str, resolution: str) -> Provenance:
+    """Apply a PENDING entry that was held on a `contradicts` conflict, after
+    the live session has reasoned about the contradiction.
+
+    `resolution` must say WHY the new content stands despite the prior
+    conflicting claim — a blank resolution raises `ValueError` before
+    anything is touched. The reasoning is recorded on the journal line via
+    `journal_extra={"auto": True, "contradiction_resolution": resolution}`,
+    alongside the entry itself (`approved_by="model-resolved"`) — so the
+    "why" survives next to the write, not just in the session transcript.
+
+    Otherwise mirrors `apply_auto`: raises `QueueStateError` if the entry
+    isn't `pending`, and refuses instruction-plane targets (a `global/`
+    page) exactly like `apply_auto` does via `queue_auto_apply_allowed` —
+    resolving a contradiction is still a data-plane operation, not a
+    backdoor into the human-gated instruction plane.
+    """
+    from lib.governance.tiers import queue_auto_apply_allowed
+
+    if not resolution.strip():
+        raise ValueError("a contradiction resolution must say WHY")
+
+    entry = _load(qid)
+    if entry.status != _PENDING:
+        raise QueueStateError(f"cannot resolve_and_apply {qid}: status is {entry.status!r}, not 'pending'")
+    if not queue_auto_apply_allowed(entry.proposal):
+        raise QueueStateError(
+            f"cannot resolve_and_apply {qid}: proposal (writer={entry.proposal.writer!r}, "
+            f"page={entry.proposal.page!r}) does not resolve to the 'auto' tier"
+        )
+
+    supersedes = next(
+        (c.get("write_id") for c in entry.conflicts if c.get("kind") == "supersedes"),
+        None,
+    )
+    proposal = entry.proposal
+    prov = new_provenance(
+        writer=proposal.writer,
+        session=proposal.session,
+        op=proposal.op,
+        page=proposal.page,
+        supersedes=supersedes,
+    )
+
+    write_apply.apply_write(
+        proposal.page,
+        _quarantined_content(proposal),
+        prov,
+        journal_extra={"auto": True, "contradiction_resolution": resolution.strip()},
+    )
+
+    entry.status = _APPLIED
+    entry.approved_by = "model-resolved"
+    entry.write_id = prov.write_id
+    _persist(entry)
+    return prov
+
+
 def propose_and_apply(p: Proposal) -> tuple[QueueEntry, Provenance | None]:
     """v2.2 data-plane door: propose, then auto-apply when policy allows.
 
@@ -377,6 +435,7 @@ __all__ = [
     "approve",
     "apply",
     "apply_auto",
+    "resolve_and_apply",
     "propose_and_apply",
     "reject",
 ]
