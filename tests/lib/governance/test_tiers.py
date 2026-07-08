@@ -49,17 +49,17 @@ def test_read_is_always_free():
 @pytest.mark.parametrize(
     "kind,writer,page,unattended,expected",
     [
-        # memory_write: routine + non-global -> auto
+        # memory_write: any writer + non-global -> auto (v2.2 data plane)
         ("memory_write", "routine", "projects/x/map.md", False, "auto"),
         ("memory_write", "routine", "projects/x/map.md", True, "auto"),
         # memory_write: routine + global -> ALWAYS diff_approved (strictest gate wins)
         ("memory_write", "routine", "global/policy.md", False, "diff_approved"),
         ("memory_write", "routine", "global", False, "diff_approved"),
-        # memory_write: any other writer + non-global -> diff_approved
-        ("memory_write", "human", "projects/x/map.md", False, "diff_approved"),
-        ("memory_write", "llm-auto", "projects/x/map.md", False, "diff_approved"),
-        ("memory_write", "retrospective", "projects/x/map.md", False, "diff_approved"),
-        # memory_write: human + global -> diff_approved (both reasons agree)
+        # v2.2: any other writer + non-global -> auto (data plane auto-applies)
+        ("memory_write", "human", "projects/x/map.md", False, "auto"),
+        ("memory_write", "llm-auto", "projects/x/map.md", False, "auto"),
+        ("memory_write", "retrospective", "projects/x/map.md", False, "auto"),
+        # memory_write: human + global -> diff_approved (instruction plane keeps the gate)
         ("memory_write", "human", "global/policy.md", False, "diff_approved"),
         # code_write / config_write -> always diff_approved, regardless of writer
         ("code_write", "human", None, False, "diff_approved"),
@@ -72,7 +72,7 @@ def test_read_is_always_free():
 )
 def test_tier_table(kind, writer, page, unattended, expected):
     action = Action(kind=kind, writer=writer, page=page, unattended=unattended)
-    assert tier_of(action) == expected
+    assert tier_of(action) == expected  # v2.2: memory-write non-global pins updated
 
 
 def test_destructive_unattended_raises_unattended_blocked():
@@ -89,13 +89,49 @@ def test_destructive_unattended_raises_regardless_of_writer():
 def test_unattended_does_not_downgrade_auto_or_diff_approved():
     # An unattended routine memory write that's already "auto" stays "auto".
     assert tier_of(Action(kind="memory_write", writer="routine", page="p.md", unattended=True)) == "auto"
-    # An unattended human memory write stays "diff_approved" (never silently auto-applies).
-    assert tier_of(Action(kind="memory_write", writer="human", page="p.md", unattended=True)) == "diff_approved"
+    # v2.2: an unattended human memory write to a non-global page is now "auto"
+    # too (the data plane auto-applies for every writer, attended or not).
+    assert tier_of(Action(kind="memory_write", writer="human", page="p.md", unattended=True)) == "auto"
+    # An unattended write to a global/ page stays "diff_approved" — the
+    # instruction plane's human gate never downgrades, unattended or not.
+    assert (
+        tier_of(Action(kind="memory_write", writer="human", page="global/policy.md", unattended=True))
+        == "diff_approved"
+    )
 
 
 def test_unknown_action_kind_raises_value_error():
     with pytest.raises(ValueError):
         tier_of(Action(kind="not-a-real-kind", writer="human"))
+
+
+def test_llm_auto_memory_write_is_auto_tier():
+    """v2.2 data plane: descriptive memory auto-applies regardless of writer."""
+    a = Action(kind="memory_write", writer="llm-auto", page="projects/demo/map.md")
+    assert tier_of(a) == "auto"
+
+
+def test_human_memory_write_is_auto_tier():
+    a = Action(kind="memory_write", writer="human", page="lessons/use-uv.md")
+    assert tier_of(a) == "auto"
+
+
+def test_unattended_data_plane_write_is_auto_tier():
+    """v2.2: unattended writers get data-plane autonomy (the brain compounds overnight)."""
+    a = Action(kind="memory_write", writer="retrospective", page="l1/session-x.md", unattended=True)
+    assert tier_of(a) == "auto"
+
+
+def test_global_page_still_diff_approved_for_every_writer():
+    """The instruction plane keeps the human gate — including unattended."""
+    for writer in ("human", "llm-auto", "retrospective", "routine"):
+        a = Action(kind="memory_write", writer=writer, page="global/style.md")
+        assert tier_of(a) == "diff_approved"
+
+
+def test_destructive_unattended_still_blocked():
+    with pytest.raises(UnattendedBlocked):
+        tier_of(Action(kind="destructive", writer="human", unattended=True))
 
 
 # ------------------------------------------------------- queue_auto_apply_allowed
@@ -114,9 +150,10 @@ def test_queue_auto_apply_allowed_true_for_routine_non_global():
     assert queue_auto_apply_allowed(_proposal(writer="routine", page="projects/x/notes.md")) is True
 
 
-def test_queue_auto_apply_allowed_false_for_non_routine_writer():
-    assert queue_auto_apply_allowed(_proposal(writer="human", page="projects/x/notes.md")) is False
-    assert queue_auto_apply_allowed(_proposal(writer="llm-auto", page="projects/x/notes.md")) is False
+def test_queue_auto_apply_allowed_true_for_any_writer_non_global():
+    # v2.2: the data plane auto-applies for every writer class, not just routine.
+    assert queue_auto_apply_allowed(_proposal(writer="human", page="projects/x/notes.md")) is True
+    assert queue_auto_apply_allowed(_proposal(writer="llm-auto", page="projects/x/notes.md")) is True
 
 
 def test_queue_auto_apply_allowed_false_for_global_page_even_if_routine():
@@ -146,18 +183,26 @@ def test_apply_auto_happy_path(wiki):
     assert entries[0]["writer"] == "routine"
 
 
-def test_apply_auto_rejects_human_writer_proposal(wiki):
+def test_apply_auto_allows_human_writer_proposal_non_global(wiki):
+    # v2.2: a human-written non-global memory proposal now resolves to "auto" too.
     entry = queue.propose(_proposal(writer="human", producer="pin", page="projects/x/human.md"))
 
-    with pytest.raises(QueueStateError):
-        queue.apply_auto(entry.qid)
+    prov = queue.apply_auto(entry.qid)
+
+    reloaded = queue.get(entry.qid)
+    assert reloaded.status == "applied"
+    assert reloaded.write_id == prov.write_id
 
 
-def test_apply_auto_rejects_llm_auto_writer_proposal(wiki):
+def test_apply_auto_allows_llm_auto_writer_proposal_non_global(wiki):
+    # v2.2: an llm-auto-written non-global memory proposal now resolves to "auto" too.
     entry = queue.propose(_proposal(writer="llm-auto", producer="promotion", page="projects/x/llm.md"))
 
-    with pytest.raises(QueueStateError):
-        queue.apply_auto(entry.qid)
+    prov = queue.apply_auto(entry.qid)
+
+    reloaded = queue.get(entry.qid)
+    assert reloaded.status == "applied"
+    assert reloaded.write_id == prov.write_id
 
 
 def test_apply_auto_rejects_global_page_even_for_routine(wiki):
