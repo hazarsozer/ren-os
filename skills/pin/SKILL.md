@@ -16,7 +16,7 @@ execution_tier: judgment
 
 contract:
   required_outputs:
-    - "One Proposal submitted to lib.memory.queue (op ADD/UPDATE/DELETE per the invocation), pending approval"
+    - "One Proposal submitted through lib.memory.queue.propose_and_apply (op ADD/UPDATE/DELETE per the invocation), auto-applied (revertible) unless a global/ target or a contradiction leaves it pending"
     - "Confirmation line printed to user including the queue id and the page it targets"
   budgets:
     turns: 1
@@ -28,7 +28,7 @@ contract:
     write: []
     execute: []
   completion_conditions:
-    - "A QueueEntry exists at state_dir()/queue/<qid>.json with status=pending"
+    - "A QueueEntry exists at state_dir()/queue/<qid>.json with status=applied, or status=pending if held for a global/ target or a contradiction"
   output_paths: []
 
 tags: [producer, mid-session, pin, correction, queue]
@@ -39,7 +39,7 @@ references_on_demand: []
 
 # pin
 
-Reactive memory control, mid-session. The friend says "remember it like THIS" or "that's wrong, drop it" — this skill turns that into exactly one `Proposal` at the single write-queue (Task 2.1). It never writes a wiki page directly; it queues, and the normal approve/apply flow (or an auto-apply policy configured elsewhere) takes it from there.
+Reactive memory control, mid-session. The friend says "remember it like THIS" or "that's wrong, drop it" — this skill turns that into exactly one `Proposal` at the data-plane door (Task 2.1). A pin is the friend's own words (`writer="human"`), so it applies immediately with provenance and a one-step revert — it never writes a wiki page directly, but it doesn't wait on anyone either. Only a `global/` target or a detected `contradicts` conflict leaves it pending instead of applying right away.
 
 ## When to use this skill
 
@@ -72,7 +72,7 @@ Per spec §3.2, a pinned or corrected page is something the friend explicitly ca
 - Write to a wiki page directly. Every pin/correction is a `Proposal` at the queue door (Task 2.1) — approve/apply is a separate step owned by the queue, not this skill.
 - Run any pipeline, retry loop, or multi-step flow. One invocation → one proposal. If that proposal conflicts with something, `queue.propose` attaches the conflict for a human to resolve later; this skill doesn't try to resolve it.
 - Maintain its own state file, hot tier, or session-notes equivalent. There is no `--instinct` mode in 0.2 (donor `skills/note`'s instincts hot tier is out of scope here — see the harvest map).
-- Decide auto-apply policy. Whether a pin's queue entry gets auto-approved or waits for a human `approve()` call is governed elsewhere (the wrap gate / risk-tier policy), not by this skill.
+- Decide apply policy. Whether a pin's entry applies immediately or is held pending (a `global/` target, or a detected `contradicts` conflict) is governed by the memory write path, not by this skill.
 
 ## Failure-degradation modes
 

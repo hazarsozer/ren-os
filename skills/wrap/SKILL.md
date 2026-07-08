@@ -4,7 +4,8 @@ description: |
   Use at session end when the friend wants to consolidate what happened.
   Triggers on the /ren:wrap slash command. Writes an L1 narrative summary
   (always, auto-quarantined as unreviewed) and gates candidate durable items
-  through a fail-closed classifier before queuing them for human approval.
+  through a fail-closed classifier, auto-applying them (revertible) unless
+  held for a contradiction or surfaced as a promotion suggestion.
   Most sessions produce zero durable candidates — the discipline is bias
   toward NOT durable, per spec §3.1.
 version: 0.2.1
@@ -50,7 +51,7 @@ references_on_demand: []
 
 # wrap
 
-End-of-session consolidation. The friend runs `/ren:wrap`; this skill writes the session's L1 narrative summary (always — quarantined as unreviewed LLM-auto content, never treated as instruction) and gates any candidate durable items through the classifier before queuing them for human approval. Per spec §3.1's discipline, most sessions should produce **zero** durable candidates — the classifier biases hard toward "not durable."
+End-of-session consolidation. The friend runs `/ren:wrap`; this skill writes the session's L1 narrative summary (always — quarantined as unreviewed LLM-auto content, never treated as instruction) and gates any candidate durable items through the classifier, auto-applying them (revertible) unless held for a contradiction or surfaced as a promotion suggestion. Per spec §3.1's discipline, most sessions should produce **zero** durable candidates — the classifier biases hard toward "not durable."
 
 ## When to use this skill
 
@@ -71,7 +72,7 @@ End-of-session consolidation. The friend runs `/ren:wrap`; this skill writes the
    - `llm_call` is injectable — point it at a CHEAP model (Haiku-class) when one is reachable; the gate is a strict yes/no/discard question that doesn't need main-model reasoning. Otherwise it's the live session's own way of asking itself that question (see `lib/classifier.py`'s prompt). If no such mechanism is wired up yet, omit `llm_call` — the deterministic fallback (`session-only`/`discard` only, never `durable`) keeps memory safe by construction rather than guessing.
 4. **Present results to the friend:**
    - L1: "session summary saved (quarantined, unreviewed)."
-   - Durable candidates queued: qids + pages, pending your approval.
+   - Durable candidates: qids + pages, saved this session (revertible) unless held for a contradiction or surfaced as a promotion suggestion.
    - Gated out: verdict + one-line reason each.
    - Refused: any candidate the queue itself rejected (e.g. a planted secret) — surfaced explicitly, not silently dropped.
    - If `fail_closed` is true: tell the friend the classifier fell back to the deterministic path this run (LLM path errored) — nothing was silently promoted to durable as a result.
