@@ -60,7 +60,7 @@ Reactive memory control, mid-session. The friend says "remember it like THIS" or
    - `pin` proposes `ADD` if the page doesn't exist yet, `UPDATE` if it does.
    - `correct` proposes `DELETE` when no replacement text is given, else `UPDATE`.
    - Both always set `producer="pin"`, `writer="human"`, `salience=True`.
-3. Both calls go through `lib.memory.queue.propose`, which scrubs secrets, dedups against existing pending entries, and runs conflict detection exactly like any other producer — pin gets no special exemption.
+3. Both calls go through `lib.memory.queue.propose_and_apply`, which scrubs secrets, dedups against existing pending entries, and runs conflict detection exactly like any other producer — pin gets no special exemption.
 4. Confirm to the user: `Queued <qid> — <op> <page> (pin)` or `... (correction)`.
 
 ## Why `salience=True`
@@ -70,7 +70,7 @@ Per spec §3.2, a pinned or corrected page is something the friend explicitly ca
 ## What this skill does NOT do
 
 - Write to a wiki page directly. Every pin/correction is a `Proposal` at the queue door (Task 2.1) — approve/apply is a separate step owned by the queue, not this skill.
-- Run any pipeline, retry loop, or multi-step flow. One invocation → one proposal. If that proposal conflicts with something, `queue.propose` attaches the conflict for a human to resolve later; this skill doesn't try to resolve it.
+- Run any pipeline, retry loop, or multi-step flow. One invocation → one proposal. If that proposal conflicts with something, `queue.propose_and_apply` attaches the conflict for a human to resolve later; this skill doesn't try to resolve it.
 - Maintain its own state file, hot tier, or session-notes equivalent. There is no `--instinct` mode in 0.2 (donor `skills/note`'s instincts hot tier is out of scope here — see the harvest map).
 - Decide apply policy. Whether a pin's entry applies immediately or is held pending (a `global/` target, or a detected `contradicts` conflict) is governed by the memory write path, not by this skill.
 
@@ -80,8 +80,8 @@ Per spec §3.2, a pinned or corrected page is something the friend explicitly ca
 |---|---|---|
 | Empty text on `/ren:pin` | Refuse, prompt for text | "What should I pin? Usage: /ren:pin \"<text>\"" |
 | `--wrong` with no resolvable page | Refuse; nothing proposed | "Which page is wrong? Usage: /ren:pin --wrong <page>" |
-| Content contains a detected secret | `propose()` raises `SecretsFound`; nothing queued | "Refused: that text looks like it contains a secret." |
-| Duplicate pending pin (same page + same content) | `propose()` returns the existing entry (idempotent) | "Already queued as <qid>." |
+| Content contains a detected secret | `propose_and_apply()` raises `SecretsFound`; nothing queued | "Refused: that text looks like it contains a secret." |
+| Duplicate pending pin (same page + same content) | `propose_and_apply()` returns the existing entry (idempotent) | "Already queued as <qid>." |
 
 ## References
 
