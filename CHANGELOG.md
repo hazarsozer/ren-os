@@ -1,6 +1,28 @@
 # Changelog
 
-## [0.2.0] — Unreleased
+## [0.2.1] — 2026-07-08
+
+**Fix: `/ren:approve`, `/ren:reject`, `/ren:revert` were unregistered ("Unknown
+command").** The queue skill was designed to own these verbs, and every
+friend-facing surface (the ingest first-session artifact, the wrap screen, queue
+confirmations, the README) tells you to run them — but Claude Code only registers
+skill-*named* commands, so all three died at the prompt. Found by the Gate 0 live
+smoke test (clean sandbox, real plugin loader) at the exact "approve your first
+memory" moment.
+
+- New `commands/approve.md`, `commands/reject.md`, `commands/revert.md` — thin
+  command entries routing to the already-tested `skills.queue.lib` functions
+  (`approve_and_apply` / `reject_with_reason` / `revert_write`).
+- New repo-hygiene lint: every friend-facing `/ren:<verb>` reference (skills/,
+  lib/, hooks/, README) must resolve to a `skills/<verb>/` dir or a
+  `commands/<verb>.md` (planned-for-0.3 verbs allowlisted). This class of
+  phantom command can't ship again.
+- Reworded a prose-only `/ren:apply` mention in the queue SKILL.md.
+
+Verified live: local-marketplace install registers 20 verbs; `/ren:approve`
+round-trip drives the queue flow end-to-end. 696 tests green.
+
+## [0.2.0] — 2026-07-07
 
 Green-field rebuild per scope v2.1 ("the measured core") — a clean repo (`renos`), not
 an in-place upgrade of the prior `startup-framework` 0.1.0 line. Proven pieces were

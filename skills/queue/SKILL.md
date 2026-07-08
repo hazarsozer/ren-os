@@ -7,12 +7,12 @@ description: |
   Triggers on /ren:queue (review), /ren:approve <qid>, /ren:reject <qid>
   <why>, /ren:revert <write_id>. Thin presentation over lib.memory.queue and
   lib.memory.revert — no new logic.
-version: 0.2.0
+version: 0.2.1
 license: MIT
 type: skill
 execution_tier: judgment
 schema_version: 1
-framework_version: "0.2.0"
+framework_version: "0.2.1"
 
 contract:
   required_outputs:

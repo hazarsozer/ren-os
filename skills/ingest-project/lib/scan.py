@@ -64,7 +64,7 @@ NEVER_READ_GLOBS = (
 
 def _framework_version() -> str:
     """Best-effort framework version for page frontmatter. Imports lib.ren_paths
-    from the repo root; falls back to '0.2.0' in a bare checkout. Read-only."""
+    from the repo root; falls back to '0.2.1' in a bare checkout. Read-only."""
     try:
         plugin_root = Path(__file__).resolve().parents[3]  # lib→ingest-project→skills→<repo root>
         if str(plugin_root) not in sys.path:
@@ -72,7 +72,7 @@ def _framework_version() -> str:
         from lib.ren_paths import framework_version
         return framework_version()
     except Exception:
-        return "0.2.0"
+        return "0.2.1"
 
 
 def _is_never_read(name: str) -> bool:

@@ -7,10 +7,10 @@ description: |
   through a fail-closed classifier before queuing them for human approval.
   Most sessions produce zero durable candidates — the discipline is bias
   toward NOT durable, per spec §3.1.
-version: 0.2.0
+version: 0.2.1
 license: MIT
 
-framework_version: "0.2.0"
+framework_version: "0.2.1"
 schema_version: 1
 type: skill
 execution_tier: judgment
