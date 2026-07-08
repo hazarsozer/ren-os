@@ -9,10 +9,10 @@ description: |
   shows the friend the first-session artifact — the visible proof memory was
   captured (spec §3.8 A-10). For a brand-new project with nothing to scan,
   use /ren:bootstrap-project instead.
-version: 0.2.1
+version: 0.3.0
 license: MIT
 
-framework_version: "0.2.1"
+framework_version: "0.3.0"
 schema_version: 1
 type: skill
 execution_tier: worker

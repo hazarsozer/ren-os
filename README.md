@@ -3,7 +3,7 @@
 **An agentic OS for Claude Code** — memory that compounds, tokens that aren't wasted, autonomy you can trust.
 
 [![validate](https://github.com/hazarsozer/ren-os/actions/workflows/validate.yml/badge.svg)](https://github.com/hazarsozer/ren-os/actions/workflows/validate.yml)
-![version](https://img.shields.io/badge/version-0.2.1-e34234)
+![version](https://img.shields.io/badge/version-0.3.0-e34234)
 ![python](https://img.shields.io/badge/python-%E2%89%A53.11-blue)
 ![license](https://img.shields.io/badge/license-MIT-green)
 
@@ -173,7 +173,7 @@ scripts, worker-shaped drafting delegates to cheap subagent models, and judgment
 ```
 ren-os/
 ├── .claude-plugin/     # plugin + marketplace manifests
-├── skills/             # the 16 /ren: skills (SKILL.md contract + lib/ core each)
+├── skills/             # the 17 /ren: skills (SKILL.md contract + lib/ core each)
 ├── lib/                # memory substrate, governance, instrumentation, adapters
 ├── doctrine/           # always-on + on-demand operating doctrine
 ├── wiki-skeleton/      # the templates /ren:install stamps (never dev content)

@@ -6,12 +6,12 @@ description: |
   small, isolated checks (env, wiki structure, frontmatter, schema
   versions, budget lint, dangling L2 pointers, graphify status, backup
   configuration, global-tier drift, harness neutrality) — all warn-not-block.
-version: 0.2.1
+version: 0.3.0
 license: MIT
 type: skill
 execution_tier: deterministic
 schema_version: 1
-framework_version: "0.2.1"
+framework_version: "0.3.0"
 
 contract:
   required_outputs:

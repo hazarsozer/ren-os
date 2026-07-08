@@ -1,5 +1,61 @@
 # Changelog
 
+## [0.3.0] — 2026-07-08 — "the ungated brain"
+
+**BREAKING: the memory approval queue is gone.** Spec amendment v2.2 (two-plane
+governance) — a founder ruling after living with 0.2's per-write gate: a second
+brain that needs your sign-off on every memory isn't compounding, it's an inbox.
+
+**If you learned the 0.2.1 commands:** `/ren:queue`, `/ren:approve`,
+`/ren:reject`, and `/ren:revert` no longer exist. You don't need replacements —
+memory saves itself now, and the rare things that DO need you are asked in
+plain chat (answer in words; say "undo w-…" to revert any write).
+
+### The two planes
+
+- **Data plane — auto-applies.** Everything descriptive (session narratives,
+  lessons, pins, project maps, retrospective findings, identity answers) writes
+  to the wiki the moment it's produced. The §3.10 substrate is unchanged
+  underneath: every write still carries provenance, lands in the journal, takes
+  a snapshot first, and is one-step revertible. LLM-authored content is still
+  quarantine-marked — data, not instruction, at read time, permanently.
+- **Instruction plane — human-gated, conversationally.** Anything prescriptive
+  (`global/` pages, skill-candidates from retrospective) stays pending as a
+  *suggestion*: the wake-up hook announces it, wrap asks about it, you answer
+  in chat. Promotion through you is the only door from remembered to obeyed —
+  the prompt-injection defense is structural now, not ceremonial.
+- **Contradictions hold for reasoning.** A new memory that contradicts an
+  existing page isn't applied silently and isn't dumped on you either — the
+  model resolves it in-session and the resolution is recorded in the journal
+  (`resolve_and_apply`); you're asked only on genuine ambiguity.
+
+### New
+
+- **`/ren:wiki-health`** — the autonomous coherence auditor that replaces
+  write-time review: dangling pointers (including path-escaping ones),
+  wiki-wide contradiction pairs (cross-directory; disclosed cap on huge wikis),
+  mass-deletion anomaly detection, quarantine inventory. Fixes what it can with
+  logged reasoning; interviews you only on ambiguity.
+- **`migrations/queue-governance-2-to-3`** — releases 0.2-gated pending queue
+  entries under the new policy (data-plane entries apply; suggestions/holds
+  stay). Idempotent, `--check` mode; named in `/ren:update`'s 0.3 notes.
+- **`scripts/bump_version.py`** — version SSOT: one command rewrites every
+  version literal; a repo lint fails on drift.
+- **Friend guards:** plugin-manifest regression tests (the 0.2 manifest-loss
+  class can't ship again), shared `parse_worker_json` (fenced/chatty worker
+  output tolerated everywhere, incl. trailing prose), doctor companion checks
+  (markitdown, yt-dlp — informational, graceful absence).
+
+### Fixed
+
+- `semantics`: negation markers now match on word boundaries — "whenever" is
+  not "never". (Previously a false `contradicts` held every fresh install's
+  identity write pending. Found because v2.2 made the write path load-bearing.)
+- `apply_auto` now quarantine-marks llm-auto content (parity with the approved
+  path).
+- Wrap's LLM gate no longer silently downgrades durable classifications when
+  the worker model appends trailing prose to its JSON.
+
 ## [0.2.1] — 2026-07-08
 
 **Fix: `/ren:approve`, `/ren:reject`, `/ren:revert` were unregistered ("Unknown
