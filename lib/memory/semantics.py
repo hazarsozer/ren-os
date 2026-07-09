@@ -12,13 +12,17 @@ council). `write_apply`/the write queue (Task 2.1, not yet built) will import
 HONESTY ABOUT THE HEURISTIC (read before relying on this for anything): this is
 a cheap, explainable, false-negative-tolerant screen — not semantic
 understanding. It will MISS real contradictions phrased without the negation
-markers below, MISS duplicates that reword every line, and it does not attempt
-synonymy, negation scope, or discourse-level reasoning. The human approver
-reviewing the write-queue diff is the real gate; this module exists to surface
-the cheap, obvious cases so the approver isn't doing 100% of the work by hand.
-Full semantic dedup (embeddings or similar) is explicitly deferred to 0.3 per
-spec — do not extend this module with a fuzzy-matching dependency to "improve"
-recall; that tradeoff is a 0.3 decision, not this module's to make.
+markers below (including non-numeric fact swaps like "Postgres" -> "SQLite"),
+MISS duplicates that reword every line, and it does not attempt synonymy,
+negation scope, or discourse-level reasoning. Since v2.2 removed per-write
+human approval, this screen is the ONLY automatic conflict check on
+auto-applied data-plane writes — its misses land in the wiki and stay there
+until an auditor finds them. That is why `skills.wiki-health`'s periodic sweep
+(duplicate/drift/contradiction scans built on this module's pairwise helpers)
+exists: write-time screening is best-effort, read-time auditing is the
+backstop. Real semantic detection (embeddings or similar) is 0.4/0.5 ladder
+work — do not extend this module with a fuzzy-matching dependency to "improve"
+recall here.
 """
 
 from __future__ import annotations
@@ -190,6 +194,63 @@ def contradiction_evidence(text_a: str, text_b: str) -> str | None:
     return hits[0] if hits else None
 
 
+_NUMBER_RE = re.compile(r"\d+(?:\.\d+)?")
+_NUMBER_MASK = "#"
+
+
+def duplicate_evidence(text_a: str, text_b: str) -> str | None:
+    """Direct pairwise duplicate check between two page bodies, for callers
+    that need an all-pairs sweep rather than `detect`'s sibling-glob candidate
+    set (e.g. `skills.wiki-health`'s wiki-wide scan). Same threshold and
+    ratio function as `detect`'s per-candidate duplicate check, so the two
+    paths can't drift.
+
+    Returns the first shared line as evidence, or `None` below the threshold."""
+    lines_a = _normalized_lines(_strip_frontmatter(text_a or ""))
+    lines_b = _normalized_lines(_strip_frontmatter(text_b or ""))
+    if _shared_line_ratio(lines_a, lines_b) >= _DUPLICATE_RATIO_THRESHOLD:
+        return _first_shared_line(lines_a, lines_b)
+    return None
+
+
+def numeric_drift_evidence(text_a: str, text_b: str) -> tuple[str, str] | None:
+    """Cheap numeric-drift screen: two lines that are IDENTICAL except for
+    their numbers ("uses port 8080" vs "uses port 9090") are almost always
+    the same fact at two points in time — exactly the contradiction class the
+    negation-marker heuristic (`_detect_contradictions`) is blind to.
+
+    Masks every number to `#`, then looks for a masked-template collision
+    between `text_a`'s lines and `text_b`'s lines where the ORIGINAL lines
+    differ. Calling with `text_a is text_b` finds within-page drift (two
+    lines in one page, same template, different numbers).
+
+    Report-only signal for auditors (wiki-health). NOT semantic understanding:
+    misses reworded facts and non-numeric swaps (Postgres vs SQLite) —
+    those need the 0.4/0.5 semantics work, not a bigger regex.
+
+    Returns `(line_from_a, line_from_b)` (normalized), or `None`."""
+    lines_a = _normalized_lines(_strip_frontmatter(text_a or ""))
+    lines_b = _normalized_lines(_strip_frontmatter(text_b or ""))
+
+    templates_a: dict[str, str] = {}
+    for line in lines_a:
+        if not _NUMBER_RE.search(line):
+            continue
+        template = _NUMBER_RE.sub(_NUMBER_MASK, line)
+        if len(_significant_tokens(template)) < _MIN_SIGNIFICANT_TOKENS_TO_CONSIDER:
+            continue
+        templates_a.setdefault(template, line)
+
+    for line in lines_b:
+        if not _NUMBER_RE.search(line):
+            continue
+        template = _NUMBER_RE.sub(_NUMBER_MASK, line)
+        counterpart = templates_a.get(template)
+        if counterpart is not None and counterpart != line:
+            return (counterpart, line)
+    return None
+
+
 def detect(op: str, page: str, content: str | None, wiki_root: Path) -> list[Conflict]:
     """Run the three deterministic conflict checks for a proposed write.
 
@@ -251,4 +312,11 @@ def detect(op: str, page: str, content: str | None, wiki_root: Path) -> list[Con
     return conflicts
 
 
-__all__ = ["Conflict", "ConflictKind", "detect", "contradiction_evidence"]
+__all__ = [
+    "Conflict",
+    "ConflictKind",
+    "detect",
+    "contradiction_evidence",
+    "duplicate_evidence",
+    "numeric_drift_evidence",
+]

@@ -13,7 +13,13 @@ from pathlib import Path
 import pytest
 
 from lib.memory.provenance import new_provenance, stamp_frontmatter
-from lib.memory.semantics import Conflict, contradiction_evidence, detect
+from lib.memory.semantics import (
+    Conflict,
+    contradiction_evidence,
+    detect,
+    duplicate_evidence,
+    numeric_drift_evidence,
+)
 
 
 def _write(root: Path, rel: str, text: str) -> Path:
@@ -270,3 +276,60 @@ def test_contradiction_evidence_none_when_no_contradiction():
     a = "Use tabs here.\n"
     b = "Use spaces there.\n"
     assert contradiction_evidence(a, b) is None
+
+
+# --- duplicate_evidence: direct pairwise duplicate check ----------------------
+
+
+class TestDuplicateEvidence:
+    def test_near_identical_bodies_are_duplicates(self):
+        a = "## Knowledge\n- uses postgres for storage\n- deploys to vercel\n- api lives in src/api\n"
+        b = "## Knowledge\n- uses postgres for storage\n- deploys to vercel\n- api lives in src/api\n"
+        assert duplicate_evidence(a, b) is not None
+
+    def test_disjoint_bodies_are_not_duplicates(self):
+        a = "## Knowledge\n- uses postgres for storage\n"
+        b = "## Knowledge\n- frontend built with react\n"
+        assert duplicate_evidence(a, b) is None
+
+    def test_frontmatter_is_ignored(self):
+        a = "---\ntype: fact\n---\n- uses postgres for storage\n"
+        b = "---\ntype: note\n---\n- uses postgres for storage\n"
+        assert duplicate_evidence(a, b) is not None
+
+
+# --- numeric_drift_evidence: cheap numeric-drift screen ----------------------
+
+
+class TestNumericDriftEvidence:
+    def test_port_drift_is_detected(self):
+        a = "## Knowledge\n- the dev server uses port 8080 for local runs\n"
+        b = "## Knowledge\n- the dev server uses port 9090 for local runs\n"
+        drift = numeric_drift_evidence(a, b)
+        assert drift is not None
+        assert "8080" in drift[0] and "9090" in drift[1]
+
+    def test_identical_numbers_do_not_drift(self):
+        a = "- the dev server uses port 8080 for local runs\n"
+        b = "- the dev server uses port 8080 for local runs\n"
+        assert numeric_drift_evidence(a, b) is None
+
+    def test_short_lines_are_ignored(self):
+        # fewer than 3 significant tokens after masking the number: no signal
+        assert numeric_drift_evidence("- port 8080\n", "- port 9090\n") is None
+
+    def test_within_page_drift_via_self_comparison(self):
+        page = (
+            "## Knowledge\n"
+            "- the dev server uses port 8080 for local runs\n"
+            "- some other unrelated fact line here\n"
+            "- the dev server uses port 9090 for local runs\n"
+        )
+        drift = numeric_drift_evidence(page, page)
+        assert drift is not None
+        assert drift[0] != drift[1]
+
+    def test_lines_without_numbers_never_drift(self):
+        a = "- uses postgres for storage backend\n"
+        b = "- uses sqlite for storage backend\n"
+        assert numeric_drift_evidence(a, b) is None  # backend swaps are 0.5-ladder work
