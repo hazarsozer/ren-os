@@ -7,8 +7,15 @@ RenOS 0.2 Phase 6).
 Spec §3.6 A-8 item 2 (wiki mass-delete), item 5 (durable/global memory writes
 — "the write gate is a hook not an honor system"), item 6 (backup-remote
 changes, confirm not block). PreToolUse hook, matchers `Write`/`Edit`/
-`NotebookEdit` (direct-write gate) AND `Bash` (mass-delete + remote-change
-checks).
+`NotebookEdit` (direct-write gate) AND `Bash` (mass-delete + bash-wiki-write
++ remote-change checks).
+
+Bash-wiki-write (Task 6, 0.3.2): catches shell commands that WRITE into the
+wiki other than `rm`/`unlink` — redirects (`>`/`>>`), `sed -i`, `tee`, and
+cp/mv/install/rsync destinations. Best-effort by design: it extracts only
+the tokens a command would write to, not a full shell parser, so `python -c`
+writers and other exotic paths stay invisible. Reads and copies OUT of the
+wiki are never touched.
 
 Same stdin/exit-code contract as `pre_push_scan.py` (see that module's
 docstring for why there's no donor precedent to follow instead) — exit 0
@@ -38,6 +45,12 @@ MASS_DELETE_MESSAGE = (
     "BLOCKED: mass-delete of wiki content detected — destructive-tier actions "
     "always require explicit human confirmation, not a hook auto-allow"
 )
+BASH_WIKI_WRITE_MESSAGE = (
+    "BLOCKED: this shell command writes into the wiki — durable wiki writes go "
+    "through the write substrate (/ren:pin or wrap), never direct shell edits: "
+    "they'd bypass snapshot/journal/revert. (Best-effort guard: it catches "
+    "redirects, sed -i, tee, cp/mv — not every possible writer.)"
+)
 
 QUEUE_APPLY_ENV = "REN_QUEUE_APPLY"
 MASS_DELETE_THRESHOLD = 3
@@ -45,6 +58,8 @@ MASS_DELETE_THRESHOLD = 3
 _RM_RE = re.compile(r"(?:^|[;&|]\s*)(rm|unlink)\b")
 _REMOTE_SET_RE = re.compile(r"\bgit\s+remote\s+(set-url|add)\s+\S*backup\S*", re.IGNORECASE)
 _SHELL_SEPARATORS = (";", "&&", "||", "|")
+_REDIRECT_TARGET_RE = re.compile(r">{1,2}\s*([^\s;|&<>]+)")
+_DEST_COMMANDS = frozenset({"cp", "mv", "install", "rsync"})
 
 
 def _ensure_plugin_root_on_path() -> None:
@@ -138,6 +153,58 @@ def check_mass_delete(command: str, cwd: str) -> int:
     return 0
 
 
+def _bash_write_targets(command: str) -> list[str]:
+    """Best-effort extraction of the paths a shell command would WRITE to:
+    redirect targets, `sed -i` file args, `tee` args, and the destination
+    (last non-flag arg) of cp/mv/install/rsync. NOT a shell parser — a
+    defense-in-depth heuristic; reads (`cat`, `grep`) and copies OUT of the
+    wiki produce no targets. `python -c`/heredoc writers are invisible by
+    design (documented best-effort)."""
+    targets: list[str] = list(_REDIRECT_TARGET_RE.findall(command))
+    for segment in re.split(r"[;|&]+", command):
+        tokens = segment.strip().split()
+        if not tokens:
+            continue
+        cmd = tokens[0]
+        args = [t for t in tokens[1:] if not t.startswith("-")]
+        if cmd == "sed" and any(t.startswith("-i") for t in tokens[1:]):
+            targets.extend(args[1:] if len(args) > 1 else args)  # args[0] is the sed script
+        elif cmd == "tee":
+            targets.extend(args)
+        elif cmd in _DEST_COMMANDS and args:
+            targets.append(args[-1])
+    return [t.strip("'\"") for t in targets if t]
+
+
+def check_bash_wiki_write(command: str, cwd: str) -> int:
+    """Gate a Bash command whose WRITE targets resolve under the wiki (but
+    not under machine state `.ren/`). Returns 0 (allow) or 2 (block)."""
+    if os.environ.get(QUEUE_APPLY_ENV) == "1":
+        return 0
+    targets = _bash_write_targets(command)
+    if not targets:
+        return 0
+
+    _ensure_plugin_root_on_path()
+    from lib import ren_paths
+
+    wiki_root = ren_paths.wiki_root().resolve()
+    state_dir = ren_paths.state_dir()
+    for target in targets:
+        candidate = Path(target)
+        if not candidate.is_absolute():
+            candidate = Path(cwd) / candidate
+        try:
+            resolved = candidate.expanduser().resolve()
+        except OSError:
+            continue
+        under_wiki = resolved == wiki_root or wiki_root in resolved.parents
+        if under_wiki and not _resolve_under(str(resolved), state_dir):
+            print(BASH_WIKI_WRITE_MESSAGE, file=sys.stderr)
+            return 2
+    return 0
+
+
 def check_backup_remote_change(command: str) -> dict | None:
     """Return the ask-tier decision dict if `command` looks like it repoints
     the "backup" git remote, else None."""
@@ -169,6 +236,10 @@ def main() -> int:
                 return 0
 
             rc = check_mass_delete(command, cwd)
+            if rc != 0:
+                return rc
+
+            rc = check_bash_wiki_write(command, cwd)
             if rc != 0:
                 return rc
 

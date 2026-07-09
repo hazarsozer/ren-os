@@ -315,3 +315,70 @@ def test_write_apply_clears_queue_apply_env_even_on_error(wiki):
         write_apply.apply_write("notes.md", None, prov)  # ADD requires new_content -> raises
 
     assert write_apply.QUEUE_APPLY_ENV not in os.environ
+
+
+# =============================================================================
+# write_gate: bash wiki-write guard (best-effort, targeted extraction)
+# =============================================================================
+
+
+class TestBashWikiWriteGuard:
+    """check_bash_wiki_write blocks shell WRITES into the wiki, allows reads."""
+
+    @pytest.fixture(autouse=True)
+    def _setup(self, wiki):
+        (wiki / "projects").mkdir(parents=True, exist_ok=True)
+        self.wiki = wiki
+        self.cwd = str(wiki.parent)
+
+    def test_redirect_into_wiki_blocked(self, capsys):
+        rc = write_gate.check_bash_wiki_write(f"echo hi > {self.wiki}/projects/x.md", self.cwd)
+        assert rc == 2
+        assert "wiki" in capsys.readouterr().err.lower()
+
+    def test_append_into_wiki_blocked(self):
+        rc = write_gate.check_bash_wiki_write(f"echo hi >> {self.wiki}/projects/x.md", self.cwd)
+        assert rc == 2
+
+    def test_sed_inplace_on_wiki_blocked(self):
+        rc = write_gate.check_bash_wiki_write(f"sed -i 's/a/b/' {self.wiki}/projects/x.md", self.cwd)
+        assert rc == 2
+
+    def test_cp_into_wiki_blocked(self):
+        rc = write_gate.check_bash_wiki_write(f"cp /tmp/x.md {self.wiki}/projects/x.md", self.cwd)
+        assert rc == 2
+
+    def test_tee_into_wiki_blocked(self):
+        rc = write_gate.check_bash_wiki_write(f"echo hi | tee {self.wiki}/projects/x.md", self.cwd)
+        assert rc == 2
+
+    def test_reading_wiki_allowed(self):
+        assert write_gate.check_bash_wiki_write(f"cat {self.wiki}/projects/x.md", self.cwd) == 0
+
+    def test_redirect_out_of_wiki_allowed(self, tmp_path):
+        rc = write_gate.check_bash_wiki_write(
+            f"cat {self.wiki}/projects/x.md > {tmp_path}/out.md", self.cwd
+        )
+        assert rc == 0
+
+    def test_copy_out_of_wiki_allowed(self, tmp_path):
+        rc = write_gate.check_bash_wiki_write(
+            f"cp {self.wiki}/projects/x.md {tmp_path}/", self.cwd
+        )
+        assert rc == 0
+
+    def test_state_dir_writes_allowed(self):
+        target = state_dir() / "queue" / "q.json"
+        rc = write_gate.check_bash_wiki_write(f"echo x > {target}", self.cwd)
+        assert rc == 0
+
+    def test_sanctioned_apply_allowed(self, monkeypatch):
+        monkeypatch.setenv(write_gate.QUEUE_APPLY_ENV, "1")
+        rc = write_gate.check_bash_wiki_write(f"echo hi > {self.wiki}/projects/x.md", self.cwd)
+        assert rc == 0
+
+    def test_relative_path_resolved_against_cwd(self):
+        rc = write_gate.check_bash_wiki_write(
+            f"echo hi > {self.wiki.name}/projects/x.md", str(self.wiki.parent)
+        )
+        assert rc == 2
