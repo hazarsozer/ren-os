@@ -45,6 +45,25 @@ from lib.memory.scrub import SecretsFound
 from .classifier import gate
 
 _SLUG_WORD_RE = re.compile(r"[a-z0-9]+")
+_PREVIEW_MAX_CHARS = 100
+_PREVIEW_FRONTMATTER_RE = re.compile(r"\A---\n.*?\n---\n?", re.DOTALL)
+
+
+def _content_preview(content: str | None) -> str:
+    """First meaningful body line of a proposal's content — what the friend
+    is actually saying yes/no to. Skips frontmatter and the quarantine
+    banner; truncates to keep the wrap screen one legible screen."""
+    if not content:
+        return ""
+    body = _PREVIEW_FRONTMATTER_RE.sub("", content, count=1)
+    for line in body.splitlines():
+        line = line.strip()
+        if not line or line.startswith("> [!ren-quarantine]"):
+            continue
+        if len(line) > _PREVIEW_MAX_CHARS:
+            return line[:_PREVIEW_MAX_CHARS] + "…"
+        return line
+    return ""
 
 
 def _slugify(text: str, *, max_words: int = 8) -> str:
@@ -201,12 +220,16 @@ def render_wrap_screen(wrap_result: dict, session: str) -> str:
         ("say ... to revert" — never a slash command).
       - "Held — contradictions to resolve" — still-PENDING entries with a
         detected `contradicts` conflict; the section is OMITTED entirely
-        when there are none (nothing to resolve, nothing to show).
+        when there are none (nothing to resolve, nothing to show). Each item
+        carries a one-line content preview (`  > …`) showing what the friend
+        is approving.
       - "Suggestions" — still-PENDING entries targeting an instruction-plane
         `global/` page or produced by `"retrospective"` (skill-candidate
         promotions), plus any pending residue that isn't a contradiction
-        hold; renders "- (none)" when empty. These are resolved by asking
-        the friend in chat (see SKILL.md), never by a slash command.
+        hold; renders "- (none)" when empty. Each item carries a one-line
+        content preview (`  > …`) showing what the friend is approving.
+        These are resolved by asking the friend in chat (see SKILL.md), never
+        by a slash command.
     """
     entries = _session_queue_entries(session)
     by_qid = {e["qid"]: e for e in entries}
@@ -269,6 +292,9 @@ def render_wrap_screen(wrap_result: dict, session: str) -> str:
             flags = _conflict_flags(entry.get("conflicts") or [])
             flag_str = f" [{', '.join(flags)}]" if flags else ""
             lines.append(f"- {entry['qid']} → {page} — {reason}{flag_str}")
+            preview = _content_preview(entry["proposal"].get("content"))
+            if preview:
+                lines.append(f"  > {preview}")
         lines.append("")
 
     # --- Suggestions ---
@@ -280,6 +306,9 @@ def render_wrap_screen(wrap_result: dict, session: str) -> str:
             flags = _conflict_flags(entry.get("conflicts") or [])
             flag_str = f" [{', '.join(flags)}]" if flags else ""
             lines.append(f"- {entry['qid']} → {page} — {reason}{flag_str}")
+            preview = _content_preview(entry["proposal"].get("content"))
+            if preview:
+                lines.append(f"  > {preview}")
     else:
         lines.append("- (none)")
     lines.append("")
