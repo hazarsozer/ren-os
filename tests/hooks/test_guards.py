@@ -214,11 +214,52 @@ def test_rm_of_one_non_wiki_file_allowed(tmp_path, wiki):
 
 
 def test_rm_of_two_wiki_files_under_threshold_allowed(wiki):
-    for name in ("a.md", "b.md"):
+    # Non-page files (not .md) so the single-page rule doesn't fire — this
+    # test's intent is the THRESHOLD path, not the page rule.
+    for name in ("a.txt", "b.txt"):
         (wiki / name).write_text("x\n", encoding="utf-8")
-    command = f"rm {wiki / 'a.md'} {wiki / 'b.md'}"
+    command = f"rm {wiki / 'a.txt'} {wiki / 'b.txt'}"
     rc = write_gate.check_mass_delete(command, str(wiki))
     assert rc == 0
+
+
+class TestMvOutOfWiki:
+    @pytest.fixture(autouse=True)
+    def _setup(self, wiki):
+        (wiki / "projects").mkdir(parents=True, exist_ok=True)
+        self.wiki = wiki
+        self.cwd = str(wiki.parent)
+
+    def test_mv_wiki_page_out_is_blocked(self):
+        assert write_gate.check_bash_wiki_write(
+            f"mv {self.wiki}/projects/x.md /tmp/x.md", self.cwd) == 2
+
+    def test_mv_into_wiki_still_blocked(self):
+        assert write_gate.check_bash_wiki_write(
+            f"mv /tmp/x.md {self.wiki}/projects/x.md", self.cwd) == 2
+
+    def test_mv_entirely_outside_wiki_allowed(self):
+        assert write_gate.check_bash_wiki_write(
+            "mv /tmp/a.md /tmp/b.md", self.cwd) == 0
+
+
+class TestSinglePageRm:
+    @pytest.fixture(autouse=True)
+    def _setup(self, wiki):
+        (wiki / "projects").mkdir(parents=True, exist_ok=True)
+        self.wiki = wiki
+        self.cwd = str(wiki.parent)
+
+    def test_rm_of_one_wiki_page_is_blocked(self):
+        assert write_gate.check_mass_delete(
+            f"rm {self.wiki}/projects/x.md", self.cwd) == 2
+
+    def test_rm_of_one_non_wiki_file_still_allowed(self):
+        assert write_gate.check_mass_delete("rm /tmp/x.md", self.cwd) == 0
+
+    def test_rm_of_ren_state_file_still_allowed(self):
+        assert write_gate.check_mass_delete(
+            f"rm {self.wiki}/.ren/queue/q-x.json", self.cwd) == 0
 
 
 # =============================================================================

@@ -12,12 +12,15 @@ changes, confirm not block). PreToolUse hook, matchers `Write`/`Edit`/
 
 Bash-wiki-write (Task 6, 0.3.2): catches shell commands that WRITE into the
 wiki other than `rm`/`unlink` — redirects (`>`/`>>`), `sed -i`, `tee`, and
-cp/mv/install/rsync destinations. Best-effort by design: it extracts only
-the tokens a command would write to, not a full shell parser, so `python -c`
-writers and other exotic paths stay invisible. Reads and copies OUT of the
-wiki are never touched. Accepted gaps by design: `mv` of a wiki file to a
-destination outside the wiki (mutates the wiki but isn't caught), and single-file
-`rm` (only mass deletion ≥3 files is checked).
+cp/mv/install/rsync destinations. `mv` contributes BOTH its source and
+destination args as targets, so moving a wiki page OUT is caught too, not
+just moves into the wiki. `check_mass_delete` also blocks a single-file
+`rm`/`unlink` of any wiki page (`.md` under the wiki root, excluding `.ren/`
+machine state) — not just mass deletion ≥3 files. Best-effort by design: it
+extracts only the tokens a command would write to, not a full shell parser,
+so `python -c` writers and other exotic paths stay invisible. Reads and
+copies OUT of the wiki are never touched. Accepted gaps by design: command
+substitution, `eval`, and base64-encoded payloads are not decoded/evaluated.
 
 Same stdin/exit-code contract as `pre_push_scan.py` (see that module's
 docstring for why there's no donor precedent to follow instead) — exit 0
@@ -137,6 +140,7 @@ def check_mass_delete(command: str, cwd: str) -> int:
 
     wiki_hit_count = 0
     root_hit = False
+    page_hit = False
     for target in targets:
         candidate = Path(target)
         if not candidate.is_absolute():
@@ -149,8 +153,10 @@ def check_mass_delete(command: str, cwd: str) -> int:
             root_hit = True
         elif wiki_root_resolved in resolved.parents:
             wiki_hit_count += 1
+            if resolved.suffix == ".md" and ".ren" not in resolved.parts:
+                page_hit = True
 
-    if root_hit or wiki_hit_count >= MASS_DELETE_THRESHOLD:
+    if root_hit or page_hit or wiki_hit_count >= MASS_DELETE_THRESHOLD:
         print(MASS_DELETE_MESSAGE, file=sys.stderr)
         return 2
     return 0
@@ -204,7 +210,10 @@ def _bash_write_targets(command: str) -> list[str]:
         elif cmd == "tee":
             targets.extend(args)
         elif cmd in _DEST_COMMANDS and args:
-            targets.append(args[-1])
+            if cmd == "mv":
+                targets.extend(args)  # moving a wiki page OUT also mutates the wiki
+            else:
+                targets.append(args[-1])
     # Restore quoted spans inside each target (placeholder → its original
     # content, including mixed tokens like `pre<placeholder>`), then drop
     # empties so a target that was an empty quoted span can't degenerate to
