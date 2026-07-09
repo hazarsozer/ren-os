@@ -15,7 +15,9 @@ wiki other than `rm`/`unlink` — redirects (`>`/`>>`), `sed -i`, `tee`, and
 cp/mv/install/rsync destinations. Best-effort by design: it extracts only
 the tokens a command would write to, not a full shell parser, so `python -c`
 writers and other exotic paths stay invisible. Reads and copies OUT of the
-wiki are never touched.
+wiki are never touched. Accepted gaps by design: `mv` of a wiki file to a
+destination outside the wiki (mutates the wiki but isn't caught), and single-file
+`rm` (only mass deletion ≥3 files is checked).
 
 Same stdin/exit-code contract as `pre_push_scan.py` (see that module's
 docstring for why there's no donor precedent to follow instead) — exit 0

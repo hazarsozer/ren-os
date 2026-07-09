@@ -245,7 +245,7 @@ def suggestion_line() -> str:
         lines.append(f"- {entry.qid} → {entry.proposal.page} — {reason}")
     overflow = len(entries) - _SUGGESTION_LIST_CAP
     if overflow > 0:
-        lines.append(f"- …and {overflow} more (full list at wrap)")
+        lines.append(f"- …and {overflow} more — ask me to list them")
     return "\n".join(lines)
 
 

@@ -183,7 +183,7 @@ ren-os/
 ├── hooks/              # wake-up + pre-push content guard
 ├── migrations/         # scripted schema migrations with verification
 ├── docs/               # data-flow, exit criteria, Codex read proof
-└── tests/              # 749 tests — every DONE claim below has one
+└── tests/              # the full test suite — every DONE claim below has one
 ```
 
 ---
@@ -227,7 +227,7 @@ elapsed usage, not more code).
 ```bash
 git clone https://github.com/hazarsozer/ren-os.git && cd ren-os
 uv sync
-uv run pytest            # 749 tests
+uv run pytest            # the full test suite
 uv run python scripts/lint-yaml-frontmatter.py
 ```
 
