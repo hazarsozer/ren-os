@@ -50,7 +50,6 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Final
 
 from lib import ren_paths
 from lib.instrument import collect
@@ -264,26 +263,32 @@ def check_graphify_status(repo_root: Path | None = None) -> CheckResult:
     return CheckResult("graphify_status", "ok", f"graphify {status.version}, graph fresh")
 
 
-_COMPANION_TOOLS: Final[tuple[str, ...]] = ("markitdown", "yt-dlp")
-
-
 def check_companions() -> CheckResult:
-    """Presence check for optional companion CLIs (`markitdown`, `yt-dlp`)
-    used by ingest-source-adjacent workflows. Graceful-absence doctrine — a
-    friend without either installed is not broken, so this is always `info`
-    (absent) or `ok` (present), NEVER `warn`/`error`; it must never fail the
-    doctor run."""
-    lines = []
-    all_present = True
-    for tool in _COMPANION_TOOLS:
-        found = shutil.which(tool)
-        if found:
-            lines.append(f"{tool}: ok: {found}")
-        else:
-            all_present = False
-            lines.append(f"{tool}: absent (optional companion)")
-    status = "ok" if all_present else "info"
-    return CheckResult("companions", status, "; ".join(lines))
+    """Companion choices vs reality: accepted-but-missing is drift (warn);
+    undecided-and-absent is a pointer (info). Warn-not-block, like every check."""
+    from lib import companions
+
+    missing = [
+        o.companion.cid
+        for o in companions.reconcile()
+        if o.decision == "accepted" and not o.installed
+    ]
+    if missing:
+        return CheckResult(
+            "companions",
+            "warn",
+            f"accepted but not installed: {', '.join(missing)} — "
+            "re-run the install hint from doctrine/companions.md",
+        )
+    undecided = [o.companion.cid for o in companions.pending_offers()]
+    if undecided:
+        return CheckResult(
+            "companions",
+            "info",
+            f"companions not yet decided: {', '.join(undecided)} — "
+            "/ren:install or /ren:update will offer them",
+        )
+    return CheckResult("companions", "ok", "companion choices match what's installed")
 
 
 def check_backup_configured(wiki_root: Path | None = None) -> CheckResult:
