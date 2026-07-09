@@ -288,7 +288,7 @@ def check_companions() -> CheckResult:
             f"companions not yet decided: {', '.join(undecided)} — "
             "/ren:install or /ren:update will offer them",
         )
-    return CheckResult("companions", "ok", "companion choices match what's installed")
+    return CheckResult("companions", "ok", "no companion drift")
 
 
 def check_backup_configured(wiki_root: Path | None = None) -> CheckResult:

@@ -62,7 +62,7 @@ Donor's Node/gh/claude-cli checks, activity-feed/RC-channel/fleet checks, and th
 | `check_budget_lint` | measured `capability_tokens` (Task 3.1) vs. any SKILL.md-declared `tokens:` ceiling — `info` when nothing's declared to compare against yet, `skip` when no measured data exists |
 | `check_dangling_pointers` | every l2-map page's "## Decision map" pointer targets actually exist |
 | `check_graphify_status` | `skills.code-map.lib.status()` — not installed → `info` w/ companions.md pointer; version outside pin → `warn`; stale graph → `info` |
-| `check_companions` | (Task 12) `markitdown`/`yt-dlp` presence via `shutil.which` — always `ok`/`info`, never `warn`/`error` (graceful-absence doctrine) |
+| `check_companions` | registry choices vs reality (lib/companions) — accepted-but-missing → warn; undecided-and-absent → info; consistent → ok |
 | `check_backup_configured` | `skills.backup.lib.backup_configured()` |
 | `check_global_drift` | `lib.memory.promotion.demote_check()` — non-doctrine/preference pages in `global/` |
 | `check_harness_neutrality` | `lib.portability.agents_surface.lint_generated_surfaces` — **soft-wired**: skips cleanly if that module (Task 7.2, built in parallel) isn't present |

@@ -32,6 +32,8 @@ contract:
       - "~/.renos/wiki/**"
       - "~/.renos/wiki/.ren/install.json"
       - "~/.claude/CLAUDE.md"
+    execute:
+      - "uv tool install *"
   completion_conditions:
     - "install_state(wiki_root()).wiki_stamped is True"
     - "state_dir()/install.json exists with the current framework_version"

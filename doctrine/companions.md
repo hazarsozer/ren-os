@@ -6,7 +6,7 @@ scope_glob: null
 
 # Recommended companions (v2.1 D-3)
 
-Optional tools that pair well with RenOS. **Everything on this page is optional** — the framework works with zero of them installed. This page exists so a friend who wants more capability knows what to reach for and how it fits the risk model. Since 0.3.5, `/ren:install` and `/ren:update` offer these interactively — once each: an accept installs it, a decline is remembered and never re-asked (the list lives in `lib/companions`, and `/ren:doctor` reports drift between your choices and what's actually installed).
+Optional tools that pair well with RenOS. **Everything on this page is optional** — the framework works with zero of them installed. This page exists so a friend who wants more capability knows what to reach for and how it fits the risk model. Since 0.3.5, `/ren:install` and `/ren:update` offer these interactively — once each: an accept installs it (or, for plugins, hands you the command), a decline is remembered and never re-asked (the list lives in `lib/companions`, and `/ren:doctor` reports drift between your choices and what's actually installed).
 
 ## Graphify — the code-map backend
 
@@ -19,7 +19,7 @@ The §3.2 code-map (`/ren:code-map`) is a thin wrapper over [Graphify](https://g
 
 ## Superpowers — process skills for planning and TDD
 
-[Superpowers](https://github.com/anthropics/claude-plugins) is a Claude Code
+[Superpowers](https://github.com/obra/superpowers) is a Claude Code
 plugin of process skills — brainstorming, writing-plans, test-driven
 development, systematic debugging. RenOS doesn't depend on it, but planning
 sessions are noticeably better with it.

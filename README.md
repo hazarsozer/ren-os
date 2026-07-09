@@ -30,7 +30,7 @@ Then, in your first session:
 ```
 
 That's the whole onboarding — an idempotent guided flow (environment check, wiki
-bootstrap, optional 10-question identity interview, backup nag, first project). Every
+bootstrap, optional 10-question identity interview, backup nag, companion offers, first project). Every
 stage is skippable except the wiki bootstrap, and re-running resumes wherever you
 stopped. End it with `/ren:ingest-project` on any existing repo and you get the
 **first-session artifact**: *"I set up your project memory — here's what I captured."*

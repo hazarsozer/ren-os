@@ -32,10 +32,12 @@ contract:
       - "migrations/**"
       - "~/.renos/wiki/**"
       - "${CLAUDE_PLUGIN_DATA}/wiki-snapshots/**"
+      - "$CLAUDE_PLUGIN_ROOT/CHANGELOG.md"
     write:
       - "~/.renos/wiki/**"
       - "${CLAUDE_PLUGIN_DATA}/wiki-snapshots/**"
     execute:
+      - "uv tool install *"
       - "scripts/snapshot.sh"
       - "scripts/restore.sh"
       - "scripts/prune-snapshots.sh"
