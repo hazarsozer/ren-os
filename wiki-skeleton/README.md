@@ -56,9 +56,9 @@ If a placeholder is encountered with no available value, the loader writes the l
 ## Additive-only contract
 
 - The loader reads `manifest.yaml` to learn the expected file set for a profile.
-- For each manifest entry: if the target path exists on the friend's machine, **never overwrite**. Diff the proposed addition against existing content and report it for explicit approval.
-- For each manifest entry: if the target path is absent, queue it for write.
-- The friend approves the additive set; the loader writes only the approved subset.
+- For each manifest entry: if the target path exists on the friend's machine, **never overwrite**. Diff the proposed addition against existing content and show it — the friend confirms in chat.
+- For each manifest entry: if the target path is absent, include it in the additive set shown to the friend.
+- The friend confirms the additive set in chat; the loader writes only the confirmed subset.
 - Existing files are **never touched** by the loader.
 
 This makes minor framework upgrades safe: new template files appear in `wiki-skeleton/templates/`, the manifest gets bumped, and existing friend wikis can opt into the additions without losing content.

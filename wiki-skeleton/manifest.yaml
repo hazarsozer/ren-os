@@ -2,8 +2,8 @@
 # Consumed by /ren:install (master wiki bootstrap) and /ren:bootstrap-project
 # (per-project sub-wiki bootstrap). Each entry describes one file or directory
 # the loader can stamp into a friend's wiki. The loader NEVER overwrites
-# existing files — it diffs additive changes and requires explicit friend
-# approval (additive-only migration pattern).
+# existing files — it shows additive changes as a diff and the friend
+# confirms in chat (additive-only migration pattern).
 #
 # Schema version 1. Bump when the contract changes (loader interface evolves).
 

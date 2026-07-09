@@ -137,7 +137,7 @@ def remember(project_slug: str | None = None) -> str:
 
     if quarantined:
         lines.append(
-            "⚠ this map was auto-generated and hasn't been reviewed — approve it via the queue"
+            "⚠ this map was auto-generated and hasn't been reviewed — ask me to review it with you and I'll release it"
         )
         lines.append("")
 

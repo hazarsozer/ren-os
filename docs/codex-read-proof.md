@@ -89,3 +89,8 @@ reviewing `docs/codex-read-proof-output.txt` should additionally confirm:
   2. `lint_harness_neutral` scans rendered ABSOLUTE link paths, so a wiki
      located under a path containing "claude" (e.g. `/tmp/claude-*/…`)
      false-positives the lint. Cosmetic at 0.2 scale; noted for 0.3.
+- Honesty note: Codex initially mis-resolved the map's RELATIVE pointer paths
+  (resolving them against `projects/<slug>/` instead of the wiki root) and
+  failed twice before recovering with `find`. The proof's conclusion stands —
+  it read and cited the right pages — but pointer-path relativity is a real
+  ambiguity in the L2-map format, tracked for the 0.4 planning cycle.

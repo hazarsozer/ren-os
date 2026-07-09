@@ -30,7 +30,7 @@ contract:
     write: []
     execute: []
   completion_conditions:
-    - "A QueueEntry exists at state_dir()/queue/<qid>.json with status=pending, op=ADD or UPDATE, page=projects/<slug>/map.md"
+    - "A QueueEntry exists at state_dir()/queue/<qid>.json with status=applied (or status=pending only when held by a contradiction conflict), op=ADD or UPDATE, page=projects/<slug>/map.md"
   output_paths: []
 
 tags: [onboarding, project, l2-map, bootstrap, queue]

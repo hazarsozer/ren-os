@@ -79,7 +79,10 @@ for where each exit criterion actually stands.
 ### Instruction hierarchy
 
 RenOS rides Claude Code's **native** global → project instruction-file hierarchy
-instead of injecting context at wake-up:
+for its instruction layer — doctrine lives in CLAUDE.md files, not in an
+injected prompt. (The wake-up hook does inject **data-plane** context: your
+recent session summary, the project map, and related pages — knowledge, never
+instructions.)
 
 ```
 ~/.claude/CLAUDE.md          ← managed block: behavioral core + recall doctrine
@@ -209,9 +212,12 @@ elapsed usage, not more code).
   markdown. No lock-in by construction.
 - **Obsidian-compatible** — open `~/.renos/wiki` as a vault for a free knowledge
   graph. `tests/test_obsidian_invariant.py` pins the invariants that keep this true.
-- **Harness-neutral** — the wiki's canonical markdown IS the `AGENTS.md` surface
-  (`lib/portability/agents_surface.py`); Codex cited wiki pages from `AGENTS.md`
-  alone in the [live proof](docs/codex-read-proof.md).
+- **Harness-neutral by design** — the wiki is plain markdown any coding agent
+  can read; `lib/portability/agents_surface.py` renders an `AGENTS.md` pointer
+  file, and Codex cited wiki pages from a rendered `AGENTS.md` in the
+  [live proof](docs/codex-read-proof.md). Automatic `AGENTS.md` generation at
+  install/bootstrap is not wired yet (planned for 0.4) — today the renderer is
+  a library you can call, not a shipped flow.
 - **Local-first** — see [docs/data-flow.md](docs/data-flow.md) for exactly what stays
   local (everything), what ever reaches a model API (your session content, as always),
   and what never does (the wiki is never uploaded by RenOS itself).

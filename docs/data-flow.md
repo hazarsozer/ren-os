@@ -14,10 +14,16 @@ None of the above is ever transmitted anywhere by this framework. Backup (`/ren:
 
 ## Sent to a model API — and exactly when
 
-There is exactly one class of moment this happens, and it is never at session start:
+There are exactly two classes of moment this happens, and neither is at session start:
 
 - **`/ren:wrap` time** — the session's own model (whatever the friend is already talking to) reasons over the session's wrap-candidate content (narrative + durable-write candidates) to classify each candidate via the fail-closed gate (`skills/wrap/lib/classifier.py`). This is the SAME model instance already in the conversation — not a second API call to a different service.
 - **The classifier gate itself**, when an `llm_call` is supplied, sends the candidate item's text for a durable/session-only/discard verdict.
+- **Ingest and retrospective worker subagents** — `/ren:ingest-project` and the
+  retrospective flow dispatch session-local subagent workers (see
+  `doctrine/agent-orchestration.md`) that read repo docs or session transcripts
+  and draft wiki content. Same model account the session already uses; the
+  drafted content then goes through the same scrub-gated write queue as
+  everything else.
 
 That's the entire list. No background jobs, no separate service, no telemetry endpoint.
 
