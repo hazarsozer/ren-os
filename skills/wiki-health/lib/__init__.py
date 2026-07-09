@@ -336,4 +336,42 @@ def render_report(findings: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
-__all__ = ["sweep", "render_report"]
+def release_page(page: str, session: str) -> tuple:
+    """Release `page` from quarantine — the ONLY product exit from the
+    banner state, and it exists precisely because release is a HUMAN act:
+    the live session calls this only after the friend explicitly says the
+    page is fine (see SKILL.md; never auto-release from a sweep).
+
+    Routes through the normal write substrate (`propose_and_apply`,
+    writer="human", producer="retrospective" — this module isn't its own
+    producer class, see SKILL.md "What this skill does NOT do") so the
+    release is journaled, snapshotted, and revertible like every other
+    write. Returns `(QueueEntry, Provenance | None)` — `Provenance` is None
+    only if the proposal was held (e.g. a contradiction conflict), in which
+    case the session resolves it like any other hold.
+
+    Raises `FileNotFoundError` if the page doesn't exist, `ValueError` if it
+    isn't quarantined."""
+    from lib.memory.queue import Proposal, propose_and_apply
+
+    path = ren_paths.safe_join(ren_paths.wiki_root(), page)
+    if not path.is_file():
+        raise FileNotFoundError(f"no such wiki page: {page!r}")
+    text = path.read_text(encoding="utf-8")
+    if not quarantine.is_quarantined(text):
+        raise ValueError(f"{page!r} is not quarantined — nothing to release")
+
+    return propose_and_apply(
+        Proposal(
+            op="UPDATE",
+            page=page,
+            content=quarantine.release(text),
+            reason="quarantine-release",
+            producer="retrospective",
+            writer="human",
+            session=session,
+        )
+    )
+
+
+__all__ = ["sweep", "render_report", "release_page"]

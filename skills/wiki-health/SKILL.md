@@ -90,6 +90,12 @@ used to catch, by sweeping periodically instead of gating continuously.
    - **Quarantined page**: never auto-release. Quarantine exists precisely
      because llm-auto content hasn't been human-reviewed; wiki-health's job
      is to surface the inventory, not to review it on the friend's behalf.
+     When the sweep lists quarantined pages, offer them to the friend by
+     name. If the friend explicitly confirms a page is accurate ("yes, that
+     map is right"), call `release_page(<page>, session)` — the banner is
+     removed through the write substrate (journaled, revertible). Never
+     release on your own judgment; a sweep finding is an offer, not a
+     decision.
 4. Before applying ANY batch of mechanical fixes, list the intended fixes
    to the friend first — **never mass-edit without listing intended fixes
    first**, even when every fix in the batch is individually unambiguous.
