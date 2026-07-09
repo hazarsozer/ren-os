@@ -460,3 +460,13 @@ class TestBashWikiWriteGuard:
             self.cwd,
         )
         assert rc == 2
+
+    def test_backslash_continuation_sed_blocked(self):
+        # A backslash-newline is a line CONTINUATION (one logical command),
+        # not a separator — the file arg on the continued line must still be
+        # attributed to the sed on the first line.
+        rc = write_gate.check_bash_wiki_write(
+            f"sed -i \\\n's/a/b/' {self.wiki}/projects/target.md",
+            self.cwd,
+        )
+        assert rc == 2

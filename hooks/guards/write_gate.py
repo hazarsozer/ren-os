@@ -186,8 +186,11 @@ def _bash_write_targets(command: str) -> list[str]:
 
     masked = _QUOTED_SPAN_RE.sub(_mask, command)
     targets: list[str] = list(_REDIRECT_TARGET_RE.findall(masked))
-    # Newlines separate commands just like ';' — split on them too so a
-    # write verb on a non-first line isn't hidden behind the first line's cmd.
+    # A backslash-newline is a line CONTINUATION (one logical command) —
+    # fold it to a space so it doesn't split; genuine newlines separate
+    # commands just like ';', so split on them too, keeping a write verb on
+    # a non-first line from hiding behind the first line's cmd.
+    masked = re.sub(r"\\\r?\n", " ", masked)
     for segment in re.split(r"[;|&\n\r]+", masked):
         tokens = segment.strip().split()
         if not tokens:
