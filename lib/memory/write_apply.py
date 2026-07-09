@@ -28,10 +28,13 @@ Order, all INSIDE a `locks.lease(page)`:
      leaves a snapshot dir with no matching journal entry, which is exactly
      the detectable-crash invariant downstream recovery/doctor logic checks
      for: "was this write's snapshot ever followed by a journal line?"
+  5. prune snapshots to `snapshot.retain_setting()` (best-effort, outside the
+     lease) — Task 5 (G9 substrate, `snapshotRetain` userConfig knob).
 """
 
 from __future__ import annotations
 
+import logging
 import os
 
 from lib import ren_paths
@@ -42,6 +45,8 @@ try:
     from lib.memory import scrub as _scrub
 except ImportError:  # pragma: no cover - exercised via monkeypatch until Task 1.4 lands
     _scrub = None
+
+logger = logging.getLogger("ren-write-apply")
 
 # Task 6.2 (G8 write gate): set for the duration of the actual write below so
 # the PreToolUse write_gate hook (hooks/guards/write_gate.py) can recognize a
@@ -101,6 +106,11 @@ def apply_write(
             os.environ.pop(QUEUE_APPLY_ENV, None)
 
         journal.append(prov, journal_extra)
+
+    try:
+        snapshot.prune(snapshot.retain_setting())
+    except Exception:  # noqa: BLE001 — pruning must never fail a completed write
+        logger.warning("snapshot prune failed after write %s", prov.write_id, exc_info=True)
 
 
 __all__ = ["apply_write"]

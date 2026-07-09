@@ -290,3 +290,43 @@ def test_scrub_refusal_blocks_write_before_any_page_write_or_journal(wiki, monke
 
     assert not page_abs.exists(), "page must be unchanged (never existed, still doesn't)"
     assert journal.entries(page="secret-laden.md") == []
+
+
+# ------------------------------------------------------------- retain_setting
+
+
+class TestRetainSetting:
+    def test_default_is_50(self, monkeypatch):
+        monkeypatch.delenv("REN_SNAPSHOT_RETAIN", raising=False)
+        monkeypatch.delenv("CLAUDE_PLUGIN_OPTION_SNAPSHOTRETAIN", raising=False)
+        assert snapshot.retain_setting() == 50
+
+    def test_plugin_option_is_read(self, monkeypatch):
+        monkeypatch.delenv("REN_SNAPSHOT_RETAIN", raising=False)
+        monkeypatch.setenv("CLAUDE_PLUGIN_OPTION_SNAPSHOTRETAIN", "10")
+        assert snapshot.retain_setting() == 10
+
+    def test_ren_env_overrides_plugin_option(self, monkeypatch):
+        monkeypatch.setenv("CLAUDE_PLUGIN_OPTION_SNAPSHOTRETAIN", "10")
+        monkeypatch.setenv("REN_SNAPSHOT_RETAIN", "3")
+        assert snapshot.retain_setting() == 3
+
+    def test_garbage_value_falls_back(self, monkeypatch):
+        monkeypatch.setenv("REN_SNAPSHOT_RETAIN", "lots")
+        monkeypatch.delenv("CLAUDE_PLUGIN_OPTION_SNAPSHOTRETAIN", raising=False)
+        assert snapshot.retain_setting() == 50
+
+
+# ---------------------------------------------------------- prune-on-write
+
+
+class TestSnapshotPruneOnWrite:
+    def test_apply_write_prunes_to_retain(self, wiki, monkeypatch):
+        monkeypatch.setenv("REN_SNAPSHOT_RETAIN", "2")
+        for i in range(4):  # 4 writes -> 4 snapshot dirs, retain 2
+            prov = _prov(op="ADD", page="facts.md")
+            write_apply.apply_write("facts.md", f"## Knowledge\n- v{i}\n", prov)
+
+        from lib.ren_paths import state_dir
+        snap_root = state_dir() / "snapshots"
+        assert len([d for d in snap_root.iterdir() if d.is_dir()]) == 2

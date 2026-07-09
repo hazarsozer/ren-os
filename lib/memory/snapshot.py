@@ -26,6 +26,10 @@ from lib import ren_paths
 SNAPSHOTS_DIRNAME = "snapshots"
 ABSENT_SUFFIX = ".absent"
 
+RETAIN_ENV = "REN_SNAPSHOT_RETAIN"
+RETAIN_PLUGIN_OPTION = "CLAUDE_PLUGIN_OPTION_SNAPSHOTRETAIN"
+DEFAULT_RETAIN = 50  # mirrors .claude-plugin/plugin.json userConfig.snapshotRetain.default
+
 
 def _snapshots_root() -> Path:
     return ren_paths.state_dir() / SNAPSHOTS_DIRNAME
@@ -110,4 +114,24 @@ def prune(retain: int) -> None:
         shutil.rmtree(d, ignore_errors=True)
 
 
-__all__ = ["take", "restore", "prune"]
+def retain_setting() -> int:
+    """How many per-write snapshot dirs to keep (the plugin's
+    `snapshotRetain` userConfig knob, exported by Claude Code as
+    `CLAUDE_PLUGIN_OPTION_SNAPSHOTRETAIN`). Precedence mirrors
+    `ren_paths.wiki_root`: `REN_SNAPSHOT_RETAIN` (tests/dev override) →
+    plugin option → 50. Non-numeric or <1 values fall through to the next
+    tier — a bad setting must never turn pruning into delete-everything."""
+    for var in (RETAIN_ENV, RETAIN_PLUGIN_OPTION):
+        raw = os.environ.get(var, "").strip()
+        if not raw:
+            continue
+        try:
+            val = int(float(raw))
+        except ValueError:
+            continue
+        if val >= 1:
+            return val
+    return DEFAULT_RETAIN
+
+
+__all__ = ["take", "restore", "prune", "retain_setting"]
