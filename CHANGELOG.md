@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.4] — 2026-07-09 — "docs truth pass"
+
+No behavior changes — the docs now say exactly what the code does. Notable:
+`AGENTS.md` generation was advertised as shipped but is a library-only
+capability today (auto-wiring is 0.4 work); the data-flow statement now
+accounts for ingest/retrospective worker subagents; every leftover
+approval-era string ("approve it via the queue") is gone.
+
 ## [0.3.3] — 2026-07-09 — "see what you approve"
 
 Instruction-plane promotion is the one decision still gated on you — now you

@@ -3,7 +3,7 @@
 **An agentic OS for Claude Code** — memory that compounds, tokens that aren't wasted, autonomy you can trust.
 
 [![validate](https://github.com/hazarsozer/ren-os/actions/workflows/validate.yml/badge.svg)](https://github.com/hazarsozer/ren-os/actions/workflows/validate.yml)
-![version](https://img.shields.io/badge/version-0.3.3-e34234)
+![version](https://img.shields.io/badge/version-0.3.4-e34234)
 ![python](https://img.shields.io/badge/python-%E2%89%A53.11-blue)
 ![license](https://img.shields.io/badge/license-MIT-green)
 
