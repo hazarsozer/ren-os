@@ -316,6 +316,10 @@ class TestRetainSetting:
         monkeypatch.delenv("CLAUDE_PLUGIN_OPTION_SNAPSHOTRETAIN", raising=False)
         assert snapshot.retain_setting() == 50
 
+    def test_retain_setting_survives_overflow(self, monkeypatch):
+        monkeypatch.setenv("REN_SNAPSHOT_RETAIN", "1e400")
+        assert snapshot.retain_setting() == snapshot.DEFAULT_RETAIN
+
 
 # ---------------------------------------------------------- prune-on-write
 

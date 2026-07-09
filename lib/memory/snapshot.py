@@ -127,7 +127,7 @@ def retain_setting() -> int:
             continue
         try:
             val = int(float(raw))
-        except ValueError:
+        except (ValueError, OverflowError):
             continue
         if val >= 1:
             return val
