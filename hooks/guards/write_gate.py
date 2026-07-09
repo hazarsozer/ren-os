@@ -60,7 +60,6 @@ _REMOTE_SET_RE = re.compile(r"\bgit\s+remote\s+(set-url|add)\s+\S*backup\S*", re
 _SHELL_SEPARATORS = (";", "&&", "||", "|")
 _REDIRECT_TARGET_RE = re.compile(r">{1,2}\s*([^\s;|&<>]+)")
 _QUOTED_SPAN_RE = re.compile(r"'[^']*'|\"[^\"]*\"")
-_QUOTE_PLACEHOLDER_RE = re.compile(r"_q(\d+)_")
 _DEST_COMMANDS = frozenset({"cp", "mv", "install", "rsync"})
 
 
@@ -168,15 +167,22 @@ def _bash_write_targets(command: str) -> list[str]:
     destination path (`> "wiki/x.md"`) still resolves and blocks. Known
     accepted gap: `cp --target-directory=DIR src` puts the destination in a
     flag token, which we drop wholesale — full flag parsing is out of scope."""
-    # Mask each quoted region with an indexed token (_q0_, _q1_, ...): kills
-    # false redirect matches on quoted '>' and keeps quoted scripts as one
-    # token, preserving arg positions for the per-segment extraction below.
-    # The spans are restored into extracted targets afterwards.
+    # Mask each quoted region with an indexed token: kills false redirect
+    # matches on quoted '>' and keeps quoted scripts as one token, preserving
+    # arg positions for the per-segment extraction below. The spans are
+    # restored into extracted targets afterwards. The placeholder base is
+    # lengthened until it cannot occur as literal text in the command, so
+    # adversarial tokens like `wiki/_q0_evil.md` can never be mistaken for a
+    # masking artifact and restoration-poisoned into a path outside the wiki.
+    base = "_q_"
+    while base in command:
+        base = "_q" + base
+    placeholder_re = re.compile(re.escape(base) + r"(\d+)" + re.escape(base))
     spans: list[str] = []
 
     def _mask(match: re.Match) -> str:
         spans.append(match.group(0)[1:-1])  # inner content, quotes dropped
-        return f"_q{len(spans) - 1}_"
+        return f"{base}{len(spans) - 1}{base}"
 
     masked = _QUOTED_SPAN_RE.sub(_mask, command)
     targets: list[str] = list(_REDIRECT_TARGET_RE.findall(masked))
@@ -192,12 +198,14 @@ def _bash_write_targets(command: str) -> list[str]:
             targets.extend(args)
         elif cmd in _DEST_COMMANDS and args:
             targets.append(args[-1])
-    # Restore quoted spans inside each target (`_q0_` → its original content,
-    # including mixed tokens like `pre_q0_`), then drop empties so a target
-    # that was an empty quoted span can't degenerate to Path("") — which
-    # would resolve to cwd and false-block reads run from inside the wiki.
+    # Restore quoted spans inside each target (placeholder → its original
+    # content, including mixed tokens like `pre<placeholder>`), then drop
+    # empties so a target that was an empty quoted span can't degenerate to
+    # Path("") — which would resolve to cwd and false-block reads run from
+    # inside the wiki. Sound because the base is absent from the original
+    # command: every placeholder-shaped substring IS a masking artifact.
     def _restore(token: str) -> str:
-        return _QUOTE_PLACEHOLDER_RE.sub(lambda m: spans[int(m.group(1))], token)
+        return placeholder_re.sub(lambda m: spans[int(m.group(1))], token)
 
     restored = (_restore(t).strip("'\"") for t in targets)
     return [t for t in restored if t]

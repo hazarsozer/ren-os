@@ -424,3 +424,23 @@ class TestBashWikiWriteGuard:
             f"sed -i 's/a/b/' \"{self.wiki}/projects/x.md\"", self.cwd
         )
         assert rc == 2
+
+    def test_literal_placeholder_text_cannot_poison_restoration(self):
+        # Adversarial collision: literal `_q0_` in the target is USER TEXT,
+        # not a masking artifact. Restoration must not substitute the decoy
+        # quoted span into it (which would traversal-poison the path so it
+        # resolves outside the wiki while the real write lands inside).
+        rc = write_gate.check_bash_wiki_write(
+            f": '../../../../../../tmp' ; echo hi > {self.wiki}/projects/_q0_evil.md",
+            self.cwd,
+        )
+        assert rc == 2
+
+    def test_multi_quoted_span_command_still_blocked(self):
+        # Two quoted spans: an earlier decoy plus a quoted sed script — the
+        # unquoted wiki file arg must still be extracted and blocked.
+        rc = write_gate.check_bash_wiki_write(
+            f"echo 'decoy' ; sed -i 's/a/b/' '{self.wiki}/projects/x.md'",
+            self.cwd,
+        )
+        assert rc == 2
