@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.3.5] — 2026-07-09 — "companions on board"
+
+Install and update now carry the companion list with them — once each,
+never nagging.
+
+- **Companion picker at install** — `/ren:install` offers the curated
+  companions (Graphify, markitdown, yt-dlp, Superpowers) interactively.
+  Accepts install on the spot (tools) or hand you the command (plugins,
+  restart to activate); declines are remembered forever.
+- **Update reports and asks** — `/ren:update` now ends with a "what changed
+  in your RenOS" digest built from the changelog, and offers only the NEW
+  recommendations you haven't decided on.
+- **Doctor keeps it honest** — accepted-but-missing companions surface as a
+  warning; undecided ones as a pointer.
+
+Nothing installs without an explicit yes in chat.
+
 ## [0.3.4] — 2026-07-09 — "docs truth pass"
 
 No behavior changes — the docs now say exactly what the code does. Notable:

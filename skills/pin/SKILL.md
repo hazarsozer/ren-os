@@ -6,10 +6,10 @@ description: |
   /ren:pin slash command. The simplest producer in the system — one
   invocation, one proposal, queued through the single write-queue like
   every other producer. Not a pipeline.
-version: 0.3.4
+version: 0.3.5
 license: MIT
 
-framework_version: "0.3.4"
+framework_version: "0.3.5"
 schema_version: 1
 type: skill
 execution_tier: judgment

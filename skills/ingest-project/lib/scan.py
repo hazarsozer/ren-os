@@ -72,7 +72,7 @@ def _framework_version() -> str:
         from lib.ren_paths import framework_version
         return framework_version()
     except Exception:
-        return "0.3.4"
+        return "0.3.5"
 
 
 def _is_never_read(name: str) -> bool:
