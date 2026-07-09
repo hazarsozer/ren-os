@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.3.2] — 2026-07-09 — "substrate integrity"
+
+The write substrate's promises (snapshot, journal, one-step revert) now hold
+against the two ways they silently eroded.
+
+- **`snapshotRetain` is wired** — the setting existed since 0.2 but nothing
+  read it; snapshots grew forever. Every write now prunes to your configured
+  retention (default 50).
+- **Shell writes into the wiki are blocked** — `echo >`, `sed -i`, `tee`,
+  `cp`/`mv` into wiki pages bypassed snapshot/journal/revert without a trace.
+  The write gate now catches them (best-effort by design: it stops the
+  common accidental bypass, not a determined one — reads are untouched).
+- Promotion targets are validated under `global/`.
+
 ## [0.3.1] — 2026-07-09 — "wiki-health grows teeth"
 
 The ungated brain's auditor can now see the two most common kinds of memory

@@ -40,7 +40,7 @@ WIKI_ROOT_PLUGIN_OPTION = "CLAUDE_PLUGIN_OPTION_WIKIROOT"
 Honored on its own — independent of `REN_FRAMEWORK_ROOT` — so a friend who configures
 only `wikiRoot` reads/writes the path they advertised (Codex F1)."""
 
-FALLBACK_FRAMEWORK_VERSION = "0.3.1"
+FALLBACK_FRAMEWORK_VERSION = "0.3.2"
 """Fallback used when no installed-plugin metadata is reachable. Matches
 plugin.json#version (the SSOT). Tests pinned to this. In a real install Layer 2
 (plugin.json) wins, so this only stamps in bare-checkout/test contexts."""
