@@ -126,6 +126,17 @@ def test_promote_respects_explicit_target_page(wiki):
     assert entry.proposal.page == "global/coding/house-style.md"
 
 
+def test_promotion_target_with_traversal_is_rejected(wiki):
+    body = "---\ntitle: House style\ntype: doctrine\n---\nBody text.\n"
+    text, _ = _stamped(body)
+    _write(wiki, "projects/demo/style.md", text)
+
+    with pytest.raises(PromotionError):
+        promote_to_global(
+            "projects/demo/style.md", "sess-2", target_page="global/../identity.md"
+        )
+
+
 # --- promote onto existing global page -> UPDATE + supersedes conflict -----
 
 
