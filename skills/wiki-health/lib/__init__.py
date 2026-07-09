@@ -8,7 +8,7 @@ what it can (through the existing write-safety substrate: `propose_and_apply`
 See `SKILL.md` for the full behavior contract; this module is the sweep
 mechanics only — it never writes anything itself.
 
-`sweep()` returns four findings + a timestamp:
+`sweep()` returns six findings + a timestamp:
   - `dangling_pointers` — every l2-map page's "## Decision map" pointer
     lines, target existence. Same question `skills.doctor.lib
     .check_dangling_pointers` answers, reimplemented here (not imported)
@@ -28,6 +28,16 @@ mechanics only — it never writes anything itself.
     `_CONTRADICTION_PAGE_CAP` pages, the scan narrows to pairs sharing a
     frontmatter `type` or a directory, and `contradiction_scan_note` in the
     returned dict records that the scan was capped (no silent truncation).
+  - `duplicate_pairs` — the same wiki-wide candidate set, compared via
+    `lib.memory.semantics.duplicate_evidence`: two applied pages whose
+    bodies share ≥90% of their lines, a near-certain consolidation
+    candidate rather than a contradiction.
+  - `numeric_drift_pairs` — the same fact line appearing with different
+    numbers, via `lib.memory.semantics.numeric_drift_evidence`. Checked both
+    across pages AND within a single page (self-comparison), since two
+    "## Knowledge" bullets in the same file can drift from each other just
+    as easily as two separate pages can; for a within-page finding
+    `page == with`.
   - `mass_deletions` — journal scan: more than 5 DELETE ops inside any
     rolling 24h window is an anomaly worth a friend's eyes, not proof of
     anything wrong on its own.
@@ -113,21 +123,29 @@ def _knowledge_pages(wiki_root: Path) -> list[tuple[str, str, str | None]]:
     return pages
 
 
-def _contradiction_pairs(wiki_root: Path) -> tuple[list[dict], dict | None]:
-    """Wiki-wide all-pairs contradiction scan across every "## Knowledge"
-    page (see module docstring — NOT limited to `detect`'s sibling-directory
-    candidate set). Returns `(pairs, cap_note)`; `cap_note` is `None` unless
-    the page count exceeded `_CONTRADICTION_PAGE_CAP`, in which case pairs
-    were narrowed to same-`type`-or-same-directory and the note records how
-    many pairs that skipped."""
+def _pair_findings(wiki_root: Path) -> tuple[list[dict], list[dict], list[dict], dict | None]:
+    """Wiki-wide pairwise scans across every "## Knowledge" page: contradiction
+    (negation heuristic), duplicate (shared-line ratio), and numeric drift
+    (same line, different numbers — including WITHIN a single page via
+    self-comparison). One loop, one candidate set, one cap (see module
+    docstring). Returns `(contradictions, duplicates, drifts, cap_note)`."""
     pages = _knowledge_pages(wiki_root)
     n = len(pages)
     capped = n > _CONTRADICTION_PAGE_CAP
 
-    pairs: list[dict] = []
+    contradictions: list[dict] = []
+    duplicates: list[dict] = []
+    drifts: list[dict] = []
     seen: set[frozenset] = set()
     pairs_checked = 0
     pairs_skipped = 0
+
+    # Within-page drift: self-comparison finds two lines in ONE page that
+    # share a masked template but differ in their numbers.
+    for rel, text, _type in pages:
+        drift = semantics.numeric_drift_evidence(text, text)
+        if drift is not None:
+            drifts.append({"page": rel, "with": rel, "evidence": f"{drift[0]}  ↔  {drift[1]}"})
 
     for i in range(n):
         rel_a, text_a, type_a = pages[i]
@@ -141,14 +159,21 @@ def _contradiction_pairs(wiki_root: Path) -> tuple[list[dict], dict | None]:
                     pairs_skipped += 1
                     continue
             pairs_checked += 1
+
             evidence = semantics.contradiction_evidence(text_a, text_b)
-            if evidence is None:
-                continue
-            key = frozenset((rel_a, rel_b))
-            if key in seen:
-                continue
-            seen.add(key)
-            pairs.append({"page": rel_a, "with": rel_b, "evidence": evidence})
+            if evidence is not None:
+                key = frozenset((rel_a, rel_b))
+                if key not in seen:
+                    seen.add(key)
+                    contradictions.append({"page": rel_a, "with": rel_b, "evidence": evidence})
+
+            dup = semantics.duplicate_evidence(text_a, text_b)
+            if dup is not None:
+                duplicates.append({"page": rel_a, "with": rel_b, "evidence": dup})
+
+            drift = semantics.numeric_drift_evidence(text_a, text_b)
+            if drift is not None:
+                drifts.append({"page": rel_a, "with": rel_b, "evidence": f"{drift[0]}  ↔  {drift[1]}"})
 
     cap_note = None
     if capped:
@@ -159,11 +184,12 @@ def _contradiction_pairs(wiki_root: Path) -> tuple[list[dict], dict | None]:
             "pairs_skipped": pairs_skipped,
             "reason": (
                 f"{n} '## Knowledge' pages exceeds the {_CONTRADICTION_PAGE_CAP}-page "
-                "all-pairs cap — scan narrowed to pairs sharing a frontmatter type "
-                "or a directory; other pairs were not compared."
+                "all-pairs cap — pairwise scans (contradiction/duplicate/drift) narrowed "
+                "to pairs sharing a frontmatter type or a directory; other pairs were "
+                "not compared."
             ),
         }
-    return pairs, cap_note
+    return contradictions, duplicates, drifts, cap_note
 
 
 def _parse_journal_ts(ts: str) -> datetime:
@@ -216,25 +242,30 @@ def sweep(wiki_root: Path | None = None) -> dict:
     """Run the full read-only coherence sweep. Never writes anything —
     fixing findings is the live session's job (see SKILL.md).
 
-    Returns the 5 documented keys (`dangling_pointers`, `contradiction_pairs`,
-    `mass_deletions`, `quarantined_pages`, `generated_at`) plus
-    `contradiction_scan_note` — `None` unless the wiki-wide contradiction
-    scan was capped (see `_contradiction_pairs`), in which case it's a dict
-    naming what was skipped and why."""
+    Returns the 7 documented keys (`dangling_pointers`, `contradiction_pairs`,
+    `duplicate_pairs`, `numeric_drift_pairs`, `mass_deletions`,
+    `quarantined_pages`, `generated_at`) plus `contradiction_scan_note` —
+    `None` unless the wiki-wide pairwise scan was capped (see
+    `_pair_findings`), in which case it's a dict naming what was skipped and
+    why."""
     wiki_root = wiki_root or ren_paths.wiki_root()
     if not wiki_root.is_dir():
         return {
             "dangling_pointers": [],
             "contradiction_pairs": [],
+            "duplicate_pairs": [],
+            "numeric_drift_pairs": [],
             "contradiction_scan_note": None,
             "mass_deletions": _mass_deletions(),
             "quarantined_pages": {"count": 0, "pages": []},
             "generated_at": _now_iso(),
         }
-    contradiction_pairs, contradiction_scan_note = _contradiction_pairs(wiki_root)
+    contradiction_pairs, duplicate_pairs, numeric_drift_pairs, contradiction_scan_note = _pair_findings(wiki_root)
     return {
         "dangling_pointers": _dangling_pointers(wiki_root),
         "contradiction_pairs": contradiction_pairs,
+        "duplicate_pairs": duplicate_pairs,
+        "numeric_drift_pairs": numeric_drift_pairs,
         "contradiction_scan_note": contradiction_scan_note,
         "mass_deletions": _mass_deletions(),
         "quarantined_pages": _quarantined_pages(wiki_root),
@@ -265,6 +296,25 @@ def render_report(findings: dict) -> str:
     scan_note = findings.get("contradiction_scan_note")
     if scan_note:
         lines.append(f"- NOTE (scan capped): {scan_note['reason']}")
+    lines.append("")
+
+    lines.append("## Duplicate pairs")
+    dups = findings.get("duplicate_pairs") or []
+    if dups:
+        lines.extend(f"- {d['page']} ↔ {d['with']}: {d['evidence']}" for d in dups)
+    else:
+        lines.append("- none")
+    lines.append("")
+
+    lines.append("## Numeric drift")
+    drifts = findings.get("numeric_drift_pairs") or []
+    if drifts:
+        lines.extend(
+            f"- {d['page']}" + ("" if d["page"] == d["with"] else f" ↔ {d['with']}") + f": {d['evidence']}"
+            for d in drifts
+        )
+    else:
+        lines.append("- none")
     lines.append("")
 
     lines.append("## Mass deletions")

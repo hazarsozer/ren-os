@@ -2,9 +2,10 @@
 name: wiki-health
 description: |
   Use when the friend (or a scheduled routine) wants a coherence check on the
-  wiki: dangling L2 pointers, contradicting pages, a mass-deletion anomaly
-  scan, and the quarantined/unreviewed-content inventory. Triggers on
-  /ren:wiki-health. This is 0.3's replacement for per-write human approval
+  wiki: dangling L2 pointers, contradicting pages, duplicate pages, numeric
+  drift between facts, a mass-deletion anomaly scan, and the
+  quarantined/unreviewed-content inventory. Triggers on /ren:wiki-health.
+  This is 0.3's replacement for per-write human approval
   (v2.2 removed the queue gate on data-plane writes) — the autonomous
   auditor that runs periodically instead of a human reviewing every diff.
 version: 0.3.0
@@ -54,9 +55,10 @@ used to catch, by sweeping periodically instead of gating continuously.
 
 ## Behavior
 
-1. Call `skills.wiki-health.lib.sweep()` — read-only, four findings:
-   `dangling_pointers`, `contradiction_pairs`, `mass_deletions`,
-   `quarantined_pages`, plus `generated_at`.
+1. Call `skills.wiki-health.lib.sweep()` — read-only, six findings:
+   `dangling_pointers`, `contradiction_pairs`, `duplicate_pairs`,
+   `numeric_drift_pairs`, `mass_deletions`, `quarantined_pages`, plus
+   `generated_at`.
 2. Call `render_report(findings)` and show the friend the full report
    **before** touching anything — the friend sees what was found even if
    the session is about to fix most of it unattended.
@@ -74,6 +76,14 @@ used to catch, by sweeping periodically instead of gating continuously.
      argument records WHY the surviving claim stands — never fix a
      contradiction silently. If it's not obvious which side is right, this
      is genuine ambiguity — ask.
+   - **Duplicate pairs** — two applied pages whose bodies share ≥90% of
+     their lines; the live session proposes consolidating (UPDATE one,
+     DELETE the other) through the normal write flow, or asks the friend
+     when unsure which survives.
+   - **Numeric drift** — the same fact line appearing with different
+     numbers (across two pages, or twice within one page): almost always a
+     stale value. The live session asks the friend which number is
+     current, then fixes via `resolve_and_apply` with a note.
    - **Mass-deletion anomaly**: never auto-fix. This is a "look at this"
      signal, not a repair target — surface the window (count, pages, start
      time) and ask the friend if it was intentional.
@@ -92,11 +102,12 @@ used to catch, by sweeping periodically instead of gating continuously.
 
 - Schedule itself. No cron/routine wiring in this minimal version — 0.3
   runs it on explicit invocation only; periodic scheduling is future work.
-- Cross-reference facts beyond what `lib.memory.semantics
-  .contradiction_evidence` already gives it. No new contradiction-detection
-  intelligence lives here — this skill is a consumer of that heuristic
-  (wiki-wide, all-pairs, not `detect`'s single-write sibling-glob scope),
-  not an extension of it.
+- Cross-reference facts beyond what `lib.memory.semantics`'s
+  `contradiction_evidence`, `duplicate_evidence`, and
+  `numeric_drift_evidence` already give it. No new detection intelligence
+  lives here — this skill is a consumer of those heuristics (wiki-wide,
+  all-pairs, not `detect`'s single-write sibling-glob scope), not an
+  extension of them.
 - Add a dedicated `"wiki-health"` producer to `lib.memory.queue`'s
   `_PRODUCERS` tuple. Repairs this skill drives go through
   `propose_and_apply`/`resolve_and_apply` under the `"retrospective"`
@@ -120,10 +131,11 @@ used to catch, by sweeping periodically instead of gating continuously.
 - `skills/doctor/lib/__init__.py` (`check_dangling_pointers`) — the L2
   pointer-map check this skill's dangling-pointer walk mirrors structurally
   (message-per-CheckResult there vs. one record per finding here)
-- `lib/memory/semantics.py` (`detect`, `contradiction_evidence`) — the
-  three-heuristic conflict screen; `contradiction_pairs` uses the pairwise
-  `contradiction_evidence` core directly for its wiki-wide all-pairs scan
-  rather than `detect`'s sibling-directory candidate set
+- `lib/memory/semantics.py` (`detect`, `contradiction_evidence`,
+  `duplicate_evidence`, `numeric_drift_evidence`) — the pairwise cores this
+  skill's `contradiction_pairs`, `duplicate_pairs`, and
+  `numeric_drift_pairs` each use directly for one shared wiki-wide
+  all-pairs scan, rather than `detect`'s sibling-directory candidate set
 - `lib/memory/queue.py` (`propose_and_apply`, `resolve_and_apply`) — the
   write-safety substrate any mechanical fix goes through
 - v2.2 doctrine (spec §10, two-plane governance) — why this skill exists:

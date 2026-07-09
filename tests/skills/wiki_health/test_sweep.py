@@ -49,7 +49,8 @@ def wiki(clean_path_env, tmp_path):
 def test_sweep_returns_all_dict_keys(wiki):
     result = wiki_health.sweep()
     assert set(result.keys()) == {
-        "dangling_pointers", "contradiction_pairs", "contradiction_scan_note",
+        "dangling_pointers", "contradiction_pairs", "duplicate_pairs",
+        "numeric_drift_pairs", "contradiction_scan_note",
         "mass_deletions", "quarantined_pages", "generated_at",
     }
     assert result["generated_at"]
@@ -182,6 +183,46 @@ def test_sweep_no_mass_deletion_anomaly_when_below_threshold(wiki):
         )
     result = wiki_health.sweep()
     assert result["mass_deletions"] == []
+
+
+class TestDuplicateAndDriftPairs:
+    def test_sweep_reports_applied_duplicate_pair(self, tmp_path):
+        wiki = tmp_path / "wiki"
+        (wiki / "projects" / "app").mkdir(parents=True)
+        body = "## Knowledge\n- uses postgres for storage\n- deploys to vercel from main\n"
+        (wiki / "projects" / "app" / "facts-a.md").write_text(body, encoding="utf-8")
+        (wiki / "projects" / "app" / "facts-b.md").write_text(body, encoding="utf-8")
+        findings = wiki_health.sweep(wiki)
+        pages = {(d["page"], d["with"]) for d in findings["duplicate_pairs"]}
+        assert ("projects/app/facts-a.md", "projects/app/facts-b.md") in pages
+
+    def test_sweep_reports_cross_page_numeric_drift(self, tmp_path):
+        wiki = tmp_path / "wiki"
+        (wiki / "projects" / "app").mkdir(parents=True)
+        (wiki / "projects" / "app" / "old.md").write_text(
+            "## Knowledge\n- the dev server uses port 8080 for local runs\n", encoding="utf-8")
+        (wiki / "projects" / "app" / "new.md").write_text(
+            "## Knowledge\n- the dev server uses port 9090 for local runs\n", encoding="utf-8")
+        findings = wiki_health.sweep(wiki)
+        assert len(findings["numeric_drift_pairs"]) == 1
+
+    def test_sweep_reports_within_page_numeric_drift(self, tmp_path):
+        wiki = tmp_path / "wiki"
+        (wiki / "projects" / "app").mkdir(parents=True)
+        (wiki / "projects" / "app" / "facts.md").write_text(
+            "## Knowledge\n"
+            "- the dev server uses port 8080 for local runs\n"
+            "- the dev server uses port 9090 for local runs\n", encoding="utf-8")
+        findings = wiki_health.sweep(wiki)
+        drifts = findings["numeric_drift_pairs"]
+        assert any(d["page"] == d["with"] == "projects/app/facts.md" for d in drifts)
+
+    def test_render_report_includes_new_sections(self, tmp_path):
+        wiki = tmp_path / "wiki"
+        wiki.mkdir()
+        report = wiki_health.render_report(wiki_health.sweep(wiki))
+        assert "## Duplicate pairs" in report
+        assert "## Numeric drift" in report
 
 
 # ------------------------------------------------------------ render_report
