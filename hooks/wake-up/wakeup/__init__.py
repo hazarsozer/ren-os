@@ -57,6 +57,7 @@ DEFAULT_DEV_ROOT_REL: Final[str] = "Dev"
 L1_DIRNAME: Final[str] = "l1"
 L2_MAP_FILENAME: Final[str] = "map.md"
 MASTER_ROUTINES_DIRNAME: Final[str] = "routines"
+_SUGGESTION_LIST_CAP: Final[int] = 5
 
 # Token budget (ADR-008 heritage: 3-5K target, 5K hard cap)
 DEFAULT_MAX_TOKENS: Final[int] = 5_000
@@ -197,15 +198,21 @@ def read_live_routines(wiki_root: Path) -> str:
 
 
 def suggestion_line() -> str:
-    """One line announcing pending queue entries (v2.2: suggestions are
-    conversational, not a queue verb — Task 8). Returns "" when nothing is
-    pending, so the payload gains nothing on the common case.
+    """Multi-line block announcing pending queue entries (v2.2: suggestions are
+    conversational, not a queue verb — Task 8). Lists up to `_SUGGESTION_LIST_CAP`
+    pending items with their page and reason; returns "" when nothing is pending,
+    so the payload gains nothing on the common case.
 
     Counts only suggestion-classified entries (a `global/` target, or
     produced by `"retrospective"`, WITHOUT a `contradicts` conflict) toward
     "N suggestion(s)" — a contradiction hold is not a suggestion (matches
     `skills.wrap.lib.render_wrap_screen`'s classification order: contradicts
-    wins first). If any contradiction holds exist, appends a second count."""
+    wins first). If any contradiction holds exist, appends a second count.
+
+    Returns a multi-line block with: count line + up to _SUGGESTION_LIST_CAP item
+    lines (qid → page — reason) + overflow line if needed. This replaces the old
+    bare count announcement so the user can see what they're answering without
+    scrolling."""
     try:
         entries = queue.pending()
     except Exception:  # noqa: BLE001 - never let this abort the wake-up payload
@@ -231,7 +238,15 @@ def suggestion_line() -> str:
         parts.append(f"{held} contradiction hold{plural}")
     if not parts:
         return ""
-    return f"{' and '.join(parts)} waiting — I'll list them; answer in chat or ignore."
+
+    lines = [f"{' and '.join(parts)} waiting — answer in chat or ignore:"]
+    for entry in entries[:_SUGGESTION_LIST_CAP]:
+        reason = entry.proposal.reason or ""
+        lines.append(f"- {entry.qid} → {entry.proposal.page} — {reason}")
+    overflow = len(entries) - _SUGGESTION_LIST_CAP
+    if overflow > 0:
+        lines.append(f"- …and {overflow} more (full list at wrap)")
+    return "\n".join(lines)
 
 
 def _git(cwd: Path, args: list[str]) -> str:
@@ -284,7 +299,7 @@ def _discover_extra_candidates(wiki_root: Path, exclude: set[str]) -> list[str]:
 
 
 def _salient_pages() -> set[str]:
-    """Wiki-relative pages whose most recent APPLIED queue entry carried
+    """Wiki-relative pages with ANY applied queue entry that carried
     `proposal.salience=True` (Task 4.2's pin/correction verb sets this).
 
     Reads `state_dir()/"queue"/*.json` directly rather than adding a new

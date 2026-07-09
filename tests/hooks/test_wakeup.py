@@ -235,6 +235,41 @@ def test_suggestion_line_counts_contradiction_holds_separately(project):
     assert "1 contradiction hold" in line
 
 
+class TestSuggestionListing:
+    """Tests for Task 9: Wake-up lists pending suggestions."""
+
+    def test_suggestion_line_lists_page_and_reason(self, project):
+        """Suggestion line should show the page and reason, not just count."""
+        from lib.memory.queue import Proposal, propose
+
+        propose(Proposal(
+            op="ADD", page="global/doctrine.md", content="x",
+            reason="user feedback", producer="promotion", writer="human", session="s1",
+        ))
+
+        line = wakeup.suggestion_line()
+
+        assert "global/doctrine.md" in line  # the page is visible
+        assert "—" in line                   # page — reason format
+        assert "1 suggestion" in line        # count summary retained
+
+    def test_listing_is_capped_at_five(self, project):
+        """More than 5 suggestions should show first 5 + overflow line."""
+        from lib.memory.queue import Proposal, propose
+
+        for i in range(7):
+            propose(Proposal(
+                op="ADD", page=f"global/doctrine-{i}.md", content="x",
+                reason=f"suggestion {i}", producer="promotion", writer="human", session="s1",
+            ))
+
+        line = wakeup.suggestion_line()
+
+        # Should have 5 suggestion items + 1 overflow line = 6 total list items
+        assert line.count("\n- ") == 6
+        assert "2 more" in line  # 7 total - 5 shown = 2 remaining
+
+
 # ---------------------------------------------------------------- rank_extras
 
 
