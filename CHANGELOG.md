@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.3.1] — 2026-07-09 — "wiki-health grows teeth"
+
+The ungated brain's auditor can now see the two most common kinds of memory
+rot, and quarantine finally has a door out.
+
+- **Duplicate detection on applied pages** — the wiki-health sweep reports page
+  pairs sharing ≥90% of their lines, so consolidation candidates surface
+  instead of accumulating silently.
+- **Numeric drift detection** — "uses port 8080" vs "uses port 9090" (across
+  pages or within one page) is now reported. Report-only: the sweep never
+  rewrites your facts; the session asks you which value is current.
+- **Quarantine release** — when you tell the session a quarantined page is
+  accurate, it releases the banner through the write substrate (journaled,
+  revertible). Previously quarantine had no exit at all.
+- Honest docstrings: `lib/memory/semantics.py` no longer claims a human
+  approver gate that v2.2 removed.
+
 ## [0.3.0] — 2026-07-08 — "the ungated brain"
 
 **BREAKING: the memory approval queue is gone.** Spec amendment v2.2 (two-plane

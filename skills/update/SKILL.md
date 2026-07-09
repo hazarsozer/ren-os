@@ -6,12 +6,12 @@ description: |
   snapshots the wiki, runs migrations, verifies via verify.json, shows diffs
   for approval, applies, and re-verifies. Snapshot/rollback is built in.
   Never silent on MAJOR bumps.
-version: 0.3.0
+version: 0.3.1
 license: MIT
 type: skill
 execution_tier: deterministic
 schema_version: 1
-framework_version: "0.3.0"
+framework_version: "0.3.1"
 
 contract:
   required_outputs:

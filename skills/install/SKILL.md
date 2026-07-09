@@ -6,10 +6,10 @@ description: |
   check, wiki bootstrap, optional interview, backup nag, first project, then
   a closing summary of what's now possible. Every stage is skippable except
   wiki bootstrap; re-running skips whatever's already done.
-version: 0.3.0
+version: 0.3.1
 license: MIT
 
-framework_version: "0.3.0"
+framework_version: "0.3.1"
 schema_version: 1
 type: skill
 execution_tier: judgment
