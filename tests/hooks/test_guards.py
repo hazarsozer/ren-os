@@ -404,3 +404,23 @@ class TestBashWikiWriteGuard:
             f"sed -i 's/a/b/;s/c/d/' {self.wiki}/notes.md", self.cwd
         )
         assert rc == 2
+
+    def test_quoted_redirect_target_blocked(self):
+        # Fully-quoted destinations are a common shell idiom — masking must
+        # restore them, not drop them.
+        rc = write_gate.check_bash_wiki_write(
+            f'echo hi > "{self.wiki}/projects/x.md"', self.cwd
+        )
+        assert rc == 2
+
+    def test_quoted_cp_destination_blocked(self):
+        rc = write_gate.check_bash_wiki_write(
+            f'cp /tmp/x.md "{self.wiki}/projects/x.md"', self.cwd
+        )
+        assert rc == 2
+
+    def test_quoted_sed_file_arg_blocked(self):
+        rc = write_gate.check_bash_wiki_write(
+            f"sed -i 's/a/b/' \"{self.wiki}/projects/x.md\"", self.cwd
+        )
+        assert rc == 2

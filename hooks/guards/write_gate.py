@@ -60,7 +60,7 @@ _REMOTE_SET_RE = re.compile(r"\bgit\s+remote\s+(set-url|add)\s+\S*backup\S*", re
 _SHELL_SEPARATORS = (";", "&&", "||", "|")
 _REDIRECT_TARGET_RE = re.compile(r">{1,2}\s*([^\s;|&<>]+)")
 _QUOTED_SPAN_RE = re.compile(r"'[^']*'|\"[^\"]*\"")
-_QUOTE_PLACEHOLDER = "_q_"
+_QUOTE_PLACEHOLDER_RE = re.compile(r"_q(\d+)_")
 _DEST_COMMANDS = frozenset({"cp", "mv", "install", "rsync"})
 
 
@@ -161,15 +161,24 @@ def _bash_write_targets(command: str) -> list[str]:
     (last non-flag arg) of cp/mv/install/rsync. NOT a shell parser — a
     defense-in-depth heuristic; reads (`cat`, `grep`) and copies OUT of the
     wiki produce no targets. `python -c`/heredoc writers are invisible by
-    design (documented best-effort). Quoted spans are masked before any
-    extraction so a quoted `>` isn't a redirect and a quoted `;` (e.g. a
-    sed multi-substitution script) doesn't split the segment. Known accepted
-    gap: `cp --target-directory=DIR src` puts the destination in a flag
-    token, which we drop wholesale — full flag parsing is out of scope."""
-    # Mask quoted regions with a neutral token: kills false redirect matches
-    # on quoted '>' and keeps quoted scripts as one token, preserving arg
-    # positions for the per-segment extraction below.
-    masked = _QUOTED_SPAN_RE.sub(_QUOTE_PLACEHOLDER, command)
+    design (documented best-effort). Quoted spans are masked with INDEXED
+    placeholders before any extraction — so a quoted `>` isn't a redirect and
+    a quoted `;` (e.g. a sed multi-substitution script) doesn't split the
+    segment — then restored inside each extracted target, so a fully-quoted
+    destination path (`> "wiki/x.md"`) still resolves and blocks. Known
+    accepted gap: `cp --target-directory=DIR src` puts the destination in a
+    flag token, which we drop wholesale — full flag parsing is out of scope."""
+    # Mask each quoted region with an indexed token (_q0_, _q1_, ...): kills
+    # false redirect matches on quoted '>' and keeps quoted scripts as one
+    # token, preserving arg positions for the per-segment extraction below.
+    # The spans are restored into extracted targets afterwards.
+    spans: list[str] = []
+
+    def _mask(match: re.Match) -> str:
+        spans.append(match.group(0)[1:-1])  # inner content, quotes dropped
+        return f"_q{len(spans) - 1}_"
+
+    masked = _QUOTED_SPAN_RE.sub(_mask, command)
     targets: list[str] = list(_REDIRECT_TARGET_RE.findall(masked))
     for segment in re.split(r"[;|&]+", masked):
         tokens = segment.strip().split()
@@ -183,11 +192,15 @@ def _bash_write_targets(command: str) -> list[str]:
             targets.extend(args)
         elif cmd in _DEST_COMMANDS and args:
             targets.append(args[-1])
-    # Drop empties and bare placeholder tokens: an unknowable (fully quoted)
-    # target must not degenerate to Path("") / Path("_q_") — both would
-    # resolve relative to cwd and false-block reads run from inside the wiki.
-    stripped = (t.strip("'\"") for t in targets)
-    return [t for t in stripped if t and t != _QUOTE_PLACEHOLDER]
+    # Restore quoted spans inside each target (`_q0_` → its original content,
+    # including mixed tokens like `pre_q0_`), then drop empties so a target
+    # that was an empty quoted span can't degenerate to Path("") — which
+    # would resolve to cwd and false-block reads run from inside the wiki.
+    def _restore(token: str) -> str:
+        return _QUOTE_PLACEHOLDER_RE.sub(lambda m: spans[int(m.group(1))], token)
+
+    restored = (_restore(t).strip("'\"") for t in targets)
+    return [t for t in restored if t]
 
 
 def check_bash_wiki_write(command: str, cwd: str) -> int:
