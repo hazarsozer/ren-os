@@ -83,6 +83,8 @@ After `wrap_session()` returns, call `skills.wrap.lib.render_wrap_screen(wrap_re
 
 **Then, ask about Suggestions in chat.** If the rendered screen's Suggestions section is non-empty, ask the friend about each one conversationally — e.g. "Suggest promoting X because \<reason + evidence> — yes/no?" Never auto-answer a suggestion. On "yes", call `queue.approve_and_apply(qid, who=<friend's handle>)`; on "no", call `queue.reject(qid, why=<their words>)`. Skipping is fine — a skipped suggestion just persists to the next session's screen.
 
+**On request, list ALL pending suggestions.** If the friend asks to see the full pending list (e.g. after wake-up's "ask me to list them"), call `skills.wrap.lib.render_pending_list()` and print its output VERBATIM — every pending entry across all sessions, not just this one.
+
 ## Design notes
 
 - Adapted from donor `skills/wrap/lib/classifier.py`'s KEY 0.1 finding: an LLM prompt/parse path was built but never wired in, while a deterministic heuristic quietly did all the real work. 0.2 swaps the roles on purpose — see `lib/classifier.py`'s module docstring.

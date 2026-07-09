@@ -39,6 +39,7 @@ from typing import Callable
 
 from lib import ren_paths
 from lib.instrument import collect
+from lib.memory import queue
 from lib.memory.queue import Proposal, propose_and_apply
 from lib.memory.scrub import SecretsFound
 
@@ -204,6 +205,22 @@ def _conflict_flags(conflicts: list[dict]) -> list[str]:
     return flags
 
 
+def render_pending_list() -> str:
+    """Every pending queue entry, ALL sessions, oldest first — the
+    deterministic backing for wake-up's 'ask me to list them'. Read-only."""
+    entries = queue.pending()
+    if not entries:
+        return "No pending suggestions."
+    lines = [f"{len(entries)} pending entr{'y' if len(entries) == 1 else 'ies'} (all sessions, oldest first):"]
+    for entry in entries:
+        reason = entry.proposal.reason or ""
+        lines.append(f"- {entry.qid} → {entry.proposal.page} — {reason}")
+        preview = _content_preview(entry.proposal.content)
+        if preview:
+            lines.append(f"  > {preview}")
+    return "\n".join(lines)
+
+
 def render_wrap_screen(wrap_result: dict, session: str) -> str:
     """Render the unified end-of-wrap screen (spec §3.8 A-10 / G15): one
     legible screen naming what happened this session even though risk tiers
@@ -329,4 +346,4 @@ def render_wrap_screen(wrap_result: dict, session: str) -> str:
     return "\n".join(lines) + "\n"
 
 
-__all__ = ["wrap_session", "render_wrap_screen"]
+__all__ = ["wrap_session", "render_wrap_screen", "render_pending_list"]

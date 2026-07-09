@@ -523,3 +523,47 @@ class TestSuggestionPreviews:
 
         assert lib._content_preview(None) == ""
         assert lib._content_preview("") == ""
+
+
+# =============================================================================
+# render_pending_list — deterministic "list ALL pending suggestions" surface,
+# session-agnostic (Task 5)
+# =============================================================================
+
+
+class TestPendingList:
+    def test_lists_entries_across_sessions_with_previews(self, wiki):
+        from skills.wrap import lib
+
+        queue.propose(
+            Proposal(
+                op="ADD",
+                page="global/doctrine-a.md",
+                content="- doctrine a fact line",
+                reason="candidate doctrine a",
+                producer="pin",
+                writer="human",
+                session="s1",
+            )
+        )
+        queue.propose(
+            Proposal(
+                op="ADD",
+                page="global/doctrine-b.md",
+                content="- doctrine b fact line",
+                reason="candidate doctrine b",
+                producer="pin",
+                writer="human",
+                session="s2",
+            )
+        )
+
+        screen = lib.render_pending_list()
+        assert "global/doctrine-a.md" in screen
+        assert "global/doctrine-b.md" in screen
+        assert "  > " in screen
+
+    def test_empty_queue_says_so(self, wiki):
+        from skills.wrap import lib
+
+        assert "No pending suggestions." in lib.render_pending_list()
