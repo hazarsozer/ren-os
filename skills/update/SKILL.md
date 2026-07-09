@@ -20,6 +20,8 @@ contract:
     - "Migrated wiki pages written to disk only after per-page verify.json PASS + diff approval, with frontmatter schema_version/framework_version bumped"
     - "An appended migration entry in wiki/log.md (snapshot path + update record)"
     - "On --dry-run: the plan only, with zero writes to wiki, snapshot dir, or marketplace"
+    - "a 'What changed in your RenOS' digest after apply (changelog_digest; empty digest degrades to a CHANGELOG.md pointer, never a failure)"
+    - "companion delta offered after apply (pending_offers): only undecided-and-absent entries, choices recorded durably"
   budgets:
     turns: 30
     files_written: 200
@@ -90,6 +92,24 @@ Carried near-verbatim from donor `skills/update/` (Task 7.3) — the migration s
 ## Overlap note: snapshot substrate vs. Task 1.2's per-write snapshots
 
 `lib/memory/snapshot.py` (Task 1.2, G9) is a DIFFERENT snapshot mechanism: per-write-id, page-granularity snapshots for the write-safety substrate (revert a single memory write in one step). `scripts/snapshot.sh` here is whole-wiki, version-bump-granularity, for migration rollback. They serve genuinely different purposes at different granularities — this skill's carried snapshot logic is NOT rewritten to unify with Task 1.2's substrate; that unification (if it's ever worth doing) is a 0.3-scoped ADR decision, not something to improvise here. Noted per the task brief's explicit instruction not to rewrite working carried code.
+
+## Closing steps (after re-verify)
+
+- **Report what changed** — build the "what changed in your RenOS" digest:
+  `skills.update.lib.changelog_digest(<old-version>, <new-version>,
+  <plugin-root>/CHANGELOG.md)` (plugin root = `$CLAUDE_PLUGIN_ROOT`, falling
+  back to the framework root). Print it verbatim under a "What changed in
+  your RenOS" heading. If it returns "" (unparseable/missing), say the
+  update landed and point at CHANGELOG.md instead — the digest is a
+  courtesy, never a gate.
+
+- **Offer new companions** — call `lib.companions.pending_offers()`. If
+  non-empty, say: "This update recommends companions you haven't decided
+  on:" and list each (title — pitch — install hint). Same rules as install
+  Stage 6: accepted tools are installed for them and recorded
+  (`record_choice(cid, "accepted")`); accepted plugins get the hint + a
+  restart note; declines are recorded and never re-asked; no answer records
+  nothing. Nothing installs without an explicit yes in chat.
 
 ## References
 
