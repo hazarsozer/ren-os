@@ -444,3 +444,19 @@ class TestBashWikiWriteGuard:
             self.cwd,
         )
         assert rc == 2
+
+    def test_newline_separated_sed_blocked(self):
+        # Multi-line commands: '\n' is a command separator too — a sed on a
+        # non-first line must not hide behind the first line's `echo`.
+        rc = write_gate.check_bash_wiki_write(
+            f"echo starting\nsed -i 's/x/y/' {self.wiki}/projects/target.md",
+            self.cwd,
+        )
+        assert rc == 2
+
+    def test_newline_separated_cp_blocked(self):
+        rc = write_gate.check_bash_wiki_write(
+            f"echo hi\ncp /tmp/x.md {self.wiki}/projects/y.md",
+            self.cwd,
+        )
+        assert rc == 2

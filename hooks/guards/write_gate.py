@@ -186,7 +186,9 @@ def _bash_write_targets(command: str) -> list[str]:
 
     masked = _QUOTED_SPAN_RE.sub(_mask, command)
     targets: list[str] = list(_REDIRECT_TARGET_RE.findall(masked))
-    for segment in re.split(r"[;|&]+", masked):
+    # Newlines separate commands just like ';' — split on them too so a
+    # write verb on a non-first line isn't hidden behind the first line's cmd.
+    for segment in re.split(r"[;|&\n\r]+", masked):
         tokens = segment.strip().split()
         if not tokens:
             continue
