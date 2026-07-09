@@ -293,8 +293,8 @@ class TestDuplicateEvidence:
         assert duplicate_evidence(a, b) is None
 
     def test_frontmatter_is_ignored(self):
-        a = "---\ntype: fact\n---\n- uses postgres for storage\n"
-        b = "---\ntype: note\n---\n- uses postgres for storage\n"
+        a = "---\ntype: fact\n---\n- uses postgres for storage\n- deploys to vercel\n- api lives in src/api\n"
+        b = "---\ntype: note\n---\n- uses postgres for storage\n- deploys to vercel\n- api lives in src/api\n"
         assert duplicate_evidence(a, b) is not None
 
 
@@ -333,3 +333,17 @@ class TestNumericDriftEvidence:
         a = "- uses postgres for storage backend\n"
         b = "- uses sqlite for storage backend\n"
         assert numeric_drift_evidence(a, b) is None  # backend swaps are 0.5-ladder work
+
+
+# --- duplicate_evidence: minimum content floor (near-empty templated pages) --
+
+
+def test_near_empty_templated_pages_are_not_duplicates():
+    a = "---\ntype: note\n---\n# Untitled\n- created from template\n"
+    b = "---\ntype: note\n---\n# Untitled\n- created from template\n"
+    assert duplicate_evidence(a, b) is None
+
+
+def test_real_duplicates_still_flag():
+    body = "# Deploy notes\n- use port 8080\n- restart nginx after deploy\n- check logs in /var/log\n"
+    assert duplicate_evidence(body, body) is not None

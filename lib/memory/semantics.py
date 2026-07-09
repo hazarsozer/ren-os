@@ -71,6 +71,7 @@ _STOPWORDS = frozenset(
 )
 
 _DUPLICATE_RATIO_THRESHOLD = 0.9
+_MIN_DUPLICATE_LINES = 3  # pages with fewer meaningful lines can't be judged duplicates
 _MIN_SHARED_TOKENS_FOR_CONTRADICTION = 3
 _MIN_SIGNIFICANT_TOKENS_TO_CONSIDER = 3
 
@@ -205,9 +206,13 @@ def duplicate_evidence(text_a: str, text_b: str) -> str | None:
     ratio function as `detect`'s per-candidate duplicate check, so the two
     paths can't drift.
 
-    Returns the first shared line as evidence, or `None` below the threshold."""
+    Returns the first shared line as evidence, or `None` below the threshold or
+    if either page has fewer than _MIN_DUPLICATE_LINES meaningful lines (near-empty
+    templated pages cannot be reliably judged duplicates)."""
     lines_a = _normalized_lines(_strip_frontmatter(text_a or ""))
     lines_b = _normalized_lines(_strip_frontmatter(text_b or ""))
+    if min(len(lines_a), len(lines_b)) < _MIN_DUPLICATE_LINES:
+        return None
     if _shared_line_ratio(lines_a, lines_b) >= _DUPLICATE_RATIO_THRESHOLD:
         return _first_shared_line(lines_a, lines_b)
     return None
@@ -292,10 +297,11 @@ def detect(op: str, page: str, content: str | None, wiki_root: Path) -> list[Con
         write_id = _write_id_of(raw)
 
         # 1. duplicate
-        ratio = _shared_line_ratio(proposed_lines, candidate_lines)
-        if ratio >= _DUPLICATE_RATIO_THRESHOLD:
-            evidence = _first_shared_line(proposed_lines, candidate_lines)
-            conflicts.append(Conflict("duplicate", rel, write_id, evidence))
+        if min(len(proposed_lines), len(candidate_lines)) >= _MIN_DUPLICATE_LINES:
+            ratio = _shared_line_ratio(proposed_lines, candidate_lines)
+            if ratio >= _DUPLICATE_RATIO_THRESHOLD:
+                evidence = _first_shared_line(proposed_lines, candidate_lines)
+                conflicts.append(Conflict("duplicate", rel, write_id, evidence))
 
         # 3. contradicts (checked per-candidate; collected below with the others)
         for evidence_line in _detect_contradictions(proposed_lines, candidate_lines):
