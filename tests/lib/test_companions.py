@@ -1,6 +1,7 @@
 """Tests for lib.companions — registry, detection, choices, reconcile."""
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -95,3 +96,14 @@ class TestReconcile:
         monkeypatch.setattr(companions, "is_installed", lambda c: False)
         offers = companions.reconcile()
         assert {o.companion.cid for o in offers} == {c.cid for c in companions.REGISTRY}
+
+
+class TestDoctrineSync:
+    def test_every_registry_id_appears_in_companions_doctrine(self):
+        doc_path = Path(__file__).resolve().parents[2] / "doctrine" / "companions.md"
+        doc = doc_path.read_text(encoding="utf-8").lower()
+        for c in companions.REGISTRY:
+            assert c.cid.lower() in doc, (
+                f"{c.cid} is in lib.companions.REGISTRY but missing from "
+                "doctrine/companions.md — the two must stay in sync"
+            )

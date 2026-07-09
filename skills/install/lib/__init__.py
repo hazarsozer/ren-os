@@ -31,6 +31,7 @@ from pathlib import Path
 
 from lib import ren_paths
 from lib.adapter.claude_md import MARKER_BEGIN, MARKER_END
+from lib.companions import CHOICES_FILENAME
 from lib.ren_paths import claude_user_dir
 from lib.skeleton import StampResult, stamp_skeleton
 from skills.backup.lib import backup_configured
@@ -76,7 +77,7 @@ def install_state(wiki_root: Path | None = None) -> dict:
     never blocks the guided flow from re-running the affected stage.
 
     Returns `{"wiki_stamped", "identity_present", "backup_configured",
-    "l2_maps", "installed_version", "global_claude_md"}`.
+    "l2_maps", "installed_version", "global_claude_md", "companions_recorded"}`.
     """
     root = Path(wiki_root) if wiki_root is not None else ren_paths.wiki_root()
 
@@ -127,6 +128,7 @@ def install_state(wiki_root: Path | None = None) -> dict:
         "l2_maps": l2_maps,
         "installed_version": installed_version,
         "global_claude_md": global_claude_md,
+        "companions_recorded": (ren_paths.state_dir() / CHOICES_FILENAME).exists(),
     }
 
 

@@ -6,7 +6,7 @@ scope_glob: null
 
 # Recommended companions (v2.1 D-3)
 
-Optional tools that pair well with RenOS. **Everything on this page is optional** — the framework works with zero of them installed, and none of them are health-checked in 0.2 (that's a 0.3 upgrade). This page exists so a friend who wants more capability knows what to reach for and how it fits the risk model, not to nag anyone into installing anything.
+Optional tools that pair well with RenOS. **Everything on this page is optional** — the framework works with zero of them installed. This page exists so a friend who wants more capability knows what to reach for and how it fits the risk model. Since 0.3.5, `/ren:install` and `/ren:update` offer these interactively — once each: an accept installs it, a decline is remembered and never re-asked (the list lives in `lib/companions`, and `/ren:doctor` reports drift between your choices and what's actually installed).
 
 ## Graphify — the code-map backend
 
@@ -14,8 +14,21 @@ The §3.2 code-map (`/ren:code-map`) is a thin wrapper over [Graphify](https://g
 
 - Install: `uv tool install graphifyy`
 - Pin note: RenOS is built against the **0.9.x** line (`GRAPHIFY_PIN = "0.9"` in `lib.code_map`... see `skills/code-map/lib`). Graphify's API has churned across major versions; a version outside 0.9.x is a warning, not a hard failure.
-- Doctor checks Graphify specifically (installed? pinned version? output fresh?) — it's the one companion on this page that gets that treatment, because the code-map capability directly depends on it. No other companion here gets a doctor check in 0.2.
+- Doctor checks Graphify specifically (installed? pinned version? output fresh?) — it's the one companion on this page that gets that deeper treatment, because the code-map capability directly depends on it. Since 0.3.5, every companion also gets a lighter drift check (accepted-but-not-installed) via `/ren:doctor`'s `check_companions` — Graphify's version/staleness check is on top of that, not instead of it.
 - Graceful absence: not installed → the code-map capability says so plainly and stays unavailable. No fallback engine.
+
+## Superpowers — process skills for planning and TDD
+
+[Superpowers](https://github.com/anthropics/claude-plugins) is a Claude Code
+plugin of process skills — brainstorming, writing-plans, test-driven
+development, systematic debugging. RenOS doesn't depend on it, but planning
+sessions are noticeably better with it.
+
+- Install: `/plugin install superpowers@claude-plugins-official` — then restart
+  the session to activate.
+- Governance is unchanged by the tool: superpowers shapes the *process* of a
+  session; everything durable it produces still lands through RenOS's write
+  queue like any other content.
 
 ## Playwright MCP / Claude in Chrome — agent-verified visual/E2E testing
 
@@ -43,4 +56,4 @@ User-side convenience tools (e.g. Whisper Flow-style dictation) for talking to C
 
 ## What's NOT on this page
 
-No health-check machinery for any of these in 0.2 — that's explicitly deferred to 0.3. No LLM media-extraction paths from Graphify are ever invoked by the code-map wrapper (code-mode/tree-sitter only). No wiki/Obsidian export feature of Graphify is used to write wiki pages — the wiki's SSOT stays quarantine-governed (data until promoted), always.
+No LLM media-extraction paths from Graphify are ever invoked by the code-map wrapper (code-mode/tree-sitter only). No wiki/Obsidian export feature of Graphify is used to write wiki pages — the wiki's SSOT stays quarantine-governed (data until promoted), always.

@@ -180,3 +180,16 @@ def test_l2_maps_counts_only_project_maps(wiki):
         "---\ntype: l2-map\nproject: demo\n---\n# demo\n", encoding="utf-8"
     )
     assert install_state(wiki)["l2_maps"] == 1
+
+
+# --- companions (Task 4, 0.3.5) ------------------------------------------
+
+
+def test_install_state_reports_companions_recorded(clean_path_env, wiki):
+    from lib import companions
+
+    state = install_state(wiki)
+    assert state["companions_recorded"] is False
+    companions.record_choice("graphify", "declined")
+    state = install_state(wiki)
+    assert state["companions_recorded"] is True
