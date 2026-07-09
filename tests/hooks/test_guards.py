@@ -382,3 +382,25 @@ class TestBashWikiWriteGuard:
             f"echo hi > {self.wiki.name}/projects/x.md", str(self.wiki.parent)
         )
         assert rc == 2
+
+    def test_quoted_gt_in_grep_with_cwd_inside_wiki_allowed(self):
+        # Pure READ: the '>' is quoted data, not a redirect. With cwd INSIDE
+        # the wiki, the stripped-empty token must not resolve to cwd and block.
+        rc = write_gate.check_bash_wiki_write(
+            f"grep -c '>' {self.wiki}/projects/x.md", str(self.wiki / "projects")
+        )
+        assert rc == 0
+
+    def test_quoted_prose_gt_with_cwd_inside_wiki_allowed(self):
+        rc = write_gate.check_bash_wiki_write(
+            'echo "a > b"', str(self.wiki / "projects")
+        )
+        assert rc == 0
+
+    def test_sed_multi_substitution_script_blocked(self):
+        # Standard multi-sub idiom: the quoted ';' must not split the segment
+        # and hide the file arg from extraction.
+        rc = write_gate.check_bash_wiki_write(
+            f"sed -i 's/a/b/;s/c/d/' {self.wiki}/notes.md", self.cwd
+        )
+        assert rc == 2
