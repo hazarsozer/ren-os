@@ -7,12 +7,12 @@ description: |
   skills yet — propose each as a queue diff. Triggers on /ren:retrospective
   [--since <date>]. NOT an eval-scored iteration loop — one deterministic
   pass, optionally judgment-enriched by the live session before proposing.
-version: 0.3.5
+version: 0.3.6
 license: MIT
 type: skill
 execution_tier: worker
 schema_version: 1
-framework_version: "0.3.5"
+framework_version: "0.3.6"
 
 contract:
   required_outputs:

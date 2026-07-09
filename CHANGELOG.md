@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.3.6] — 2026-07-09 — "closing the stated gaps"
+
+Every gap the docs admitted to is now closed, not just disclosed.
+
+- **Write gate catches `mv`-out and single-page `rm`** — moving a wiki page
+  out of the wiki or deleting one page now trips the guard (was a documented
+  accepted gap; `.ren/` state files are untouched).
+- **Promotion rejects `..` traversal** at propose time, not just at apply.
+- **Duplicate detection has a content floor** — near-empty templated pages
+  can no longer flag each other.
+- **"Ask me to list them" is now backed** — a deterministic full listing of
+  every pending suggestion, all sessions, with previews.
+- `snapshotRetain` survives absurd values like `1e400`.
+
 ## [0.3.5] — 2026-07-09 — "companions on board"
 
 Install and update now carry the companion list with them — once each,
