@@ -164,17 +164,19 @@ def check_mass_delete(command: str, cwd: str) -> int:
 
 def _bash_write_targets(command: str) -> list[str]:
     """Best-effort extraction of the paths a shell command would WRITE to:
-    redirect targets, `sed -i` file args, `tee` args, and the destination
-    (last non-flag arg) of cp/mv/install/rsync. NOT a shell parser — a
-    defense-in-depth heuristic; reads (`cat`, `grep`) and copies OUT of the
-    wiki produce no targets. `python -c`/heredoc writers are invisible by
-    design (documented best-effort). Quoted spans are masked with INDEXED
-    placeholders before any extraction — so a quoted `>` isn't a redirect and
-    a quoted `;` (e.g. a sed multi-substitution script) doesn't split the
-    segment — then restored inside each extracted target, so a fully-quoted
-    destination path (`> "wiki/x.md"`) still resolves and blocks. Known
-    accepted gap: `cp --target-directory=DIR src` puts the destination in a
-    flag token, which we drop wholesale — full flag parsing is out of scope."""
+    redirect targets, `sed -i` file args, `tee` args, and for cp/install/rsync
+    the destination (last non-flag arg), or for mv ALL non-flag args (source
+    and dest, since moving a wiki page OUT mutates the wiki too). NOT a shell
+    parser — a defense-in-depth heuristic; reads (`cat`, `grep`) and copies
+    OUT of the wiki produce no targets. `python -c`/heredoc writers are
+    invisible by design (documented best-effort). Quoted spans are masked with
+    INDEXED placeholders before any extraction — so a quoted `>` isn't a
+    redirect and a quoted `;` (e.g. a sed multi-substitution script) doesn't
+    split the segment — then restored inside each extracted target, so a
+    fully-quoted destination path (`> "wiki/x.md"`) still resolves and blocks.
+    Known accepted gap: `cp --target-directory=DIR src` puts the destination
+    in a flag token, which we drop wholesale — full flag parsing is out of
+    scope."""
     # Mask each quoted region with an indexed token: kills false redirect
     # matches on quoted '>' and keeps quoted scripts as one token, preserving
     # arg positions for the per-segment extraction below. The spans are

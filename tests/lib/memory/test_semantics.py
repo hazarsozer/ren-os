@@ -288,8 +288,8 @@ class TestDuplicateEvidence:
         assert duplicate_evidence(a, b) is not None
 
     def test_disjoint_bodies_are_not_duplicates(self):
-        a = "## Knowledge\n- uses postgres for storage\n"
-        b = "## Knowledge\n- frontend built with react\n"
+        a = "## Knowledge\n- uses postgres for storage\n- runs on linux servers\n- scales horizontally\n"
+        b = "## Knowledge\n- frontend built with react\n- uses typescript strictly\n- deploys to vercel\n"
         assert duplicate_evidence(a, b) is None
 
     def test_frontmatter_is_ignored(self):
