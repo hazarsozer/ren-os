@@ -177,6 +177,15 @@ def test_demote_check_missing_directory_returns_empty(wiki):
 # --- end-to-end: approve -> apply lands under global/, not quarantined -----
 
 
+def test_promote_rejects_non_global_target(wiki):
+    body = "---\ntitle: House style\ntype: doctrine\n---\nBody text.\n"
+    text, _ = _stamped(body)
+    _write(wiki, "projects/demo/style.md", text)
+
+    with pytest.raises(PromotionError, match="global/"):
+        promote_to_global("projects/demo/style.md", "sess-2", target_page="projects/app/sneaky.md")
+
+
 def test_promote_approve_apply_lands_under_global_not_quarantined(wiki):
     from lib.memory.quarantine import is_quarantined
 

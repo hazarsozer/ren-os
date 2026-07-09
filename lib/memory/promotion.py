@@ -116,6 +116,10 @@ def promote_to_global(
         )
 
     target = target_page if target_page is not None else GLOBAL_PREFIX + Path(source_page).name
+    if not target.startswith(GLOBAL_PREFIX):
+        raise PromotionError(
+            f"promotion target must live under {GLOBAL_PREFIX!r}; got {target!r}"
+        )
     op = "UPDATE" if _page_exists(target) else "ADD"
 
     source_prov = read_frontmatter_provenance(source_text)
