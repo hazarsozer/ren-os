@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.3.3] — 2026-07-09 — "see what you approve"
+
+Instruction-plane promotion is the one decision still gated on you — now you
+can see what you're deciding.
+
+- **Wake-up lists pending suggestions** (up to 5, with page and reason)
+  instead of announcing a bare count.
+- **Wrap previews content** — every held or suggested entry shows the first
+  line of what would actually be written, not just its metadata.
+
+The conversational approval model is unchanged: answer in chat, or ignore.
+
 ## [0.3.2] — 2026-07-09 — "substrate integrity"
 
 The write substrate's promises (snapshot, journal, one-step revert) now hold

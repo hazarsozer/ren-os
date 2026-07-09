@@ -6,10 +6,10 @@ description: |
   surface from the wiki. Triggers on /ren:code-map [build|status]. A thin
   wrapper over Graphify (pinned 0.9.x), never a second hand-rolled engine;
   gracefully absent if Graphify isn't installed.
-version: 0.3.2
+version: 0.3.3
 license: MIT
 
-framework_version: "0.3.2"
+framework_version: "0.3.3"
 schema_version: 1
 type: skill
 execution_tier: deterministic
