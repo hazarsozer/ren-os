@@ -12,6 +12,7 @@ import re
 from pathlib import Path
 
 _HEADER_RE = re.compile(r"^## \[(\d+\.\d+\.\d+)\]", re.MULTILINE)
+_ANY_HEADER_RE = re.compile(r"^## \[", re.MULTILINE)
 
 
 def _version_key(version: str) -> tuple[int, ...]:
@@ -29,14 +30,19 @@ def changelog_digest(old: str, new: str, changelog_path: Path) -> str:
         old_key, new_key = _version_key(old), _version_key(new)
     except (OSError, ValueError):
         return ""
+
+    # Compute boundaries from ALL headers (including prerelease ones).
+    boundaries = sorted(m.start() for m in _ANY_HEADER_RE.finditer(text))
+
     matches = list(_HEADER_RE.finditer(text))
     sections: list[str] = []
-    for i, match in enumerate(matches):
+    for match in matches:
         try:
             key = _version_key(match.group(1))
         except ValueError:
             continue
         if old_key < key <= new_key:
-            end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
+            # Find the next boundary strictly greater than match.start().
+            end = next((b for b in boundaries if b > match.start()), len(text))
             sections.append(text[match.start():end].strip())
     return "\n\n".join(sections)
