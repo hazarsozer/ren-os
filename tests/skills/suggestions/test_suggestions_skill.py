@@ -86,6 +86,16 @@ def test_decline_is_durable_and_never_re_offered(wiki):
     assert record(spec) is None  # same fingerprint, never re-nagged
 
 
+def test_decline_then_accept_same_sid_no_apply_side_effects(wiki):
+    entry = record(_page_write_spec())
+    decline(entry["sid"])
+
+    result = accept(entry["sid"], "s-test")
+
+    assert result == {"sid": entry["sid"], "applied": False, "detail": "already declined"}
+    assert not (wiki / "projects/x/notes.md").exists()
+
+
 def test_accept_unknown_sid_raises_key_error(wiki):
     with pytest.raises(KeyError):
         accept("s-does-not-exist", "s-test")

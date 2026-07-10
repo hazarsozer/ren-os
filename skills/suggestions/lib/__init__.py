@@ -27,6 +27,21 @@ fingerprint never deduped by a decision that didn't happen. The error is
 caught and surfaced in the returned `"detail"`, never raised past `accept()`
 (except for an unknown `sid`, which raises `KeyError` before any apply is
 attempted).
+
+Immutability (0.5.x, codex P1): `lib.suggestions.decide()` raises
+`ValueError` for an entry that isn't currently "pending" — decided
+("accepted"/"declined") and expired entries can never be re-decided.
+`accept()` checks this up front, before any apply, and returns
+`{"applied": False, "detail": "already <status>"}`; `decline()` catches the
+same `ValueError` and surfaces the equivalent result.
+
+Decision-recording failure (0.5.x, codex P2/P3): the `decide()` call that
+runs AFTER a successful apply has its own try/except. If it raises, `accept()`
+still returns the apply result, with `"decision_recorded": False` added — the
+suggestion stays pending (will re-offer) even though its effect already
+landed. That's safe by construction: re-accepting a `page_write` suggestion
+dedups to `noop-duplicate`, and re-running `promote_to_global` is idempotent.
+On a successful `decide()`, `"decision_recorded": True` is added instead.
 """
 
 from __future__ import annotations
@@ -128,30 +143,60 @@ def _apply(sid: str, kind: str, payload: dict, session: str) -> dict:
 def accept(sid: str, session: str) -> dict:
     """Apply `sid`'s payload by `kind`/action, then record it as accepted.
 
-    Returns `{"sid", "applied": bool, "detail": ...}`. Raises `KeyError` if
-    `sid` doesn't exist (before any apply is attempted). 0.4.5 ordering: the
-    apply runs first; an apply that raises leaves the suggestion PENDING
-    (visible and retryable — its fingerprint is never deduped by a decision
-    that didn't happen) and surfaces the error in `"detail"`. Intentional
-    non-write outcomes (duplicate content, review_contradiction handoff,
-    unknown kind) still count as decided — retrying them cannot change the
-    outcome.
+    Returns `{"sid", "applied": bool, "detail": ...}` plus, once an apply has
+    been attempted, `"decision_recorded": bool`. Raises `KeyError` if `sid`
+    doesn't exist (before any apply is attempted).
+
+    P1: decided ("accepted"/"declined") and expired entries are immutable —
+    accept() checks the entry's status up front (before any apply) and
+    surfaces `{"applied": False, "detail": "already <status>"}` without
+    touching anything.
+
+    0.4.5 ordering: the apply runs first; an apply that raises leaves the
+    suggestion PENDING (visible and retryable — its fingerprint is never
+    deduped by a decision that didn't happen) and surfaces the error in
+    `"detail"`. Intentional non-write outcomes (duplicate content,
+    review_contradiction handoff, unknown kind) still count as decided —
+    retrying them cannot change the outcome.
+
+    P3/P2: the post-apply `decide()` call has its own try/except. If it
+    raises, the apply result is returned as-is with `"decision_recorded":
+    False` added — the suggestion stays pending and will re-offer. That's
+    safe: a crash between apply and decide leaves a pending suggestion whose
+    effect already landed, but re-accepting it is benign — `page_write`
+    dedups to `noop-duplicate` and `promote_to_global` re-runs idempotently.
+    On success, `"decision_recorded": True` is added.
     """
     entry = get_suggestion(sid)
+    if entry["status"] != "pending":
+        return {"sid": sid, "applied": False, "detail": f"already {entry['status']}"}
 
     try:
         result = _apply(sid, entry["kind"], entry.get("payload") or {}, session)
     except Exception as exc:  # noqa: BLE001 - failure contract: surface, never raise past accept()
         return {"sid": sid, "applied": False, "detail": str(exc)}
 
-    decide(sid, "accepted")
-    return result
+    try:
+        decide(sid, "accepted")
+    except Exception:  # noqa: BLE001 - decision-recording failure must not lose the apply result
+        return {**result, "decision_recorded": False}
+
+    return {**result, "decision_recorded": True}
 
 
 def decline(sid: str) -> dict:
     """Record `sid` as declined — durable, never re-offered (`decide`'s
-    fingerprint dedup covers that). Raises `KeyError` for an unknown sid."""
-    return decide(sid, "declined")
+    fingerprint dedup covers that). Raises `KeyError` for an unknown sid.
+
+    P1: a decided or expired entry is immutable — `decide()` raises
+    `ValueError` in that case, which this surfaces as
+    `{"applied": False, "detail": "already <status>"}` instead of
+    propagating."""
+    try:
+        return decide(sid, "declined")
+    except ValueError:
+        entry = get_suggestion(sid)
+        return {"sid": sid, "applied": False, "detail": f"already {entry['status']}"}
 
 
 __all__ = ["render_suggestion", "render_list", "accept", "decline"]
