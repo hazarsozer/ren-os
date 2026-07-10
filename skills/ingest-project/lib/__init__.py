@@ -107,7 +107,9 @@ def ingest(
     (which will surface a `supersedes` conflict against the prior map via
     `lib.memory.semantics`, since the target already exists — `supersedes`
     doesn't hold the auto-apply, it's the normal shape of a changing map).
-    Always `producer="promotion"`, `writer="llm-auto"` — quarantined on
+    Always `producer="ingest"`, `writer="llm-auto"` — the honest producer
+    label for content pulled in from an existing repo (trust class
+    `"foreign"`, per `lib.memory.provenance.trust_class`); quarantined on
     write until a human reviews it, per spec §3.10, but auto-applied
     immediately through the data-plane door (non-global page, v2.2 pivot).
 
@@ -131,7 +133,7 @@ def ingest(
             page=page,
             content=content,
             reason="ingest-project",
-            producer="promotion",
+            producer="ingest",
             writer="llm-auto",
             session=session,
             salience=False,

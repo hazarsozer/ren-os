@@ -171,7 +171,7 @@ def test_ingest_auto_applies_llm_auto_map_with_artifact(wiki):
     entry = queue.get(result["qid"])
     assert entry.status == "applied"
     assert entry.proposal.op == "ADD"
-    assert entry.proposal.producer == "promotion"
+    assert entry.proposal.producer == "ingest"
     assert entry.proposal.writer == "llm-auto"
     assert entry.proposal.page == "projects/fixture-widget/map.md"
 
@@ -187,6 +187,23 @@ def test_ingest_applies_quarantined(wiki):
     entries = journal.entries(page="projects/fixture-widget/map.md")
     assert len(entries) == 1
     assert entries[0]["writer"] == "llm-auto"
+
+
+def test_ingest_still_auto_applies_with_ren_trust_foreign(wiki):
+    """0.5.1 Task 6 regression: switching ingest's producer label from
+    "promotion" to the honest "ingest" must not change its auto-apply
+    behavior — same queue status trajectory as before, now stamped
+    ren_trust: foreign (producer=="ingest" always maps to "foreign", per
+    lib.memory.provenance.trust_class, regardless of the llm-auto writer)."""
+    result = ingest("fixture-trust", ["some fact"], [], session="sess-1")
+
+    assert result["write_id"] is not None
+    entry = queue.get(result["qid"])
+    assert entry.status == "applied"
+    assert entry.proposal.producer == "ingest"
+
+    page_text = (wiki / "projects" / "fixture-trust" / "map.md").read_text(encoding="utf-8")
+    assert "ren_trust: \"foreign\"" in page_text
 
 
 def test_ingest_on_existing_map_auto_applies_update_with_supersedes_conflict(wiki):
