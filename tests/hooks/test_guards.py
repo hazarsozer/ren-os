@@ -253,6 +253,35 @@ def test_rm_rf_of_non_wiki_dir_with_md_files_unaffected(tmp_path, wiki):
     assert rc == 0
 
 
+def test_rm_rf_of_wiki_dir_with_symlink_to_outside_not_counted_or_followed(wiki, tmp_path):
+    # D2 hardening (t4c review): a symlinked subdir inside the delete target
+    # pointing OUTSIDE the wiki must never be traversed — its .md pages
+    # (however many) must not inflate the count, and a cyclic/huge external
+    # tree must not hang the guard.
+    d = wiki / "projects" / "demo"
+    d.mkdir(parents=True)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    for name in ("x.md", "y.md", "z.md"):
+        (outside / name).write_text("x\n", encoding="utf-8")
+    (d / "link").symlink_to(outside, target_is_directory=True)
+
+    rc = write_gate.check_mass_delete(f"rm -rf {d}", str(wiki))
+    assert rc == 0  # zero real (non-symlinked) pages under d — allowed, not blocked or hung
+
+
+def test_rm_rf_of_nonexistent_wiki_dir_allowed(wiki):
+    # D2 hardening (t4c review): `rm -rf` of a path that doesn't exist at
+    # guard time falls back to the generic single-hit count (is_dir() is
+    # False so the recursive walk branch isn't reached at all) — count 0/1
+    # under threshold, allowed. `rm` itself would fail/no-op on the missing
+    # path regardless.
+    d = wiki / "projects" / "gone"  # never created
+
+    rc = write_gate.check_mass_delete(f"rm -rf {d}", str(wiki))
+    assert rc == 0
+
+
 def test_rm_of_two_wiki_files_under_threshold_allowed(wiki):
     # Non-page files (not .md) so the single-page rule doesn't fire — this
     # test's intent is the THRESHOLD path, not the page rule.

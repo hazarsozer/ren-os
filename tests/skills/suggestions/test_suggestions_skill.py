@@ -196,6 +196,9 @@ def test_accept_review_contradiction_applies_nothing_but_returns_evidence(wiki):
     assert result["applied"] is False
     assert result["detail"]["page"] == "a.md"
     assert result["detail"]["with"] == "b.md"
+    # decision_recorded contract (t4c review): review_contradiction applies
+    # nothing but still calls decide() afterward, so it succeeds → True.
+    assert result["decision_recorded"] is True
 
 
 def test_accept_page_write_noop_duplicate_records_decision_without_apply(wiki):
@@ -230,6 +233,9 @@ def test_accept_page_write_noop_duplicate_records_decision_without_apply(wiki):
 
     assert result["applied"] is False
     assert result["detail"] == "content already on page"
+    # decision_recorded contract (t4c review): the noop-duplicate outcome
+    # still calls decide() afterward, so it succeeds → True.
+    assert result["decision_recorded"] is True
 
     from lib.suggestions import all_suggestions
 
@@ -258,6 +264,10 @@ def test_accept_apply_failure_leaves_suggestion_pending_and_retryable(wiki):
     result = accept(entry["sid"], "s-test")
 
     assert result["applied"] is False
+    # decision_recorded contract (t4c review): apply raised, so decide() was
+    # never reached — present and False, symmetric with the decide()-raised
+    # path, not absent as it was before the fix.
+    assert result["decision_recorded"] is False
 
     from lib.suggestions import decided_fingerprints, pending_suggestions
 

@@ -177,11 +177,34 @@ def check_mass_delete(command: str, cwd: str) -> int:
                 # at guard time and count the actual .md pages under it, so
                 # a subtree delete hits the same block threshold a multi-file
                 # delete would (excluding machine state under .ren/).
-                md_count = sum(1 for p in resolved.rglob("*.md") if ".ren" not in p.parts)
+                # followlinks=False: a symlinked subdir inside the target
+                # could point anywhere (outside the wiki, a huge/slow tree, a
+                # cycle) — never traverse into one, just skip it, so the page
+                # count reflects only real wiki content and can't hang or be
+                # skewed by a symlink. Errors during the walk are swallowed
+                # by the outer main() try/except (fail-open), same as every
+                # other guard failure mode here.
+                md_count = 0
+                for dirpath, dirnames, filenames in os.walk(resolved, followlinks=False):
+                    dirnames[:] = [d for d in dirnames if not (Path(dirpath) / d).is_symlink()]
+                    if ".ren" in Path(dirpath).relative_to(resolved).parts:
+                        dirnames[:] = []
+                        continue
+                    md_count += sum(1 for f in filenames if f.endswith(".md"))
+                # A target that doesn't exist on disk (is_dir() already False
+                # in that case, so this branch isn't reached) or resolves to
+                # zero real pages falls through with md_count == 0 — allowed,
+                # matching "rm would fail/no-op anyway" for a missing path.
                 wiki_hit_count += md_count
                 if md_count > 0:
                     page_hit = True
             else:
+                # Non-recursive, or a recursive target that isn't a real
+                # directory at guard time (including a nonexistent path —
+                # `rm -rf wiki/gone/` where `gone/` doesn't exist): falls
+                # back to counting it as one generic hit, same as a single
+                # file delete. `rm` would itself fail/no-op on a missing
+                # path, so undercounting it here is harmless in practice.
                 wiki_hit_count += 1
                 if resolved.suffix == ".md" and ".ren" not in resolved.parts:
                     page_hit = True

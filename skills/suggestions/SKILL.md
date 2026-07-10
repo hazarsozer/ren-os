@@ -77,7 +77,14 @@ skill's `accept()` is what turns an "accepted" decision into a real write.
      what happened from the returned `{"sid", "applied", "detail"}` — if
      `applied` is `False`, say so and show `detail` (e.g. a duplicate-content
      no-op, or the two pages + evidence for a `review_contradiction`
-     suggestion the friend now reconciles conversationally).
+     suggestion the friend now reconciles conversationally). The result also
+     carries `"decision_recorded"` (`True`/`False`) on every path that
+     followed an apply attempt — absent only on the up-front already-decided
+     check, so use `.get("decision_recorded")`. If it's `False`, the change
+     may already have landed (`applied` can still be `True`) but the decision
+     itself wasn't recorded — the suggestion stays pending and will be
+     offered again; mention that to the friend rather than treating it as a
+     clean accept.
    - On reject: call `skills.suggestions.lib.decline(sid)` — durable, this
      suggestion is never re-offered.
    - Move to the next suggestion.

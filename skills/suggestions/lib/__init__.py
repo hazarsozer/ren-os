@@ -28,6 +28,16 @@ caught and surfaced in the returned `"detail"`, never raised past `accept()`
 (except for an unknown `sid`, which raises `KeyError` before any apply is
 attempted).
 
+`decision_recorded` key contract (0.5.x, codex t4c review): present and
+`False`/`True` on every return path that FOLLOWS an apply attempt — apply
+raised (`False`), apply succeeded but `decide()` raised (`False`), or both
+apply and `decide()` succeeded (`True`). Absent on paths that return BEFORE
+any apply is attempted: the up-front already-decided check (entry not
+"pending") and the `KeyError` for an unknown `sid` — those never got close to
+recording a decision, so there is nothing to report either way. Callers
+should treat `.get("decision_recorded")` as `None`/absent meaning "no apply
+was attempted", not "recorded".
+
 Immutability (0.5.x, codex P1): `lib.suggestions.decide()` raises
 `ValueError` for an entry that isn't currently "pending" — decided
 ("accepted"/"declined") and expired entries can never be re-decided.
@@ -155,7 +165,8 @@ def accept(sid: str, session: str) -> dict:
     0.4.5 ordering: the apply runs first; an apply that raises leaves the
     suggestion PENDING (visible and retryable — its fingerprint is never
     deduped by a decision that didn't happen) and surfaces the error in
-    `"detail"`. Intentional non-write outcomes (duplicate content,
+    `"detail"`, plus `"decision_recorded": False` (decide() was never
+    reached). Intentional non-write outcomes (duplicate content,
     review_contradiction handoff, unknown kind) still count as decided —
     retrying them cannot change the outcome.
 
@@ -174,7 +185,7 @@ def accept(sid: str, session: str) -> dict:
     try:
         result = _apply(sid, entry["kind"], entry.get("payload") or {}, session)
     except Exception as exc:  # noqa: BLE001 - failure contract: surface, never raise past accept()
-        return {"sid": sid, "applied": False, "detail": str(exc)}
+        return {"sid": sid, "applied": False, "detail": str(exc), "decision_recorded": False}
 
     try:
         decide(sid, "accepted")
