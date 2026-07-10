@@ -1,0 +1,144 @@
+"""
+lib.suggestions — the 0.4.2 durable suggestion store (Task 14, "the
+suggestion pipeline").
+
+Suggestions are RARE AND HIGH-STAKES by design (spec §1.2): this store never
+writes wiki pages, and it never applies a suggestion's payload — `decide` is
+a pure state transition, application logic is a later task (Task 19).
+
+Persistence is the state: one JSON file per suggestion at
+`state_dir()/"suggestions"/<sid>.json`, same as `lib.memory.queue`.
+
+The never-re-nag contract (mirrors the companions reconciler's doctrine,
+`lib/companions/__init__.py`): a suggestion is offered iff it has no recorded
+decision. Declines are durable — never re-nag. `record` therefore dedups a
+new spec's fingerprint against BOTH pending and decided suggestions before
+writing anything.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import sys
+from dataclasses import asdict, dataclass
+from datetime import datetime, timezone
+from pathlib import Path
+
+from ulid import ULID
+
+from lib import ren_paths
+
+_SUGGESTIONS_DIRNAME = "suggestions"
+_PENDING = "pending"
+_DECISIONS = ("accepted", "declined")
+
+
+@dataclass(frozen=True)
+class SuggestionSpec:
+    producer: str          # "retrospective"|"promotion"|"doctrine"|"wiki-health"
+    title: str             # one human line
+    rationale: str         # "you did X in N of last M sessions"
+    evidence: dict         # structured, producer-shaped
+    kind: str              # "page_write" | "structured_action"
+    payload: dict          # page_write: full Proposal kwargs; structured_action: {"action": ..., ...}
+    fingerprint: str       # stable identity for durable-decline dedup
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _suggestions_dir() -> Path:
+    d = ren_paths.state_dir() / _SUGGESTIONS_DIRNAME
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _suggestion_path(sid: str) -> Path:
+    return _suggestions_dir() / f"{sid}.json"
+
+
+def _persist(entry: dict) -> None:
+    """Atomic write: temp file + os.replace, so a crash mid-write never leaves
+    a torn/partial suggestion file."""
+    path = _suggestion_path(entry["sid"])
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(json.dumps(entry, indent=2), encoding="utf-8")
+    os.replace(tmp, path)
+
+
+def _load(sid: str) -> dict:
+    path = _suggestion_path(sid)
+    if not path.exists():
+        raise KeyError(sid)
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def all_suggestions() -> list[dict]:
+    """Every suggestion regardless of status, in no particular order. One
+    corrupted entry file must never take down whole-store listing —
+    unparsable files are skipped with a stderr warning, same torn-file
+    tolerance as `lib.memory.queue.all_entries`."""
+    entries: list[dict] = []
+    for path in _suggestions_dir().glob("*.json"):
+        try:
+            entries.append(json.loads(path.read_text(encoding="utf-8")))
+        except (json.JSONDecodeError, TypeError, ValueError) as exc:
+            print(f"ren suggestions: skipping unparsable entry file {path.name}: {exc}", file=sys.stderr)
+    return entries
+
+
+def record(spec: SuggestionSpec) -> dict | None:
+    """Record `spec` as a new pending suggestion, unless its fingerprint is
+    already pending or decided — in which case returns None (never re-nag)."""
+    existing_fingerprints = {e["fingerprint"] for e in all_suggestions()}
+    if spec.fingerprint in existing_fingerprints:
+        return None
+
+    entry = {
+        "sid": f"s-{ULID()}",
+        "ts": _now_iso(),
+        **asdict(spec),
+        "status": _PENDING,
+        "decided_at": None,
+    }
+    _persist(entry)
+    return entry
+
+
+def pending_suggestions() -> list[dict]:
+    """All suggestions with status=="pending", oldest first (sid is a ULID,
+    so lexicographic sort == chronological order)."""
+    entries = [e for e in all_suggestions() if e["status"] == _PENDING]
+    entries.sort(key=lambda e: e["sid"])
+    return entries
+
+
+def decided_fingerprints() -> set[str]:
+    """Fingerprints of every non-pending (accepted or declined) suggestion."""
+    return {e["fingerprint"] for e in all_suggestions() if e["status"] != _PENDING}
+
+
+def decide(sid: str, decision: str) -> dict:
+    """Transition `sid` to `decision` ("accepted" or "declined"). Pure state
+    transition — does NOT apply the suggestion's payload; application is the
+    caller's job (Task 19). Raises KeyError for an unknown sid, ValueError
+    for an invalid decision."""
+    if decision not in _DECISIONS:
+        raise ValueError(f"decision must be one of {_DECISIONS}, got {decision!r}")
+    entry = _load(sid)
+    entry["status"] = decision
+    entry["decided_at"] = _now_iso()
+    _persist(entry)
+    return entry
+
+
+__all__ = [
+    "SuggestionSpec",
+    "all_suggestions",
+    "record",
+    "pending_suggestions",
+    "decided_fingerprints",
+    "decide",
+]
