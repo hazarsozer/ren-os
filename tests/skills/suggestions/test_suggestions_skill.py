@@ -263,3 +263,30 @@ def test_accept_apply_failure_leaves_suggestion_pending_and_retryable(wiki):
 
     assert [s["sid"] for s in pending_suggestions()] == [entry["sid"]]
     assert decided_fingerprints() == set()
+
+
+def test_accept_decide_failure_after_apply_keeps_suggestion_pending(wiki, monkeypatch):
+    # decide() raising AFTER a successful apply (e.g. a ledger write failure)
+    # must not lose the apply result — codex P3.
+    import skills.suggestions.lib as sug_lib
+
+    def _boom(sid, decision):
+        raise RuntimeError("simulated ledger write failure")
+
+    monkeypatch.setattr(sug_lib, "decide", _boom)
+
+    entry = record(_page_write_spec())
+    result = accept(entry["sid"], "s-test")
+
+    assert result["applied"] is True
+    assert result["decision_recorded"] is False
+
+    from lib.suggestions import get_suggestion
+
+    assert get_suggestion(entry["sid"])["status"] == "pending"
+
+
+def test_accept_success_records_decision_recorded_true(wiki):
+    entry = record(_page_write_spec())
+    result = accept(entry["sid"], "s-test")
+    assert result["decision_recorded"] is True
