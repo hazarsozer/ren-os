@@ -100,7 +100,11 @@ def load_choices() -> dict:
 
 
 def record_choice(cid: str, decision: str) -> None:
-    """Durably record an in-chat accept/decline. Atomic write."""
+    """Durably record an in-chat accept/decline. Atomic write.
+
+    Last-writer-wins under concurrent sessions (read-modify-write without a lock) —
+    acceptable for a single-user tool; do not add locking without a demonstrated need.
+    """
     if decision not in _DECISIONS:
         raise ValueError(f"decision must be one of {_DECISIONS}, got {decision!r}")
     if cid not in {c.cid for c in REGISTRY}:

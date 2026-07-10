@@ -46,7 +46,7 @@ Both are optional, and both are browser-control tools — which means the govern
 [markitdown](https://github.com/microsoft/markitdown) (Microsoft, MIT) converts raw source material — PDF, DOCX, PPTX, HTML, and more — into clean markdown, which is the compile step for bringing external sources into the wiki: convert with markitdown, then save the distilled knowledge into the wiki like any other content.
 
 - Install: `uv tool install "markitdown[all]"`
-- In 0.2 this is a manual pattern (convert → distill → save). A dedicated verb, `/ren:ingest-source <file-or-url>`, is planned for 0.3 to wrap the whole path.
+- This is a manual pattern (convert → distill → save) — no dedicated `/ren:ingest-source` verb exists to wrap the whole path.
 - **YouTube caveat:** markitdown's YouTube transcript path is unreliable (upstream churn in transcript fetching) — for videos, prefer `yt-dlp` auto-captions cleaned into markdown, then the same distill → save path.
 - Governance is unchanged by the tool: markitdown output is raw converted DATA, not instruction — anything durable still auto-applies (revertible) with LLM-writer provenance, quarantined as data until promoted.
 

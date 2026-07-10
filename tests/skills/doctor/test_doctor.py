@@ -251,6 +251,19 @@ def test_check_companions_ok_when_consistent(monkeypatch, wiki):
     assert result.status == "ok"
 
 
+def test_check_companions_treats_corrupt_choices_file_as_undecided(monkeypatch, wiki):
+    from lib import companions
+
+    monkeypatch.setattr(companions, "is_installed", lambda c: False)
+    choices_path = companions._choices_path()
+    choices_path.parent.mkdir(parents=True, exist_ok=True)
+    choices_path.write_text("{not json", encoding="utf-8")
+
+    result = doctor.check_companions()
+
+    assert result.status == "info"
+
+
 # ----------------------------------------------------------- check_backup_configured
 
 

@@ -2,9 +2,7 @@
 
 from pathlib import Path
 
-import importlib
-
-update_lib = importlib.import_module("skills.update.lib")
+from skills.update import lib as update_lib
 
 SAMPLE = """# Changelog
 
