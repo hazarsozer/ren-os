@@ -42,6 +42,7 @@ import logging
 import os
 import re
 import subprocess
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Final
 
@@ -56,6 +57,7 @@ L1_DIRNAME: Final[str] = "l1"
 L2_MAP_FILENAME: Final[str] = "map.md"
 MASTER_ROUTINES_DIRNAME: Final[str] = "routines"
 _SUGGESTION_LIST_CAP: Final[int] = 5
+SALIENCE_WINDOW_DAYS: Final[int] = 30
 
 # Token budget (ADR-008 heritage: 3-5K target, 5K hard cap)
 DEFAULT_MAX_TOKENS: Final[int] = 5_000
@@ -299,6 +301,7 @@ def _discover_extra_candidates(wiki_root: Path, exclude: set[str]) -> list[str]:
 def _salient_pages() -> set[str]:
     """Wiki-relative pages with ANY applied queue entry that carried
     `proposal.salience=True` (Task 4.2's pin/correction verb sets this).
+    Boosts expire after SALIENCE_WINDOW_DAYS — re-pin to refresh.
     Reads via `queue.all_entries()` (public read API, 0.4.0) instead of
     parsing `state_dir()/queue/*.json` raw."""
     try:
@@ -306,11 +309,25 @@ def _salient_pages() -> set[str]:
     except Exception:  # noqa: BLE001 - never let this abort the wake-up payload
         logger.debug("queue.all_entries() failed", exc_info=True)
         return set()
-    return {
-        e.proposal.page
-        for e in entries
-        if e.status == "applied" and e.proposal.salience and e.proposal.page
-    }
+
+    now = datetime.now(timezone.utc)
+    result = set()
+    for e in entries:
+        if not (e.status == "applied" and e.proposal.salience and e.proposal.page):
+            continue
+
+        # Parse ts and check if within window. Unparsable ts → treat as fresh (never raise).
+        try:
+            entry_time = datetime.strptime(e.ts, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+            age = now - entry_time
+            if age <= timedelta(days=SALIENCE_WINDOW_DAYS):
+                result.add(e.proposal.page)
+        except (ValueError, TypeError):
+            # Unparsable ts → treat as fresh, never raise
+            logger.debug("could not parse ts %r; treating as fresh", e.ts)
+            result.add(e.proposal.page)
+
+    return result
 
 
 def rank_extras(
@@ -451,6 +468,7 @@ __all__ = [
     "ROUTINE_SPEC_BUDGET",
     "EXTRAS_BUDGET",
     "EXTRA_PAGE_BUDGET",
+    "SALIENCE_WINDOW_DAYS",
     "estimate_tokens",
     "truncate_text_to_tokens",
     "resolve_dev_root",

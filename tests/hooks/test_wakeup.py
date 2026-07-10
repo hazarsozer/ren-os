@@ -275,19 +275,21 @@ class TestSuggestionListing:
 
 def test_salience_flagged_page_outranks_newer_non_salient_page(wiki):
     import time
+    from datetime import datetime, timezone
 
     _write(wiki / "salient.md", "# Salient\n\nolder but pinned content")
     time.sleep(0.01)
     _write(wiki / "fresh.md", "# Fresh\n\nnewer, unrelated content")
 
-    # Seed a fake applied+salient queue entry for salient.md.
+    # Seed a fake applied+salient queue entry for salient.md with current timestamp.
     queue_dir = state_dir() / "queue"
     queue_dir.mkdir(parents=True, exist_ok=True)
+    now_ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     (queue_dir / "q-test-salient.json").write_text(
         json.dumps(
             {
                 "qid": "q-test-salient",
-                "ts": "2026-01-01T00:00:00Z",
+                "ts": now_ts,
                 "proposal": {
                     "op": "ADD", "page": "salient.md", "content": "x", "reason": "user pin",
                     "producer": "pin", "writer": "human", "session": "s", "salience": True,
@@ -304,6 +306,64 @@ def test_salience_flagged_page_outranks_newer_non_salient_page(wiki):
 
     ranked = wakeup.rank_extras("", wiki, exclude=set())
     assert ranked[0] == "salient.md"
+
+
+def test_salience_expires_after_window(wiki):
+    """Salience boosts expire after 30 days. Entry with ts 40 days old should
+    not appear in _salient_pages(), but a fresh entry should."""
+    from datetime import datetime, timezone, timedelta
+
+    # Create page files
+    _write(wiki / "projects" / "x" / "old.md", "# Old\n\noutdated")
+    _write(wiki / "projects" / "x" / "new.md", "# New\n\nrecent")
+
+    # Seed a fake applied+salient queue entry for old.md with ts 40 days ago.
+    queue_dir = state_dir() / "queue"
+    queue_dir.mkdir(parents=True, exist_ok=True)
+    old_ts = (datetime.now(timezone.utc) - timedelta(days=40)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    (queue_dir / "q-test-old-salient.json").write_text(
+        json.dumps(
+            {
+                "qid": "q-test-old-salient",
+                "ts": old_ts,
+                "proposal": {
+                    "op": "ADD", "page": "projects/x/old.md", "content": "x", "reason": "user pin",
+                    "producer": "pin", "writer": "human", "session": "s", "salience": True,
+                },
+                "conflicts": [],
+                "status": "applied",
+                "approved_by": "hazar",
+                "write_id": "w-old",
+                "rejected_reason": None,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    # Seed a fake applied+salient queue entry for new.md with current ts.
+    now_ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    (queue_dir / "q-test-new-salient.json").write_text(
+        json.dumps(
+            {
+                "qid": "q-test-new-salient",
+                "ts": now_ts,
+                "proposal": {
+                    "op": "ADD", "page": "projects/x/new.md", "content": "y", "reason": "user pin",
+                    "producer": "pin", "writer": "human", "session": "s", "salience": True,
+                },
+                "conflicts": [],
+                "status": "applied",
+                "approved_by": "hazar",
+                "write_id": "w-new",
+                "rejected_reason": None,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    pages = wakeup._salient_pages()
+    assert "projects/x/new.md" in pages
+    assert "projects/x/old.md" not in pages
 
 
 def test_empty_query_recency_degradation_documented(wiki):
