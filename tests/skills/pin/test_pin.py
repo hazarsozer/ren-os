@@ -18,6 +18,8 @@ from __future__ import annotations
 import pytest
 
 from lib.memory import journal, quarantine
+from lib.memory.promotion import demote_check
+from lib.memory.queue import approve_and_apply
 from lib.ren_paths import wiki_root
 from skills.pin.lib import correct, pin
 
@@ -118,3 +120,53 @@ def test_applied_correction_delete_removes_page(wiki):
 
     assert entry.status == "applied"  # v2.2: no separate approve()/apply() step
     assert not page_abs.exists()
+
+
+# --------------------------------------------------------------------------
+# Gate-0 finding b: pin to global/ must stamp `type: preference` so an
+# approved global write satisfies lib.memory.promotion.demote_check.
+# --------------------------------------------------------------------------
+
+
+def test_pin_to_global_page_stamps_type_preference_and_satisfies_demote_check(wiki):
+    # global/ is instruction-plane — propose_and_apply holds it pending, so
+    # a human must approve+apply before it lands on disk (mirrors the real
+    # Gate-0 flow: friend approves the pin).
+    entry = pin("Ship on Fridays.", page="global/preferences.md", session="sess-1")
+    assert entry.status == "pending"
+
+    approve_and_apply(entry.qid, who="hazar")
+
+    page_text = (wiki / "global" / "preferences.md").read_text(encoding="utf-8")
+    assert "type: preference" in page_text
+    assert "Ship on Fridays." in page_text
+    assert demote_check() == []
+
+
+def test_pin_to_existing_global_page_preserves_existing_type(wiki):
+    # The pin content itself already declares `type: doctrine` (e.g. the
+    # friend is re-pinning an already-typed global page's content) — the
+    # stamp helper must leave it alone, not overwrite with `preference` or
+    # add a second frontmatter fence.
+    content = "---\ntype: doctrine\n---\nOld rule, restated.\n"
+
+    entry = pin(content, page="global/rules.md", session="sess-1")
+    assert entry.status == "pending"
+
+    approve_and_apply(entry.qid, who="hazar")
+
+    page_text = (wiki / "global" / "rules.md").read_text(encoding="utf-8")
+    assert page_text.count("---\n") == 2  # no double fence
+    assert "type: doctrine" in page_text
+    assert "type: preference" not in page_text
+    assert demote_check() == []
+
+
+def test_pin_to_non_global_page_content_unchanged(wiki):
+    entry = pin("remember this exactly", page="fresh.md", session="sess-1")
+
+    assert entry.status == "applied"
+    assert entry.proposal.content == "remember this exactly"
+
+    page_text = (wiki / "fresh.md").read_text(encoding="utf-8")
+    assert "type: preference" not in page_text

@@ -22,13 +22,50 @@ single write-queue (Task 2.1) is 0.2's one door to a wiki page.
 
 from __future__ import annotations
 
+import re
+
 from lib import ren_paths
+from lib.memory.promotion import GLOBAL_PREFIX
 from lib.memory.queue import Proposal, QueueEntry, propose_and_apply
+
+_FRONTMATTER_RE = re.compile(r"\A---\n(.*?)\n---\n?", re.DOTALL)
+_TYPE_FIELD_RE = re.compile(r"^type:\s*\S", re.MULTILINE)
 
 
 def _page_exists(page: str) -> bool:
     page_abs = ren_paths.safe_join(ren_paths.wiki_root(), page)
     return page_abs.exists()
+
+
+def _stamp_global_type(content: str, page: str) -> str:
+    """Gate-0 finding: an approved pin/correction to a `global/`-prefixed
+    page must satisfy the typed-global rule (`lib.memory.promotion.
+    demote_check` — global pages must carry `type: doctrine` or `type:
+    preference`), or the write the friend just approved immediately shows up
+    as drift on the next `doctor` run.
+
+    If `content` targets a non-global page, or already declares a `type:`
+    field in its frontmatter, it's returned unchanged. Otherwise `type:
+    preference` is stamped in — into the existing frontmatter fence if one
+    exists (no double fence), or a new one if it doesn't. `preference` (not
+    `doctrine`) because pin/correct is human-provenance ad hoc memory, not a
+    deliberated rule — the friend can still hand-edit to `doctrine` later."""
+    if not page.startswith(GLOBAL_PREFIX):
+        return content
+
+    match = _FRONTMATTER_RE.match(content)
+    if match is None:
+        return f"---\ntype: preference\n---\n{content}"
+
+    fm_content = match.group(1)
+    if _TYPE_FIELD_RE.search(fm_content):
+        return content
+
+    body = content[match.end():]
+    rebuilt = (
+        fm_content.rstrip("\n") + "\ntype: preference" if fm_content.strip() else "type: preference"
+    )
+    return f"---\n{rebuilt}\n---\n{body}"
 
 
 def pin(text: str, page: str, session: str) -> QueueEntry:
@@ -43,7 +80,7 @@ def pin(text: str, page: str, session: str) -> QueueEntry:
         Proposal(
             op=op,
             page=page,
-            content=text,
+            content=_stamp_global_type(text, page),
             reason="user pin",
             producer="pin",
             writer="human",
@@ -78,7 +115,7 @@ def correct(page: str, replacement: str | None, session: str) -> QueueEntry:
         Proposal(
             op="UPDATE",
             page=page,
-            content=replacement,
+            content=_stamp_global_type(replacement, page),
             reason="user correction",
             producer="pin",
             writer="human",
