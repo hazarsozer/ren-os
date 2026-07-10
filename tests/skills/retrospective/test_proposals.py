@@ -21,9 +21,11 @@ import json
 
 import pytest
 
+from lib import suggestions
 from lib.instrument import collect
 from lib.memory import journal, queue
 from lib.memory.provenance import new_provenance
+from lib.memory.queue import Proposal
 from lib.ren_paths import wiki_root
 
 retro = importlib.import_module("skills.retrospective.lib")
@@ -180,9 +182,10 @@ def test_propose_all_queues_data_plane_findings_applied_with_retrospective_prove
         {"kind": "lesson", "page": "projects/x/notes.md", "count": 2, "message": "m"},
         {"kind": "instruction-tweak", "count": 3, "message": "m"},
     ]
-    entries = retro.propose_all(findings, session="sess-1")
+    entries, recorded = retro.propose_all(findings, session="sess-1")
 
     assert len(entries) == 2
+    assert recorded == []
     for entry in entries:
         assert entry.status == "applied"
         assert entry.write_id is not None
@@ -191,23 +194,57 @@ def test_propose_all_queues_data_plane_findings_applied_with_retrospective_prove
         assert entry.proposal.page.startswith("retrospective/")
 
 
-def test_propose_all_skill_candidate_stays_pending_instruction_plane(wiki):
-    # v2.2 nuance: skill-candidate is an instruction-plane suggestion by
-    # INTENT (a human approves at wrap time), not by page prefix — it must
-    # stay pending even though its page is retrospective/ (non-global).
+def test_propose_all_skill_candidate_records_suggestion_not_queue_entry(wiki):
+    # Task 16: skill-candidate findings are instruction-plane suggestions by
+    # INTENT (a human approves at wrap time) — they now flow into the
+    # suggestion store instead of parking as a pending queue entry.
     findings = [{"kind": "skill-candidate", "task": "deploy-staging", "frequency": 3,
                  "proposed_shape": "skill: deploy-staging", "proposed_scaffold": "# stub"}]
-    entries = retro.propose_all(findings, session="sess-1")
+    entries, recorded = retro.propose_all(findings, session="sess-1")
 
-    reloaded = queue.get(entries[0].qid)
-    assert reloaded.status == "pending"
-    page_abs = wiki / reloaded.proposal.page
+    assert entries == []
+    assert len(recorded) == 1
+    suggestion = recorded[0]
+    assert suggestion["status"] == "pending"
+    assert suggestion["producer"] == "retrospective"
+    assert suggestion["kind"] == "page_write"
+    assert suggestion["fingerprint"] == "retrospective:skill-candidate:deploy-staging"
+
+    # payload round-trips into a valid Proposal
+    proposal = Proposal(**suggestion["payload"])
+    assert proposal.page.startswith("retrospective/")
+    assert proposal.producer == "retrospective"
+    assert proposal.writer == "retrospective"
+
+    # no queue entry, no page written
+    assert queue.all_entries() == []
+    page_abs = wiki / proposal.page
     assert not page_abs.exists()
+
+
+def test_propose_all_skill_candidate_rerun_dedups(wiki):
+    findings = [{"kind": "skill-candidate", "task": "deploy-staging", "frequency": 3,
+                 "proposed_shape": "skill: deploy-staging", "proposed_scaffold": "# stub"}]
+    _, first = retro.propose_all(findings, session="sess-1")
+    assert len(first) == 1
+
+    _, second = retro.propose_all(findings, session="sess-2")
+    assert second == []
+
+
+def test_propose_all_skill_candidate_declined_never_rerecords(wiki):
+    findings = [{"kind": "skill-candidate", "task": "deploy-staging", "frequency": 3,
+                 "proposed_shape": "skill: deploy-staging", "proposed_scaffold": "# stub"}]
+    _, first = retro.propose_all(findings, session="sess-1")
+    suggestions.decide(first[0]["sid"], "declined")
+
+    _, second = retro.propose_all(findings, session="sess-2")
+    assert second == []
 
 
 def test_proposed_lesson_auto_applies_with_retrospective_provenance(wiki):
     findings = [{"kind": "lesson", "page": "projects/x/notes.md", "count": 2, "message": "capture the truth"}]
-    entries = retro.propose_all(findings, session="sess-1")
+    entries, _ = retro.propose_all(findings, session="sess-1")
     entry = entries[0]
 
     assert entry.status == "applied"  # v2.2: no separate approve()/apply() step

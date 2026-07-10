@@ -29,17 +29,19 @@ Three functions, each doing exactly one part of gather → analyze → propose:
          classifier `fail_closed` events recorded.
       3. "skill-candidate" (D-2) — a task phrase recurring across at least
          `SKILL_CANDIDATE_MIN_SESSIONS` distinct sessions.
-  - `propose_all` — queues each finding as a `Proposal(op="ADD", ...,
-    producer="retrospective", writer="retrospective")`. Per the v2.2
-    two-plane pivot, "lesson" and "instruction-tweak" findings are DATA-plane
+  - `propose_all` — "lesson" and "instruction-tweak" findings are DATA-plane
     (descriptive: a stable fact worth remembering) — they go through
-    `queue.propose_and_apply` and land `applied` immediately, one-step
+    `Proposal(op="ADD", ..., producer="retrospective", writer="retrospective")`
+    + `queue.propose_and_apply` and land `applied` immediately, one-step
     revertible. "skill-candidate" (D-2) findings are INSTRUCTION-plane by
     intent, not by page prefix: a skill-candidate is a suggestion that a
-    human approves at wrap time (Promotion suggestions), so it always keeps
-    the plain `queue.propose` door and stays `pending` regardless of which
-    page it targets. `writer="retrospective"` is NOT `"llm-auto"`, so
-    `queue.apply`'s auto-quarantine (Task 2.4) does not fire either way.
+    human approves at wrap time, so (Task 16, 0.4.2) it no longer parks as a
+    pending queue entry — it is recorded through `lib.suggestions.record` as
+    a `page_write` suggestion (never re-nagged once decided). `propose_all`
+    therefore returns `(entries, suggestions)`: applied `QueueEntry` objects
+    for data-plane findings, and recorded suggestion dicts (fingerprint
+    dedup already applied — a re-run or a declined fingerprint records
+    nothing) for skill-candidate findings.
 """
 
 from __future__ import annotations
@@ -50,9 +52,10 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 
+from lib import suggestions
 from lib.instrument import collect
 from lib.memory import journal
-from lib.memory.queue import Proposal, QueueEntry, propose, propose_and_apply
+from lib.memory.queue import Proposal, QueueEntry, propose_and_apply
 
 CLAUDE_CONFIG_DIR_ENV = "CLAUDE_CONFIG_DIR"
 MAX_SESSIONS_SCANNED = 10
@@ -336,19 +339,53 @@ def _render_finding(finding: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
-def propose_all(findings: list[dict], session: str) -> list[QueueEntry]:
-    """Queue each finding as an ADD proposal at
-    `retrospective/<date>-<kind>-<slug>.md`, `producer="retrospective"`,
-    `writer="retrospective"`.
+def propose_all(findings: list[dict], session: str) -> tuple[list[QueueEntry], list[dict]]:
+    """Data-plane findings ("lesson"/"instruction-tweak") queue an ADD
+    proposal at `retrospective/<date>-<kind>-<slug>.md`,
+    `producer="retrospective"`, `writer="retrospective"`, through
+    `propose_and_apply` — they land `applied` immediately.
 
-    "lesson"/"instruction-tweak" findings are data-plane (descriptive) —
-    they go through `propose_and_apply` and land `applied` immediately. A
-    "skill-candidate" finding is an instruction-plane suggestion by intent
-    (a human approves it at wrap time, not by page prefix), so it always
-    stays on the plain `propose` door and lands `pending`."""
+    "skill-candidate" findings are instruction-plane suggestions by intent
+    (a human approves at wrap time): they no longer touch the queue at all
+    — they are recorded via `lib.suggestions.record` (fingerprinted, so a
+    re-run or a previously-declined candidate records nothing).
+
+    Returns `(entries, recorded_suggestions)`: applied `QueueEntry` objects
+    for data-plane findings, and recorded suggestion dicts (None-filtered)
+    for skill-candidate findings."""
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     entries = []
+    recorded_suggestions = []
     for finding in findings:
+        if finding["kind"] == "skill-candidate":
+            page = f"retrospective/{today}-{finding['kind']}-{_slug_for(finding)}.md"
+            payload = {
+                "op": "ADD",
+                "page": page,
+                "content": _render_finding(finding),
+                "reason": f"retrospective: {finding['kind']}",
+                "producer": "retrospective",
+                "writer": "retrospective",
+                "session": session,
+                "salience": False,
+            }
+            spec = suggestions.SuggestionSpec(
+                producer="retrospective",
+                title=f"New skill candidate: {finding['task']}",
+                rationale=(
+                    f"the task pattern '{finding['task']}' recurred in "
+                    f"{finding['frequency']} distinct sessions"
+                ),
+                evidence=finding,
+                kind="page_write",
+                payload=payload,
+                fingerprint=f"retrospective:skill-candidate:{finding['task']}",
+            )
+            recorded = suggestions.record(spec)
+            if recorded is not None:
+                recorded_suggestions.append(recorded)
+            continue
+
         page = f"retrospective/{today}-{finding['kind']}-{_slug_for(finding)}.md"
         proposal = Proposal(
             op="ADD",
@@ -360,12 +397,9 @@ def propose_all(findings: list[dict], session: str) -> list[QueueEntry]:
             session=session,
             salience=False,
         )
-        if finding["kind"] == "skill-candidate":
-            entry = propose(proposal)
-        else:
-            entry, _ = propose_and_apply(proposal)
+        entry, _ = propose_and_apply(proposal)
         entries.append(entry)
-    return entries
+    return entries, recorded_suggestions
 
 
 __all__ = [

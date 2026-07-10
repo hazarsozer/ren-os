@@ -263,14 +263,13 @@ def test_friend_week_end_to_end(sandbox, tmp_path):
     assert any(f.get("page") == lesson_page for f in lesson_findings)
 
     # v2.2: lesson/instruction-tweak findings are data-plane (auto-apply);
-    # skill-candidate findings are instruction-plane by intent (stay pending).
-    proposed_entries = propose_all(findings, session4)
+    # skill-candidate findings are instruction-plane suggestions (Task 16:
+    # recorded into the suggestion store, no queue entry).
+    proposed_entries, recorded_suggestions = propose_all(findings, session4)
     assert proposed_entries
-    for entry, finding in zip(proposed_entries, findings):
-        if finding["kind"] == "skill-candidate":
-            assert entry.status == "pending"
-        else:
-            assert entry.status == "applied"
+    assert all(f["kind"] != "skill-candidate" for f in findings) or recorded_suggestions
+    for entry in proposed_entries:
+        assert entry.status == "applied"
     assert all(e.proposal.writer == "retrospective" for e in proposed_entries)
     assert all(e.proposal.producer == "retrospective" for e in proposed_entries)
 
