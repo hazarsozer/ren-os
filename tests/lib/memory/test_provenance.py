@@ -255,3 +255,21 @@ def test_stamped_ts_stays_a_string_not_yaml_timestamp():
     read = read_frontmatter_provenance(stamped)
     assert isinstance(read["ts"], str)
     assert read["ts"] == prov.ts
+
+
+# --- 0.5.1 rev-t6 HIGH: trust default derives from writer -------------------
+
+
+def test_new_provenance_defaults_trust_from_human_writer():
+    prov = new_provenance(writer="human", session="s", op="NOOP", page="x.md")
+    assert prov.trust == "user"
+
+
+def test_new_provenance_defaults_trust_to_model_for_llm_auto():
+    prov = new_provenance(writer="llm-auto", session="s", op="ADD", page="x.md")
+    assert prov.trust == "model"
+
+
+def test_new_provenance_explicit_trust_wins_over_derivation():
+    prov = new_provenance(writer="llm-auto", session="s", op="ADD", page="x.md", trust="foreign")
+    assert prov.trust == "foreign"

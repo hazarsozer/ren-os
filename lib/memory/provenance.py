@@ -101,14 +101,23 @@ def new_provenance(
     op: Op,
     page: str,
     supersedes: str | None = None,
-    trust: str = "model",
+    trust: str | None = None,
 ) -> Provenance:
     """Build a new `Provenance` record: fresh write_id (ULID) + current UTC ts.
+
+    When `trust` is not given it derives from the writer alone
+    (`trust_class(writer, producer="")`): human → "user", else "model".
+    Callers that know the producer (the queue) pass trust explicitly — the
+    only path that can yield "foreign". This default closes the rev-t6 gap
+    where human-driven paths with no producer in scope (revert, install
+    founding pages) were silently stamped "model".
 
     Raises ValueError if `writer`, `op`, or `trust` aren't one of the frozen
     values (enforced by `Provenance.__post_init__`, so direct dataclass
     construction is validated the same way).
     """
+    if trust is None:
+        trust = trust_class(writer, "")
     write_id = f"w-{ULID()}"
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     return Provenance(
