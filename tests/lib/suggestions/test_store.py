@@ -105,6 +105,13 @@ def test_decide_accepted_transitions_and_persists(wiki):
     assert "fp-accept" in decided_fingerprints()
 
 
+def test_decide_on_already_decided_entry_raises_valueerror(wiki):
+    entry = record(_spec(fingerprint="fp-redecide"))
+    decide(entry["sid"], "declined")
+    with pytest.raises(ValueError):
+        decide(entry["sid"], "accepted")
+
+
 def test_decide_unknown_sid_raises_keyerror(wiki):
     with pytest.raises(KeyError):
         decide("s-does-not-exist", "accepted")

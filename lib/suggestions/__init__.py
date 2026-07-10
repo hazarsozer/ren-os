@@ -50,6 +50,12 @@ class SuggestionSpec:
     kind: str              # "page_write" | "structured_action"
     payload: dict          # page_write: full Proposal kwargs; structured_action: {"action": ..., ...}
     fingerprint: str       # stable identity for durable-decline dedup
+    # Dedup is fingerprint-EXACT by design (see `record`) — no normalization
+    # or alias matching. Today both sides of a wiki-health pair come from
+    # the same sweep's rel-path normalization, so alias divergence (e.g. two
+    # different string forms for the same page) can't occur. Revisit if a
+    # second producer starts emitting fingerprints from a different path
+    # form for the same underlying page.
 
 
 def _now_iso() -> str:
@@ -175,10 +181,13 @@ def decide(sid: str, decision: str) -> dict:
     """Transition `sid` to `decision` ("accepted" or "declined"). Pure state
     transition — does NOT apply the suggestion's payload; application is the
     caller's job (Task 19). Raises KeyError for an unknown sid, ValueError
-    for an invalid decision."""
+    for an invalid decision OR if the entry is not currently "pending" —
+    decided ("accepted"/"declined") and expired entries are immutable."""
     if decision not in _DECISIONS:
         raise ValueError(f"decision must be one of {_DECISIONS}, got {decision!r}")
     entry = _load(sid)
+    if entry["status"] != _PENDING:
+        raise ValueError(f"suggestion {sid!r} is already {entry['status']!r} — decide() only accepts pending entries")
     entry["status"] = decision
     entry["decided_at"] = _now_iso()
     _persist(entry)
