@@ -56,6 +56,7 @@ def test_run_checks_returns_one_result_per_check(wiki):
         "env", "wiki_structure", "frontmatter", "schema_versions",
         "budget_lint", "dangling_pointers", "graphify_status", "companions",
         "backup_configured", "execution_tiers", "global_drift", "harness_neutrality", "guard_health",
+        "suggestion_store",
     }
 
 
@@ -391,3 +392,24 @@ def test_shipped_skills_all_declare_valid_execution_tiers():
     run doctor itself performs, executed directly against the shipped tree."""
     result = doctor.check_execution_tiers()
     assert result.status == "ok", result.detail
+
+
+# --- 0.4.5: suggestion-store health ----------------------------------------
+
+
+def test_check_suggestion_store_ok_when_empty(wiki):
+    result = doctor.check_suggestion_store()
+    assert result.status == "ok"
+
+
+def test_check_suggestion_store_warns_on_corrupt_entry(wiki):
+    from lib.ren_paths import state_dir
+
+    store = state_dir() / "suggestions"
+    store.mkdir(parents=True, exist_ok=True)
+    (store / "s-corrupt.json").write_text("{not json", encoding="utf-8")
+
+    result = doctor.check_suggestion_store()
+
+    assert result.status == "warn"
+    assert "s-corrupt.json" in result.message

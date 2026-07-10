@@ -390,6 +390,32 @@ def check_guard_health(guards_dir: Path | None = None) -> CheckResult:
     return CheckResult("guard_health", "ok", f"{len(scripts)} guard(s) healthy on a safe synthetic payload")
 
 
+def check_suggestion_store(store_dir: Path | None = None) -> CheckResult:
+    """0.4.5: the suggestion store degrades silently everywhere else (readers
+    skip unparsable entry files by contract) — this check is where a corrupt
+    or torn entry becomes VISIBLE instead of quietly shrinking the pending
+    list. An absent/empty store is healthy (nothing suggested yet)."""
+    store_dir = store_dir or (ren_paths.state_dir() / "suggestions")
+    if not store_dir.is_dir():
+        return CheckResult("suggestion_store", "ok", "no suggestion store yet")
+
+    corrupt: list[str] = []
+    total = 0
+    for path in sorted(store_dir.glob("*.json")):
+        total += 1
+        try:
+            json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError, TypeError, ValueError):
+            corrupt.append(path.name)
+
+    if corrupt:
+        return CheckResult(
+            "suggestion_store", "warn",
+            f"{len(corrupt)} unparsable suggestion entry file(s): {', '.join(corrupt[:5])}",
+        )
+    return CheckResult("suggestion_store", "ok", f"{total} suggestion entry file(s) parse cleanly")
+
+
 _ALL_CHECK_NAMES: tuple[str, ...] = (
     "check_env",
     "check_wiki_structure",
@@ -404,6 +430,7 @@ _ALL_CHECK_NAMES: tuple[str, ...] = (
     "check_global_drift",
     "check_harness_neutrality",
     "check_guard_health",
+    "check_suggestion_store",
 )
 
 
