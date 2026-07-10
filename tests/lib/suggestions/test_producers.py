@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import pytest
 
-from lib.companions import Companion, Offer
 from lib.memory import quarantine
 from lib.memory.queue import Proposal, propose_and_apply
 from lib.ren_paths import wiki_root
@@ -143,102 +142,73 @@ def test_unreadable_wiki_root_returns_empty_list(tmp_path, clean_path_env):
     assert promotion_candidates(missing) == []
 
 
-# --- doctrine_shaping ---------------------------------------------------
-
-_FAKE_COMPANION = Companion(
-    cid="fake-tool",
-    kind="tool",
-    title="FakeTool",
-    pitch="pretend companion for tests",
-    install_hint="uv tool install fake-tool",
-    detect="fake-tool",
-    added_in="0.4.2",
-)
+# --- doctrine_shaping (Gate-0 finding a: render-and-compare) -------------
+#
+# The predicate no longer looks at companion titles (render_global_block
+# never writes them into the managed block, so that check was a permanent
+# false positive) — it renders what a refresh WOULD write and compares it
+# to disk. `doctrine_root` is pointed at an empty tmp dir in every test so
+# `load_all` degrades to `[]` (deterministic doctrine index regardless of
+# the real framework's installed doctrine files).
 
 
-def _reconcile_returning(offer):
-    def _fake_reconcile():
-        return [offer]
-
-    return _fake_reconcile
-
-
-def test_doctrine_shaping_missing_title_becomes_suggestion(tmp_path, monkeypatch):
-    monkeypatch.setattr(
-        "lib.companions.reconcile",
-        _reconcile_returning(Offer(_FAKE_COMPANION, installed=True, decision="accepted")),
-    )
+def test_doctrine_shaping_stale_block_suggests_refresh(tmp_path):
     claude_md = tmp_path / "CLAUDE.md"
     claude_md.write_text(
-        "before\n<!-- ren:begin -->\nsome content, no companion mention\n<!-- ren:end -->\nafter\n",
+        "before\n<!-- ren:begin -->\nstale content from a previous render\n<!-- ren:end -->\nafter\n",
         encoding="utf-8",
     )
+    empty_doctrine_root = tmp_path / "no-doctrine"
 
-    specs = doctrine_shaping(claude_md)
+    specs = doctrine_shaping(
+        claude_md, wiki_root=tmp_path / "wiki", doctrine_root=empty_doctrine_root
+    )
 
     assert len(specs) == 1
     spec = specs[0]
     assert spec.producer == "doctrine"
     assert spec.kind == "structured_action"
     assert spec.payload == {"action": "refresh_claude_md"}
-    assert spec.fingerprint == "doctrine:claude-md:fake-tool"
+    assert spec.fingerprint == "doctrine:claude-md:refresh"
+    assert "out of date" in spec.rationale
 
 
-def test_doctrine_shaping_title_present_in_block_no_suggestion(tmp_path, monkeypatch):
-    monkeypatch.setattr(
-        "lib.companions.reconcile",
-        _reconcile_returning(Offer(_FAKE_COMPANION, installed=True, decision="accepted")),
-    )
+def test_doctrine_shaping_up_to_date_no_suggestion(tmp_path):
+    from lib.adapter.claude_md import apply_block, render_global_block
+
     claude_md = tmp_path / "CLAUDE.md"
-    claude_md.write_text(
-        "<!-- ren:begin -->\nFakeTool is already listed here\n<!-- ren:end -->\n",
-        encoding="utf-8",
-    )
+    wiki_root = tmp_path / "wiki"
+    empty_doctrine_root = tmp_path / "no-doctrine"
 
-    assert doctrine_shaping(claude_md) == []
+    content = render_global_block(existing_text="", doctrine_root=empty_doctrine_root, wiki_root=wiki_root)
+    apply_block(claude_md, content)
 
-
-def test_doctrine_shaping_not_installed_no_suggestion(tmp_path, monkeypatch):
-    monkeypatch.setattr(
-        "lib.companions.reconcile",
-        _reconcile_returning(Offer(_FAKE_COMPANION, installed=False, decision="accepted")),
-    )
-    claude_md = tmp_path / "CLAUDE.md"
-    claude_md.write_text("<!-- ren:begin -->\nnothing\n<!-- ren:end -->\n", encoding="utf-8")
-
-    assert doctrine_shaping(claude_md) == []
+    assert doctrine_shaping(claude_md, wiki_root=wiki_root, doctrine_root=empty_doctrine_root) == []
 
 
-def test_doctrine_shaping_not_accepted_no_suggestion(tmp_path, monkeypatch):
-    monkeypatch.setattr(
-        "lib.companions.reconcile",
-        _reconcile_returning(Offer(_FAKE_COMPANION, installed=True, decision=None)),
-    )
-    claude_md = tmp_path / "CLAUDE.md"
-    claude_md.write_text("<!-- ren:begin -->\nnothing\n<!-- ren:end -->\n", encoding="utf-8")
-
-    assert doctrine_shaping(claude_md) == []
-
-
-def test_doctrine_shaping_missing_file_no_suggestions(tmp_path, monkeypatch):
-    monkeypatch.setattr(
-        "lib.companions.reconcile",
-        _reconcile_returning(Offer(_FAKE_COMPANION, installed=True, decision="accepted")),
-    )
+def test_doctrine_shaping_missing_file_suggests_refresh(tmp_path):
+    # Correct behavior: refreshing a nonexistent CLAUDE.md would CREATE it —
+    # that's a real diff (existing="" vs the rendered block), so it suggests.
     missing = tmp_path / "does-not-exist" / "CLAUDE.md"
+    empty_doctrine_root = tmp_path / "no-doctrine"
 
-    assert doctrine_shaping(missing) == []
+    specs = doctrine_shaping(missing, wiki_root=tmp_path / "wiki", doctrine_root=empty_doctrine_root)
+
+    assert len(specs) == 1
+    assert specs[0].fingerprint == "doctrine:claude-md:refresh"
 
 
-def test_doctrine_shaping_no_managed_block_no_suggestions(tmp_path, monkeypatch):
-    monkeypatch.setattr(
-        "lib.companions.reconcile",
-        _reconcile_returning(Offer(_FAKE_COMPANION, installed=True, decision="accepted")),
-    )
+def test_doctrine_shaping_no_managed_block_still_compares(tmp_path):
+    # No prior ren:begin/end markers — spliced_text appends a brand-new
+    # block, which differs from the untouched file, so this still suggests.
     claude_md = tmp_path / "CLAUDE.md"
     claude_md.write_text("just plain content, no markers\n", encoding="utf-8")
+    empty_doctrine_root = tmp_path / "no-doctrine"
 
-    assert doctrine_shaping(claude_md) == []
+    specs = doctrine_shaping(claude_md, wiki_root=tmp_path / "wiki", doctrine_root=empty_doctrine_root)
+
+    assert len(specs) == 1
+    assert specs[0].fingerprint == "doctrine:claude-md:refresh"
 
 
 # --- wiki_health_critical -------------------------------------------------

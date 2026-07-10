@@ -23,8 +23,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from lib import companions, ren_paths
-from lib.adapter.claude_md import MARKER_BEGIN, MARKER_END
+from lib import ren_paths
+from lib.adapter.claude_md import render_global_block, spliced_text
 from lib.memory import quarantine
 from lib.memory.journal import entries as journal_entries
 from lib.memory.promotion import GLOBAL_PREFIX
@@ -40,10 +40,6 @@ _MIN_SESSIONS = 2
 _ALLOWED_TYPES = frozenset({"doctrine", "preference"})
 
 _FRONTMATTER_RE = re.compile(r"\A---\n(.*?)\n---\n?", re.DOTALL)
-
-_MANAGED_BLOCK_RE = re.compile(
-    re.escape(MARKER_BEGIN) + r"(.*?)" + re.escape(MARKER_END), re.DOTALL
-)
 
 
 def _frontmatter_type(text: str) -> str | None:
@@ -130,13 +126,29 @@ def promotion_candidates(wiki_root: Path | None = None) -> list[SuggestionSpec]:
     return specs
 
 
-def doctrine_shaping(claude_md_path: Path | None = None) -> list[SuggestionSpec]:
-    """Return one `SuggestionSpec` per accepted-and-installed companion whose
-    title is missing from the CLAUDE.md managed block.
+def doctrine_shaping(
+    claude_md_path: Path | None = None,
+    *,
+    wiki_root: Path | None = None,
+    doctrine_root: Path | None = None,
+) -> list[SuggestionSpec]:
+    """Return a single `SuggestionSpec` iff refreshing CLAUDE.md's managed
+    block would actually change the file on disk.
+
+    Gate-0 finding a: the previous predicate flagged accepted-and-installed
+    companion TITLES absent from the managed block — but
+    `lib.adapter.claude_md.render_global_block` never writes companion
+    titles into that block in the first place, so the check was a pure
+    false-positive generator (every accepted companion, forever). This is a
+    render-and-compare check instead: render what a refresh WOULD write
+    (`render_global_block` + `spliced_text`, the exact pure helper
+    `apply_block` itself uses for the real write, so the two can never
+    drift apart) and compare it byte-for-byte to what's on disk. Only a real
+    diff earns a suggestion.
 
     Defaults to the same path `lib.adapter.claude_md.write_global_claude_md`
-    targets. Never raises: a missing file or a torn/absent managed block
-    degrades to `[]` rather than propagating or over-suggesting.
+    targets. Never raises: any read/render error degrades to `[]` rather
+    than propagating or over-suggesting.
     """
     path = (
         Path(claude_md_path)
@@ -145,37 +157,28 @@ def doctrine_shaping(claude_md_path: Path | None = None) -> list[SuggestionSpec]
     )
 
     try:
-        text = path.read_text(encoding="utf-8")
+        existing = path.read_text(encoding="utf-8") if path.exists() else ""
+        content = render_global_block(
+            existing_text=existing, doctrine_root=doctrine_root, wiki_root=wiki_root
+        )
+        prospective = spliced_text(existing, content)
     except OSError:
         return []
 
-    match = _MANAGED_BLOCK_RE.search(text)
-    if match is None:
+    if prospective == existing:
         return []
-    block = match.group(1)
 
-    specs: list[SuggestionSpec] = []
-    for offer in companions.reconcile():
-        if not offer.installed or offer.decision != "accepted":
-            continue
-        if offer.companion.title in block:
-            continue
-        specs.append(
-            SuggestionSpec(
-                producer="doctrine",
-                title=f"Refresh CLAUDE.md for {offer.companion.title}",
-                rationale=(
-                    f"{offer.companion.title} is installed and accepted but not "
-                    "reflected in the managed CLAUDE.md block"
-                ),
-                evidence={"cid": offer.companion.cid, "title": offer.companion.title},
-                kind="structured_action",
-                payload={"action": "refresh_claude_md"},
-                fingerprint=f"doctrine:claude-md:{offer.companion.cid}",
-            )
+    return [
+        SuggestionSpec(
+            producer="doctrine",
+            title="Refresh CLAUDE.md",
+            rationale="your CLAUDE.md instruction block is out of date",
+            evidence={},
+            kind="structured_action",
+            payload={"action": "refresh_claude_md"},
+            fingerprint="doctrine:claude-md:refresh",
         )
-
-    return specs
+    ]
 
 
 def _page_type(wiki_root: Path, page: str) -> str | None:

@@ -195,9 +195,7 @@ def harvest_suggestions(session: str, cwd: str | None = None) -> int:
 
     Each producer call (and the wiki-health sweep it depends on) is isolated
     in its own try/except — one producer failing must never starve the
-    others (this also covers the Task 18 reviewer LOW about
-    `doctrine_shaping`'s unguarded `companions.reconcile()` call). Never
-    raises.
+    others. Never raises.
 
     Returns the count of `record()` calls that returned non-None (a spec
     whose fingerprint was already pending/decided returns None and doesn't

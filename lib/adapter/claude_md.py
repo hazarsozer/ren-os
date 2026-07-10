@@ -197,6 +197,38 @@ def render_project_block(project_slug: str, *, wiki_root: Path | None = None) ->
 - Durable changes to the wiki save themselves (revertible), never a direct file edit."""
 
 
+def spliced_text(existing_text: str, content: str) -> str:
+    """Pure: the full file text `apply_block` WOULD write for `content`,
+    given `existing_text` as the file's current contents (`""` standing in
+    for "file doesn't exist yet", the same convention `write_global_claude_md`
+    already uses).
+
+    Extracted so producers (Gate-0 finding a: `doctrine_shaping`) can predict
+    what a refresh would produce and compare it to disk WITHOUT writing
+    anything — `apply_block` itself uses this for the actual write, so the
+    two can never drift apart. Doesn't distinguish added/updated/unchanged/
+    conflict (that's `apply_block`'s contract); for torn markers (begin
+    without end, or vice versa) this returns `existing_text` unchanged,
+    mirroring `apply_block`'s "conflict" refusal to touch the file.
+    """
+    block = f"{MARKER_BEGIN}\n{content.rstrip()}\n{MARKER_END}\n"
+
+    if not existing_text:
+        return block
+
+    has_begin = MARKER_BEGIN in existing_text
+    has_end = MARKER_END in existing_text
+
+    if has_begin and has_end:
+        return _MANAGED_BLOCK_RE.sub(lambda _m: block.rstrip("\n"), existing_text, count=1)
+
+    if has_begin or has_end:
+        return existing_text
+
+    separator = "" if existing_text.endswith("\n\n") else ("\n" if existing_text.endswith("\n") else "\n\n")
+    return existing_text + separator + block
+
+
 def apply_block(path: Path, content: str) -> str:
     """Create or update the managed marker block in `path`.
 
@@ -206,11 +238,10 @@ def apply_block(path: Path, content: str) -> str:
     Everything outside the markers is always preserved.
     """
     path = Path(path)
-    block = f"{MARKER_BEGIN}\n{content.rstrip()}\n{MARKER_END}\n"
 
     if not path.exists():
         path.parent.mkdir(parents=True, exist_ok=True)
-        _atomic_write(path, block)
+        _atomic_write(path, spliced_text("", content))
         return "added"
 
     text = path.read_text(encoding="utf-8")
@@ -218,7 +249,7 @@ def apply_block(path: Path, content: str) -> str:
     has_end = MARKER_END in text
 
     if has_begin and has_end:
-        new_text = _MANAGED_BLOCK_RE.sub(lambda _m: block.rstrip("\n"), text, count=1)
+        new_text = spliced_text(text, content)
         if new_text == text:
             return "unchanged"
         _atomic_write(path, new_text)
@@ -227,8 +258,8 @@ def apply_block(path: Path, content: str) -> str:
     if has_begin or has_end:
         return "conflict"
 
-    separator = "" if text.endswith("\n\n") else ("\n" if text.endswith("\n") else "\n\n")
-    _atomic_write(path, text + separator + block)
+    new_text = spliced_text(text, content)
+    _atomic_write(path, new_text)
     return "added"
 
 
@@ -273,6 +304,7 @@ __all__ = [
     "KARPATHY_SENTINELS",
     "render_global_block",
     "render_project_block",
+    "spliced_text",
     "apply_block",
     "write_global_claude_md",
     "write_project_claude_md",
