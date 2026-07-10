@@ -110,7 +110,10 @@ _CONTRADICTION_PAGE_CAP = 200  # above this many candidate pages, narrow the all
 
 def _knowledge_pages(wiki_root: Path) -> list[tuple[str, str, str | None]]:
     """(rel_path, text, frontmatter_type) for every page with a "## Knowledge"
-    section, skipping the `.ren/` metrics tree."""
+    section, skipping the `.ren/` metrics tree and quarantined pages (0.4.5:
+    the producers-refuse-quarantined-sources contract — this scan feeds
+    `wiki_health_critical`'s suggestion evidence, so unreviewed ingested
+    content must be invisible to it)."""
     pages: list[tuple[str, str, str | None]] = []
     for md_path in sorted(wiki_root.rglob("*.md")):
         rel_path = md_path.relative_to(wiki_root)
@@ -118,6 +121,8 @@ def _knowledge_pages(wiki_root: Path) -> list[tuple[str, str, str | None]]:
             continue
         text = md_path.read_text(encoding="utf-8", errors="replace")
         if "## Knowledge" not in text:
+            continue
+        if quarantine.is_quarantined(text):
             continue
         pages.append((str(rel_path), text, _frontmatter_type(text)))
     return pages

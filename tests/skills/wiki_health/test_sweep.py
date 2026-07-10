@@ -248,3 +248,28 @@ def test_sweep_records_path_escaping_pointer_as_finding_not_crash(wiki):
     matches = [d for d in result["dangling_pointers"] if "../../outside.md" in d["target"]]
     assert matches
     assert matches[0].get("reason") == "path-escaping"
+
+
+# --- 0.4.5: quarantine-refusal contract in the evidence path ---------------
+
+
+def test_quarantined_pages_are_excluded_from_knowledge_scans(wiki):
+    # The 0.4.1 producers-refuse-quarantined-sources contract: a quarantined
+    # page must never feed contradiction evidence (which 0.4.2's
+    # wiki_health_critical producer turns into suggestions).
+    from lib.memory import quarantine
+
+    (wiki / "knowledge").mkdir()
+    (wiki / "knowledge" / "pricing-a.md").write_text(
+        "## Knowledge\nThe pricing model always uses monthly billing cycles.\n",
+        encoding="utf-8",
+    )
+    (wiki / "knowledge" / "pricing-b.md").write_text(
+        quarantine.mark("## Knowledge\nThe pricing model never uses monthly billing cycles.\n"),
+        encoding="utf-8",
+    )
+
+    result = wiki_health.sweep()
+
+    pages = {frozenset((c["page"], c["with"])) for c in result["contradiction_pairs"]}
+    assert frozenset(("knowledge/pricing-a.md", "knowledge/pricing-b.md")) not in pages
