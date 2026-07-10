@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.4.5] — 2026-07-10 — "suggestion-pipeline contract fixes"
+
+Gap-review pass over the 0.4.x train — fixes where the shipped pipeline
+drifted from its own ratified contracts.
+
+- **Declines really are durable** — retrospective skill-candidate
+  fingerprints are slug-normalized, so a casing/whitespace/punctuation
+  re-draft of a suggestion you already declined can never re-nag.
+- **Quarantined content can't drive suggestions** — the wiki-health
+  knowledge scan now holds out quarantined pages, closing the last
+  evidence path that bypassed the producers-refuse-quarantined-sources
+  contract.
+- **"Accepted" means it actually landed** — approving a suggestion applies
+  the change first and records the decision only on success; an apply
+  failure leaves the suggestion pending, visible, and retryable instead of
+  silently lost.
+- **Promotion candidates respect the significance gate** — the promotion
+  producer now uses the ratified "reinforced in ≥3 of your last 5 sessions"
+  recurrence window instead of a looser ad-hoc threshold.
+- **Recurrence evidence is session-id clean** — session summaries missing an
+  id no longer count toward the recurrence threshold.
+- **Doctor watches the suggestion store** — `/ren:doctor` flags corrupt or
+  torn suggestion entry files instead of letting them silently shrink the
+  pending list.
+
 ## [0.4.4] — 2026-07-10 — "gate-0 findings"
 
 Fixes from the 0.4.3 fresh-install proof run.
