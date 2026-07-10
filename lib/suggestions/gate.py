@@ -39,9 +39,9 @@ def recurs(evidence_sessions: set[str], recent_sessions: list[str]) -> bool:
     """True iff >= RECURRENCE_MIN_SESSIONS of the last RECURRENCE_WINDOW_SESSIONS
     (recent_sessions, newest first) are in evidence_sessions.
 
-    recent_sessions is a list ordered newest-first. Only the last
-    RECURRENCE_WINDOW_SESSIONS (trailing elements) are considered; earlier
-    sessions are ignored.
+    recent_sessions is a list ordered newest-first. Only the first
+    RECURRENCE_WINDOW_SESSIONS (leading elements — the most recent sessions) are
+    considered; earlier sessions are ignored.
 
     Args:
         evidence_sessions: Set of session IDs where the pattern appeared.
@@ -55,8 +55,8 @@ def recurs(evidence_sessions: set[str], recent_sessions: list[str]) -> bool:
     if not evidence_sessions or not recent_sessions:
         return False
 
-    # Take only the last RECURRENCE_WINDOW_SESSIONS sessions (trailing elements)
-    window = recent_sessions[-RECURRENCE_WINDOW_SESSIONS :]
+    # Take only the first RECURRENCE_WINDOW_SESSIONS sessions (leading elements = newest first)
+    window = recent_sessions[:RECURRENCE_WINDOW_SESSIONS]
 
     # Count how many sessions in the window are in evidence_sessions
     count = sum(1 for session in window if session in evidence_sessions)

@@ -68,12 +68,19 @@ class TestRecurs:
         assert recurs(evidence, recent) is False
 
     def test_recurs_recent_longer_than_window(self):
-        """Recent list longer than window; only last RECURRENCE_WINDOW_SESSIONS are considered."""
-        # recent has 10 sessions, but only last 5 matter
-        evidence = {"s1", "s2", "s3"}  # in s1, s2, s3 (within last 5)
+        """Recent list longer than window; only first RECURRENCE_WINDOW_SESSIONS (newest) are considered."""
+        # recent has 10 sessions, but only first 5 (the newest) matter
         recent = ["s10", "s9", "s8", "s7", "s6", "s5", "s4", "s3", "s2", "s1"]
-        # Last 5: ["s5", "s4", "s3", "s2", "s1"] → s1, s2, s3 all in this window
-        assert recurs(evidence, recent) is True
+
+        # Case 1: Evidence in the newest sessions (first 5) → True
+        evidence_newest = {"s10", "s9", "s8"}  # in newest window
+        # First 5: ["s10", "s9", "s8", "s7", "s6"] → s10, s9, s8 all in this window
+        assert recurs(evidence_newest, recent) is True
+
+        # Case 2: Evidence in the oldest sessions (outside window) → False
+        evidence_oldest = {"s1", "s2", "s3"}  # outside newest window
+        # First 5: ["s10", "s9", "s8", "s7", "s6"] → s1, s2, s3 not in this window
+        assert recurs(evidence_oldest, recent) is False
 
     def test_recurs_constants_match_spec(self):
         """Verify constants match the specification."""
