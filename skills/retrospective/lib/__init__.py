@@ -275,12 +275,17 @@ def analyze(gathered: dict) -> list[dict]:
 
     # 3. skill-candidate (D-2): a task phrase recurring per the ratified
     # 3-of-last-5 recurrence gate (lib.suggestions.gate.recurs).
+    # Summaries without a session id are dropped (0.4.5): a missing id would
+    # contribute None to both the window and the evidence set, letting
+    # None==None matches count toward the recurrence threshold.
     recent_sessions_newest_first = [
-        summary.get("session") for summary in gathered.get("sessions", [])
+        summary["session"] for summary in gathered.get("sessions", []) if summary.get("session")
     ]
     phrase_sessions: dict[str, set[str]] = {}
     for summary in gathered.get("sessions", []):
         session_id = summary.get("session")
+        if not session_id:
+            continue
         for phrase in summary.get("task_phrases", []):
             phrase_sessions.setdefault(phrase, set()).add(session_id)
     for phrase, sessions in sorted(phrase_sessions.items()):
@@ -386,7 +391,10 @@ def propose_all(findings: list[dict], session: str) -> tuple[list[QueueEntry], l
                 evidence=finding,
                 kind="page_write",
                 payload=payload,
-                fingerprint=f"retrospective:skill-candidate:{finding['task']}",
+                # Slug-normalized (0.4.5): the raw task phrase is free text,
+                # so a casing/whitespace/punctuation re-draft of a declined
+                # candidate would mint a fresh fingerprint and re-nag.
+                fingerprint=f"retrospective:skill-candidate:{_slugify(finding['task'])}",
             )
             recorded = suggestions.record(spec)
             if recorded is not None:

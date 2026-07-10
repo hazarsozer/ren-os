@@ -346,3 +346,42 @@ def test_skill_candidate_still_fires_on_genuine_turns_alongside_boilerplate(wiki
     findings = retro.analyze(gathered)
     tasks = [f["task"] for f in findings if f["kind"] == "skill-candidate"]
     assert tasks == ["deploy-staging-environment"]
+
+
+# --- 0.4.5: fingerprint normalization + session-id hygiene -----------------
+
+
+def _skill_candidate(task: str) -> dict:
+    return {"kind": "skill-candidate", "task": task, "frequency": 3,
+            "proposed_shape": f"skill: {task}", "proposed_scaffold": "# stub"}
+
+
+def test_skill_candidate_fingerprint_is_slug_normalized(wiki):
+    _, recorded = retro.propose_all([_skill_candidate("Deploy  to PROD!")], session="sess-1")
+
+    assert recorded[0]["fingerprint"] == "retrospective:skill-candidate:deploy-to-prod"
+
+
+def test_skill_candidate_decline_survives_task_phrase_reformatting(wiki):
+    # Never-re-nag must hold across trivially-different re-drafts of the
+    # same task phrase (casing/whitespace/punctuation).
+    _, first = retro.propose_all([_skill_candidate("deploy to prod")], session="sess-1")
+    suggestions.decide(first[0]["sid"], "declined")
+
+    _, second = retro.propose_all([_skill_candidate("Deploy  to PROD!")], session="sess-2")
+
+    assert second == []
+
+
+def test_skill_candidate_ignores_summaries_without_session_ids(wiki):
+    # Summaries missing a session id must not let None==None matches count
+    # toward the 3-of-5 recurrence threshold.
+    gathered = {
+        "sessions": [{"task_phrases": ["run the tests"]} for _ in range(5)],
+        "metrics": [],
+        "corrections": [],
+    }
+
+    findings = retro.analyze(gathered)
+
+    assert [f for f in findings if f["kind"] == "skill-candidate"] == []
