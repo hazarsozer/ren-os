@@ -19,7 +19,19 @@ import json
 import pytest
 
 from lib.ren_paths import state_dir, wiki_root
-from lib.suggestions import SuggestionSpec, decide, decided_fingerprints, pending_suggestions, record
+from lib.suggestions import (
+    SuggestionSpec,
+    _persist,
+    decide,
+    decided_fingerprints,
+    expire_stale_pending,
+    get_suggestion,
+    pending_suggestions,
+    prune_decided,
+    record,
+)
+
+_persist_via_module = _persist
 
 
 @pytest.fixture
@@ -138,3 +150,23 @@ def test_record_dedups_via_ledger_even_after_entry_file_removed(wiki):
     decide(entry["sid"], "declined")
     (state_dir() / "suggestions" / f"{entry['sid']}.json").unlink()  # entry file gone, ledger remains
     assert record(_spec(fingerprint="fp:pruned")) is None
+
+
+def test_prune_decided_removes_old_entry_files_but_keeps_ledger_dedup(wiki):
+    entry = record(_spec(fingerprint="fp:prunable"))
+    decide(entry["sid"], "declined")
+    stored = get_suggestion(entry["sid"])
+    stored["decided_at"] = "2020-01-01T00:00:00Z"
+    _persist_via_module(stored)  # write the aged entry back through lib.suggestions._persist
+    assert prune_decided() == 1
+    assert record(_spec(fingerprint="fp:prunable")) is None  # ledger still dedups
+
+
+def test_expire_stale_pending_hides_but_does_not_ledger(wiki):
+    entry = record(_spec(fingerprint="fp:stale"))
+    stored = get_suggestion(entry["sid"])
+    stored["ts"] = "2020-01-01T00:00:00Z"
+    _persist_via_module(stored)
+    assert expire_stale_pending() == 1
+    assert pending_suggestions() == []
+    assert record(_spec(fingerprint="fp:stale")) is not None  # expiry ≠ decline: re-emits with fresh evidence

@@ -12,7 +12,7 @@ from __future__ import annotations
 import pytest
 
 from lib.ren_paths import wiki_root
-from lib.suggestions import SuggestionSpec
+from lib.suggestions import SuggestionSpec, _persist, get_suggestion, pending_suggestions, record
 from skills.wrap.lib import harvest_suggestions
 
 
@@ -105,3 +105,21 @@ def test_harvest_returns_count_of_non_none_records_only(wiki, monkeypatch):
     count = harvest_suggestions(session="sess-1")
 
     assert count == 1
+
+
+def test_harvest_expires_stale_pending_suggestions(wiki, monkeypatch):
+    import skills.wrap.lib as wrap_lib
+
+    monkeypatch.setattr(wrap_lib, "promotion_candidates", lambda: [])
+    monkeypatch.setattr(wrap_lib, "doctrine_shaping", lambda: [])
+    monkeypatch.setattr(wrap_lib, "wiki_health_critical", lambda sweep_result: [])
+    monkeypatch.setattr(wrap_lib, "_run_wiki_health_sweep", lambda: {})
+
+    stale = record(_spec("promotion", 99))
+    stored = get_suggestion(stale["sid"])
+    stored["ts"] = "2020-01-01T00:00:00Z"
+    _persist(stored)
+
+    harvest_suggestions(session="sess-1")
+
+    assert pending_suggestions() == []

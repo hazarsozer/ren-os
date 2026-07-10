@@ -41,6 +41,7 @@ from lib.instrument import collect
 from lib.memory import queue
 from lib.memory.queue import Proposal, propose_and_apply
 from lib.memory.scrub import SecretsFound
+from lib.suggestions import expire_stale_pending, prune_decided
 from lib.suggestions import record as record_suggestion
 from lib.suggestions.producers import (
     doctrine_shaping,
@@ -206,6 +207,16 @@ def harvest_suggestions(session: str, cwd: str | None = None) -> int:
     process-global via `lib.ren_paths`, not per-directory).
     """
     del cwd  # unused — see docstring
+
+    try:
+        prune_decided()
+    except Exception:  # noqa: BLE001 - store maintenance must not starve the producers
+        pass
+
+    try:
+        expire_stale_pending()
+    except Exception:  # noqa: BLE001 - store maintenance must not starve the producers
+        pass
 
     specs: list = []
 

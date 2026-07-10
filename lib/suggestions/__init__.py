@@ -25,7 +25,7 @@ import json
 import os
 import sys
 from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from ulid import ULID
@@ -35,6 +35,10 @@ from lib import ren_paths
 _SUGGESTIONS_DIRNAME = "suggestions"
 _PENDING = "pending"
 _DECISIONS = ("accepted", "declined")
+_EXPIRED = "expired"
+
+DECIDED_RETENTION_DAYS = 90
+PENDING_MAX_AGE_DAYS = 30
 
 
 @dataclass(frozen=True)
@@ -114,7 +118,7 @@ def ledger_fingerprints() -> set[str]:
     same torn-file tolerance as `all_suggestions`."""
     path = _ledger_path()
     if not path.exists():
-        decided_entries = [e for e in all_suggestions() if e["status"] != _PENDING]
+        decided_entries = [e for e in all_suggestions() if e["status"] in _DECISIONS]
         for entry in decided_entries:
             _append_ledger_line({
                 "fingerprint": entry["fingerprint"],
@@ -187,8 +191,60 @@ def decide(sid: str, decision: str) -> dict:
     return entry
 
 
+def _parse_ts(ts: str) -> datetime:
+    return datetime.strptime(ts, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+
+
+def prune_decided(retention_days: int = DECIDED_RETENTION_DAYS) -> int:
+    """Delete decided (accepted/declined) entry files whose `decided_at` is
+    older than `retention_days`. The decision ledger is untouched — dedup
+    stays intact after pruning (see module docstring). Entries with a
+    missing or unparsable `decided_at` are skipped (never delete on
+    ambiguity). Returns the count of files deleted."""
+    cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
+    deleted = 0
+    for entry in all_suggestions():
+        if entry.get("status") not in _DECISIONS:
+            continue
+        decided_at = entry.get("decided_at")
+        if not decided_at:
+            continue
+        try:
+            ts = _parse_ts(decided_at)
+        except (ValueError, TypeError):
+            continue
+        if ts < cutoff:
+            _suggestion_path(entry["sid"]).unlink(missing_ok=True)
+            deleted += 1
+    return deleted
+
+
+def expire_stale_pending(max_age_days: int = PENDING_MAX_AGE_DAYS) -> int:
+    """Transition pending entries whose `ts` is older than `max_age_days` to
+    status="expired" (decided_at stays None, fingerprint is NOT ledgered —
+    expiry is not a decline, see module docstring). Returns the count
+    expired."""
+    cutoff = datetime.now(timezone.utc) - timedelta(days=max_age_days)
+    expired = 0
+    for entry in pending_suggestions():
+        ts = entry.get("ts")
+        if not ts:
+            continue
+        try:
+            parsed = _parse_ts(ts)
+        except (ValueError, TypeError):
+            continue
+        if parsed < cutoff:
+            entry["status"] = _EXPIRED
+            _persist(entry)
+            expired += 1
+    return expired
+
+
 __all__ = [
     "SuggestionSpec",
+    "DECIDED_RETENTION_DAYS",
+    "PENDING_MAX_AGE_DAYS",
     "all_suggestions",
     "get_suggestion",
     "record",
@@ -196,4 +252,6 @@ __all__ = [
     "decided_fingerprints",
     "ledger_fingerprints",
     "decide",
+    "prune_decided",
+    "expire_stale_pending",
 ]
