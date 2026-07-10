@@ -234,7 +234,8 @@ def _quarantined_pages(wiki_root: Path) -> dict:
     pages = [
         str(md_path.relative_to(wiki_root))
         for md_path in sorted(wiki_root.rglob("*.md"))
-        if quarantine.is_quarantined(md_path.read_text(encoding="utf-8", errors="replace"))
+        if ".ren" not in md_path.relative_to(wiki_root).parts
+        and quarantine.is_quarantined(md_path.read_text(encoding="utf-8", errors="replace"))
     ]
     return {"count": len(pages), "pages": pages}
 
