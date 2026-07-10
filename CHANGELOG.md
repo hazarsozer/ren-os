@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.4.4] — 2026-07-10 — "gate-0 findings"
+
+Fixes from the 0.4.3 fresh-install proof run.
+
+- **Pinned global preferences are properly typed** — a pin or correction
+  targeting a `global/` page now stamps `type: preference` frontmatter, so
+  the page you just approved no longer shows up as drift on the next
+  `/ren:doctor`.
+- **CLAUDE.md refresh suggestions are real** — the doctrine producer now
+  renders what a refresh would actually write and compares it to disk;
+  suggestions only appear when accepting them would change something (the
+  old companion-title check could suggest no-op refreshes).
+- **Known note:** headless (`claude -p`) sessions don't export plugin
+  option environment variables; interactive sessions are unaffected.
+
 ## [0.4.3] — 2026-07-10 — "proof and polish"
 
 Closes the 0.4.x "suggesting brain" train.
