@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.4.3] — 2026-07-10 — "proof and polish"
+
+Closes the 0.4.x "suggesting brain" train.
+
+- **Docs truth pass** — every claim re-verified against the code: the L1/L2
+  quarantine split described accurately, the wake-up payload's held-out and
+  suggestion lines documented, `/ren:suggestions` added to the governance
+  table, stale "not wired yet" notes resolved.
+- **Per-repo CLAUDE.md pointer block is real** — bootstrap-project now
+  stamps the marker-delimited pointer block via the adapter (a 0.2-era
+  changelog claim that had never actually been wired), alongside AGENTS.md.
+- **Recurrence gate wired** — the ratified "pattern in ≥3 of your last 5
+  sessions" rule now gates retrospective skill-candidate mining directly.
+- **Final whole-train review** — independent whole-branch review of all
+  0.4.x changes verified: no new wiki writers, the instruction-plane
+  chokepoint untouched, L1 the only quarantine exemption, never-raise hook
+  contracts, coherent suggestion fingerprints, and no resurrected
+  approve/reject verbs.
+
 ## [0.4.2] — 2026-07-10 — "the suggesting brain"
 
 RenOS now learns how you work and proposes improvements back to you. The
