@@ -228,6 +228,66 @@ def test_l1_stays_injected_with_banner_despite_quarantine_exclusion(project):
     assert "Did some work on the widget." in payload
 
 
+# --------------------------------------------------------------- codex D4
+
+
+def test_project_scoped_wrap_l1_is_read_by_wakeup_for_that_project(project):
+    """codex D4: `wrap_session(..., project=...)` writes L1 to
+    `projects/<project>/l1/session-<id>.md` — the SAME path
+    `compose_wake_up_context` reads for that project. A project-scoped wrap
+    followed by wake-up for that project must inject the summary."""
+    import importlib
+
+    wrap_lib = importlib.import_module("skills.wrap.lib")
+
+    wrap_lib.wrap_session(
+        narrative_md="# Session summary\n\nFixed the widget race condition.\n",
+        durable_items=[],
+        session="sess-proj-1",
+        project=project["slug"],
+    )
+
+    payload = wakeup.compose_wake_up_context(cwd=project["cwd"], wiki_root=wiki_root(), session="sess-proj-1")
+
+    assert "Fixed the widget race condition." in payload
+
+
+def test_global_wrap_keeps_writing_to_global_l1(wiki):
+    """codex D4: `project=None` (the default) preserves the pre-fix global
+    `l1/session-<id>.md` path for every non-project-scoped caller."""
+    import importlib
+
+    wrap_lib = importlib.import_module("skills.wrap.lib")
+
+    result = wrap_lib.wrap_session(
+        narrative_md="# Session summary\n\nGlobal session work.\n",
+        durable_items=[],
+        session="sess-global-1",
+    )
+
+    assert (wiki / "l1" / "session-sess-global-1.md").exists()
+    assert result["l1_qid"]
+
+
+def test_wakeup_falls_back_to_global_l1_when_project_local_absent(project, wiki):
+    """codex D4: pre-fix pages (or non-project-scoped wraps) written to the
+    global `l1/` dir must stay reachable from a project-scoped wake-up when
+    the project has no project-local L1 of its own yet.
+
+    Asserts the content lands specifically under the L1 section heading
+    (not merely surfaced as a generic "Related pages" extra, which the
+    heuristic ranker could also pick up regardless of the D4 fallback and
+    would make this test pass for the wrong reason)."""
+    _write(wiki / "l1" / "session-legacy.md", "Legacy global session summary.")
+
+    payload = wakeup.compose_wake_up_context(cwd=project["cwd"], wiki_root=wiki_root(), session="sess-1")
+
+    heading = f"### {project['slug']} — most recent session (L1)"
+    assert heading in payload
+    l1_section = payload.split(heading, 1)[1].split("###", 1)[0]
+    assert "Legacy global session summary." in l1_section
+
+
 def test_missing_wiki_root_returns_empty_string(clean_path_env, tmp_path):
     clean_path_env.setenv("REN_FRAMEWORK_ROOT", str(tmp_path))
     nonexistent_wiki = wiki_root()

@@ -476,12 +476,22 @@ def compose_wake_up_context(
     if project is not None:
         project_dir = wiki_root / "projects" / project
 
+        l1_source_dir = project_dir
         l1_text = read_l1(project_dir)
+        if not l1_text:
+            # codex D4: project-local `l1/` has nothing (either no wrap has
+            # ever written here, or this wiki predates the project-aware L1
+            # path) — fall back to the global `l1/` dir so pre-fix pages
+            # (and non-project-scoped wraps) stay reachable rather than the
+            # project's most recent session silently vanishing from context.
+            l1_text = read_l1(wiki_root)
+            l1_source_dir = wiki_root
+
         if l1_text:
             sections.append(f"### {project} — most recent session (L1)")
             sections.append(truncate_text_to_tokens(l1_text, L1_BUDGET))
             l1_files = sorted(
-                (project_dir / L1_DIRNAME).glob("session-*.md"), key=_safe_mtime, reverse=True
+                (l1_source_dir / L1_DIRNAME).glob("session-*.md"), key=_safe_mtime, reverse=True
             )
             if l1_files:
                 surfaced_pages.append(str(l1_files[0].relative_to(wiki_root).as_posix()))

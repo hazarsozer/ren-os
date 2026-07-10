@@ -2,8 +2,8 @@
 skills.wrap library — internal implementation for /ren:wrap (Task 4.1, RenOS
 0.2 Phase 4).
 
-Public entry: `wrap_session(narrative_md, durable_items, session, llm_call=None)
--> dict`.
+Public entry: `wrap_session(narrative_md, durable_items, session, llm_call=None,
+project=None) -> dict`.
 
 Per spec §3.1 producer 1 (L1 session continuity) + §3.8 (unified wrap
 surface) + §3.10 (quarantine): the live Claude session (SKILL.md) writes the
@@ -87,6 +87,7 @@ def wrap_session(
     durable_items: list[str],
     session: str,
     llm_call: Callable[[str], str] | None = None,
+    project: str | None = None,
 ) -> dict:
     """Run the wrap write path for one session close-out.
 
@@ -106,11 +107,25 @@ def wrap_session(
       - "fail_closed": True if the classifier gate fell back to the
         deterministic path (due to an LLM error) for at least one durable
         candidate during this call
+
+    `project` (codex D4): when the wrap is scoped to a project (the live
+    session knows its own cwd/project context — see SKILL.md), the L1 page
+    is written to `projects/<project>/l1/session-<id>.md`, the EXACT path
+    `hooks.wake-up.wakeup.read_l1` reads for that project (`project_dir /
+    "l1"`, where `project_dir = wiki_root / "projects" / project`) — mirrors
+    that resolution exactly rather than reimplementing it. `None` (the
+    default) preserves the original global `l1/session-<id>.md` path, so
+    every pre-existing (non-project-scoped) caller is unaffected.
     """
+    l1_page = (
+        f"projects/{project}/l1/session-{session}.md"
+        if project
+        else f"l1/session-{session}.md"
+    )
     l1_entry, _ = propose_and_apply(
         Proposal(
             op="ADD",
-            page=f"l1/session-{session}.md",
+            page=l1_page,
             content=narrative_md,
             reason="end-of-session L1 narrative summary",
             producer="wrap",
