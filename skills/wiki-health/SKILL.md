@@ -8,10 +8,10 @@ description: |
   This is 0.3's replacement for per-write human approval
   (v2.2 removed the queue gate on data-plane writes) — the autonomous
   auditor that runs periodically instead of a human reviewing every diff.
-version: 0.4.5
+version: 0.5.0
 license: MIT
 
-framework_version: "0.4.5"
+framework_version: "0.5.0"
 schema_version: 1
 type: skill
 execution_tier: judgment

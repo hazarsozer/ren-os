@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.5.0] — 2026-07-10 — "learning-brain foundations"
+
+Boring on purpose: hygiene, plumbing, and a 12/12-confirmed external review's
+fixes — the ground the 0.5.x "learning brain" train builds on.
+
+- **Suggestion store stays small and fast** — decisions live in a compact
+  append-only ledger (the never-re-nag source of truth), old decided entries
+  prune after 90 days, and pending suggestions that sit unanswered for 30
+  days quietly expire (an expired suggestion can come back with fresh
+  evidence; a declined one never does).
+- **LLM-judge plumbing** — the contract for 0.5.2's semantic
+  duplicate/contradiction judging (typed verdicts, per-run cap, fail-closed
+  to today's deterministic behavior). No consumers wired yet.
+- **External-review fix wave** (every finding adversarially verified):
+  - Page leases acquire atomically — two concurrent sessions can no longer
+    both "win" the same page lock.
+  - `rm -rf` of a wiki folder now counts the pages inside it — recursive
+    deletes hit the same guard as multi-file deletes (symlink-safe).
+  - Force-pushes spelled `git push origin +main` are caught like `--force`.
+  - Session summaries land where the next wake-up actually looks — project
+    wraps write project-local L1 (with fallback for existing wikis).
+  - An approved ADD that would silently overwrite a page created in the
+    meantime is held as a conflict instead.
+  - Approving/declining an already-decided suggestion is refused instead of
+    re-applied; a failed decision write after a successful apply is surfaced
+    (`decision_recorded: false`) instead of lost.
+  - `/ren:doctor` gains apply-integrity and suggestion-store checks;
+    wiki-health no longer reports `.ren/` snapshots as live quarantined pages.
+
 ## [0.4.5] — 2026-07-10 — "suggestion-pipeline contract fixes"
 
 Gap-review pass over the 0.4.x train — fixes where the shipped pipeline
