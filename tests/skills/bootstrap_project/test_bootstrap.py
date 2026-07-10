@@ -120,3 +120,32 @@ def test_bootstrap_without_repo_root_writes_no_agents_md(wiki, tmp_path):
     bootstrap("falcon", session="sess-1")
 
     assert not (tmp_path / "AGENTS.md").exists()
+
+
+def test_bootstrap_writes_claude_md_when_repo_root_given(wiki, tmp_path):
+    repo = tmp_path / "myrepo"
+    repo.mkdir()
+
+    bootstrap("falcon", session="sess-1", repo_root=repo)
+
+    text = (repo / "CLAUDE.md").read_text(encoding="utf-8")
+    assert "<!-- ren:begin -->" in text
+    assert "falcon" in text
+
+
+def test_bootstrap_preserves_existing_claude_md_user_content(wiki, tmp_path):
+    repo = tmp_path / "myrepo"
+    repo.mkdir()
+    (repo / "CLAUDE.md").write_text("MY OWN CUSTOM CLAUDE.MD — DO NOT TOUCH", encoding="utf-8")
+
+    bootstrap("falcon", session="sess-1", repo_root=repo)
+
+    text = (repo / "CLAUDE.md").read_text(encoding="utf-8")
+    assert "MY OWN CUSTOM CLAUDE.MD — DO NOT TOUCH" in text
+    assert "<!-- ren:begin -->" in text
+
+
+def test_bootstrap_without_repo_root_writes_no_claude_md(wiki, tmp_path):
+    bootstrap("falcon", session="sess-1")
+
+    assert not (tmp_path / "CLAUDE.md").exists()

@@ -37,6 +37,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from lib import ren_paths
+from lib.adapter.claude_md import write_project_claude_md
 from lib.memory.queue import Proposal, QueueEntry, propose_and_apply
 from lib.portability.agents_surface import write_agents_md
 from lib.skeleton import stamp_skeleton
@@ -64,10 +65,11 @@ def bootstrap(project_slug: str, session: str, repo_root: Path | None = None) ->
     applied.
 
     When `repo_root` is given (the project repo the user is bootstrapping
-    from, e.g. `Path.cwd()`), also writes `<repo_root>/AGENTS.md` — the
-    portability pointer surface (Codex D5). `None` (default) skips this,
-    full backward compatibility. A failure writing AGENTS.md never breaks
-    bootstrap itself.
+    from, e.g. `Path.cwd()`), also writes `<repo_root>/AGENTS.md` (the
+    portability pointer surface, Codex D5) and `<repo_root>/CLAUDE.md` (the
+    project-tier pointer block, per `lib.adapter.claude_md`). `None`
+    (default) skips both, full backward compatibility. A failure writing
+    either file never breaks bootstrap itself.
     """
     stamp_skeleton(
         skeleton_root=_SKELETON_ROOT,
@@ -105,6 +107,11 @@ def bootstrap(project_slug: str, session: str, repo_root: Path | None = None) ->
             write_agents_md(Path(repo_root), ren_paths.wiki_root(), project_slug)
         except OSError:
             _LOGGER.exception("bootstrap-project: failed to write AGENTS.md at %s", repo_root)
+
+        try:
+            write_project_claude_md(Path(repo_root), project_slug)
+        except OSError:
+            _LOGGER.exception("bootstrap-project: failed to write CLAUDE.md at %s", repo_root)
 
     return entry
 
