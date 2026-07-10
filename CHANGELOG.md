@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.4.1] — 2026-07-10 — "trust hardening"
+
+Quarantined (LLM-written, unreviewed) content is now held out of your
+context by default instead of riding in behind a banner. This is exclusion,
+not sanitization — full trust-class provenance is 0.5 territory.
+
+- **Wake-up holds out quarantined pages** — the extras channel and the L2
+  project map skip quarantined pages; a count-only line says how many were
+  held out. The L1 session summary is the one documented exemption (it is
+  RenOS's own summary of your own session, banner intact).
+- **Recall excludes quarantined pages by default** — ask explicitly to see
+  held-out content and it's retrieved banner-intact.
+- **Ingest offers release at close-out** — after ingesting a project, RenOS
+  shows you the map and offers to release it from quarantine (a human act);
+  until released it stays out of wake-up.
+- **Adversarial injection test suite** — hostile instruction-shaped content
+  seeded through the real write doors is proven absent from wake-up payloads
+  and default recall, and retrievable only on explicit ask.
+
 ## [0.4.0] — 2026-07-10 — "foundations"
 
 Groundwork for the 0.4.x "suggesting brain" train. No user-facing behavior
