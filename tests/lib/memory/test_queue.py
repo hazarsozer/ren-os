@@ -216,6 +216,60 @@ def test_apply_fills_supersedes_from_supersedes_conflict(wiki, monkeypatch):
     assert entries[0]["supersedes"] == "w-original-write-id"
 
 
+def test_apply_add_held_when_target_created_with_different_content_after_approve(wiki):
+    """codex D5: an ADD proposed while `global/rule.md` is absent gets
+    approved; the user then creates the page directly (or another write
+    lands it) BEFORE apply — `apply()` must not blindly overwrite it with
+    `os.replace`. Different content -> held (back to pending, contradicts
+    conflict), never a silent overwrite."""
+    entry = queue.propose(_proposal(page="race-add.md", content="proposed content"))
+    queue.approve(entry.qid, approved_by="hazar")
+
+    (wiki / "race-add.md").write_text("someone else's content", encoding="utf-8")
+
+    with pytest.raises(QueueStateError):
+        queue.apply(entry.qid)
+
+    reloaded = queue.get(entry.qid)
+    assert reloaded.status == "pending"
+    assert any(c.get("kind") == "contradicts" for c in reloaded.conflicts)
+
+    # The page on disk must be untouched — no overwrite happened.
+    assert (wiki / "race-add.md").read_text(encoding="utf-8") == "someone else's content"
+
+
+def test_apply_add_is_noop_when_target_created_with_identical_content(wiki):
+    """codex D5: identical content on the now-existing target is a no-op,
+    not a held conflict — matches `propose()`'s own noop-duplicate
+    behavior for the same situation at propose time."""
+    entry = queue.propose(_proposal(page="race-add-same.md", content="same content"))
+    queue.approve(entry.qid, approved_by="hazar")
+
+    (wiki / "race-add-same.md").write_text("same content", encoding="utf-8")
+
+    with pytest.raises(QueueStateError):
+        queue.apply(entry.qid)
+
+    reloaded = queue.get(entry.qid)
+    assert reloaded.status == "noop-duplicate"
+
+
+def test_apply_auto_still_upserts_same_page_across_repeated_calls(wiki):
+    """codex D5's held/no-op check is deliberately scoped to `apply()` (the
+    human approve() -> apply() gap the defect's failure scenario describes),
+    NOT `apply_auto()` — `apply_auto` runs synchronously from
+    `propose_and_apply` with no real time gap, and shipped producers (e.g.
+    `skills.wrap.lib.wrap_session`'s L1 write) legitimately re-ADD the same
+    page across repeated calls as an upsert. This must keep working."""
+    entry1 = queue.propose(_proposal(page="repeat-add.md", content="first", writer="llm-auto"))
+    queue.apply_auto(entry1.qid)
+
+    entry2 = queue.propose(_proposal(page="repeat-add.md", content="second", writer="llm-auto"))
+    queue.apply_auto(entry2.qid)
+
+    assert (wiki / "repeat-add.md").read_text(encoding="utf-8").strip().endswith("second")
+
+
 def test_reject_from_pending_records_reason(wiki):
     entry = queue.propose(_proposal(page="rejected-pending.md", content="x"))
     queue.reject(entry.qid, "not needed")

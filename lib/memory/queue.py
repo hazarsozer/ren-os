@@ -321,6 +321,58 @@ def _quarantined_content(proposal: Proposal) -> str | None:
     return content
 
 
+def _check_add_race(qid: str, entry: "QueueEntry", verb: str) -> None:
+    """codex D5: an ADD proposal built its write assuming the target page was
+    absent (that's what "ADD" means); if the page was created out-of-band
+    between propose and apply, blindly `os.replace`-ing it would silently
+    clobber whatever landed there. Only applies to `op=="ADD"` — UPDATE's
+    semantics (replace whatever is there) are unchanged.
+
+    Compares the CURRENT on-disk body against the proposal's effective
+    content, both normalized via `_normalize_body` (same comparison
+    `propose()` already uses for its own applied-page dedup check):
+      - page still absent -> no-op, caller proceeds with the write.
+      - identical normalized content -> the entry is transitioned to
+        `noop-duplicate` (mirrors `propose()`'s own dedup outcome for the
+        same situation) and `QueueStateError` is raised so the caller never
+        reaches `write_apply.apply_write`.
+      - different content -> the entry is held: reverted to `pending` with
+        an added `contradicts` conflict (the same hold mechanics
+        `propose_and_apply` already uses for a detected contradiction), and
+        `QueueStateError` is raised.
+    """
+    proposal = entry.proposal
+    if proposal.op != "ADD":
+        return
+    current = _current_page_body(proposal.page)
+    if current is None:
+        return
+
+    effective = _quarantined_content(proposal) or ""
+    if _content_hash(_normalize_body(current)) == _content_hash(_normalize_body(effective)):
+        entry.status = _NOOP_DUPLICATE
+        _persist(entry)
+        raise QueueStateError(
+            f"cannot {verb} {qid}: ADD target {proposal.page!r} already has identical "
+            "content — no-op"
+        )
+
+    entry.status = _PENDING
+    entry.conflicts = entry.conflicts + [
+        {
+            "kind": "contradicts",
+            "page": proposal.page,
+            "write_id": None,
+            "evidence": f"target page {proposal.page!r} was created out-of-band since this ADD was proposed",
+        }
+    ]
+    _persist(entry)
+    raise QueueStateError(
+        f"cannot {verb} {qid}: ADD target {proposal.page!r} now exists with different "
+        "content — held for review"
+    )
+
+
 def apply(qid: str) -> Provenance:
     """Apply an approved entry through `write_apply.apply_write`.
 
@@ -328,10 +380,15 @@ def apply(qid: str) -> Provenance:
     via `new_provenance`, with `supersedes` set to the write_id of the first
     `conflicts` entry whose `kind` is `"supersedes"` (or `None` if there isn't
     one). On success, marks the entry `applied` with the resulting `write_id`.
+
+    codex D5: before writing, an `ADD` whose target now exists on disk (it
+    was absent when proposed) is re-checked via `_check_add_race` — see that
+    helper for the held/no-op outcomes.
     """
     entry = _load(qid)
     if entry.status != _APPROVED:
         raise QueueStateError(f"cannot apply {qid}: status is {entry.status!r}, not 'approved'")
+    _check_add_race(qid, entry, "apply")
 
     supersedes = next(
         (c.get("write_id") for c in entry.conflicts if c.get("kind") == "supersedes"),
@@ -390,6 +447,16 @@ def apply_auto(qid: str) -> Provenance:
             f"cannot apply_auto {qid}: proposal (writer={entry.proposal.writer!r}, "
             f"page={entry.proposal.page!r}) does not resolve to the 'auto' tier"
         )
+    # NOTE: `_check_add_race` is deliberately NOT wired in here. Unlike
+    # `apply()` (human approve -> apply, a real time gap where an external
+    # actor can land the page first), `apply_auto` is reached synchronously
+    # from `propose_and_apply` with no gap — and several producers
+    # (`skills.wrap.lib.wrap_session`'s L1 write chief among them) legitimately
+    # re-`ADD` the SAME page across repeated calls in one session as an
+    # upsert. Wiring the race check here false-positives on that shipped
+    # behavior (see tests/skills/wrap/test_wrap_flow.py's two-wrap-same-
+    # session coverage) without closing any real race — codex D5's failure
+    # scenario is specifically the approve()/apply() human gap.
 
     supersedes = next(
         (c.get("write_id") for c in entry.conflicts if c.get("kind") == "supersedes"),
