@@ -104,3 +104,19 @@ def test_bootstrap_stamps_missing_skeleton_dirs(wiki):
 
     assert (wiki / "research").is_dir()
     assert (wiki / "decisions").is_dir()
+
+
+def test_bootstrap_writes_agents_md_when_repo_root_given(wiki, tmp_path):
+    repo = tmp_path / "myrepo"
+    repo.mkdir()
+
+    bootstrap("falcon", session="sess-1", repo_root=repo)
+
+    text = (repo / "AGENTS.md").read_text(encoding="utf-8")
+    assert "falcon" in text
+
+
+def test_bootstrap_without_repo_root_writes_no_agents_md(wiki, tmp_path):
+    bootstrap("falcon", session="sess-1")
+
+    assert not (tmp_path / "AGENTS.md").exists()

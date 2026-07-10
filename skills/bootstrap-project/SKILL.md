@@ -18,6 +18,7 @@ contract:
   required_outputs:
     - "Any missing shared wiki dirs/files stamped (additive, never overwrite)"
     - "One Proposal queued: ADD (or UPDATE) projects/<slug>/map.md, an empty L2 map"
+    - "When bootstrapping inside a project repo: <repo_root>/AGENTS.md written (portability pointer surface)"
     - "Confirmation line printed to user including the queue id"
   budgets:
     turns: 2
@@ -55,11 +56,12 @@ The fresh-project half of the L2 pair. `/ren:ingest-project` scans an existing r
 
 ## Behavior
 
-1. Resolve `project_slug` (kebab-case) and the active `session` id.
-2. Call `skills.bootstrap-project.lib.bootstrap(project_slug, session)`:
+1. Resolve `project_slug` (kebab-case) and the active `session` id. If bootstrapping inside a project repo (the common case), resolve `repo_root=Path.cwd()`.
+2. Call `skills.bootstrap-project.lib.bootstrap(project_slug, session, repo_root=repo_root)`:
    - Stamps the shared skeleton (`lib/skeleton.py` against `wiki-skeleton/manifest.yaml`'s `master` profile) into the wiki root — additive only; an already-onboarded wiki is untouched.
    - Assembles an empty L2 map (`skills.ingest-project.lib.assemble_l2` — same frozen schema `ingest` uses, just with empty `knowledge`/`pointers` and a single "project bootstrapped" log line) and proposes it (`ADD` if the map doesn't exist yet, `UPDATE` if it does) at `lib.memory.queue`.
    - Always `producer="promotion"`, `writer="human"` — a human directly asked for this, so it's never quarantined on apply.
+   - When `repo_root` is given, also writes `<repo_root>/AGENTS.md` via `lib.portability.agents_surface.write_agents_md` — the thin, harness-neutral pointer file foreign coding agents (e.g. Codex) read to find this project's wiki map (Codex D5: the surface existed but had zero production callers before this wiring). A failure writing AGENTS.md never breaks bootstrap itself; omit `repo_root` (default `None`) to skip it entirely.
 3. If the project already has a repo directory on disk, call `lib.adapter.claude_md.write_project_claude_md(repo_root, project_slug)` — stamps the thin RenOS pointer block (managed `ren:` markers, only the block is ever touched) into `<repo_root>/CLAUDE.md`. No repo yet → skip; `/ren:ingest-project` stamps it later.
 4. Confirm to the user: `Queued <qid> — bootstrapped projects/<slug>/map.md`.
 

@@ -32,12 +32,16 @@ to parse.
 from __future__ import annotations
 
 import importlib
+import logging
 from datetime import datetime, timezone
 from pathlib import Path
 
 from lib import ren_paths
 from lib.memory.queue import Proposal, QueueEntry, propose_and_apply
+from lib.portability.agents_surface import write_agents_md
 from lib.skeleton import stamp_skeleton
+
+_LOGGER = logging.getLogger(__name__)
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]  # lib -> bootstrap-project -> skills -> repo root
 _SKELETON_ROOT = _REPO_ROOT / "wiki-skeleton"
@@ -50,7 +54,7 @@ def _map_page(project_slug: str) -> str:
     return f"projects/{project_slug}/map.md"
 
 
-def bootstrap(project_slug: str, session: str) -> QueueEntry:
+def bootstrap(project_slug: str, session: str, repo_root: Path | None = None) -> QueueEntry:
     """Stamp the shared skeleton (additive) and queue an empty L2 map for
     `project_slug`.
 
@@ -58,6 +62,12 @@ def bootstrap(project_slug: str, session: str) -> QueueEntry:
     Always human-provenance — never quarantined. Auto-applies through the
     data-plane door (v2.2); the returned entry's `write_id` is set once
     applied.
+
+    When `repo_root` is given (the project repo the user is bootstrapping
+    from, e.g. `Path.cwd()`), also writes `<repo_root>/AGENTS.md` — the
+    portability pointer surface (Codex D5). `None` (default) skips this,
+    full backward compatibility. A failure writing AGENTS.md never breaks
+    bootstrap itself.
     """
     stamp_skeleton(
         skeleton_root=_SKELETON_ROOT,
@@ -89,6 +99,13 @@ def bootstrap(project_slug: str, session: str) -> QueueEntry:
             salience=False,
         )
     )
+
+    if repo_root is not None:
+        try:
+            write_agents_md(Path(repo_root), ren_paths.wiki_root(), project_slug)
+        except OSError:
+            _LOGGER.exception("bootstrap-project: failed to write AGENTS.md at %s", repo_root)
+
     return entry
 
 

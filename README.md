@@ -215,9 +215,9 @@ elapsed usage, not more code).
 - **Harness-neutral by design** — the wiki is plain markdown any coding agent
   can read; `lib/portability/agents_surface.py` renders an `AGENTS.md` pointer
   file, and Codex cited wiki pages from a rendered `AGENTS.md` in the
-  [live proof](docs/codex-read-proof.md). Automatic `AGENTS.md` generation at
-  install/bootstrap is not wired yet (planned for 0.4) — today the renderer is
-  a library you can call, not a shipped flow.
+  [live proof](docs/codex-read-proof.md). `/ren:bootstrap-project` now writes
+  `AGENTS.md` into the project repo as part of bootstrapping (0.4.0) — install
+  time generation and regeneration on demand are not wired yet.
 - **Local-first** — see [docs/data-flow.md](docs/data-flow.md) for exactly what stays
   local (everything), what ever reaches a model API (your session content, as always),
   and what never does (the wiki is never uploaded by RenOS itself).
