@@ -17,6 +17,7 @@ from __future__ import annotations
 import pytest
 
 from lib.instrument import collect
+from lib.memory import quarantine
 from lib.ren_paths import wiki_root
 from skills.recall.lib import fetch, rank, tokenize_query
 
@@ -135,3 +136,21 @@ def test_fetch_default_k_is_three(wiki):
 
     results = fetch("shared keyword", session="sess-1")
     assert len(results) == 3
+
+
+def test_fetch_excludes_quarantined_by_default(wiki):
+    _write(wiki, "projects/x/clean.md", "alpha beta gamma\n")
+    _write(wiki, "projects/x/dirty.md", quarantine.mark("alpha beta gamma\n"))
+
+    pages = {r["page"] for r in fetch("alpha beta", session="sess-1", k=5)}
+
+    assert "projects/x/clean.md" in pages
+    assert "projects/x/dirty.md" not in pages
+
+
+def test_fetch_include_quarantined_opt_in(wiki):
+    _write(wiki, "projects/x/dirty.md", quarantine.mark("alpha beta gamma\n"))
+
+    pages = {r["page"] for r in fetch("alpha beta", session="sess-1", k=5, include_quarantined=True)}
+
+    assert "projects/x/dirty.md" in pages

@@ -35,6 +35,7 @@ from typing import Final
 
 from lib import ren_paths
 from lib.instrument import miss_log
+from lib.memory import quarantine
 
 # Stop-words removed from queries to focus the token-overlap score.
 STOP_WORDS: Final[frozenset[str]] = frozenset(
@@ -176,16 +177,25 @@ def _discover_candidates(wiki_root: Path) -> list[str]:
     return candidates
 
 
-def fetch(query: str, session: str, k: int = DEFAULT_K) -> list[dict]:
+def fetch(
+    query: str, session: str, k: int = DEFAULT_K, include_quarantined: bool = False
+) -> list[dict]:
     """The L3 fetch verb: rank every wiki page against `query`, return the
     top-`k` as `{"page": <wiki-relative path>, "content": <file text>}`, and
     log every returned page via `miss_log.log_fetch` (per spec §3.2, every L3
     fetch is logged — this IS the mechanical miss-measurement substrate).
 
+    By default, quarantined pages (per `lib.memory.quarantine`) are dropped
+    from the candidate set before ranking, so recall never surfaces held-out
+    content unless the caller explicitly opts in with `include_quarantined=True`.
+
     Returns `[]` on an empty (or absent) wiki — never raises.
     """
     root = ren_paths.wiki_root()
     candidates = _discover_candidates(root)
+    if not include_quarantined:
+        quarantined = quarantine.quarantined_rel_pages(root)
+        candidates = [c for c in candidates if c not in quarantined]
     ranked = rank(query, candidates, root)
 
     results: list[dict] = []
