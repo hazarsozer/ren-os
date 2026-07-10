@@ -41,34 +41,28 @@ def _page_content(page_type: str, body: str) -> str:
     return f"---\ntype: {page_type}\n---\n{body}\n"
 
 
-def _seed_two_updates(page: str, page_type: str = "preference"):
-    """Drive the real write door twice with different sessions and changed
-    content, producing two journaled UPDATE entries for `page` across two
-    distinct sessions (first write is an ADD, second is the UPDATE that
-    matters for the producer's threshold — so seed with an extra ADD+UPDATE
-    to get 2 UPDATEs)."""
+def _seed_updates(page: str, page_type: str = "preference", sessions: tuple[str, ...] = ("s1", "s2", "s3")):
+    """Drive the real write door with one journaled UPDATE per session in
+    `sessions` (after an initial ADD), producing the recurrence evidence the
+    producer's ratified 3-of-5 gate reads (0.4.5: `recurs()`, not ad-hoc
+    counts)."""
     propose_and_apply(
         Proposal(
-            op="ADD", page=page, content=_page_content(page_type, "v1"),
-            reason="seed", producer="retrospective", writer="human", session="s1",
+            op="ADD", page=page, content=_page_content(page_type, "v0"),
+            reason="seed", producer="retrospective", writer="human", session=sessions[0],
         )
     )
-    propose_and_apply(
-        Proposal(
-            op="UPDATE", page=page, content=_page_content(page_type, "v2"),
-            reason="seed", producer="retrospective", writer="human", session="s1",
+    for i, session in enumerate(sessions, start=1):
+        propose_and_apply(
+            Proposal(
+                op="UPDATE", page=page, content=_page_content(page_type, f"v{i}"),
+                reason="seed", producer="retrospective", writer="human", session=session,
+            )
         )
-    )
-    propose_and_apply(
-        Proposal(
-            op="UPDATE", page=page, content=_page_content(page_type, "v3"),
-            reason="seed", producer="retrospective", writer="human", session="s2",
-        )
-    )
 
 
 def test_reinforced_preference_page_becomes_candidate(wiki):
-    _seed_two_updates("projects/x/pref.md")
+    _seed_updates("projects/x/pref.md")
 
     specs = promotion_candidates(wiki)
 
@@ -81,7 +75,7 @@ def test_reinforced_preference_page_becomes_candidate(wiki):
 
 
 def test_doctrine_type_also_qualifies(wiki):
-    _seed_two_updates("projects/x/doc.md", page_type="doctrine")
+    _seed_updates("projects/x/doc.md", page_type="doctrine")
 
     specs = promotion_candidates(wiki)
 
@@ -107,7 +101,7 @@ def test_only_one_update_does_not_qualify(wiki):
 
 
 def test_quarantined_page_does_not_qualify(wiki):
-    _seed_two_updates("projects/x/pref.md")
+    _seed_updates("projects/x/pref.md")
 
     page = wiki / "projects" / "x" / "pref.md"
     page.write_text(quarantine.mark(page.read_text(encoding="utf-8")), encoding="utf-8")
@@ -116,7 +110,7 @@ def test_quarantined_page_does_not_qualify(wiki):
 
 
 def test_already_global_page_does_not_qualify(wiki):
-    _seed_two_updates("global/pref.md")
+    _seed_updates("global/pref.md")
 
     assert promotion_candidates(wiki) == []
 
@@ -130,6 +124,30 @@ def test_typeless_page_does_not_qualify(wiki):
                 op="UPDATE" if content != "v1" else "ADD",
                 page="projects/x/notype.md", content=content,
                 reason="seed", producer="retrospective", writer="human", session=session,
+            )
+        )
+
+    assert promotion_candidates(wiki) == []
+
+
+def test_two_sessions_do_not_clear_the_recurrence_gate(wiki):
+    # 0.4.5: the ratified 3-of-5 gate (spec §5.2) replaces the old ad-hoc
+    # 2-updates/2-sessions threshold — two sessions of reinforcement is
+    # below-threshold evidence, not a suggestion.
+    _seed_updates("projects/x/pref.md", sessions=("s1", "s2"))
+
+    assert promotion_candidates(wiki) == []
+
+
+def test_evidence_outside_the_last_five_sessions_does_not_qualify(wiki):
+    # Reinforced in s1-s3, but five newer sessions (s4-s8) have since
+    # happened — the evidence falls outside the 5-session window.
+    _seed_updates("projects/x/pref.md", sessions=("s1", "s2", "s3"))
+    for s in ("s4", "s5", "s6", "s7", "s8"):
+        propose_and_apply(
+            Proposal(
+                op="ADD", page=f"projects/y/{s}.md", content=_page_content("note", "x"),
+                reason="seed", producer="retrospective", writer="human", session=s,
             )
         )
 

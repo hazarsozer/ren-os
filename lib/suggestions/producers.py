@@ -4,8 +4,10 @@ lib.suggestions.producers — promotion-candidate producer (Task 17, RenOS
 
 `promotion_candidates` finds pages that keep getting reinforced by human
 correction: a non-global page whose frontmatter `type` is `doctrine` or
-`preference`, journaled as an UPDATE at least twice across at least two
-distinct sessions, and not currently quarantined. That reinforcement pattern
+`preference`, journaled as an UPDATE in enough recent sessions to clear the
+ratified significance gate (`gate.recurs`, >= RECURRENCE_MIN_SESSIONS of the
+last RECURRENCE_WINDOW_SESSIONS journal sessions — 0.4.5, replacing the old
+ad-hoc 2/2 threshold), and not currently quarantined. That reinforcement pattern
 is read as "this is behaving like a durable preference" — the page is
 suggesting its own promotion to the global tier.
 
@@ -30,10 +32,7 @@ from lib.memory.journal import entries as journal_entries
 from lib.memory.promotion import GLOBAL_PREFIX
 from lib.ren_paths import PathTraversalError
 from lib.suggestions import SuggestionSpec
-from lib.suggestions.gate import is_critical_page
-
-_MIN_UPDATES = 2
-_MIN_SESSIONS = 2
+from lib.suggestions.gate import is_critical_page, recurs
 
 # Mirrors lib.memory.promotion._ALLOWED_TYPES (private there — the typed-tier
 # rule that only doctrine/preference pages may promote to global).
@@ -63,8 +62,30 @@ def _frontmatter_type(text: str) -> str | None:
     return None
 
 
+def _recent_sessions_newest_first() -> list[str]:
+    """Distinct session ids across the whole journal, newest first — the
+    `recent_sessions` input `lib.suggestions.gate.recurs` expects. The journal
+    is append-ordered (newest-last), so walk it reversed and keep each
+    session's first (i.e. most recent) occurrence."""
+    seen: set[str] = set()
+    out: list[str] = []
+    for entry in reversed(journal_entries()):
+        session = entry.get("session")
+        if not session or session in seen:
+            continue
+        seen.add(session)
+        out.append(session)
+    return out
+
+
 def promotion_candidates(wiki_root: Path | None = None) -> list[SuggestionSpec]:
     """Return one `SuggestionSpec` per reinforced doctrine/preference page.
+
+    0.4.5: reinforcement is judged by the ratified significance gate
+    (spec §5.2) — the page's UPDATE sessions must clear `recurs()`
+    (>= RECURRENCE_MIN_SESSIONS of the last RECURRENCE_WINDOW_SESSIONS
+    journal sessions), replacing the old ad-hoc 2-updates/2-sessions
+    threshold.
 
     Never raises: any error walking the wiki or reading the journal degrades
     to `[]` rather than propagating.
@@ -73,6 +94,7 @@ def promotion_candidates(wiki_root: Path | None = None) -> list[SuggestionSpec]:
 
     try:
         md_paths = sorted(root.rglob("*.md"))
+        recent_sessions = _recent_sessions_newest_first()
     except OSError:
         return []
 
@@ -105,7 +127,7 @@ def promotion_candidates(wiki_root: Path | None = None) -> list[SuggestionSpec]:
         update_entries = [e for e in page_entries if e.get("op") == "UPDATE"]
         sessions = {e.get("session") for e in update_entries if e.get("session")}
 
-        if len(update_entries) < _MIN_UPDATES or len(sessions) < _MIN_SESSIONS:
+        if not recurs(sessions, recent_sessions):
             continue
 
         specs.append(
