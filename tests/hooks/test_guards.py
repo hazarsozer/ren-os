@@ -88,6 +88,17 @@ def test_force_push_blocked_and_allow_force_env_permits_it(git_repo, clean_path_
     assert rc == 0
 
 
+def test_refspec_plus_main_force_push_blocked(git_repo, capsys):
+    rc = pre_push_scan.check_push("git push origin +main", str(git_repo))
+    assert rc == 2
+    assert "force" in capsys.readouterr().err.lower()
+
+
+def test_refspec_plus_head_colon_main_force_push_blocked(git_repo, capsys):
+    rc = pre_push_scan.check_push("git push origin +HEAD:main", str(git_repo))
+    assert rc == 2
+
+
 def test_history_rewrite_then_push_blocked(git_repo, capsys):
     rc = pre_push_scan.check_push("git rebase main && git push origin main", str(git_repo))
     assert rc == 2

@@ -18,9 +18,10 @@ brick the harness; a guard silently never firing is doctor's job to flag,
 not this script's job to prevent by crashing louder).
 
 Checks, in order:
-  1. FORCE/REWRITE guard — force-push or a history-rewrite-then-push shape
-     blocks unless `REN_ALLOW_FORCE=1` is set (an explicit, deliberate human
-     re-run, not a default-allow).
+  1. FORCE/REWRITE guard — force-push (including `+refspec` force syntax,
+     e.g. `git push origin +main` / `+HEAD:main`, not just `--force`/`-f`)
+     or a history-rewrite-then-push shape blocks unless `REN_ALLOW_FORCE=1`
+     is set (an explicit, deliberate human re-run, not a default-allow).
   2. Remote heuristic — pushes to a remote named "backup" skip BOTH the path
      denylist and the secrets scan (the private backup remote's entire point
      is to contain everything, including wiki/ and any fixture secrets it
@@ -77,6 +78,22 @@ def _ensure_plugin_root_on_path() -> None:
     root_str = str(root)
     if root_str not in sys.path:
         sys.path.insert(0, root_str)
+
+
+def _has_force_refspec(command: str) -> bool:
+    """True if a positional refspec argument after `git push` uses `+`
+    force syntax (`git push origin +main`, `git push origin +HEAD:main`).
+    Only checks whitespace-separated positional tokens after the push
+    keyword, so option values and URLs elsewhere in the command can't
+    false-positive."""
+    match = _GIT_PUSH_RE.search(command)
+    if match is None:
+        return False
+    after = command[match.end():]
+    for token in after.split():
+        if token.startswith("+") and len(token) > 1:
+            return True
+    return False
 
 
 def _extract_remote(command: str, cwd: str) -> str:
@@ -156,7 +173,7 @@ def check_push(command: str, cwd: str) -> int:
     if not _GIT_PUSH_RE.search(command):
         return 0  # not a push at all — nothing for this guard to do
 
-    if _FORCE_FLAG_RE.search(command) or _REWRITE_RE.search(command):
+    if _FORCE_FLAG_RE.search(command) or _REWRITE_RE.search(command) or _has_force_refspec(command):
         if os.environ.get(ALLOW_FORCE_ENV) == "1":
             return 0
         return _block(
