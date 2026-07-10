@@ -113,3 +113,28 @@ def test_pending_suggestions_skips_corrupt_file(wiki, capsys):
     assert len(pending) == 1
     assert pending[0]["fingerprint"] == "fp-good"
     assert "s-corrupt.json" in capsys.readouterr().err
+
+
+def test_decide_appends_to_decision_ledger(wiki):
+    entry = record(_spec(fingerprint="fp:ledger-1"))
+    decide(entry["sid"], "declined")
+    ledger = state_dir() / "suggestions" / "decisions.jsonl"
+    lines = [json.loads(l) for l in ledger.read_text().splitlines()]
+    assert lines[-1]["fingerprint"] == "fp:ledger-1"
+    assert lines[-1]["decision"] == "declined"
+
+
+def test_ledger_backfills_from_existing_decided_entries(wiki):
+    entry = record(_spec(fingerprint="fp:old-world"))
+    decide(entry["sid"], "accepted")
+    (state_dir() / "suggestions" / "decisions.jsonl").unlink()  # simulate pre-0.5.0 store
+
+    from lib.suggestions import ledger_fingerprints
+    assert "fp:old-world" in ledger_fingerprints()
+
+
+def test_record_dedups_via_ledger_even_after_entry_file_removed(wiki):
+    entry = record(_spec(fingerprint="fp:pruned"))
+    decide(entry["sid"], "declined")
+    (state_dir() / "suggestions" / f"{entry['sid']}.json").unlink()  # entry file gone, ledger remains
+    assert record(_spec(fingerprint="fp:pruned")) is None

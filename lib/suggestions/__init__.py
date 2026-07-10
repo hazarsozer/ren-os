@@ -11,9 +11,12 @@ Persistence is the state: one JSON file per suggestion at
 
 The never-re-nag contract (mirrors the companions reconciler's doctrine,
 `lib/companions/__init__.py`): a suggestion is offered iff it has no recorded
-decision. Declines are durable — never re-nag. `record` therefore dedups a
-new spec's fingerprint against BOTH pending and decided suggestions before
-writing anything.
+decision. Declines are durable — never re-nag. Decided fingerprints live in
+an append-only ledger (`state_dir()/suggestions/decisions.jsonl`), written by
+`decide()` alongside the entry file. `record` dedups a new spec's fingerprint
+against the ledger UNION pending suggestions' fingerprints — it no longer
+parses every entry file, so a later task can prune decided entry files
+without breaking dedup.
 """
 
 from __future__ import annotations
@@ -59,6 +62,10 @@ def _suggestion_path(sid: str) -> Path:
     return _suggestions_dir() / f"{sid}.json"
 
 
+def _ledger_path() -> Path:
+    return _suggestions_dir() / "decisions.jsonl"
+
+
 def _persist(entry: dict) -> None:
     """Atomic write: temp file + os.replace, so a crash mid-write never leaves
     a torn/partial suggestion file."""
@@ -94,10 +101,45 @@ def get_suggestion(sid: str) -> dict:
     return _load(sid)
 
 
+def _append_ledger_line(line: dict) -> None:
+    with _ledger_path().open("a", encoding="utf-8") as f:
+        f.write(json.dumps(line) + "\n")
+
+
+def ledger_fingerprints() -> set[str]:
+    """Fingerprints of every decided (accepted or declined) suggestion, read
+    from the durable decision ledger. If the ledger file doesn't exist yet
+    but decided entry files do (pre-0.5.0 store), backfill the ledger from
+    them first. Unparsable ledger lines are skipped with a stderr warning,
+    same torn-file tolerance as `all_suggestions`."""
+    path = _ledger_path()
+    if not path.exists():
+        decided_entries = [e for e in all_suggestions() if e["status"] != _PENDING]
+        for entry in decided_entries:
+            _append_ledger_line({
+                "fingerprint": entry["fingerprint"],
+                "decision": entry["status"],
+                "sid": entry["sid"],
+                "ts": entry["decided_at"],
+            })
+        if not decided_entries:
+            return set()
+
+    fingerprints: set[str] = set()
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            fingerprints.add(json.loads(line)["fingerprint"])
+        except (json.JSONDecodeError, TypeError, KeyError, ValueError) as exc:
+            print(f"ren suggestions: skipping unparsable ledger line: {exc}", file=sys.stderr)
+    return fingerprints
+
+
 def record(spec: SuggestionSpec) -> dict | None:
     """Record `spec` as a new pending suggestion, unless its fingerprint is
     already pending or decided — in which case returns None (never re-nag)."""
-    existing_fingerprints = {e["fingerprint"] for e in all_suggestions()}
+    existing_fingerprints = ledger_fingerprints() | {e["fingerprint"] for e in pending_suggestions()}
     if spec.fingerprint in existing_fingerprints:
         return None
 
@@ -122,7 +164,7 @@ def pending_suggestions() -> list[dict]:
 
 def decided_fingerprints() -> set[str]:
     """Fingerprints of every non-pending (accepted or declined) suggestion."""
-    return {e["fingerprint"] for e in all_suggestions() if e["status"] != _PENDING}
+    return ledger_fingerprints()
 
 
 def decide(sid: str, decision: str) -> dict:
@@ -136,6 +178,12 @@ def decide(sid: str, decision: str) -> dict:
     entry["status"] = decision
     entry["decided_at"] = _now_iso()
     _persist(entry)
+    _append_ledger_line({
+        "fingerprint": entry["fingerprint"],
+        "decision": decision,
+        "sid": entry["sid"],
+        "ts": entry["decided_at"],
+    })
     return entry
 
 
@@ -146,5 +194,6 @@ __all__ = [
     "record",
     "pending_suggestions",
     "decided_fingerprints",
+    "ledger_fingerprints",
     "decide",
 ]
