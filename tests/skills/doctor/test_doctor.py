@@ -56,7 +56,7 @@ def test_run_checks_returns_one_result_per_check(wiki):
         "env", "wiki_structure", "frontmatter", "schema_versions",
         "budget_lint", "dangling_pointers", "graphify_status", "companions",
         "backup_configured", "execution_tiers", "global_drift", "harness_neutrality", "guard_health",
-        "suggestion_store",
+        "suggestion_store", "apply_integrity",
     }
 
 
@@ -413,3 +413,56 @@ def test_check_suggestion_store_warns_on_corrupt_entry(wiki):
 
     assert result.status == "warn"
     assert "s-corrupt.json" in result.message
+
+
+# --- codex D6: apply-integrity visibility -----------------------------------
+
+
+def test_check_apply_integrity_ok_when_journal_matches_queue(wiki):
+    from lib.memory.queue import Proposal, propose_and_apply
+
+    entry, prov = propose_and_apply(
+        Proposal(
+            op="ADD",
+            page="lessons/foo.md",
+            content="some content",
+            reason="test",
+            producer="wrap",
+            writer="llm-auto",
+            session="sess-1",
+        )
+    )
+    assert prov is not None  # sanity: this proposal auto-applied
+
+    result = doctor.check_apply_integrity()
+    assert result.status == "ok"
+
+
+def test_check_apply_integrity_warns_on_orphan_write_id(wiki):
+    from lib.memory import journal
+    from lib.memory.provenance import new_provenance
+
+    # A journal line for a real ADD write, but with NO matching queue entry
+    # at all (status=="applied" or otherwise) — simulates the crash window
+    # codex D6 flags: write_apply.apply_write succeeded and journaled, but
+    # the process died before the queue entry was persisted as applied.
+    prov = new_provenance(writer="llm-auto", session="sess-1", op="ADD", page="lessons/orphan.md")
+    journal.append(prov)
+
+    result = doctor.check_apply_integrity()
+
+    assert result.status == "warn"
+    assert prov.write_id in result.message
+
+
+def test_check_apply_integrity_ignores_noop_revert_entries(wiki):
+    """NOOP journal lines (revert records, metric-watch findings) never have
+    a matching queue entry by design — they must not be flagged."""
+    from lib.memory import journal
+    from lib.memory.provenance import new_provenance
+
+    prov = new_provenance(writer="human", session="sess-1", op="NOOP", page="lessons/reverted.md")
+    journal.append(prov, extra={"revert_of": "w-does-not-exist"})
+
+    result = doctor.check_apply_integrity()
+    assert result.status == "ok"

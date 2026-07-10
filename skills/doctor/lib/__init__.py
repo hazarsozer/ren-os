@@ -416,6 +416,44 @@ def check_suggestion_store(store_dir: Path | None = None) -> CheckResult:
     return CheckResult("suggestion_store", "ok", f"{total} suggestion entry file(s) parse cleanly")
 
 
+def check_apply_integrity() -> CheckResult:
+    """codex D6 (visibility only): a write can leave a journal entry with no
+    matching APPLIED queue entry if the process dies between
+    `write_apply.apply_write`'s journal append and `queue.apply`/
+    `apply_auto`'s `_persist(entry)` — the queue entry still reads
+    pending/approved on restart even though the write already landed. Full
+    idempotent-recovery is deferred to 0.6; this check only makes the gap
+    VISIBLE.
+
+    Scoped to journal entries with `op` in `ADD`/`UPDATE`/`DELETE` — every
+    such entry is produced by `write_apply.apply_write` called from
+    `queue.apply`/`apply_auto`/`resolve_and_apply`, each of which persists a
+    matching `status="applied"` queue entry with that `write_id`. `NOOP`
+    entries (revert records, metric-watch findings) are never queue-backed
+    by design and are excluded from the scan entirely."""
+    from lib.memory import journal, queue
+
+    applied_write_ids = {
+        e.write_id for e in queue.all_entries() if e.status == "applied" and e.write_id
+    }
+
+    orphans: list[str] = []
+    for entry in journal.entries():
+        if entry.get("op") not in ("ADD", "UPDATE", "DELETE"):
+            continue
+        write_id = entry.get("write_id")
+        if write_id and write_id not in applied_write_ids:
+            orphans.append(write_id)
+
+    if orphans:
+        return CheckResult(
+            "apply_integrity", "warn",
+            f"{len(orphans)} journal write_id(s) with no matching applied queue entry: "
+            f"{', '.join(orphans[:5])}",
+        )
+    return CheckResult("apply_integrity", "ok", "every journaled write has a matching applied queue entry")
+
+
 _ALL_CHECK_NAMES: tuple[str, ...] = (
     "check_env",
     "check_wiki_structure",
@@ -431,6 +469,7 @@ _ALL_CHECK_NAMES: tuple[str, ...] = (
     "check_harness_neutrality",
     "check_guard_health",
     "check_suggestion_store",
+    "check_apply_integrity",
 )
 
 
@@ -466,5 +505,6 @@ __all__ = [
     "check_global_drift",
     "check_harness_neutrality",
     "check_guard_health",
+    "check_apply_integrity",
     "run_checks",
 ]
