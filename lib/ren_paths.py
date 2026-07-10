@@ -178,6 +178,47 @@ def wiki_root() -> Path:
     return framework_root() / "wiki"
 
 
+DEV_ROOT_ENV = "CLAUDE_PLUGIN_OPTION_DEVROOT"
+"""Env override for the dev-projects root used by cwd-based project detection."""
+
+DEFAULT_DEV_ROOT_REL = "Dev"
+"""Default dev-projects root, relative to the user's home directory."""
+
+
+def resolve_dev_root() -> Path:
+    """Projects root for cwd-based project detection. `CLAUDE_PLUGIN_OPTION_DEVROOT`
+    → `~/Dev`.
+
+    Single source of truth for both the wake-up hook (`hooks/wake-up/wakeup`)
+    and the wrap skill (`skills/wrap/lib`) — both need to agree on which
+    project a given cwd belongs to, so this lives in the shared `lib/` layer
+    rather than being duplicated in either consumer (codex D4 wiring)."""
+    val = os.environ.get(DEV_ROOT_ENV, "").strip()
+    if val:
+        return Path(os.path.expanduser(os.path.expandvars(val)))
+    return Path.home() / DEFAULT_DEV_ROOT_REL
+
+
+def detect_project(cwd: Path, wiki_root_: Path, dev_root: Path | None = None) -> str | None:
+    """cwd matches `<dev_root>/<X>/...` AND `wiki_root_/projects/<X>/` exists → X.
+
+    Shared by the wake-up hook (project-scoped read) and the wrap skill
+    (project-scoped write) so the two can never drift onto different paths
+    for the "same" project (codex D4 wiring)."""
+    if dev_root is None:
+        dev_root = resolve_dev_root()
+    try:
+        rel = cwd.resolve().relative_to(dev_root.resolve())
+    except (ValueError, OSError):
+        return None
+    if not rel.parts:
+        return None
+    candidate = rel.parts[0]
+    if (wiki_root_ / "projects" / candidate).is_dir():
+        return candidate
+    return None
+
+
 def state_dir() -> Path:
     """Return the framework's internal state directory, nested under the wiki root.
 
@@ -393,6 +434,10 @@ __all__ = [
     "framework_root",
     "CLAUDE_DIR_ENV",
     "claude_user_dir",
+    "DEV_ROOT_ENV",
+    "DEFAULT_DEV_ROOT_REL",
+    "resolve_dev_root",
+    "detect_project",
     "wiki_root",
     "state_dir",
     "PathTraversalError",

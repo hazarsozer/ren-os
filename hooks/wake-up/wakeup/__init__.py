@@ -54,7 +54,6 @@ it (see `skills/ingest-project/SKILL.md`'s close-out step).
 from __future__ import annotations
 
 import logging
-import os
 import re
 import subprocess
 from datetime import datetime, timedelta, timezone
@@ -63,11 +62,11 @@ from typing import Final
 
 from lib.instrument import collect, miss_log
 from lib.memory import queue, quarantine
+from lib.ren_paths import DEFAULT_DEV_ROOT_REL, detect_project, resolve_dev_root
 
 logger = logging.getLogger(__name__)
 
 
-DEFAULT_DEV_ROOT_REL: Final[str] = "Dev"
 L1_DIRNAME: Final[str] = "l1"
 L2_MAP_FILENAME: Final[str] = "map.md"
 MASTER_ROUTINES_DIRNAME: Final[str] = "routines"
@@ -107,29 +106,11 @@ def truncate_text_to_tokens(text: str, max_tokens: int) -> str:
     return f"[...truncated; first {len(text) - max_chars} chars elided...]\n" + text[-max_chars:]
 
 
-def resolve_dev_root() -> Path:
-    """Projects root for cwd-based project detection. `CLAUDE_PLUGIN_OPTION_DEVROOT`
-    → `~/Dev`."""
-    val = os.environ.get("CLAUDE_PLUGIN_OPTION_DEVROOT", "").strip()
-    if val:
-        return Path(os.path.expanduser(os.path.expandvars(val)))
-    return Path.home() / DEFAULT_DEV_ROOT_REL
-
-
-def detect_project(cwd: Path, wiki_root: Path, dev_root: Path | None = None) -> str | None:
-    """cwd matches `<dev_root>/<X>/...` AND `wiki_root/projects/<X>/` exists → X."""
-    if dev_root is None:
-        dev_root = resolve_dev_root()
-    try:
-        rel = cwd.resolve().relative_to(dev_root.resolve())
-    except (ValueError, OSError):
-        return None
-    if not rel.parts:
-        return None
-    candidate = rel.parts[0]
-    if (wiki_root / "projects" / candidate).is_dir():
-        return candidate
-    return None
+# `resolve_dev_root` and `detect_project` now live in `lib.ren_paths` (codex
+# D4 wiring) — imported above, re-exported here so existing callers of
+# `wakeup.resolve_dev_root` / `wakeup.detect_project` keep working. Shared
+# with `skills/wrap/lib` so wrap's write path and wake-up's read path can
+# never resolve a cwd to two different project slugs.
 
 
 def _read_text_safe(path: Path) -> str:

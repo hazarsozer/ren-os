@@ -3,7 +3,7 @@ skills.wrap library — internal implementation for /ren:wrap (Task 4.1, RenOS
 0.2 Phase 4).
 
 Public entry: `wrap_session(narrative_md, durable_items, session, llm_call=None,
-project=None) -> dict`.
+project=None, cwd=None) -> dict`.
 
 Per spec §3.1 producer 1 (L1 session continuity) + §3.8 (unified wrap
 surface) + §3.10 (quarantine): the live Claude session (SKILL.md) writes the
@@ -35,8 +35,10 @@ from __future__ import annotations
 
 import re
 from dataclasses import asdict
+from pathlib import Path
 from typing import Callable
 
+from lib import ren_paths
 from lib.instrument import collect
 from lib.memory import queue
 from lib.memory.queue import Proposal, propose_and_apply
@@ -88,6 +90,7 @@ def wrap_session(
     session: str,
     llm_call: Callable[[str], str] | None = None,
     project: str | None = None,
+    cwd: Path | None = None,
 ) -> dict:
     """Run the wrap write path for one session close-out.
 
@@ -108,15 +111,30 @@ def wrap_session(
         deterministic path (due to an LLM error) for at least one durable
         candidate during this call
 
-    `project` (codex D4): when the wrap is scoped to a project (the live
-    session knows its own cwd/project context — see SKILL.md), the L1 page
+    `project` (codex D4): when the wrap is scoped to a project, the L1 page
     is written to `projects/<project>/l1/session-<id>.md`, the EXACT path
     `hooks.wake-up.wakeup.read_l1` reads for that project (`project_dir /
     "l1"`, where `project_dir = wiki_root / "projects" / project`) — mirrors
     that resolution exactly rather than reimplementing it. `None` (the
-    default) preserves the original global `l1/session-<id>.md` path, so
-    every pre-existing (non-project-scoped) caller is unaffected.
+    default) preserves the original global `l1/session-<id>.md` path.
+
+    `cwd` (codex D4 live wiring): the live `/ren:wrap` invocation has no
+    reason to know its own project slug — SKILL.md's instructions call
+    `wrap_session(narrative_md, durable_items, session, llm_call=...)` with
+    no `project=` kwarg at all, same as every other caller. So when
+    `project` is not given explicitly, this derives it from `cwd` (defaults
+    to `Path.cwd()`, the real process cwd at wrap time — the live session
+    IS running with its cwd inside the project directory, exactly the signal
+    `hooks/wake-up/ren-wake-up.py` falls back to via `event.get("cwd") or
+    os.getcwd()`) via `lib.ren_paths.detect_project` — the SAME shared
+    helper `hooks.wake-up.wakeup.compose_wake_up_context` uses to resolve
+    its read-side project. Write and read paths can now never drift onto
+    different project slugs for the same cwd. An explicit `project=` kwarg
+    (as tests use) still overrides detection entirely.
     """
+    if project is None:
+        project = ren_paths.detect_project(cwd or Path.cwd(), ren_paths.wiki_root())
+
     l1_page = (
         f"projects/{project}/l1/session-{session}.md"
         if project

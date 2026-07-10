@@ -23,7 +23,10 @@ from skills.wrap.lib import render_wrap_screen, wrap_session
 
 @pytest.fixture
 def clean_path_env(monkeypatch):
-    for var in ("REN_WIKI_ROOT", "CLAUDE_PLUGIN_OPTION_WIKIROOT", "REN_FRAMEWORK_ROOT"):
+    for var in (
+        "REN_WIKI_ROOT", "CLAUDE_PLUGIN_OPTION_WIKIROOT", "REN_FRAMEWORK_ROOT",
+        "CLAUDE_PLUGIN_OPTION_DEVROOT",
+    ):
         monkeypatch.delenv(var, raising=False)
     monkeypatch.delenv("CLAUDE_SESSION_ID", raising=False)
     return monkeypatch
@@ -35,6 +38,25 @@ def wiki(clean_path_env, tmp_path):
     root = wiki_root()
     root.mkdir(parents=True, exist_ok=True)
     return root
+
+
+@pytest.fixture
+def project(clean_path_env, wiki, tmp_path):
+    """A detected project: cwd under dev_root, with a matching
+    wiki/projects/<slug>/ dir. Mirrors `tests/hooks/test_wakeup.py`'s
+    `project` fixture exactly — the live wrap flow must detect "current
+    project" the SAME way wake-up does (codex D4 wiring)."""
+    dev_root = tmp_path / "Dev"
+    dev_root.mkdir()
+    clean_path_env.setenv("CLAUDE_PLUGIN_OPTION_DEVROOT", str(dev_root))
+
+    cwd = dev_root / "demo-project"
+    cwd.mkdir()
+
+    project_dir = wiki / "projects" / "demo-project"
+    project_dir.mkdir(parents=True)
+
+    return {"cwd": cwd, "project_dir": project_dir, "slug": "demo-project"}
 
 
 def _llm_by_lookup(mapping: dict[str, str]):
@@ -72,6 +94,26 @@ def test_l1_is_queued_applied_and_quarantined_as_llm_auto(wiki):
     assert prov is not None
     assert prov["writer"] == "llm-auto"
     assert prov["write_id"] == entry.write_id
+
+
+def test_wrap_invoked_with_cwd_inside_project_writes_project_l1_without_explicit_project(project):
+    """codex D4 live wiring: the real `/ren:wrap` invocation never passes
+    `project=` explicitly — it only knows its own cwd. `wrap_session` must
+    derive the project from `cwd` the SAME WAY `wakeup.detect_project` does
+    (both now call the shared `lib.ren_paths.detect_project`), so a wrap run
+    with cwd inside a project writes L1 to `projects/<slug>/l1/` on its own."""
+    result = wrap_session(
+        narrative_md="# Session summary\n\nWired the project-scoped L1 path.\n",
+        durable_items=[],
+        session="sess-cwd-1",
+        cwd=project["cwd"],
+    )
+
+    assert result["l1_qid"]
+    project_page = project["project_dir"] / "l1" / "session-sess-cwd-1.md"
+    assert project_page.exists()
+    global_page = wiki_root() / "l1" / "session-sess-cwd-1.md"
+    assert not global_page.exists()
 
 
 def test_wrap_with_no_durable_items_has_empty_lists(wiki):
