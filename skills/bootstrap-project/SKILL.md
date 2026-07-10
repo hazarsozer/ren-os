@@ -6,10 +6,10 @@ description: |
   command. Stamps the shared wiki skeleton (additive) and queues an empty L2
   pointer-map for the project. For an EXISTING repo with real code/git
   history, use /ren:ingest-project instead.
-version: 0.4.1
+version: 0.4.2
 license: MIT
 
-framework_version: "0.4.1"
+framework_version: "0.4.2"
 schema_version: 1
 type: skill
 execution_tier: deterministic

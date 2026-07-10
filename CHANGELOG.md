@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.4.2] — 2026-07-10 — "the suggesting brain"
+
+RenOS now learns how you work and proposes improvements back to you. The
+data plane still auto-applies (journaled, revertible); your instructions
+only ever change with your explicit, recorded approval.
+
+- **Suggestion store** — durable records under `.ren/suggestions/`;
+  declines are remembered and never re-asked (same contract as the
+  companion picker).
+- **Significance gate** — suggestions are rare and high-stakes by design:
+  a pattern must recur in ≥3 of your last 5 sessions, or a contradiction
+  must touch instruction-plane/load-bearing pages, to earn a question.
+- **Four producers** — retrospective skill-candidates (no longer parked as
+  invisible pending entries), reinforced preferences suggesting their own
+  promotion to global, companion-aware CLAUDE.md refresh offers, and
+  critical wiki-health contradictions held for you.
+- **`/ren:suggestions`** — the single interactive surface: walks pending
+  suggestions one at a time, Approve/Reject per item, full preview and
+  rationale. Accepted page-writes flow through the existing human-gated
+  queue door — no new write machinery.
+- **Wake-up + wrap wiring** — wrap harvests producers at close-out;
+  wake-up announces pending instruction suggestions with a pointer to
+  `/ren:suggestions`.
+
 ## [0.4.1] — 2026-07-10 — "trust hardening"
 
 Quarantined (LLM-written, unreviewed) content is now held out of your
