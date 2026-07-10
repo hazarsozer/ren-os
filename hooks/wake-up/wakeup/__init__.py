@@ -34,6 +34,16 @@ Cache-line discipline (ADR-008, inviolable): this module only supplies TEXT for
 `hookSpecificOutput.additionalContext` — it never touches the system-prompt
 prefix. No LLM call anywhere in this module (verified by
 `tests/hooks/test_wakeup.py`'s source-scan test).
+
+RenOS 0.4.1 "trust hardening" (spec §4 L1-exemption amendment): extras (the
+ranked "Related pages" section) exclude every page `lib.memory.quarantine`
+considers quarantined — that channel is where foreign/ingested content
+travels, so it gets the read-time exclusion. L1 is deliberately EXEMPT from
+this exclusion and stays injected with its quarantine banner intact: L1 is
+RenOS's own summary of the user's own session, not foreign content, so the
+banner alone (data-not-instruction) is the correct signal — dropping it from
+context would break session continuity for no trust benefit. See `read_l1`'s
+docstring for the same point at the call site.
 """
 
 from __future__ import annotations
@@ -47,7 +57,7 @@ from pathlib import Path
 from typing import Final
 
 from lib.instrument import collect, miss_log
-from lib.memory import queue
+from lib.memory import queue, quarantine
 
 logger = logging.getLogger(__name__)
 
@@ -130,7 +140,16 @@ def _read_text_safe(path: Path) -> str:
 def read_l1(project_dir: Path) -> str:
     """Return the most recent L1 session page's raw content (quarantine banner
     intact — it's data-not-instruction, and the hook must not strip that
-    signal), or "" if there is no `l1/` dir or no `session-*.md` files."""
+    signal), or "" if there is no `l1/` dir or no `session-*.md` files.
+
+    L1 EXEMPTION (spec §4 amendment, 0.4.1): L1 pages are `llm-auto` and thus
+    quarantined like any other unreviewed content, but they are deliberately
+    exempt from the extras-side quarantine exclusion (`_discover_extra_candidates`)
+    and are always injected here regardless. Rationale: L1 is RenOS's own
+    summary of the user's OWN session — not foreign/ingested content — so the
+    banner is sufficient signal (data-not-instruction) and the exclusion,
+    which targets channels foreign content travels through, does not apply.
+    """
     l1_dir = project_dir / L1_DIRNAME
     if not l1_dir.is_dir():
         return ""
@@ -282,20 +301,38 @@ def _build_rank_query(project: str | None, cwd: Path) -> str:
     return " ".join(parts).strip()
 
 
-def _discover_extra_candidates(wiki_root: Path, exclude: set[str]) -> list[str]:
-    """Every `*.md` under `wiki_root`, excluding dotdirs and `exclude` (the
-    pages already surfaced as L1/L2, so they aren't offered twice)."""
+def _discover_extra_candidates(wiki_root: Path, exclude: set[str]) -> tuple[list[str], int]:
+    """Every `*.md` under `wiki_root`, excluding dotdirs, `exclude` (the pages
+    already surfaced as L1/L2, so they aren't offered twice), and quarantined
+    pages (0.4.1 trust hardening — see module docstring for the L1 exemption,
+    which does NOT apply here since L1 is never routed through this extras
+    path).
+
+    Returns `(candidates, held_count)` where `held_count` is the number of
+    otherwise-eligible pages dropped for being quarantined. Quarantine-scan
+    failure degrades to no exclusion (never raises) — logged at debug level.
+    """
     if not wiki_root.is_dir():
-        return []
+        return [], 0
+    try:
+        held_pages = quarantine.quarantined_rel_pages(wiki_root)
+    except Exception:  # noqa: BLE001 - quarantine scan failure must never abort wake-up
+        logger.debug("quarantined_rel_pages failed", exc_info=True)
+        held_pages = set()
+
     candidates = []
+    held_count = 0
     for path in wiki_root.rglob("*.md"):
         rel = path.relative_to(wiki_root).as_posix()
         if any(part.startswith(".") for part in path.relative_to(wiki_root).parts):
             continue
         if rel in exclude:
             continue
+        if rel in held_pages:
+            held_count += 1
+            continue
         candidates.append(rel)
-    return candidates
+    return candidates, held_count
 
 
 def _salient_pages() -> set[str]:
@@ -336,11 +373,13 @@ def rank_extras(
     exclude: set[str],
     *,
     count: int = DEFAULT_EXTRAS_COUNT,
-) -> list[str]:
-    """Rank candidate pages (excluding `exclude`) via `skills.recall.lib.rank`,
-    then move any salience-boosted page (Task 4.2 pins) to the front of its
-    tier — i.e. all salient pages first (in their relative rank order among
-    themselves), then the rest — and return the top `count`.
+) -> tuple[list[str], int]:
+    """Rank candidate pages (excluding `exclude` and quarantined pages) via
+    `skills.recall.lib.rank`, then move any salience-boosted page (Task 4.2
+    pins) to the front of its tier — i.e. all salient pages first (in their
+    relative rank order among themselves), then the rest — and return
+    `(top count pages, held_count)`, where `held_count` is the number of
+    quarantined pages excluded (see `_discover_extra_candidates`).
 
     `rank` is reached via `importlib.import_module("skills.recall.lib")`, the
     hyphen-safe pattern documented in Task 4.4 (kept here for consistency even
@@ -348,16 +387,16 @@ def rank_extras(
     """
     import importlib
 
-    candidates = _discover_extra_candidates(wiki_root, exclude)
+    candidates, held_count = _discover_extra_candidates(wiki_root, exclude)
     if not candidates:
-        return []
+        return [], held_count
 
     recall_lib = importlib.import_module("skills.recall.lib")
     ranked = recall_lib.rank(query, candidates, wiki_root)
 
     salient = _salient_pages()
     boosted = [p for p in ranked if p in salient] + [p for p in ranked if p not in salient]
-    return boosted[:count]
+    return boosted[:count], held_count
 
 
 def compose_wake_up_context(
@@ -424,12 +463,14 @@ def compose_wake_up_context(
     if suggestion:
         sections.append(suggestion)
 
+    extras: list[str] = []
+    held_count = 0
     try:
         query = _build_rank_query(project, cwd)
-        extras = rank_extras(query, wiki_root, exclude=set(surfaced_pages))
+        extras, held_count = rank_extras(query, wiki_root, exclude=set(surfaced_pages))
     except Exception:  # noqa: BLE001 - ranking failure degrades to no extras
         logger.debug("rank_extras failed", exc_info=True)
-        extras = []
+        extras, held_count = [], 0
 
     if extras:
         sections.append("### Related pages")
@@ -441,6 +482,12 @@ def compose_wake_up_context(
             sections.append(f"#### {rel}")
             sections.append(truncate_text_to_tokens(text, per_page_budget))
             surfaced_pages.append(rel)
+
+    if held_count > 0:
+        sections.append(
+            f"{held_count} quarantined page(s) held out of this context — "
+            "ask to see them explicitly."
+        )
 
     composed = "\n\n".join(s for s in sections if s.strip())
 
