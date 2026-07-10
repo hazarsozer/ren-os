@@ -65,9 +65,12 @@ for where each exit criterion actually stands.
    ┌────────────────┼──────────────────┐
    ▼                ▼                  ▼
  L1  session     L2  project        L3  recall
- notes, quaran-  pointer-maps       on-demand fetch,
- tine-bannered   projects/<slug>/   every miss logged
- until reviewed  map.md             (honest hit rate)
+ notes, quaran-  pointer-maps,      on-demand fetch,
+ tine-bannered   held out of        every miss logged
+ but always      wake-up until      (honest hit rate)
+ injected        reviewed
+                 projects/<slug>/
+                 map.md
    │                │                  │
    └────────────────┴──────────────────┘
                     │  promotion (gated, never automatic)
@@ -81,8 +84,11 @@ for where each exit criterion actually stands.
 RenOS rides Claude Code's **native** global → project instruction-file hierarchy
 for its instruction layer — doctrine lives in CLAUDE.md files, not in an
 injected prompt. (The wake-up hook does inject **data-plane** context: your
-recent session summary, the project map, and related pages — knowledge, never
-instructions.)
+recent session summary (L1, always injected), the project map and related
+pages (L2/extras — skipped if held-out by quarantine, with a "N quarantined
+page(s) held out" count-only line), and a pointer to any pending instruction
+suggestions ("N instruction suggestion(s) pending — run /ren:suggestions to
+review") — knowledge, never instructions.)
 
 ```
 ~/.claude/CLAUDE.md          ← managed block: behavioral core + recall doctrine
@@ -137,7 +143,8 @@ scripts, worker-shaped drafting delegates to cheap subagent models, and judgment
 ### Governance
 | Skill | What it's for |
 |---|---|
-| _(conversational)_ | Suggestions surface at wake-up and wrap; answer in chat — no queue verbs. Say "undo \<write_id>" to revert a write |
+| `/ren:suggestions` | Review pending instruction-plane suggestions one at a time — accept/decline in chat, rare and high-stakes by design |
+| _(conversational)_ | Suggestions also surface at wake-up and wrap; answer in chat — no queue verbs. Say "undo \<write_id>" to revert a write |
 | `/ren:routine-init` | Declare a bounded routine: schedule, exit criterion, failure handler, capability/path allowlist |
 | `/ren:metric-watch` | The minimal watch routine: budget growth, memory growth, gate failures → journal findings |
 
