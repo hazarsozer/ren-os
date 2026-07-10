@@ -84,6 +84,7 @@ def test_assemble_l2_renders_exact_schema():
         "- fact one\n"
         "- fact two\n"
         "## Decision map\n"
+        "_All pointer paths are relative to the wiki root, not this file._\n"
         "- [database] → decisions/db-choice.md#postgres (w-abc123)\n"
         "- [unstamped-topic] → research/todo.md#todo (unstamped)\n"
         "## Log\n"
@@ -103,6 +104,7 @@ def test_assemble_l2_empty_knowledge_and_pointers_still_valid():
         "# empty-project — knowledge map\n"
         "## Knowledge\n"
         "## Decision map\n"
+        "_All pointer paths are relative to the wiki root, not this file._\n"
         "## Log\n"
         "- 2026-01-01: project bootstrapped\n"
     )
@@ -219,3 +221,16 @@ def test_assemble_l2_omits_fragment_for_null_anchor():
     )
     assert "#None" not in content
     assert "- [arch] → decisions/architecture.md (unstamped)" in content
+
+
+def test_map_decision_section_states_pointer_base():
+    """Task 5: L2 maps must state their pointer base explicitly (Codex D6)."""
+    text = assemble_l2(
+        "falcon",
+        knowledge=["k"],
+        pointers=[{"topic": "t", "path": "projects/falcon/decisions/d1.md", "write_id": "w1"}],
+        log_line="l"
+    )
+    lines = text.splitlines()
+    idx = lines.index("## Decision map")
+    assert lines[idx + 1] == "_All pointer paths are relative to the wiki root, not this file._"

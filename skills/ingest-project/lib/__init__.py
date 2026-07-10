@@ -84,6 +84,7 @@ def assemble_l2(
     for fact in knowledge:
         lines.append(f"- {fact}")
     lines.append("## Decision map")
+    lines.append("_All pointer paths are relative to the wiki root, not this file._")
     for pointer in pointers:
         write_id = pointer.get("write_id") or "unstamped"
         anchor = pointer.get("anchor")
