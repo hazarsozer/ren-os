@@ -61,6 +61,7 @@ QUEUE_APPLY_ENV = "REN_QUEUE_APPLY"
 MASS_DELETE_THRESHOLD = 3
 
 _RM_RE = re.compile(r"(?:^|[;&|]\s*)(rm|unlink)\b")
+_RECURSIVE_FLAG_RE = re.compile(r"(?:^|\s)-[a-zA-Z]*[rR][a-zA-Z]*(?:\s|$)|--recursive\b")
 _REMOTE_SET_RE = re.compile(r"\bgit\s+remote\s+(set-url|add)\s+\S*backup\S*", re.IGNORECASE)
 _SHELL_SEPARATORS = (";", "&&", "||", "|")
 _REDIRECT_TARGET_RE = re.compile(r">{1,2}\s*([^\s;|&<>]+)")
@@ -111,18 +112,35 @@ def check_direct_write(file_path: str) -> int:
     return 2
 
 
+def _rm_command_segment(command: str) -> str | None:
+    """The substring following the rm/unlink keyword up to the first shell
+    separator (flags and targets both still present) — shared by target
+    extraction and recursive-flag detection so both look at the SAME rm
+    invocation, not some unrelated `-r` elsewhere in a chained command."""
+    match = _RM_RE.search(command)
+    if match is None:
+        return None
+    after = command[match.end():]
+    cut = min((after.find(sep) for sep in _SHELL_SEPARATORS if sep in after), default=-1)
+    if cut != -1:
+        after = after[:cut]
+    return after
+
+
+def _is_recursive_rm(segment: str) -> bool:
+    """True if the rm invocation's flags include -r/-R/-rf/-fr/--recursive
+    etc. (any short flag containing r or R, or the long form)."""
+    return bool(_RECURSIVE_FLAG_RE.search(segment))
+
+
 def _extract_rm_targets(command: str) -> list[str]:
     """Best-effort token extraction of path-looking arguments after
     rm/unlink, skipping flags and stopping at the first shell separator so a
     chained `&& something-else` isn't counted. Good enough for the
     mass-delete COUNT heuristic — not a full shell parser."""
-    match = _RM_RE.search(command)
-    if match is None:
+    after = _rm_command_segment(command)
+    if after is None:
         return []
-    after = command[match.end():]
-    cut = min((after.find(sep) for sep in _SHELL_SEPARATORS if sep in after), default=-1)
-    if cut != -1:
-        after = after[:cut]
     return [t for t in after.split() if t and not t.startswith("-")]
 
 
@@ -136,6 +154,8 @@ def check_mass_delete(command: str, cwd: str) -> int:
     from lib import ren_paths
 
     wiki_root_resolved = ren_paths.wiki_root().resolve()
+    segment = _rm_command_segment(command) or ""
+    recursive = _is_recursive_rm(segment)
     targets = _extract_rm_targets(command)
 
     wiki_hit_count = 0
@@ -152,9 +172,19 @@ def check_mass_delete(command: str, cwd: str) -> int:
         if resolved == wiki_root_resolved:
             root_hit = True
         elif wiki_root_resolved in resolved.parents:
-            wiki_hit_count += 1
-            if resolved.suffix == ".md" and ".ren" not in resolved.parts:
-                page_hit = True
+            if recursive and resolved.is_dir():
+                # Recursive delete of a directory: walk the real filesystem
+                # at guard time and count the actual .md pages under it, so
+                # a subtree delete hits the same block threshold a multi-file
+                # delete would (excluding machine state under .ren/).
+                md_count = sum(1 for p in resolved.rglob("*.md") if ".ren" not in p.parts)
+                wiki_hit_count += md_count
+                if md_count > 0:
+                    page_hit = True
+            else:
+                wiki_hit_count += 1
+                if resolved.suffix == ".md" and ".ren" not in resolved.parts:
+                    page_hit = True
 
     if root_hit or page_hit or wiki_hit_count >= MASS_DELETE_THRESHOLD:
         print(MASS_DELETE_MESSAGE, file=sys.stderr)

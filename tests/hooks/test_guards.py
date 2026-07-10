@@ -213,6 +213,35 @@ def test_rm_of_one_non_wiki_file_allowed(tmp_path, wiki):
     assert rc == 0
 
 
+def test_rm_rf_of_wiki_dir_with_three_pages_blocked(wiki, capsys):
+    d = wiki / "projects" / "demo"
+    d.mkdir(parents=True)
+    for name in ("a.md", "b.md", "c.md"):
+        (d / name).write_text("x\n", encoding="utf-8")
+
+    rc = write_gate.check_mass_delete(f"rm -rf {d}", str(wiki))
+    assert rc == 2
+    assert "mass-delete" in capsys.readouterr().err.lower()
+
+
+def test_rm_rf_of_wiki_dir_with_zero_pages_allowed(wiki):
+    d = wiki / "projects" / "empty"
+    d.mkdir(parents=True)
+
+    rc = write_gate.check_mass_delete(f"rm -rf {d}", str(wiki))
+    assert rc == 0
+
+
+def test_rm_rf_of_non_wiki_dir_with_md_files_unaffected(tmp_path, wiki):
+    d = tmp_path / "scratch_dir"
+    d.mkdir()
+    for name in ("a.md", "b.md", "c.md"):
+        (d / name).write_text("x\n", encoding="utf-8")
+
+    rc = write_gate.check_mass_delete(f"rm -rf {d}", str(tmp_path))
+    assert rc == 0
+
+
 def test_rm_of_two_wiki_files_under_threshold_allowed(wiki):
     # Non-page files (not .md) so the single-page rule doesn't fire — this
     # test's intent is the THRESHOLD path, not the page rule.
