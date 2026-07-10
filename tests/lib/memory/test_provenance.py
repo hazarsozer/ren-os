@@ -17,9 +17,11 @@ import pytest
 
 from lib.memory.provenance import (
     Provenance,
+    TRUST_CLASSES,
     new_provenance,
     read_frontmatter_provenance,
     stamp_frontmatter,
+    trust_class,
 )
 
 
@@ -195,6 +197,54 @@ def test_read_frontmatter_provenance_returns_none_when_unstamped():
 
 def test_read_frontmatter_provenance_returns_none_when_no_frontmatter():
     assert read_frontmatter_provenance("just a plain markdown body\n") is None
+
+
+# --- trust taxonomy (0.5.1, Task 6) -----------------------------------------
+
+
+def test_trust_class_human_writer_is_user():
+    assert trust_class("human", "wrap") == "user"
+
+
+def test_trust_class_ingest_producer_is_foreign():
+    assert trust_class("llm-auto", "ingest") == "foreign"
+
+
+def test_trust_class_otherwise_is_model():
+    assert trust_class("llm-auto", "wrap") == "model"
+    assert trust_class("retrospective", "retrospective") == "model"
+
+
+def test_trust_class_human_writer_wins_over_ingest_producer():
+    # writer=="human" always wins, even if producer happens to be "ingest".
+    assert trust_class("human", "ingest") == "user"
+
+
+def test_new_provenance_trust_defaults_to_model():
+    prov = new_provenance("llm-auto", "sess-1", "ADD", "page.md")
+    assert prov.trust == "model"
+
+
+def test_new_provenance_carries_trust_kwarg():
+    prov = new_provenance("human", "sess-1", "ADD", "page.md", trust="user")
+    assert prov.trust == "user"
+
+
+def test_new_provenance_rejects_invalid_trust():
+    with pytest.raises(ValueError):
+        new_provenance("human", "sess-1", "ADD", "page.md", trust="bogus")
+
+
+def test_stamp_frontmatter_writes_ren_trust_user_for_human_write():
+    prov = new_provenance("human", "sess-1", "ADD", "page.md", trust="user")
+    stamped = stamp_frontmatter("# Title\n\nbody\n", prov)
+    assert 'ren_trust: "user"' in stamped
+    read = read_frontmatter_provenance(stamped)
+    assert read["trust"] == "user"
+
+
+def test_trust_classes_tuple_contents():
+    assert set(TRUST_CLASSES) == {"user", "model", "foreign"}
 
 
 def test_stamped_ts_stays_a_string_not_yaml_timestamp():

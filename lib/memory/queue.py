@@ -53,7 +53,7 @@ from ulid import ULID
 
 from lib import ren_paths
 from lib.memory import quarantine, scrub, write_apply
-from lib.memory.provenance import Op, WriterClass, Provenance, new_provenance
+from lib.memory.provenance import Op, WriterClass, Provenance, new_provenance, trust_class
 
 try:
     from lib.memory import semantics as _semantics
@@ -62,7 +62,7 @@ except ImportError:  # pragma: no cover - exercised via monkeypatch until builde
 
 _OPS: tuple[str, ...] = get_args(Op)
 _WRITER_CLASSES: tuple[str, ...] = get_args(WriterClass)
-_PRODUCERS: tuple[str, ...] = ("wrap", "pin", "retrospective", "routine", "promotion")
+_PRODUCERS: tuple[str, ...] = ("wrap", "pin", "retrospective", "routine", "promotion", "ingest")
 
 _QUEUE_DIRNAME = "queue"
 _PENDING = "pending"
@@ -401,6 +401,7 @@ def apply(qid: str) -> Provenance:
         op=proposal.op,
         page=proposal.page,
         supersedes=supersedes,
+        trust=trust_class(proposal.writer, proposal.producer),
     )
 
     write_apply.apply_write(proposal.page, _quarantined_content(proposal), prov)
@@ -469,6 +470,7 @@ def apply_auto(qid: str) -> Provenance:
         op=proposal.op,
         page=proposal.page,
         supersedes=supersedes,
+        trust=trust_class(proposal.writer, proposal.producer),
     )
 
     write_apply.apply_write(
@@ -524,6 +526,7 @@ def resolve_and_apply(qid: str, resolution: str) -> Provenance:
         op=proposal.op,
         page=proposal.page,
         supersedes=supersedes,
+        trust=trust_class(proposal.writer, proposal.producer),
     )
 
     write_apply.apply_write(

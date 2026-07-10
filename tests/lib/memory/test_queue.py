@@ -189,6 +189,8 @@ def test_approve_then_apply_happy_path_writes_page_and_journal(wiki):
     text = page_abs.read_text(encoding="utf-8")
     assert "ren_write_id" in text
     assert prov.write_id in text
+    assert 'ren_trust: "user"' in text
+    assert prov.trust == "user"
 
     entries = journal.entries(page="approved-page.md")
     assert len(entries) == 1
@@ -350,6 +352,8 @@ def test_llm_auto_add_is_quarantined_and_still_carries_provenance(wiki):
     assert read_prov is not None
     assert read_prov["write_id"] == prov.write_id
     assert read_prov["writer"] == "llm-auto"
+    assert read_prov["trust"] == "model"
+    assert prov.trust == "model"
 
 
 def test_human_add_is_not_quarantined(wiki):
@@ -585,6 +589,35 @@ class TestAppliedDedup:
             _proposal(page="projects/x/fact.md", content=quarantine.release(on_disk), writer="human")
         )
         assert released.status == "pending"
+
+    def test_identical_content_dedups_regardless_of_ren_trust(self, wiki):
+        """0.5.1 Task 6: ren_trust lives in the ren_* namespace, so
+        _normalize_body's ren_*-line stripping keeps content-dedup working
+        even when the trust class differs between the applied page and the
+        resubmitted proposal (here: producer="wrap" -> trust=model, then
+        producer="ingest" -> trust=foreign, same writer so the quarantine
+        banner is identical either way)."""
+        applied = _proposal(
+            page="projects/x/fact.md", content="fact body\n", writer="llm-auto", producer="wrap"
+        )
+        entry, prov = queue.propose_and_apply(applied)
+        assert prov is not None
+
+        on_disk = (wiki_root() / "projects/x/fact.md").read_text(encoding="utf-8")
+        assert 'ren_trust: "model"' in on_disk
+
+        again = queue.propose(
+            Proposal(
+                op="ADD",
+                page="projects/x/fact.md",
+                content="fact body\n",
+                reason="testing",
+                producer="ingest",
+                writer="llm-auto",
+                session="sess-1",
+            )
+        )
+        assert again.status == "noop-duplicate"
 
     def test_frontmatter_field_only_change_is_not_swallowed(self, wiki):
         queue.propose_and_apply(

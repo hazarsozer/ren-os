@@ -36,6 +36,27 @@ Op = Literal["ADD", "UPDATE", "DELETE", "NOOP"]
 _WRITER_CLASSES: tuple[str, ...] = get_args(WriterClass)
 _OPS: tuple[str, ...] = get_args(Op)
 
+# Trust taxonomy (0.5.1, Task 6): every write's trust class is derived
+# MECHANICALLY from writer/producer at the single door, never classified by a
+# model. "user" = a human wrote it directly; "foreign" = ingested from outside
+# the session (untrusted provenance, e.g. an existing repo scan); "model" =
+# everything else the session itself produced (llm-auto, retrospective, routine).
+TRUST_CLASSES: tuple[str, ...] = ("user", "model", "foreign")
+
+
+def trust_class(writer: str, producer: str) -> str:
+    """Mechanically derive the trust class for a write from its writer and
+    producer. `writer == "human"` always wins (a human-authored write is
+    trusted regardless of producer); otherwise `producer == "ingest"` marks
+    content pulled in from outside the session as `"foreign"`; everything
+    else is `"model"`."""
+    if writer == "human":
+        return "user"
+    if producer == "ingest":
+        return "foreign"
+    return "model"
+
+
 # Frontmatter keys this module owns, in the fixed order they're (re)written.
 _REN_KEYS: tuple[str, ...] = (
     "ren_write_id",
@@ -43,6 +64,7 @@ _REN_KEYS: tuple[str, ...] = (
     "ren_writer",
     "ren_op",
     "ren_supersedes",
+    "ren_trust",
 )
 
 # Matches a leading YAML frontmatter block: opening `---` fence, content, closing
@@ -60,6 +82,7 @@ class Provenance:
     op: Op
     page: str                # wiki-relative path
     supersedes: str | None   # write_id of superseded entry
+    trust: str = "model"     # one of TRUST_CLASSES — derived via trust_class()
 
     def __post_init__(self) -> None:
         if self.writer not in _WRITER_CLASSES:
@@ -68,6 +91,8 @@ class Provenance:
             )
         if self.op not in _OPS:
             raise ValueError(f"op {self.op!r} is invalid; must be one of {_OPS}")
+        if self.trust not in TRUST_CLASSES:
+            raise ValueError(f"trust {self.trust!r} is invalid; must be one of {TRUST_CLASSES}")
 
 
 def new_provenance(
@@ -76,12 +101,13 @@ def new_provenance(
     op: Op,
     page: str,
     supersedes: str | None = None,
+    trust: str = "model",
 ) -> Provenance:
     """Build a new `Provenance` record: fresh write_id (ULID) + current UTC ts.
 
-    Raises ValueError if `writer` or `op` aren't one of the frozen Literal values
-    (enforced by `Provenance.__post_init__`, so direct dataclass construction is
-    validated the same way).
+    Raises ValueError if `writer`, `op`, or `trust` aren't one of the frozen
+    values (enforced by `Provenance.__post_init__`, so direct dataclass
+    construction is validated the same way).
     """
     write_id = f"w-{ULID()}"
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -93,6 +119,7 @@ def new_provenance(
         op=op,
         page=page,
         supersedes=supersedes,
+        trust=trust,
     )
 
 
@@ -105,6 +132,7 @@ def _render_ren_lines(prov: Provenance) -> list[str]:
         f'ren_ts: "{prov.ts}"',
         f'ren_writer: "{prov.writer}"',
         f'ren_op: "{prov.op}"',
+        f'ren_trust: "{prov.trust}"',
     ]
     if prov.supersedes is not None:
         lines.append(f'ren_supersedes: "{prov.supersedes}"')
@@ -166,12 +194,15 @@ def read_frontmatter_provenance(md_text: str) -> dict | None:
         "writer": data.get("ren_writer"),
         "op": data.get("ren_op"),
         "supersedes": data.get("ren_supersedes"),
+        "trust": data.get("ren_trust"),
     }
 
 
 __all__ = [
     "WriterClass",
     "Op",
+    "TRUST_CLASSES",
+    "trust_class",
     "Provenance",
     "new_provenance",
     "stamp_frontmatter",
