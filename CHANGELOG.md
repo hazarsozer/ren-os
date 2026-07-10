@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.4.0] — 2026-07-10 — "foundations"
+
+Groundwork for the 0.4.x "suggesting brain" train. No user-facing behavior
+change except AGENTS.md now appearing on bootstrap.
+
+- **Public queue read API** — `queue.all_entries()`; the wake-up hook and
+  wrap no longer parse queue state files directly.
+- **Applied-page dedup** — re-proposing content identical to what's already
+  on the target page is a no-op instead of a duplicate write.
+- **Salience expiry** — pinned-page boosts expire after 30 days; re-pin to
+  refresh.
+- **AGENTS.md is real** — `/ren:bootstrap-project` now writes AGENTS.md at
+  the project root via the portability surface (previously advertised as
+  planned).
+- **L2 maps state their pointer base** — a note line clarifies pointers are
+  wiki-root-relative (a foreign-harness reader resolved them wrong in the
+  0.3 read-proof).
+- **changelog digest boundary fix** — prerelease headers no longer glue onto
+  the preceding section.
+- **Test-debt sweep** — corrupted-companions doctor case, import style,
+  concurrency note, stale doctrine sentence.
+
 ## [0.3.6] — 2026-07-09 — "closing the stated gaps"
 
 Every gap the docs admitted to is now closed, not just disclosed.
