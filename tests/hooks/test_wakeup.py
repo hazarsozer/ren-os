@@ -184,6 +184,37 @@ def test_extras_exclude_quarantined_pages(project):
     assert "held out of this context" in payload
 
 
+def test_quarantined_l2_map_is_held_out_and_counted(project):
+    # ingest-project writes map.md with writer="llm-auto" → quarantined on
+    # disk. Unlike L1 (own-session summary), the L2 map is scan-derived
+    # foreign content and gets NO exemption: it must not be injected, and
+    # must be counted in the held-out line.
+    from lib.memory import quarantine
+
+    _write(
+        project["project_dir"] / "map.md",
+        quarantine.mark("# demo-project — knowledge map\n## Knowledge\n- uses FastAPI\n"),
+    )
+
+    payload = wakeup.compose_wake_up_context(cwd=project["cwd"], wiki_root=wiki_root(), session="sess-1")
+
+    assert "uses FastAPI" not in payload
+    assert "held out of this context" in payload
+
+
+def test_released_l2_map_is_injected_as_before(project):
+    from lib.memory import quarantine
+
+    marked = quarantine.mark("# demo-project — knowledge map\n## Knowledge\n- uses FastAPI\n")
+    _write(project["project_dir"] / "map.md", quarantine.release(marked))
+
+    payload = wakeup.compose_wake_up_context(cwd=project["cwd"], wiki_root=wiki_root(), session="sess-1")
+
+    assert "uses FastAPI" in payload
+    surfaces = collect.read(kind=collect.KIND_WAKEUP_SURFACE)
+    assert "projects/demo-project/map.md" in set(surfaces[-1]["pages"])
+
+
 def test_l1_stays_injected_with_banner_despite_quarantine_exclusion(project):
     # L1 pages are llm-auto and thus quarantined like any other unreviewed
     # content, but they're exempt from the extras-side exclusion (spec §4

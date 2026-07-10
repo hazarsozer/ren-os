@@ -36,14 +36,19 @@ prefix. No LLM call anywhere in this module (verified by
 `tests/hooks/test_wakeup.py`'s source-scan test).
 
 RenOS 0.4.1 "trust hardening" (spec §4 L1-exemption amendment): extras (the
-ranked "Related pages" section) exclude every page `lib.memory.quarantine`
-considers quarantined — that channel is where foreign/ingested content
-travels, so it gets the read-time exclusion. L1 is deliberately EXEMPT from
-this exclusion and stays injected with its quarantine banner intact: L1 is
-RenOS's own summary of the user's own session, not foreign content, so the
+ranked "Related pages" section) AND the L2 knowledge map exclude every page
+`lib.memory.quarantine` considers quarantined — that channel is where
+foreign/ingested content travels, so it gets the read-time exclusion. L1 is
+the ONLY exemption, and stays injected with its quarantine banner intact: L1
+is RenOS's own summary of the user's own session, not foreign content, so the
 banner alone (data-not-instruction) is the correct signal — dropping it from
 context would break session continuity for no trust benefit. See `read_l1`'s
-docstring for the same point at the call site.
+docstring for the same point at the call site. L2 maps do NOT get this
+exemption: `ingest-project` writes them with `writer="llm-auto"` from a
+repo scan, which is exactly the foreign/scan-derived content this exclusion
+targets — a quarantined map is held out of `compose_wake_up_context` and
+counted in the "N quarantined page(s) held out" line until a human releases
+it (see `skills/ingest-project/SKILL.md`'s close-out step).
 """
 
 from __future__ import annotations
@@ -164,7 +169,14 @@ def read_l1(project_dir: Path) -> str:
 
 
 def read_l2_map(project_dir: Path) -> str:
-    """Return the project's L2 pointer-map content (`map.md`), or "" if absent."""
+    """Return the project's L2 pointer-map content (`map.md`), or "" if absent.
+
+    Quarantine banner intact — this function only reads the file. The
+    quarantine CHECK (and the decision to hold it out of the payload) happens
+    in `compose_wake_up_context`, because L2 does NOT get L1's exemption: a
+    map written by `ingest-project` carries `writer="llm-auto"` from a repo
+    scan, which is foreign/scan-derived content, not the user's own session.
+    """
     return _read_text_safe(project_dir / L2_MAP_FILENAME)
 
 
@@ -410,11 +422,14 @@ def compose_wake_up_context(
 ) -> str:
     """Compose the additionalContext payload for the SessionStart hook.
 
-    Injects the active project's L1 (quarantine banner intact) + L2 map,
-    live routines, and a small set of heuristically-ranked + salience-boosted
-    extra pages — all within a hard token budget (oversized sections are
-    truncated with a marker, never silently dropped). Records every surfaced
-    page via `miss_log.log_surface` and the payload's byte size via
+    Injects the active project's L1 (quarantine banner intact, always
+    injected — see module docstring for the L1 exemption) + L2 map (injected
+    ONLY if not quarantined; a quarantined map is held out and counted in the
+    "N quarantined page(s) held out" line instead), live routines, and a
+    small set of heuristically-ranked + salience-boosted extra pages — all
+    within a hard token budget (oversized sections are truncated with a
+    marker, never silently dropped). Records every surfaced page via
+    `miss_log.log_surface` and the payload's byte size via
     `collect.record(KIND_INJECTED_BYTES, ...)` — this instrumentation is
     unconditional, not optional.
 
@@ -428,6 +443,7 @@ def compose_wake_up_context(
 
     sections: list[str] = [f"## RenOS wake-up context (source={source})\n"]
     surfaced_pages: list[str] = []
+    held_count = 0
 
     project = None
     try:
@@ -450,9 +466,21 @@ def compose_wake_up_context(
 
         l2_text = read_l2_map(project_dir)
         if l2_text:
-            sections.append(f"### {project} — knowledge map (L2)")
-            sections.append(truncate_text_to_tokens(l2_text, L2_BUDGET))
-            surfaced_pages.append(f"projects/{project}/{L2_MAP_FILENAME}")
+            l2_quarantined = False
+            try:
+                l2_quarantined = quarantine.is_quarantined(l2_text)
+            except Exception:  # noqa: BLE001 - quarantine check failure must never abort wake-up
+                logger.debug("quarantine.is_quarantined failed for L2 map", exc_info=True)
+            if l2_quarantined:
+                # L2 maps are scan-derived (repo-ingest, `writer="llm-auto"`) —
+                # foreign content, unlike L1's own-session summary. The L1
+                # exemption does NOT apply here; hold it out and count it in
+                # the held-out line until a human releases it from quarantine.
+                held_count += 1
+            else:
+                sections.append(f"### {project} — knowledge map (L2)")
+                sections.append(truncate_text_to_tokens(l2_text, L2_BUDGET))
+                surfaced_pages.append(f"projects/{project}/{L2_MAP_FILENAME}")
 
     live_routines = read_live_routines(wiki_root)
     if live_routines:
@@ -464,13 +492,13 @@ def compose_wake_up_context(
         sections.append(suggestion)
 
     extras: list[str] = []
-    held_count = 0
     try:
         query = _build_rank_query(project, cwd)
-        extras, held_count = rank_extras(query, wiki_root, exclude=set(surfaced_pages))
+        extras, extras_held_count = rank_extras(query, wiki_root, exclude=set(surfaced_pages))
     except Exception:  # noqa: BLE001 - ranking failure degrades to no extras
         logger.debug("rank_extras failed", exc_info=True)
-        extras, held_count = [], 0
+        extras, extras_held_count = [], 0
+    held_count += extras_held_count
 
     if extras:
         sections.append("### Related pages")
