@@ -152,12 +152,16 @@ def _load(qid: str) -> QueueEntry:
     return _entry_from_dict(json.loads(path.read_text(encoding="utf-8")))
 
 
-def _all_entries() -> list[QueueEntry]:
-    """One corrupted entry file must never take down whole-queue listing
-    (final-verification finding): unparsable files are skipped with a stderr
-    warning — same torn-file tolerance locks._read_holder applies to a torn
-    lockfile. Single-entry reads by qid (`get`) still surface the corruption
-    for that entry specifically."""
+def all_entries() -> list[QueueEntry]:
+    """Public whole-queue read API (0.4.0, Task 1): every entry regardless of
+    status, in no particular order. One corrupted entry file must never take
+    down whole-queue listing (final-verification finding): unparsable files
+    are skipped with a stderr warning — same torn-file tolerance
+    locks._read_holder applies to a torn lockfile. Single-entry reads by qid
+    (`get`) still surface the corruption for that entry specifically.
+
+    Consumers must not parse `state_dir()/"queue"/*.json` directly — this is
+    the one place that owns the on-disk queue-entry format."""
     entries: list[QueueEntry] = []
     for path in _queue_dir().glob("*.json"):
         try:
@@ -165,6 +169,9 @@ def _all_entries() -> list[QueueEntry]:
         except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
             print(f"ren queue: skipping unparsable entry file {path.name}: {exc}", file=sys.stderr)
     return entries
+
+
+_all_entries = all_entries  # internal alias for existing call sites
 
 
 def propose(p: Proposal) -> QueueEntry:
@@ -209,7 +216,7 @@ def propose(p: Proposal) -> QueueEntry:
 def pending() -> list[QueueEntry]:
     """All entries with status=="pending", oldest first (qid is a ULID, so
     lexicographic sort == chronological order)."""
-    entries = [e for e in _all_entries() if e.status == _PENDING]
+    entries = [e for e in all_entries() if e.status == _PENDING]
     entries.sort(key=lambda e: e.qid)
     return entries
 
@@ -461,6 +468,7 @@ __all__ = [
     "Proposal",
     "QueueEntry",
     "QueueStateError",
+    "all_entries",
     "propose",
     "pending",
     "get",

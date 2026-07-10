@@ -33,11 +33,10 @@ whole-session multi-label classification.
 
 from __future__ import annotations
 
-import json
 import re
+from dataclasses import asdict
 from typing import Callable
 
-from lib import ren_paths
 from lib.instrument import collect
 from lib.memory import queue
 from lib.memory.queue import Proposal, propose_and_apply
@@ -166,29 +165,18 @@ def wrap_session(
 
 
 def _session_queue_entries(session: str) -> list[dict]:
-    """Read every queue-entry JSON file directly under `state_dir()/queue/`,
-    filtered to `proposal.session == session`.
+    """Every queue entry for `session`, regardless of status (the wrap screen
+    needs BOTH pending and already-applied entries, incl. auto-tier applies).
 
-    `lib.memory.queue`'s public surface only exposes `pending()` (PENDING
-    entries only) — the wrap screen needs BOTH pending and already-applied
-    entries for this session (auto-tier applies included), so this reads the
-    same on-disk JSON files queue.py itself owns, rather than reaching into
-    queue.py's private `_all_entries()` (a module under active parallel
-    development elsewhere in this build — safer not to couple to its
-    internals). Read-only; never mutates a queue file."""
-    queue_dir = ren_paths.state_dir() / "queue"
-    if not queue_dir.is_dir():
-        return []
-
-    entries: list[dict] = []
-    for path in sorted(queue_dir.glob("*.json")):
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            continue
-        if data.get("proposal", {}).get("session") == session:
-            entries.append(data)
-    return entries
+    Reads via `queue.all_entries()` (public read API, 0.4.0) instead of
+    parsing `state_dir()/queue/*.json` raw, then converts to dict so the
+    presentation code below (`e["qid"]`, `e["proposal"]["page"]`, etc.) keeps
+    its existing shape. Read-only; never mutates a queue entry."""
+    return [
+        asdict(entry)
+        for entry in sorted(queue.all_entries(), key=lambda e: e.qid)
+        if entry.proposal.session == session
+    ]
 
 
 def _conflict_flags(conflicts: list[dict]) -> list[str]:

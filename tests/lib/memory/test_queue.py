@@ -472,3 +472,22 @@ def test_corrupt_entry_file_does_not_take_down_pending(wiki, capsys):
     assert [e.qid for e in listed] == [good.qid]
     assert corrupt_path.exists()
     assert "skipping unparsable entry file" in capsys.readouterr().err
+
+
+# ------------------------------------------------------------- all_entries
+
+
+class TestAllEntries:
+    def test_all_entries_returns_every_status(self, wiki):
+        e1 = queue.propose(_proposal(page="projects/x/a.md", content="a\n"))
+        e2 = queue.propose(_proposal(page="projects/x/b.md", content="b\n"))
+        queue.reject(e2.qid, "test")
+        qids = {e.qid for e in queue.all_entries()}
+        assert {e1.qid, e2.qid} <= qids
+        statuses = {e.qid: e.status for e in queue.all_entries()}
+        assert statuses[e2.qid] == "rejected"
+
+    def test_all_entries_skips_corrupt_file(self, wiki, capsys):
+        queue.propose(_proposal(page="projects/x/a.md", content="a\n"))
+        (state_dir() / "queue" / "junk.json").write_text("{not json", encoding="utf-8")
+        assert len(queue.all_entries()) == 1

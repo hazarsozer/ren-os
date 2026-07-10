@@ -38,7 +38,6 @@ prefix. No LLM call anywhere in this module (verified by
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 import re
@@ -46,7 +45,6 @@ import subprocess
 from pathlib import Path
 from typing import Final
 
-from lib import ren_paths
 from lib.instrument import collect, miss_log
 from lib.memory import queue
 
@@ -301,28 +299,18 @@ def _discover_extra_candidates(wiki_root: Path, exclude: set[str]) -> list[str]:
 def _salient_pages() -> set[str]:
     """Wiki-relative pages with ANY applied queue entry that carried
     `proposal.salience=True` (Task 4.2's pin/correction verb sets this).
-
-    Reads `state_dir()/"queue"/*.json` directly rather than adding a new
-    public listing function to `lib.memory.queue` — the hook only needs two
-    fields (`status`, `proposal.salience`/`proposal.page`) from otherwise-frozen
-    queue-entry files, so it reads the raw JSON rather than reconstructing
-    `QueueEntry`/`Proposal` dataclasses it has no other use for.
-    """
-    queue_dir = ren_paths.state_dir() / "queue"
-    if not queue_dir.is_dir():
+    Reads via `queue.all_entries()` (public read API, 0.4.0) instead of
+    parsing `state_dir()/queue/*.json` raw."""
+    try:
+        entries = queue.all_entries()
+    except Exception:  # noqa: BLE001 - never let this abort the wake-up payload
+        logger.debug("queue.all_entries() failed", exc_info=True)
         return set()
-    pages: set[str] = set()
-    for path in queue_dir.glob("*.json"):
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            continue
-        if data.get("status") != "applied":
-            continue
-        proposal = data.get("proposal") or {}
-        if proposal.get("salience") and proposal.get("page"):
-            pages.add(proposal["page"])
-    return pages
+    return {
+        e.proposal.page
+        for e in entries
+        if e.status == "applied" and e.proposal.salience and e.proposal.page
+    }
 
 
 def rank_extras(
