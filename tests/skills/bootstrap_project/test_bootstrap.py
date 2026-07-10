@@ -66,9 +66,13 @@ def test_bootstrap_on_existing_map_auto_applies_update(wiki):
     first = bootstrap("existing-idea", session="sess-1")
     assert first.status == "applied"  # v2.2: no separate approve()/apply() step
 
+    # A same-day re-bootstrap renders byte-identical map content (the log
+    # line is date-only, knowledge/pointers are both always empty here), so
+    # 0.4.0's applied-page dedup (lib.memory.queue.propose) correctly
+    # short-circuits it as a no-op rather than writing an identical UPDATE.
     second = bootstrap("existing-idea", session="sess-2")
     assert second.proposal.op == "UPDATE"
-    assert second.status == "applied"
+    assert second.status == "noop-duplicate"
 
 
 def test_bootstrap_applies_clean_human_provenance_not_quarantined(wiki):

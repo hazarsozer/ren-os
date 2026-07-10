@@ -491,3 +491,23 @@ class TestAllEntries:
         queue.propose(_proposal(page="projects/x/a.md", content="a\n"))
         (state_dir() / "queue" / "junk.json").write_text("{not json", encoding="utf-8")
         assert len(queue.all_entries()) == 1
+
+
+# --------------------------------------------------- applied-page dedup (0.4.0 Task 2)
+
+
+class TestAppliedDedup:
+    def test_propose_identical_to_applied_page_is_noop(self, wiki):
+        p = _proposal(page="projects/x/fact.md", content="fact body\n")
+        entry, prov = queue.propose_and_apply(p)
+        assert prov is not None  # applied
+
+        again = queue.propose(_proposal(page="projects/x/fact.md", content="fact body\n"))
+        assert again.status == "noop-duplicate"
+        assert not (state_dir() / "queue" / f"{again.qid}.json").exists()
+
+    def test_propose_changed_content_still_proposes(self, wiki):
+        queue.propose_and_apply(_proposal(page="projects/x/fact.md", content="fact body\n"))
+
+        e = queue.propose(_proposal(page="projects/x/fact.md", content="new body\n"))
+        assert e.status == "pending"

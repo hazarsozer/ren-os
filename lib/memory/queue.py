@@ -23,6 +23,12 @@ again, but a proposal should never even enter the queue carrying one).
 built in parallel and may not exist yet — imported the same best-effort way
 `write_apply` imports `scrub`: `conflicts` is `[]` when the module is absent.
 
+`propose` also dedups against the APPLIED target page itself (0.4.0, Task 2,
+Codex M2 slice): if the proposed content, once normalized, matches what's
+already on the page, `propose` returns a synthetic `QueueEntry` with
+`status="noop-duplicate"` — this entry is never persisted to disk and never
+transitions state, it exists only to tell the caller nothing changed.
+
 Ordering caveat (Task 9.3 doc-note-4, accepted limitation): ULIDs are
 monotonic within one Python process but NOT across concurrent processes in
 the same millisecond — so `pending()`'s oldest-first ordering and
@@ -35,6 +41,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import sys
 import os
 from dataclasses import asdict, dataclass, field
@@ -62,6 +69,10 @@ _PENDING = "pending"
 _APPROVED = "approved"
 _APPLIED = "applied"
 _REJECTED = "rejected"
+_NOOP_DUPLICATE = "noop-duplicate"
+
+_FRONTMATTER_RE = re.compile(r"\A---\n(.*?)\n---\n?", re.DOTALL)
+_REN_KEY_LINE_RE = re.compile(r"^ren_\w+:.*$\n?", re.MULTILINE)
 
 
 class QueueStateError(Exception):
@@ -174,6 +185,58 @@ def all_entries() -> list[QueueEntry]:
 _all_entries = all_entries  # internal alias for existing call sites
 
 
+def _current_page_body(page: str) -> str | None:
+    """Read the wiki page at `page`, or `None` if it doesn't exist / can't be
+    read. Used by the applied-page dedup check in `propose`."""
+    path = ren_paths.safe_join(ren_paths.wiki_root(), page)
+    if not path.is_file():
+        return None
+    try:
+        return path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+
+
+def _normalize_body(text: str) -> str:
+    """Strip only the `ren_*` provenance lines `write_apply`/`stamp_frontmatter`
+    upsert into frontmatter, then trim — so the EFFECTIVE content of a
+    proposal (what `apply`/`apply_auto` would actually write, quarantine
+    banner included where applicable — see `_quarantined_content`) can be
+    compared against what's on disk today.
+
+    Deliberately does NOT strip the whole frontmatter block: a page's other
+    frontmatter fields (e.g. `identity.md`'s `working_style`) are real
+    content, not write-plumbing, and a proposal that only changes one of
+    those must NOT be swallowed as a duplicate. Only `stamp_frontmatter`'s
+    own `ren_*` keys are noise here — they're added downstream of this
+    comparison and never appear in a proposal's raw content.
+
+    Also deliberately does NOT touch the quarantine banner: whether a
+    banner is present is real content as far as this comparison is
+    concerned. Comparing `_quarantined_content(p)` (the effective write)
+    against the on-disk body already accounts for it correctly on both
+    sides — e.g. `wiki_health.release_page` proposes banner-free content
+    against a bannered page and correctly registers as a real change, while
+    a resubmitted identical llm-auto proposal computes the same bannered
+    content on both sides and correctly registers as a no-op.
+
+    If stripping `ren_*` lines leaves the frontmatter block empty (the
+    common case for a page `stamp_frontmatter` had to create a brand-new
+    fence for, since it had no frontmatter of its own), the now-empty fence
+    is dropped too rather than left dangling — otherwise a page with no
+    frontmatter at all would never normalize equal to its own stamped
+    self."""
+    match = _FRONTMATTER_RE.match(text)
+    if match is None:
+        return text.strip()
+
+    fm_content = _REN_KEY_LINE_RE.sub("", match.group(1) + "\n").strip("\n")
+    body = text[match.end():]
+    if not fm_content:
+        return body.strip()
+    return f"---\n{fm_content}\n---\n{body}".strip()
+
+
 def propose(p: Proposal) -> QueueEntry:
     """Submit `p` at the single write-door.
 
@@ -183,8 +246,13 @@ def propose(p: Proposal) -> QueueEntry:
     `lib.memory.scrub.SecretsFound` BEFORE anything is persisted) → dedup
     against existing PENDING entries with the same page + same content hash
     (idempotent propose: returns the existing entry unchanged, no new file) →
-    detect conflicts via `lib.memory.semantics` (best-effort import; `[]` when
-    absent) → persist → return the new entry.
+    applied-page dedup: for ADD/UPDATE, if the normalized proposed content
+    matches the normalized content already on the target page, returns a
+    synthetic, NEVER-persisted `QueueEntry` with `status="noop-duplicate"` —
+    no file is written and this status never transitions. `propose_and_apply`
+    already treats any non-pending status as a hold/no-op, so this composes
+    without changes there. → detect conflicts via `lib.memory.semantics`
+    (best-effort import; `[]` when absent) → persist → return the new entry.
     """
     if p.content is not None:
         scrub.scrub_or_raise(p.content)
@@ -193,6 +261,13 @@ def propose(p: Proposal) -> QueueEntry:
     for existing in pending():
         if existing.proposal.page == p.page and _content_hash(existing.proposal.content) == target_hash:
             return existing
+
+    if p.op in ("ADD", "UPDATE") and p.content is not None:
+        current = _current_page_body(p.page)
+        if current is not None:
+            effective = _quarantined_content(p) or ""
+            if _content_hash(_normalize_body(current)) == _content_hash(_normalize_body(effective)):
+                return QueueEntry(qid=f"q-{ULID()}", ts=_now_iso(), proposal=p, status=_NOOP_DUPLICATE)
 
     if _semantics is not None:
         conflicts = [
