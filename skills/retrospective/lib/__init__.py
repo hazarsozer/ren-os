@@ -27,8 +27,11 @@ Three functions, each doing exactly one part of gather → analyze → propose:
          least `LESSON_MIN_CORRECTIONS` times.
       2. "instruction-tweak" — at least `INSTRUCTION_TWEAK_MIN_FAIL_CLOSED`
          classifier `fail_closed` events recorded.
-      3. "skill-candidate" (D-2) — a task phrase recurring across at least
-         `SKILL_CANDIDATE_MIN_SESSIONS` distinct sessions.
+      3. "skill-candidate" (D-2) — a task phrase recurring in at least
+         `lib.suggestions.gate.RECURRENCE_MIN_SESSIONS` of the last
+         `lib.suggestions.gate.RECURRENCE_WINDOW_SESSIONS` sessions (the
+         ratified "3-of-last-5" recurrence gate, spec §1.2), via
+         `lib.suggestions.gate.recurs`.
   - `propose_all` — "lesson" and "instruction-tweak" findings are DATA-plane
     (descriptive: a stable fact worth remembering) — they go through
     `Proposal(op="ADD", ..., producer="retrospective", writer="retrospective")`
@@ -56,6 +59,7 @@ from lib import suggestions
 from lib.instrument import collect
 from lib.memory import journal
 from lib.memory.queue import Proposal, QueueEntry, propose_and_apply
+from lib.suggestions.gate import recurs
 
 CLAUDE_CONFIG_DIR_ENV = "CLAUDE_CONFIG_DIR"
 MAX_SESSIONS_SCANNED = 10
@@ -63,7 +67,6 @@ MAX_TOPIC_SCAN_CHARS = 4000
 
 LESSON_MIN_CORRECTIONS = 2
 INSTRUCTION_TWEAK_MIN_FAIL_CLOSED = 3
-SKILL_CANDIDATE_MIN_SESSIONS = 3
 
 # Adapted from donor skills/insights/scripts/collect.py (deliberately skipped
 # in Task 3.1; picked up here for the D-2 skill-candidate mining).
@@ -270,14 +273,18 @@ def analyze(gathered: dict) -> list[dict]:
             }
         )
 
-    # 3. skill-candidate (D-2): a task phrase in >= SKILL_CANDIDATE_MIN_SESSIONS distinct sessions.
+    # 3. skill-candidate (D-2): a task phrase recurring per the ratified
+    # 3-of-last-5 recurrence gate (lib.suggestions.gate.recurs).
+    recent_sessions_newest_first = [
+        summary.get("session") for summary in gathered.get("sessions", [])
+    ]
     phrase_sessions: dict[str, set[str]] = {}
     for summary in gathered.get("sessions", []):
         session_id = summary.get("session")
         for phrase in summary.get("task_phrases", []):
             phrase_sessions.setdefault(phrase, set()).add(session_id)
     for phrase, sessions in sorted(phrase_sessions.items()):
-        if len(sessions) >= SKILL_CANDIDATE_MIN_SESSIONS:
+        if recurs(sessions, recent_sessions_newest_first):
             findings.append(
                 {
                     "kind": "skill-candidate",
@@ -405,7 +412,6 @@ def propose_all(findings: list[dict], session: str) -> tuple[list[QueueEntry], l
 __all__ = [
     "LESSON_MIN_CORRECTIONS",
     "INSTRUCTION_TWEAK_MIN_FAIL_CLOSED",
-    "SKILL_CANDIDATE_MIN_SESSIONS",
     "MAX_SESSIONS_SCANNED",
     "gather",
     "analyze",

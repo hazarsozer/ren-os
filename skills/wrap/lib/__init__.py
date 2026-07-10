@@ -304,12 +304,11 @@ def render_wrap_screen(wrap_result: dict, session: str) -> str:
         carries a one-line content preview (`  > …`) showing what the friend
         is approving.
       - "Suggestions" — still-PENDING entries targeting an instruction-plane
-        `global/` page or produced by `"retrospective"` (skill-candidate
-        promotions), plus any pending residue that isn't a contradiction
-        hold; renders "- (none)" when empty. Each item carries a one-line
-        content preview (`  > …`) showing what the friend is approving.
-        These are resolved by asking the friend in chat (see SKILL.md), never
-        by a slash command.
+        `global/` page, plus any other pending residue that isn't a
+        contradiction hold; renders "- (none)" when empty. Each item carries
+        a one-line content preview (`  > …`) showing what the friend is
+        approving. These are resolved by asking the friend in chat (see
+        SKILL.md), never by a slash command.
     """
     entries = _session_queue_entries(session)
     by_qid = {e["qid"]: e for e in entries}
@@ -344,22 +343,17 @@ def render_wrap_screen(wrap_result: dict, session: str) -> str:
 
     # --- Classify this session's still-pending entries into held/suggestions ---
     # A pending entry is a *hold* iff any conflict is a `contradicts` —
-    # checked FIRST, so a contradiction-held retrospective/global candidate
-    # never renders as a "yes"-able suggestion (that path skips recording a
-    # contradiction_resolution). Otherwise it's a *suggestion* iff it targets
-    # the instruction plane (global/) or was produced by the retrospective
-    # skill-candidate flow; any other residue (e.g. a plain pin awaiting a
-    # human) lists under suggestions too.
+    # checked FIRST, so a contradiction-held candidate never renders as a
+    # "yes"-able suggestion (that path skips recording a
+    # contradiction_resolution). Every other pending entry (instruction-plane
+    # global/ targets, or any other residue such as a plain pin awaiting a
+    # human) lists under suggestions.
     pending_entries = [e for e in entries if e.get("status") == "pending"]
     held_entries: list[dict] = []
     suggestion_entries: list[dict] = []
     for entry in pending_entries:
-        page = entry["proposal"]["page"]
-        producer = entry["proposal"].get("producer")
         if any(c.get("kind") == "contradicts" for c in (entry.get("conflicts") or [])):
             held_entries.append(entry)
-        elif page.startswith("global/") or producer == "retrospective":
-            suggestion_entries.append(entry)
         else:
             suggestion_entries.append(entry)
 
