@@ -6,6 +6,7 @@ Run with: uv run pytest tests/lib/memory/test_quarantine.py -v
 
 from __future__ import annotations
 
+from lib.memory import quarantine
 from lib.memory.quarantine import QUARANTINE_BANNER, is_quarantined, mark, release
 
 
@@ -80,3 +81,16 @@ def test_frontmatter_untouched_by_mark_and_release():
     assert marked.startswith("---\ntitle: X\ncustom_key: value\n---\n")
     released = release(marked)
     assert released.startswith("---\ntitle: X\ncustom_key: value\n---\n")
+
+
+def test_trusted_source_is_not_quarantined():
+    assert quarantine.trusted_source("plain body\n") is True
+    assert quarantine.trusted_source(quarantine.mark("plain body\n")) is False
+
+
+def test_quarantined_rel_pages(tmp_path):
+    (tmp_path / "a.md").write_text(quarantine.mark("x\n"), encoding="utf-8")
+    (tmp_path / "b.md").write_text("y\n", encoding="utf-8")
+    sub = tmp_path / ".ren"; sub.mkdir()
+    (sub / "c.md").write_text(quarantine.mark("z\n"), encoding="utf-8")
+    assert quarantine.quarantined_rel_pages(tmp_path) == {"a.md"}
