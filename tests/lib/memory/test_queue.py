@@ -511,3 +511,39 @@ class TestAppliedDedup:
 
         e = queue.propose(_proposal(page="projects/x/fact.md", content="new body\n"))
         assert e.status == "pending"
+
+    def test_llm_auto_identical_resubmission_is_noop(self, wiki):
+        p = _proposal(page="projects/x/fact.md", content="fact body\n", writer="llm-auto")
+        entry, prov = queue.propose_and_apply(p)
+        assert prov is not None  # applied (auto-eligible, bannered on disk)
+
+        again = queue.propose(_proposal(page="projects/x/fact.md", content="fact body\n", writer="llm-auto"))
+        assert again.status == "noop-duplicate"
+
+    def test_banner_release_is_a_real_change_not_swallowed(self, wiki):
+        p = _proposal(page="projects/x/fact.md", content="fact body\n", writer="llm-auto")
+        queue.propose_and_apply(p)
+
+        on_disk = (wiki_root() / "projects/x/fact.md").read_text(encoding="utf-8")
+        assert quarantine.is_quarantined(on_disk)
+
+        released = queue.propose(
+            _proposal(page="projects/x/fact.md", content=quarantine.release(on_disk), writer="human")
+        )
+        assert released.status == "pending"
+
+    def test_frontmatter_field_only_change_is_not_swallowed(self, wiki):
+        queue.propose_and_apply(
+            _proposal(
+                page="identity.md",
+                content="---\nworking_style: fast\n---\nbody\n",
+            )
+        )
+
+        e = queue.propose(
+            _proposal(
+                page="identity.md",
+                content="---\nworking_style: slow\n---\nbody\n",
+            )
+        )
+        assert e.status == "pending"
