@@ -41,6 +41,12 @@ from lib.instrument import collect
 from lib.memory import queue
 from lib.memory.queue import Proposal, propose_and_apply
 from lib.memory.scrub import SecretsFound
+from lib.suggestions import record as record_suggestion
+from lib.suggestions.producers import (
+    doctrine_shaping,
+    promotion_candidates,
+    wiki_health_critical,
+)
 
 from .classifier import gate
 
@@ -162,6 +168,75 @@ def wrap_session(
         "refused": refused,
         "fail_closed": fail_closed,
     }
+
+
+def _run_wiki_health_sweep() -> dict:
+    """Run `skills.wiki_health.lib.sweep()` (imported via importlib for the
+    hyphen in `skills/wiki-health`, same pattern as
+    `hooks/wake-up/wakeup/__init__.py::rank_extras`).
+
+    Wrap's close-out does NOT otherwise run the wiki-health sweep (it's
+    normally a live-session-invoked auditor per `skills/wiki-health/SKILL.md`)
+    — this is the one place `wiki_health_critical`'s input gets produced at
+    wrap time. Left as its own function so `harvest_suggestions` can isolate
+    a sweep failure from the three producer calls."""
+    import importlib
+
+    wiki_health_lib = importlib.import_module("skills.wiki-health.lib")
+    return wiki_health_lib.sweep()
+
+
+def harvest_suggestions(session: str, cwd: str | None = None) -> int:
+    """Run the three wrap-time suggestion producers (Task 17's
+    `promotion_candidates`, `doctrine_shaping`, `wiki_health_critical`) and
+    record each `SuggestionSpec` via `lib.suggestions.record`. The
+    retrospective producer runs inside `/ren:retrospective` (Task 16), not
+    here.
+
+    Each producer call (and the wiki-health sweep it depends on) is isolated
+    in its own try/except — one producer failing must never starve the
+    others (this also covers the Task 18 reviewer LOW about
+    `doctrine_shaping`'s unguarded `companions.reconcile()` call). Never
+    raises.
+
+    Returns the count of `record()` calls that returned non-None (a spec
+    whose fingerprint was already pending/decided returns None and doesn't
+    count — see `lib.suggestions.record`'s never-re-nag contract).
+
+    `cwd` is accepted for interface symmetry with other wrap-time hooks but
+    unused: none of the three producers are cwd-scoped (wiki state is
+    process-global via `lib.ren_paths`, not per-directory).
+    """
+    del cwd  # unused — see docstring
+
+    specs: list = []
+
+    try:
+        specs.extend(promotion_candidates())
+    except Exception:  # noqa: BLE001 - one producer's failure must not starve the others
+        pass
+
+    try:
+        specs.extend(doctrine_shaping())
+    except Exception:  # noqa: BLE001 - one producer's failure must not starve the others
+        pass
+
+    try:
+        sweep_result = _run_wiki_health_sweep()
+    except Exception:  # noqa: BLE001 - sweep failure must not starve the other producers
+        sweep_result = None
+
+    if sweep_result is not None:
+        try:
+            specs.extend(wiki_health_critical(sweep_result))
+        except Exception:  # noqa: BLE001 - one producer's failure must not starve the others
+            pass
+
+    count = 0
+    for spec in specs:
+        if record_suggestion(spec) is not None:
+            count += 1
+    return count
 
 
 def _session_queue_entries(session: str) -> list[dict]:
@@ -334,4 +409,4 @@ def render_wrap_screen(wrap_result: dict, session: str) -> str:
     return "\n".join(lines) + "\n"
 
 
-__all__ = ["wrap_session", "render_wrap_screen", "render_pending_list"]
+__all__ = ["wrap_session", "render_wrap_screen", "render_pending_list", "harvest_suggestions"]

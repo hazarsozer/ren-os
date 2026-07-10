@@ -248,36 +248,58 @@ def suggestion_line() -> str:
         entries = queue.pending()
     except Exception:  # noqa: BLE001 - never let this abort the wake-up payload
         logger.debug("queue.pending() failed", exc_info=True)
+        entries = []
+
+    lines: list[str] = []
+
+    if entries:
+        held = 0
+        suggested = 0
+        for entry in entries:
+            if any(c.get("kind") == "contradicts" for c in (entry.conflicts or [])):
+                held += 1
+            else:
+                suggested += 1
+
+        parts = []
+        if suggested:
+            plural = "" if suggested == 1 else "s"
+            parts.append(f"{suggested} suggestion{plural}")
+        if held:
+            plural = "" if held == 1 else "s"
+            parts.append(f"{held} contradiction hold{plural}")
+
+        if parts:
+            lines.append(f"{' and '.join(parts)} waiting — answer in chat or ignore:")
+            for entry in entries[:_SUGGESTION_LIST_CAP]:
+                reason = entry.proposal.reason or ""
+                lines.append(f"- {entry.qid} → {entry.proposal.page} — {reason}")
+            overflow = len(entries) - _SUGGESTION_LIST_CAP
+            if overflow > 0:
+                lines.append(f"- …and {overflow} more — ask me to list them")
+
+    store_line = _suggestions_store_line()
+    if store_line:
+        lines.append(store_line)
+
+    return "\n".join(lines)
+
+
+def _suggestions_store_line() -> str:
+    """Pointer line for `lib.suggestions` (Task 14's separate suggestion
+    store, distinct from the queue) — announces its own pending count when
+    non-empty. Never raises: any store-read failure degrades to ""."""
+    try:
+        from lib import suggestions
+
+        entries = suggestions.pending_suggestions()
+    except Exception:  # noqa: BLE001 - never let this abort the wake-up payload
+        logger.debug("lib.suggestions.pending_suggestions() failed", exc_info=True)
         return ""
     if not entries:
         return ""
-
-    held = 0
-    suggested = 0
-    for entry in entries:
-        if any(c.get("kind") == "contradicts" for c in (entry.conflicts or [])):
-            held += 1
-        else:
-            suggested += 1
-
-    parts = []
-    if suggested:
-        plural = "" if suggested == 1 else "s"
-        parts.append(f"{suggested} suggestion{plural}")
-    if held:
-        plural = "" if held == 1 else "s"
-        parts.append(f"{held} contradiction hold{plural}")
-    if not parts:
-        return ""
-
-    lines = [f"{' and '.join(parts)} waiting — answer in chat or ignore:"]
-    for entry in entries[:_SUGGESTION_LIST_CAP]:
-        reason = entry.proposal.reason or ""
-        lines.append(f"- {entry.qid} → {entry.proposal.page} — {reason}")
-    overflow = len(entries) - _SUGGESTION_LIST_CAP
-    if overflow > 0:
-        lines.append(f"- …and {overflow} more — ask me to list them")
-    return "\n".join(lines)
+    n = len(entries)
+    return f"{n} instruction suggestion(s) pending — run /ren:suggestions to review."
 
 
 def _git(cwd: Path, args: list[str]) -> str:

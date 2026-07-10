@@ -291,6 +291,40 @@ def test_suggestion_line_counts_contradiction_holds_separately(project):
     assert "1 contradiction hold" in line
 
 
+def test_suggestion_line_includes_suggestions_store_count(project):
+    """The suggestions store (Task 14, lib.suggestions) is a separate channel
+    from the queue — a pending entry there must also surface a pointer to
+    /ren:suggestions, even with an empty queue."""
+    from lib.suggestions import SuggestionSpec, record
+
+    record(SuggestionSpec(
+        producer="promotion", title="t", rationale="r", evidence={},
+        kind="structured_action", payload={"action": "noop"},
+        fingerprint="promotion:x",
+    ))
+
+    line = wakeup.suggestion_line()
+
+    assert "1 instruction suggestion(s) pending" in line
+    assert "/ren:suggestions" in line
+
+
+def test_suggestion_line_empty_when_store_and_queue_both_empty(project):
+    assert wakeup.suggestion_line() == ""
+
+
+def test_suggestion_line_store_count_never_raises_on_failure(project, monkeypatch):
+    import lib.suggestions as suggestions_mod
+
+    def _boom():
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(suggestions_mod, "pending_suggestions", _boom)
+
+    # Must not raise even though the store is broken.
+    assert wakeup.suggestion_line() == ""
+
+
 class TestSuggestionListing:
     """Tests for Task 9: Wake-up lists pending suggestions."""
 
