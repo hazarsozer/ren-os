@@ -89,6 +89,11 @@ def all_suggestions() -> list[dict]:
     return entries
 
 
+def get_suggestion(sid: str) -> dict:
+    """Return the stored entry for `sid`. Raises KeyError if unknown."""
+    return _load(sid)
+
+
 def record(spec: SuggestionSpec) -> dict | None:
     """Record `spec` as a new pending suggestion, unless its fingerprint is
     already pending or decided — in which case returns None (never re-nag)."""
@@ -137,6 +142,7 @@ def decide(sid: str, decision: str) -> dict:
 __all__ = [
     "SuggestionSpec",
     "all_suggestions",
+    "get_suggestion",
     "record",
     "pending_suggestions",
     "decided_fingerprints",

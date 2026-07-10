@@ -18,12 +18,15 @@ this module is what turns an "accepted" decision into a real write, by
   review_contradiction → applies nothing; returns the two page paths +
                        evidence for the session to reconcile conversationally.
 
-Failure contract: the decision (accepted/declined) is always recorded first
-via `lib.suggestions.decide` — an apply failure never leaves the suggestion
-half-decided. Any error while applying an accepted suggestion is caught and
-surfaced in the returned `"detail"`, never raised past `accept()` (except
-for an unknown `sid`, which raises `KeyError` from `decide` itself, before
-any apply is attempted).
+Failure contract (0.4.5): "accepted" means the change actually landed. The
+apply runs FIRST; only a successful apply (including intentional no-op
+outcomes like a duplicate page_write or a review_contradiction handoff)
+records the "accepted" decision. An apply that raises leaves the suggestion
+PENDING — still visible in `/ren:suggestions`, still retryable, its
+fingerprint never deduped by a decision that didn't happen. The error is
+caught and surfaced in the returned `"detail"`, never raised past `accept()`
+(except for an unknown `sid`, which raises `KeyError` before any apply is
+attempted).
 """
 
 from __future__ import annotations
@@ -33,7 +36,7 @@ import re
 from lib.adapter import claude_md
 from lib.memory import promotion, queue
 from lib.memory.queue import Proposal
-from lib.suggestions import decide, pending_suggestions
+from lib.suggestions import decide, get_suggestion, pending_suggestions
 
 _PREVIEW_MAX_CHARS = 100
 _PREVIEW_FRONTMATTER_RE = re.compile(r"\A---\n.*?\n---\n?", re.DOTALL)
@@ -79,59 +82,70 @@ def render_list() -> str:
     return "\n".join(f"{i}. {render_suggestion(s)}" for i, s in enumerate(pending, start=1))
 
 
+def _apply(sid: str, kind: str, payload: dict, session: str) -> dict:
+    """Perform the accepted suggestion's real effect. Raising is the ONLY
+    failure signal — `accept()` records the decision iff this returns."""
+    if kind == "page_write":
+        new_entry = queue.propose(Proposal(**payload))
+        if new_entry.status == _NOOP_DUPLICATE:
+            return {"sid": sid, "applied": False, "detail": "content already on page"}
+        prov = queue.approve_and_apply(new_entry.qid, who="suggestions")
+        return {
+            "sid": sid,
+            "applied": True,
+            "detail": {"qid": new_entry.qid, "write_id": prov.write_id, "page": prov.page},
+        }
+
+    action = payload.get("action")
+
+    if action == "promote_to_global":
+        qe = promotion.promote_to_global(payload["source_page"], session)
+        prov = queue.approve_and_apply(qe.qid, who="suggestions")
+        return {
+            "sid": sid,
+            "applied": True,
+            "detail": {"qid": qe.qid, "write_id": prov.write_id, "page": prov.page},
+        }
+
+    if action == "refresh_claude_md":
+        path, result = claude_md.write_global_claude_md()
+        return {"sid": sid, "applied": True, "detail": {"path": str(path), "result": result}}
+
+    if action == "review_contradiction":
+        return {
+            "sid": sid,
+            "applied": False,
+            "detail": {
+                "page": payload.get("page"),
+                "with": payload.get("with"),
+                "evidence": payload.get("evidence"),
+            },
+        }
+
+    return {"sid": sid, "applied": False, "detail": f"unknown suggestion kind {kind!r} / action {action!r}"}
+
+
 def accept(sid: str, session: str) -> dict:
-    """Record `sid` as accepted, then apply its payload by `kind`/action.
+    """Apply `sid`'s payload by `kind`/action, then record it as accepted.
 
     Returns `{"sid", "applied": bool, "detail": ...}`. Raises `KeyError` if
-    `sid` doesn't exist (from `decide`, before any apply is attempted). Any
-    apply failure after that leaves the "accepted" decision recorded and
-    surfaces the error in `"detail"` — never a half-applied silent state.
+    `sid` doesn't exist (before any apply is attempted). 0.4.5 ordering: the
+    apply runs first; an apply that raises leaves the suggestion PENDING
+    (visible and retryable — its fingerprint is never deduped by a decision
+    that didn't happen) and surfaces the error in `"detail"`. Intentional
+    non-write outcomes (duplicate content, review_contradiction handoff,
+    unknown kind) still count as decided — retrying them cannot change the
+    outcome.
     """
-    entry = decide(sid, "accepted")
-    kind = entry["kind"]
-    payload = entry.get("payload") or {}
+    entry = get_suggestion(sid)
 
     try:
-        if kind == "page_write":
-            new_entry = queue.propose(Proposal(**payload))
-            if new_entry.status == _NOOP_DUPLICATE:
-                return {"sid": sid, "applied": False, "detail": "content already on page"}
-            prov = queue.approve_and_apply(new_entry.qid, who="suggestions")
-            return {
-                "sid": sid,
-                "applied": True,
-                "detail": {"qid": new_entry.qid, "write_id": prov.write_id, "page": prov.page},
-            }
-
-        action = payload.get("action")
-
-        if action == "promote_to_global":
-            qe = promotion.promote_to_global(payload["source_page"], session)
-            prov = queue.approve_and_apply(qe.qid, who="suggestions")
-            return {
-                "sid": sid,
-                "applied": True,
-                "detail": {"qid": qe.qid, "write_id": prov.write_id, "page": prov.page},
-            }
-
-        if action == "refresh_claude_md":
-            path, result = claude_md.write_global_claude_md()
-            return {"sid": sid, "applied": True, "detail": {"path": str(path), "result": result}}
-
-        if action == "review_contradiction":
-            return {
-                "sid": sid,
-                "applied": False,
-                "detail": {
-                    "page": payload.get("page"),
-                    "with": payload.get("with"),
-                    "evidence": payload.get("evidence"),
-                },
-            }
-
-        return {"sid": sid, "applied": False, "detail": f"unknown suggestion kind {kind!r} / action {action!r}"}
+        result = _apply(sid, entry["kind"], entry.get("payload") or {}, session)
     except Exception as exc:  # noqa: BLE001 - failure contract: surface, never raise past accept()
         return {"sid": sid, "applied": False, "detail": str(exc)}
+
+    decide(sid, "accepted")
+    return result
 
 
 def decline(sid: str) -> dict:

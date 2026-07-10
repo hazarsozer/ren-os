@@ -225,3 +225,31 @@ def test_accept_page_write_noop_duplicate_records_decision_without_apply(wiki):
 
     stored = next(e for e in all_suggestions() if e["sid"] == entry["sid"])
     assert stored["status"] == "accepted"
+
+
+# --- 0.4.5: accept-then-fail must not lose the suggestion ------------------
+
+
+def test_accept_apply_failure_leaves_suggestion_pending_and_retryable(wiki):
+    # promote_to_global on a page that doesn't exist raises during apply.
+    # 0.4.5 contract: "accepted" means the change actually landed — an apply
+    # failure leaves the suggestion pending (visible, retryable), never a
+    # decided-yet-unapplied state whose fingerprint is deduped forever.
+    entry = record(SuggestionSpec(
+        producer="promotion",
+        title="Promote projects/x/missing.md to global",
+        rationale="reinforced page",
+        evidence={},
+        kind="structured_action",
+        payload={"action": "promote_to_global", "source_page": "projects/x/missing.md"},
+        fingerprint="promotion:projects/x/missing.md",
+    ))
+
+    result = accept(entry["sid"], "s-test")
+
+    assert result["applied"] is False
+
+    from lib.suggestions import decided_fingerprints, pending_suggestions
+
+    assert [s["sid"] for s in pending_suggestions()] == [entry["sid"]]
+    assert decided_fingerprints() == set()
