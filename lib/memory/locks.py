@@ -107,8 +107,11 @@ def lease(page: str, ttl_s: int = 300) -> Iterator[None]:
     exit, including when the body raises.
     """
     lock_path = _lock_path(page)
+    payload = {"pid": os.getpid(), "session": _session_id(), "ts": time.time()}
 
-    if lock_path.exists():
+    try:
+        fd = os.open(str(lock_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    except FileExistsError:
         holder = _read_holder(lock_path)
         ts = holder.get("ts")
         age = (time.time() - ts) if isinstance(ts, (int, float)) else float("inf")
@@ -117,9 +120,23 @@ def lease(page: str, ttl_s: int = 300) -> Iterator[None]:
                 f"lease for page {page!r} is held by {holder!r} ({age:.1f}s old, ttl={ttl_s}s)"
             )
         _append_break(page, lock_path, holder)
+        # Stale: remove the stale lockfile, then retry the atomic create
+        # once. Another racer could win this retry too, in which case they
+        # legitimately hold the fresh lease and we must fail rather than
+        # clobber it.
+        lock_path.unlink(missing_ok=True)
+        try:
+            fd = os.open(str(lock_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except FileExistsError:
+            holder = _read_holder(lock_path)
+            ts = holder.get("ts")
+            age = (time.time() - ts) if isinstance(ts, (int, float)) else float("inf")
+            raise LeaseHeld(
+                f"lease for page {page!r} is held by {holder!r} ({age:.1f}s old, ttl={ttl_s}s)"
+            )
 
-    payload = {"pid": os.getpid(), "session": _session_id(), "ts": time.time()}
-    lock_path.write_text(json.dumps(payload), encoding="utf-8")
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        f.write(json.dumps(payload))
     try:
         yield
     finally:

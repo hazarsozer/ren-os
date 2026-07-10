@@ -162,6 +162,25 @@ def test_different_pages_do_not_contend(temp_root):
             pass  # different pages -> no contention
 
 
+def test_concurrent_acquire_race_only_one_winner(temp_root, monkeypatch):
+    """codex D1: exists()-check-then-write acquisition is a TOCTOU race — two
+    callers can both observe `lock_path.exists() is False` before either
+    writes, so both proceed. This test simulates that interleaving by making
+    the existence check always report "no lock" (as both racing callers would
+    see), then acquiring twice; only the first acquisition may succeed."""
+    import lib.memory.locks as locks_mod
+
+    monkeypatch.setattr(locks_mod.Path, "exists", lambda self: False)
+
+    with lease("identity.md"):
+        # A second "concurrent" acquirer must still fail even though its
+        # exists() check (patched to always return False) can't see the
+        # first holder's lockfile — the acquisition itself must be atomic.
+        with pytest.raises(LeaseHeld):
+            with lease("identity.md"):
+                pass  # pragma: no cover
+
+
 # ------------------------------------------------------------- content_token
 
 
