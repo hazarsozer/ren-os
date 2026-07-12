@@ -35,7 +35,7 @@ from typing import Final
 
 from lib import ren_paths
 from lib.instrument import miss_log
-from lib.memory import quarantine
+from lib.memory import archive, quarantine
 from lib.memory.provenance import read_frontmatter_provenance
 
 # Stop-words removed from queries to focus the token-overlap score.
@@ -179,7 +179,11 @@ def _discover_candidates(wiki_root: Path) -> list[str]:
 
 
 def fetch(
-    query: str, session: str, k: int = DEFAULT_K, include_quarantined: bool = False
+    query: str,
+    session: str,
+    k: int = DEFAULT_K,
+    include_quarantined: bool = False,
+    include_archived: bool = False,
 ) -> list[dict]:
     """The L3 fetch verb: rank every wiki page against `query`, return the
     top-`k` as `{"page": <wiki-relative path>, "content": <file text>,
@@ -190,6 +194,10 @@ def fetch(
     By default, quarantined pages (per `lib.memory.quarantine`) are dropped
     from the candidate set before ranking, so recall never surfaces held-out
     content unless the caller explicitly opts in with `include_quarantined=True`.
+
+    By default, `archive/`-prefixed pages (Task 16, 0.5.3) are dropped the
+    same way — held out of ranking unless the caller opts in with
+    `include_archived=True`, mirroring `include_quarantined`'s flag shape.
 
     `trust` is read from the page's `ren_trust` frontmatter stamp (Task 6),
     defaulting to `"model"` for unstamped pages. Task 9 read-time escaping:
@@ -206,6 +214,8 @@ def fetch(
     if not include_quarantined:
         quarantined = quarantine.quarantined_rel_pages(root)
         candidates = [c for c in candidates if c not in quarantined]
+    if not include_archived:
+        candidates = [c for c in candidates if not archive.is_archived(c)]
     ranked = rank(query, candidates, root)
 
     results: list[dict] = []

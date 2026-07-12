@@ -222,3 +222,19 @@ def test_default_fetch_never_surfaces_hostile_instruction_unescaped(wiki):
     # hostile text is present, but ONLY inside the escaped fence
     fence_start = dirty["content"].index("```")
     assert hostile not in dirty["content"][:fence_start]
+
+
+def test_fetch_excludes_archived_by_default(wiki):
+    _write(wiki, "archive/old-notes.md", "# Old\n\nalpha beta content")
+    _write(wiki, "clean.md", "# Clean\n\nalpha beta content")
+
+    pages = {r["page"] for r in fetch("alpha beta", session="sess-1", k=5)}
+    assert "archive/old-notes.md" not in pages
+    assert "clean.md" in pages
+
+
+def test_fetch_include_archived_opt_in(wiki):
+    _write(wiki, "archive/old-notes.md", "# Old\n\nalpha beta content")
+
+    pages = {r["page"] for r in fetch("alpha beta", session="sess-1", k=5, include_archived=True)}
+    assert "archive/old-notes.md" in pages

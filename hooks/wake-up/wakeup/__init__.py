@@ -61,7 +61,7 @@ from pathlib import Path
 from typing import Final
 
 from lib.instrument import collect, miss_log
-from lib.memory import queue, quarantine
+from lib.memory import archive, queue, quarantine
 from lib.memory.provenance import read_frontmatter_provenance
 from lib.ren_paths import DEFAULT_DEV_ROOT_REL, detect_project, resolve_dev_root
 
@@ -368,12 +368,15 @@ def _discover_extra_candidates(wiki_root: Path, exclude: set[str]) -> tuple[list
     already surfaced as L1/L2, so they aren't offered twice), quarantined
     pages (0.4.1 trust hardening — see module docstring for the L1 exemption,
     which does NOT apply here since L1 is never routed through this extras
-    path), and `ren_trust: foreign`-stamped pages (Task 9b — closes the gap
+    path), `ren_trust: foreign`-stamped pages (Task 9b — closes the gap
     where a foreign page's released banner let it surface raw; unstamped
-    pages remain included, per the deliberate scope decision in `_is_foreign_stamped`).
+    pages remain included, per the deliberate scope decision in `_is_foreign_stamped`),
+    and `archive/`-prefixed pages (Task 16, 0.5.3 — archived pages are held
+    out of ranking, same as quarantined/foreign, since they're no longer live).
 
     Returns `(candidates, held_count)` where `held_count` is the number of
-    otherwise-eligible pages dropped for being quarantined or foreign-stamped.
+    otherwise-eligible pages dropped for being quarantined, foreign-stamped,
+    or archived.
     Quarantine-scan failure degrades to no exclusion (never raises) — logged
     at debug level.
     """
@@ -392,6 +395,9 @@ def _discover_extra_candidates(wiki_root: Path, exclude: set[str]) -> tuple[list
         if any(part.startswith(".") for part in path.relative_to(wiki_root).parts):
             continue
         if rel in exclude:
+            continue
+        if archive.is_archived(rel):
+            held_count += 1
             continue
         if rel in held_pages:
             held_count += 1

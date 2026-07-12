@@ -790,3 +790,15 @@ def test_hook_accepts_all_documented_source_values(monkeypatch, capsys, tmp_path
         rc, stdout = _run_hook_direct(monkeypatch, capsys, payload)
         assert rc == 0, f"hook crashed on source={source}"
         assert "hookSpecificOutput" in json.loads(stdout)
+
+
+def test_rank_extras_excludes_archived_pages(wiki):
+    """Task 16 (0.5.3): archive/-prefixed pages are held out of ranking,
+    same as quarantined/foreign, and counted in held_count."""
+    _write(wiki / "archive" / "old-notes.md", "# Old\n\narchived content")
+    _write(wiki / "clean.md", "# Clean\n\nsafe content")
+
+    ranked, held_count = wakeup.rank_extras("", wiki, exclude=set())
+    assert "archive/old-notes.md" not in ranked
+    assert "clean.md" in ranked
+    assert held_count == 1
