@@ -363,3 +363,25 @@ def test_wiki_health_critical_empty_pairs_returns_empty_list(wiki):
 
 def test_wiki_health_critical_missing_key_returns_empty_list(wiki):
     assert wiki_health_critical({}) == []
+
+
+def test_wiki_health_critical_threads_judge_dict_when_present(wiki):
+    # Task 13 (0.5.2): a judged pair carries its verdict dict into the
+    # suggestion's evidence and payload.
+    sweep_result = {
+        "contradiction_pairs": [
+            {
+                "page": "global/rules.md",
+                "with": "projects/x/notes.md",
+                "evidence": "A vs not A",
+                "judge": {"verdict": "contradicts", "confidence": 0.9, "reason": "stub judge"},
+            },
+        ]
+    }
+
+    specs = wiki_health_critical(sweep_result)
+
+    assert len(specs) == 1
+    spec = specs[0]
+    assert spec.evidence["judge"] == {"verdict": "contradicts", "confidence": 0.9, "reason": "stub judge"}
+    assert spec.payload["judge"] == {"verdict": "contradicts", "confidence": 0.9, "reason": "stub judge"}

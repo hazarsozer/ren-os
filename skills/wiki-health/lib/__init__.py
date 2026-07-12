@@ -51,9 +51,11 @@ from __future__ import annotations
 import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import Callable
 
 from lib import ren_paths
 from lib.memory import journal, quarantine, semantics
+from lib.memory.judge import JUDGE_MIN_CONFIDENCE, JUDGE_PAIR_CAP, judge_pairs
 from lib.ren_paths import PathTraversalError
 
 _FRONTMATTER_RE = re.compile(r"\A---\n(.*?)\n---\n?", re.DOTALL)
@@ -244,7 +246,95 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def sweep(wiki_root: Path | None = None) -> dict:
+def _judge_annotate(
+    wiki_root: Path,
+    contradiction_pairs: list[dict],
+    duplicate_pairs: list[dict],
+    numeric_drift_pairs: list[dict],
+    llm_call: Callable[[str], str],
+) -> tuple[list[dict], list[dict], list[dict], list[dict]]:
+    """Judge (Task 4) the wiki-wide shortlist (Task 11, `focus_pages=None`)
+    and layer verdicts onto the three heuristic pair lists.
+
+    Operates on FRESH COPIES of the three input lists and only returns them
+    on success — `sweep` commits the return value only inside a try/except,
+    so a `shortlist_pairs`/`judge_pairs`/read exception here leaves the
+    caller's already-computed no-llm result untouched (fail-closed, matching
+    Task 12's wrap consumer).
+
+    - A heuristic pair (`heuristic-contradiction` / `heuristic-duplicate` /
+      `numeric-drift`) the judge confidently (>= `JUDGE_MIN_CONFIDENCE`)
+      calls `unrelated` is REMOVED from its list and appended to the
+      returned `judge_dismissed` list instead — its original `evidence` is
+      preserved (anti-Goodhart: the judge filters visibility, never makes
+      evidence disappear). Any other verdict is attached as a `"judge"` dict
+      on the pair in place.
+    - A `near-similar` shortlist pair (not one of the three heuristics) only
+      surfaces at all if the judge confidently confirms `duplicate` — it is
+      then appended to `duplicate_pairs` with a synthetic evidence string
+      and its `"judge"` dict.
+    - Verdicts of `None` (fail-closed per-pair or dropped by the cap) leave
+      the corresponding pair exactly as the no-llm sweep produced it.
+    """
+    contradiction_pairs = [dict(p) for p in contradiction_pairs]
+    duplicate_pairs = [dict(p) for p in duplicate_pairs]
+    numeric_drift_pairs = [dict(p) for p in numeric_drift_pairs]
+    judge_dismissed: list[dict] = []
+
+    pairs = semantics.shortlist_pairs(wiki_root, focus_pages=None)
+    if not pairs:
+        return contradiction_pairs, duplicate_pairs, numeric_drift_pairs, judge_dismissed
+
+    texts = [
+        (
+            (wiki_root / p["page"]).read_text(encoding="utf-8", errors="replace"),
+            (wiki_root / p["with"]).read_text(encoding="utf-8", errors="replace"),
+        )
+        for p in pairs
+    ]
+    verdicts = judge_pairs(texts, llm_call, cap=JUDGE_PAIR_CAP)
+
+    lists_by_reason = {
+        "heuristic-contradiction": contradiction_pairs,
+        "heuristic-duplicate": duplicate_pairs,
+        "numeric-drift": numeric_drift_pairs,
+    }
+
+    for pair, verdict in zip(pairs, verdicts):
+        if verdict is None:
+            continue
+        judge_dict = {"verdict": verdict.kind, "confidence": verdict.confidence, "reason": verdict.reason}
+        key = frozenset((pair["page"], pair["with"]))
+
+        if pair["reason"] == "near-similar":
+            if verdict.kind == "duplicate" and verdict.confidence >= JUDGE_MIN_CONFIDENCE:
+                duplicate_pairs.append({
+                    "page": pair["page"],
+                    "with": pair["with"],
+                    "evidence": "near-similar (judge-confirmed)",
+                    "judge": judge_dict,
+                })
+            continue
+
+        target = lists_by_reason.get(pair["reason"])
+        if target is None:
+            continue
+        entry = next((e for e in target if frozenset((e["page"], e["with"])) == key), None)
+        if entry is None:
+            continue
+
+        if verdict.kind == "unrelated" and verdict.confidence >= JUDGE_MIN_CONFIDENCE:
+            target.remove(entry)
+            dismissed = dict(entry)
+            dismissed["judge"] = judge_dict
+            judge_dismissed.append(dismissed)
+        else:
+            entry["judge"] = judge_dict
+
+    return contradiction_pairs, duplicate_pairs, numeric_drift_pairs, judge_dismissed
+
+
+def sweep(wiki_root: Path | None = None, llm_call: Callable[[str], str] | None = None) -> dict:
     """Run the full read-only coherence sweep. Never writes anything —
     fixing findings is the live session's job (see SKILL.md).
 
@@ -253,7 +343,21 @@ def sweep(wiki_root: Path | None = None) -> dict:
     `quarantined_pages`, `generated_at`) plus `contradiction_scan_note` —
     `None` unless the wiki-wide pairwise scan was capped (see
     `_pair_findings`), in which case it's a dict naming what was skipped and
-    why."""
+    why — plus an 8th key, `judge_dismissed` (Task 13, 0.5.2): always
+    present, `[]` unless `llm_call` is given and the judge confidently
+    dismisses a heuristic pair as `unrelated` (see `_judge_annotate`).
+
+    `llm_call` (optional, Task 13): when given, the wiki-wide shortlist
+    (`lib.memory.semantics.shortlist_pairs`, `focus_pages=None`) is judged
+    and the verdicts are layered onto `contradiction_pairs`,
+    `duplicate_pairs`, and `numeric_drift_pairs` (each judged pair gains a
+    `"judge"` dict), with confidently-dismissed pairs moved to
+    `judge_dismissed` and judge-confirmed near-similar duplicates joining
+    `duplicate_pairs`. Fail-closed like every other judge consumer: any
+    exception during judging (shortlist scan, page read, `judge_pairs`)
+    leaves the result exactly as the no-llm sweep would have produced it.
+    Without `llm_call` (the default), behavior is byte-identical to before
+    Task 13 plus the always-present empty `judge_dismissed` key."""
     wiki_root = wiki_root or ren_paths.wiki_root()
     if not wiki_root.is_dir():
         return {
@@ -264,9 +368,18 @@ def sweep(wiki_root: Path | None = None) -> dict:
             "contradiction_scan_note": None,
             "mass_deletions": _mass_deletions(),
             "quarantined_pages": {"count": 0, "pages": []},
+            "judge_dismissed": [],
             "generated_at": _now_iso(),
         }
     contradiction_pairs, duplicate_pairs, numeric_drift_pairs, contradiction_scan_note = _pair_findings(wiki_root)
+    judge_dismissed: list[dict] = []
+    if llm_call is not None:
+        try:
+            contradiction_pairs, duplicate_pairs, numeric_drift_pairs, judge_dismissed = _judge_annotate(
+                wiki_root, contradiction_pairs, duplicate_pairs, numeric_drift_pairs, llm_call
+            )
+        except Exception:  # noqa: BLE001 - fail-closed: keep the no-llm result already computed
+            pass
     return {
         "dangling_pointers": _dangling_pointers(wiki_root),
         "contradiction_pairs": contradiction_pairs,
@@ -275,6 +388,7 @@ def sweep(wiki_root: Path | None = None) -> dict:
         "contradiction_scan_note": contradiction_scan_note,
         "mass_deletions": _mass_deletions(),
         "quarantined_pages": _quarantined_pages(wiki_root),
+        "judge_dismissed": judge_dismissed,
         "generated_at": _now_iso(),
     }
 

@@ -18,6 +18,7 @@ Run with: uv run pytest tests/skills/wiki_health/test_sweep.py -v
 from __future__ import annotations
 
 import importlib
+import json
 
 import pytest
 
@@ -51,10 +52,11 @@ def test_sweep_returns_all_dict_keys(wiki):
     assert set(result.keys()) == {
         "dangling_pointers", "contradiction_pairs", "duplicate_pairs",
         "numeric_drift_pairs", "contradiction_scan_note",
-        "mass_deletions", "quarantined_pages", "generated_at",
+        "mass_deletions", "quarantined_pages", "judge_dismissed", "generated_at",
     }
     assert result["generated_at"]
     assert result["contradiction_scan_note"] is None
+    assert result["judge_dismissed"] == []
 
 
 def test_sweep_finds_dangling_pointer(wiki):
@@ -289,3 +291,140 @@ def test_quarantined_pages_are_excluded_from_knowledge_scans(wiki):
 
     pages = {frozenset((c["page"], c["with"])) for c in result["contradiction_pairs"]}
     assert frozenset(("knowledge/pricing-a.md", "knowledge/pricing-b.md")) not in pages
+
+
+# ------------------------------------------------------- judge (Task 13) --
+#
+# `sweep(wiki_root=None, llm_call=None)`: with an `llm_call`, the wiki-wide
+# shortlist (`semantics.shortlist_pairs`) is judged and verdicts layered onto
+# the three heuristic pair lists. Without `llm_call`, behavior is unchanged
+# (already covered above — no test here passes `llm_call=None` differently
+# than the pre-Task-13 tests already do).
+
+
+def _llm_returning(verdict: str, confidence: float = 0.9, reason: str = "stub judge"):
+    def llm_call(prompt: str) -> str:
+        return json.dumps({"verdict": verdict, "confidence": confidence, "reason": reason})
+    return llm_call
+
+
+def test_sweep_judge_annotates_confirmed_contradiction_pair(wiki):
+    (wiki / "knowledge").mkdir()
+    (wiki / "knowledge" / "pricing-a.md").write_text(
+        "## Knowledge\nThe pricing model always uses monthly billing cycles.\n",
+        encoding="utf-8",
+    )
+    (wiki / "knowledge" / "pricing-b.md").write_text(
+        "## Knowledge\nThe pricing model never uses monthly billing cycles.\n",
+        encoding="utf-8",
+    )
+
+    result = wiki_health.sweep(llm_call=_llm_returning("contradicts", confidence=0.9))
+
+    pair = next(
+        c for c in result["contradiction_pairs"]
+        if frozenset((c["page"], c["with"])) == frozenset(("knowledge/pricing-a.md", "knowledge/pricing-b.md"))
+    )
+    assert pair["judge"] == {"verdict": "contradicts", "confidence": 0.9, "reason": "stub judge"}
+    assert result["judge_dismissed"] == []
+
+
+def test_sweep_judge_dismissed_pair_moves_out_of_contradiction_pairs(wiki):
+    (wiki / "knowledge").mkdir()
+    (wiki / "knowledge" / "pricing-a.md").write_text(
+        "## Knowledge\nThe pricing model always uses monthly billing cycles.\n",
+        encoding="utf-8",
+    )
+    (wiki / "knowledge" / "pricing-b.md").write_text(
+        "## Knowledge\nThe pricing model never uses monthly billing cycles.\n",
+        encoding="utf-8",
+    )
+
+    result = wiki_health.sweep(llm_call=_llm_returning("unrelated", confidence=0.9))
+
+    pages = {frozenset((c["page"], c["with"])) for c in result["contradiction_pairs"]}
+    assert frozenset(("knowledge/pricing-a.md", "knowledge/pricing-b.md")) not in pages
+
+    dismissed = result["judge_dismissed"]
+    assert len(dismissed) == 1
+    assert dismissed[0]["page"] == "knowledge/pricing-a.md"
+    assert dismissed[0]["with"] == "knowledge/pricing-b.md"
+    # Original heuristic evidence is preserved, not silently dropped.
+    assert dismissed[0]["evidence"]
+    assert dismissed[0]["judge"] == {"verdict": "unrelated", "confidence": 0.9, "reason": "stub judge"}
+
+
+def test_sweep_near_similar_duplicate_surfaces_only_with_llm(wiki, monkeypatch):
+    (wiki / "knowledge").mkdir()
+    (wiki / "knowledge" / "a.md").write_text("## Knowledge\nsome unrelated content a\n", encoding="utf-8")
+    (wiki / "knowledge" / "b.md").write_text("## Knowledge\nsome unrelated content b\n", encoding="utf-8")
+
+    def fake_shortlist(root, *, focus_pages=None, cap=20):
+        return [{"page": "knowledge/a.md", "with": "knowledge/b.md", "reason": "near-similar"}]
+
+    from lib.memory import semantics
+    monkeypatch.setattr(semantics, "shortlist_pairs", fake_shortlist)
+
+    no_llm_result = wiki_health.sweep()
+    assert no_llm_result["duplicate_pairs"] == []
+
+    result = wiki_health.sweep(llm_call=_llm_returning("duplicate", confidence=0.9))
+    dup = next(
+        d for d in result["duplicate_pairs"]
+        if frozenset((d["page"], d["with"])) == frozenset(("knowledge/a.md", "knowledge/b.md"))
+    )
+    assert dup["judge"] == {"verdict": "duplicate", "confidence": 0.9, "reason": "stub judge"}
+
+
+def test_sweep_near_similar_not_confirmed_duplicate_does_not_surface(wiki, monkeypatch):
+    (wiki / "knowledge").mkdir()
+    (wiki / "knowledge" / "a.md").write_text("## Knowledge\nsome unrelated content a\n", encoding="utf-8")
+    (wiki / "knowledge" / "b.md").write_text("## Knowledge\nsome unrelated content b\n", encoding="utf-8")
+
+    def fake_shortlist(root, *, focus_pages=None, cap=20):
+        return [{"page": "knowledge/a.md", "with": "knowledge/b.md", "reason": "near-similar"}]
+
+    from lib.memory import semantics
+    monkeypatch.setattr(semantics, "shortlist_pairs", fake_shortlist)
+
+    result = wiki_health.sweep(llm_call=_llm_returning("unrelated", confidence=0.9))
+    assert result["duplicate_pairs"] == []
+    assert result["judge_dismissed"] == []
+
+
+def test_sweep_judge_exception_fails_closed_to_no_llm_result(wiki, monkeypatch):
+    (wiki / "knowledge").mkdir()
+    (wiki / "knowledge" / "pricing-a.md").write_text(
+        "## Knowledge\nThe pricing model always uses monthly billing cycles.\n",
+        encoding="utf-8",
+    )
+    (wiki / "knowledge" / "pricing-b.md").write_text(
+        "## Knowledge\nThe pricing model never uses monthly billing cycles.\n",
+        encoding="utf-8",
+    )
+
+    def crashing_llm(prompt: str) -> str:
+        raise RuntimeError("judge backend down")
+
+    no_llm_result = wiki_health.sweep()
+    result = wiki_health.sweep(llm_call=crashing_llm)
+
+    assert result["contradiction_pairs"] == no_llm_result["contradiction_pairs"]
+    assert result["duplicate_pairs"] == no_llm_result["duplicate_pairs"]
+    assert result["numeric_drift_pairs"] == no_llm_result["numeric_drift_pairs"]
+    assert result["judge_dismissed"] == []
+
+
+def test_wiki_health_critical_still_emits_for_unjudged_global_contradiction(wiki):
+    from lib.suggestions.producers import wiki_health_critical
+
+    sweep_result = {
+        "contradiction_pairs": [
+            {"page": "global/rules.md", "with": "projects/x/notes.md", "evidence": "A vs not A"},
+        ]
+    }
+
+    specs = wiki_health_critical(sweep_result)
+
+    assert len(specs) == 1
+    assert "judge" not in specs[0].payload

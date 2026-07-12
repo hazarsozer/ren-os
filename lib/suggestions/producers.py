@@ -254,6 +254,7 @@ def wiki_health_critical(sweep_result: dict) -> list[SuggestionSpec]:
         except (KeyError, TypeError):
             continue
         evidence = pair.get("evidence") if isinstance(pair, dict) else None
+        judge = pair.get("judge") if isinstance(pair, dict) else None
 
         critical = (
             is_critical_page(page_a)
@@ -267,19 +268,30 @@ def wiki_health_critical(sweep_result: dict) -> list[SuggestionSpec]:
         if _page_trust(wiki_root, page_a) == "foreign" or _page_trust(wiki_root, page_b) == "foreign":
             continue
 
+        evidence_dict = {"page": page_a, "with": page_b, "evidence": evidence}
+        payload = {
+            "action": "review_contradiction",
+            "page": page_a,
+            "with": page_b,
+            "evidence": evidence,
+        }
+        # Task 13 (0.5.2): prefer the judge's read when one exists — an
+        # unjudged critical pair still suggests (the judge filters
+        # visibility of dismissed pairs upstream in the sweep, it never
+        # gates criticality here), but a judged pair carries its verdict
+        # dict along so the suggestion consumer can show it.
+        if judge is not None:
+            evidence_dict["judge"] = judge
+            payload["judge"] = judge
+
         specs.append(
             SuggestionSpec(
                 producer="wiki-health",
                 title=f"Review contradiction: {page_a} vs {page_b}",
                 rationale=f"Critical-page contradiction between {page_a} and {page_b}",
-                evidence={"page": page_a, "with": page_b, "evidence": evidence},
+                evidence=evidence_dict,
                 kind="structured_action",
-                payload={
-                    "action": "review_contradiction",
-                    "page": page_a,
-                    "with": page_b,
-                    "evidence": evidence,
-                },
+                payload=payload,
                 fingerprint=f"wiki-health:contradiction:{'|'.join(sorted((page_a, page_b)))}",
             )
         )
