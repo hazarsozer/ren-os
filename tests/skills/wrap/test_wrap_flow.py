@@ -610,19 +610,21 @@ def _stub_shortlist_pairs_pairing_focus_with(other_page: str):
 
 
 class TestSemanticFindings:
-    def test_judged_paraphrase_duplicate_produces_a_finding(self, wiki, monkeypatch):
-        from skills.wrap import lib as wrap_lib
+    def test_judged_paraphrase_duplicate_produces_a_finding(self, wiki):
+        # Exercises the REAL `shortlist_pairs` (no monkeypatch) end-to-end:
+        # the applied write lands quarantined (writer="llm-auto"), so this
+        # also proves the Task 12 fix — a session's own quarantined write is
+        # still shortlisted against existing pages via `focus_pages` bypass
+        # (near-similar Jaccard, since the durable item is a single line and
+        # can't trip the multi-line duplicate heuristic). Content is chosen
+        # with enough shared significant tokens to clear the 0.5 near-similar
+        # threshold even after the quarantine banner's own tokens dilute it.
+        durable_item = "always run the linter and formatter before every commit to catch mistakes early"
 
         existing_page = wiki / "lessons" / "existing-fact.md"
         existing_page.parent.mkdir(parents=True, exist_ok=True)
-        existing_page.write_text("Some pre-existing fact.\n", encoding="utf-8")
+        existing_page.write_text(durable_item + "\n", encoding="utf-8")
 
-        monkeypatch.setattr(
-            wrap_lib, "shortlist_pairs",
-            _stub_shortlist_pairs_pairing_focus_with("lessons/existing-fact.md"),
-        )
-
-        durable_item = "always run the linter before commit"
         llm_call = _llm_dual({durable_item: "durable"}, judge_verdict="duplicate")
 
         result = wrap_session(

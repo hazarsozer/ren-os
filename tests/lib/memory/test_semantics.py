@@ -475,6 +475,48 @@ def test_focus_pages_restricts_one_side_of_every_pair(tmp_path):
     assert len(unrestricted) >= len(pairs)
 
 
+def test_focus_pages_bypasses_quarantine_skip_for_focus_page(tmp_path):
+    # A quarantine-bannered page IS a model-class write awaiting judgment —
+    # when it's the session's own write (in focus_pages), it must still be
+    # eligible for pairing so the judge actually sees it.
+    quarantined = quarantine_mark("We do not use Postgres for storage backend now.\n")
+    _write(tmp_path, "notes/quarantined.md", quarantined)
+    _write(tmp_path, "notes/clean.md", "We use Postgres for storage backend now.\n")
+
+    pairs = shortlist_pairs(tmp_path, focus_pages=["notes/quarantined.md"])
+
+    involved_pages = {p["page"] for p in pairs} | {p["with"] for p in pairs}
+    assert "notes/quarantined.md" in involved_pages
+
+
+def test_quarantined_page_not_in_focus_pages_still_skipped(tmp_path):
+    quarantined = quarantine_mark("We do not use Postgres for storage backend now.\n")
+    _write(tmp_path, "notes/quarantined.md", quarantined)
+    _write(tmp_path, "notes/clean.md", "We use Postgres for storage backend now.\n")
+    _write(tmp_path, "notes/other.md", "We use Postgres for storage backend now.\n")
+
+    # focus_pages targets a different page entirely; the quarantined page
+    # should remain excluded since it isn't the session's own write here.
+    pairs = shortlist_pairs(tmp_path, focus_pages=["notes/other.md"])
+
+    involved_pages = {p["page"] for p in pairs} | {p["with"] for p in pairs}
+    assert "notes/quarantined.md" not in involved_pages
+
+
+def test_foreign_page_in_focus_pages_still_excluded(tmp_path):
+    # Foreign provenance is untrusted regardless of focus — it must never
+    # enter the judge's consolidation pipeline, focus or not.
+    foreign_prov = new_provenance("llm-auto", "sess-1", "ADD", "notes/foreign.md", trust="foreign")
+    foreign = stamp_frontmatter("We use Postgres for storage backend now.\n", foreign_prov)
+    _write(tmp_path, "notes/foreign.md", foreign)
+    _write(tmp_path, "notes/clean.md", "We use Postgres for storage backend now.\n")
+
+    pairs = shortlist_pairs(tmp_path, focus_pages=["notes/foreign.md"])
+
+    involved_pages = {p["page"] for p in pairs} | {p["with"] for p in pairs}
+    assert "notes/foreign.md" not in involved_pages
+
+
 def test_real_duplicates_still_flag():
     body = "# Deploy notes\n- use port 8080\n- restart nginx after deploy\n- check logs in /var/log\n"
     assert duplicate_evidence(body, body) is not None

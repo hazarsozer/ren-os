@@ -342,24 +342,34 @@ ShortlistReason = Literal[
 ]
 
 
-def _shortlist_candidate_pages(wiki_root: Path) -> list[tuple[str, str]]:
+def _shortlist_candidate_pages(
+    wiki_root: Path, *, focus_pages: set[str] | None = None
+) -> list[tuple[str, str]]:
     """(rel_path, text) for every page eligible for shortlist scanning.
 
     Mirrors `skills.wiki-health`'s `_knowledge_pages` candidate discipline:
-    skip the `.ren/` metrics tree, quarantined pages, and (0.5.1 trust
-    taxonomy) `ren_trust: foreign` pages — ingested content a human hasn't
-    reviewed must stay invisible to automatic pairwise scans, the judge
-    included."""
+    skip the `.ren/` metrics tree and (0.5.1 trust taxonomy) `ren_trust:
+    foreign` pages — ingested content a human hasn't reviewed must stay
+    invisible to automatic pairwise scans, the judge included. Foreign trust
+    is untrusted provenance and is excluded unconditionally, focus or not.
+
+    Quarantine is different: the quarantine banner means "unreviewed
+    model-class write" — precisely the population the judge exists to judge.
+    A page in `focus_pages` (the session's own write targets) BYPASSES the
+    quarantine skip so wrap's judge can actually fire on it; a quarantined
+    page NOT in focus_pages keeps the full skip (e.g. wiki-health's
+    unrestricted sweep, or another session's still-quarantined write)."""
+    focus_set = focus_pages or set()
     pages: list[tuple[str, str]] = []
     for md_path in sorted(wiki_root.rglob("*.md")):
         rel_path = md_path.relative_to(wiki_root)
         if ".ren" in rel_path.parts:
             continue
         text = md_path.read_text(encoding="utf-8", errors="replace")
-        if quarantine.is_quarantined(text):
-            continue
         prov = read_frontmatter_provenance(text)
         if prov is not None and prov.get("trust") == "foreign":
+            continue
+        if quarantine.is_quarantined(text) and str(rel_path) not in focus_set:
             continue
         pages.append((str(rel_path), text))
     return pages
@@ -402,8 +412,8 @@ def shortlist_pairs(
     write targets; `skills.wiki-health`'s sweep passes `None` for a full scan).
     """
     wiki_root = Path(wiki_root)
-    pages = _shortlist_candidate_pages(wiki_root)
     focus_set = set(focus_pages) if focus_pages is not None else None
+    pages = _shortlist_candidate_pages(wiki_root, focus_pages=focus_set)
 
     heuristic_pairs: list[dict] = []
     near_similar_candidates: list[tuple[float, str, str]] = []
