@@ -12,11 +12,13 @@ from pathlib import Path
 
 import pytest
 
-from lib.evalkit.runner import EvalReport, run_gate_eval, run_retrieval_eval
+from lib.evalkit.runner import EvalReport, run_gate_eval, run_judge_eval, run_retrieval_eval
+from lib.memory.judge import VALID_VERDICTS
 
 FIXTURES_DIR = Path(__file__).resolve().parent.parent / "fixtures"
 MINI_WIKI = FIXTURES_DIR / "mini_wiki"
 RETRIEVAL_FIXTURE = FIXTURES_DIR / "retrieval_fixture.json"
+JUDGE_PAIRS_FIXTURE = Path(__file__).resolve().parent / "fixtures" / "judge-pairs.json"
 
 _WORD_RE = re.compile(r"[a-z0-9]+")
 _STOPWORDS = frozenset(
@@ -271,3 +273,117 @@ def test_gate_eval_non_accept_refuse_return_value_scores_as_refuse():
 
     refuse_report = run_gate_eval(weird_gate, [{"input": "x", "expect": "refuse"}])
     assert refuse_report.hits == 1
+
+
+# --- judge eval --------------------------------------------------------------
+
+
+def test_run_judge_eval_scores_fake_judge_against_inline_fixture(tmp_path):
+    fixture_path = tmp_path / "mini-judge-fixture.json"
+    fixture_path.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "cases": [
+                    {"text_a": "a1", "text_b": "a2", "expect": "duplicate"},
+                    {"text_a": "b1", "text_b": "b2", "expect": "contradicts"},
+                    {"text_a": "c1", "text_b": "c2", "expect": "supersedes"},
+                    {"text_a": "d1", "text_b": "d2", "expect": "unrelated"},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    # Fake judge gets 3/4 right (flips supersedes -> unrelated).
+    def fake_judge(text_a: str, text_b: str) -> str:
+        mapping = {
+            ("a1", "a2"): "duplicate",
+            ("b1", "b2"): "contradicts",
+            ("c1", "c2"): "unrelated",
+            ("d1", "d2"): "unrelated",
+        }
+        return mapping[(text_a, text_b)]
+
+    report = run_judge_eval(fake_judge, fixture_path)
+
+    assert isinstance(report, EvalReport)
+    assert report.total == 4
+    assert report.hits == 3
+    assert report.hit_rate == pytest.approx(0.75)
+    assert len(report.failures) == 1
+    assert report.failures[0]["expected"] == "supersedes"
+    assert report.failures[0]["got"] == "unrelated"
+
+
+def test_run_judge_eval_perfect_judge_scores_all_hits(tmp_path):
+    fixture_path = tmp_path / "mini-judge-fixture.json"
+    fixture_path.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "cases": [{"text_a": "x", "text_b": "y", "expect": "duplicate"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    report = run_judge_eval(lambda a, b: "duplicate", fixture_path)
+
+    assert report.total == 1
+    assert report.hits == 1
+    assert report.hit_rate == 1.0
+    assert report.failures == []
+
+
+def test_run_judge_eval_unknown_fixture_version_raises_value_error(tmp_path):
+    fixture_path = tmp_path / "bad-judge-fixture.json"
+    fixture_path.write_text(json.dumps({"version": 99, "cases": []}), encoding="utf-8")
+
+    with pytest.raises(ValueError):
+        run_judge_eval(lambda a, b: "duplicate", fixture_path)
+
+
+def test_judge_pairs_fixture_has_at_least_four_cases_per_verdict_class():
+    data = json.loads(JUDGE_PAIRS_FIXTURE.read_text(encoding="utf-8"))
+    assert data["version"] == 1
+    cases = data["cases"]
+    assert len(cases) >= 16
+
+    counts: dict[str, int] = {}
+    for case in cases:
+        assert case["expect"] in VALID_VERDICTS
+        counts[case["expect"]] = counts.get(case["expect"], 0) + 1
+
+    for verdict in VALID_VERDICTS:
+        assert counts.get(verdict, 0) >= 4, f"{verdict} has only {counts.get(verdict, 0)} held-out cases"
+
+
+def test_judge_pairs_fixture_texts_do_not_appear_in_judge_few_shot_prompt():
+    """Anti-Goodhart: the fixture must be genuinely held-out, not copied from
+    whatever few-shot examples (if any) live inside judge.py's own prompt."""
+    import lib.memory.judge as judge_module
+
+    judge_source = Path(judge_module.__file__).read_text(encoding="utf-8")
+    data = json.loads(JUDGE_PAIRS_FIXTURE.read_text(encoding="utf-8"))
+
+    for case in data["cases"]:
+        assert case["text_a"] not in judge_source
+        assert case["text_b"] not in judge_source
+
+
+def test_run_judge_eval_scores_real_fixture_against_a_perfect_judge():
+    """Wires a judge that just returns the expected verdict — proves the
+    fixture loads and scores end to end (100% by construction), independent
+    of any actual LLM quality."""
+
+    data = json.loads(JUDGE_PAIRS_FIXTURE.read_text(encoding="utf-8"))
+    expectations = {(c["text_a"], c["text_b"]): c["expect"] for c in data["cases"]}
+
+    def perfect_judge(text_a: str, text_b: str) -> str:
+        return expectations[(text_a, text_b)]
+
+    report = run_judge_eval(perfect_judge, JUDGE_PAIRS_FIXTURE)
+    assert report.total == len(data["cases"])
+    assert report.hits == report.total
+    assert report.hit_rate == 1.0

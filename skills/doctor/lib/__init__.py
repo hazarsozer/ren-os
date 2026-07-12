@@ -454,6 +454,24 @@ def check_apply_integrity() -> CheckResult:
     return CheckResult("apply_integrity", "ok", "every journaled write has a matching applied queue entry")
 
 
+def check_judge_health() -> CheckResult:
+    """Task 14 (0.5.2): make degraded semantic judging VISIBLE. Reads recent
+    `judge_event` metrics (`lib.memory.judge.judge_pairs`'s fail-closed
+    events). Any `fail_closed` event means at least one pair fell back to
+    heuristics-only because the LLM judge call raised or returned something
+    unparsable — that's a warn. `no_llm` (no `llm_call` configured at all)
+    and `capped` (pairs beyond the batch cap, never even attempted) are both
+    expected, non-degraded states, so their presence alone is `ok`."""
+    events = collect.read(kind=collect.KIND_JUDGE_EVENT)
+    fail_closed_count = sum(1 for e in events if e.get("event") == "fail_closed")
+    if fail_closed_count:
+        return CheckResult(
+            "judge_health", "warn",
+            f"semantic judging degraded — running heuristics-only ({fail_closed_count} fail_closed event(s))",
+        )
+    return CheckResult("judge_health", "ok", "no degraded judge events recorded")
+
+
 _ALL_CHECK_NAMES: tuple[str, ...] = (
     "check_env",
     "check_wiki_structure",
@@ -470,6 +488,7 @@ _ALL_CHECK_NAMES: tuple[str, ...] = (
     "check_guard_health",
     "check_suggestion_store",
     "check_apply_integrity",
+    "check_judge_health",
 )
 
 
@@ -506,5 +525,6 @@ __all__ = [
     "check_harness_neutrality",
     "check_guard_health",
     "check_apply_integrity",
+    "check_judge_health",
     "run_checks",
 ]

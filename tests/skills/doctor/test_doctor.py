@@ -56,7 +56,7 @@ def test_run_checks_returns_one_result_per_check(wiki):
         "env", "wiki_structure", "frontmatter", "schema_versions",
         "budget_lint", "dangling_pointers", "graphify_status", "companions",
         "backup_configured", "execution_tiers", "global_drift", "harness_neutrality", "guard_health",
-        "suggestion_store", "apply_integrity",
+        "suggestion_store", "apply_integrity", "judge_health",
     }
 
 
@@ -453,6 +453,37 @@ def test_check_apply_integrity_warns_on_orphan_write_id(wiki):
 
     assert result.status == "warn"
     assert prov.write_id in result.message
+
+
+# --- Task 14: judge health visibility ---------------------------------------
+
+
+def test_check_judge_health_ok_when_no_judge_events(wiki):
+    result = doctor.check_judge_health()
+    assert result.status == "ok"
+
+
+def test_check_judge_health_ok_when_only_no_llm_events(wiki):
+    collect.record(collect.KIND_JUDGE_EVENT, {"event": "no_llm"})
+    result = doctor.check_judge_health()
+    assert result.status == "ok"
+
+
+def test_check_judge_health_warns_when_fail_closed_events_present(wiki):
+    collect.record(collect.KIND_JUDGE_EVENT, {"event": "no_llm"})
+    collect.record(collect.KIND_JUDGE_EVENT, {"event": "fail_closed"})
+    result = doctor.check_judge_health()
+    assert result.status == "warn"
+    assert "semantic judging degraded" in result.message
+    assert "heuristics-only" in result.message
+
+
+def test_check_judge_health_ignores_capped_events(wiki):
+    """A capped batch isn't a judge failure — it's the pair cap doing its
+    job — so `capped` events alone must not warn."""
+    collect.record(collect.KIND_JUDGE_EVENT, {"event": "capped", "dropped": 3})
+    result = doctor.check_judge_health()
+    assert result.status == "ok"
 
 
 def test_check_apply_integrity_ignores_noop_revert_entries(wiki):

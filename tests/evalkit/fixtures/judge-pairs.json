@@ -1,0 +1,85 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "text_a": "We settled on a 10-minute idle timeout before the session auto-locks.",
+      "text_b": "Sessions lock themselves automatically once ten minutes pass with no activity.",
+      "expect": "duplicate"
+    },
+    {
+      "text_a": "Coffee after 2pm keeps me up, so I stopped drinking it past noon.",
+      "text_b": "Anything caffeinated in the afternoon wrecks my sleep, which is why I cut it off at midday now.",
+      "expect": "duplicate"
+    },
+    {
+      "text_a": "The team agreed Fridays are meeting-free to protect deep work time.",
+      "text_b": "No standups, syncs, or reviews get scheduled on Fridays — that day stays open for focused work.",
+      "expect": "duplicate"
+    },
+    {
+      "text_a": "Backups run nightly at 2am against the production database.",
+      "text_b": "Every night around 2am, a snapshot of the prod DB gets taken and stored.",
+      "expect": "duplicate"
+    },
+    {
+      "text_a": "The vendor contract caps our monthly spend at $500.",
+      "text_b": "Our agreement with the vendor allows unlimited monthly spend with no ceiling.",
+      "expect": "contradicts"
+    },
+    {
+      "text_a": "Hazar prefers working in complete silence, no music at all while coding.",
+      "text_b": "Hazar always has a playlist running in the background when he codes.",
+      "expect": "contradicts"
+    },
+    {
+      "text_a": "The migration script is safe to re-run multiple times without side effects.",
+      "text_b": "Running the migration script a second time duplicates every row it touched the first time.",
+      "expect": "contradicts"
+    },
+    {
+      "text_a": "The office lease renews automatically each year unless cancelled 90 days out.",
+      "text_b": "The lease expires at the end of its term and must be manually re-signed every year.",
+      "expect": "contradicts"
+    },
+    {
+      "text_a": "We chose Postgres for the order-history service because of its JSON column support.",
+      "text_b": "After hitting scaling limits with JSON columns, we moved the order-history service to a dedicated document store.",
+      "expect": "supersedes"
+    },
+    {
+      "text_a": "The onboarding flow asks for email first, then password, then a profile photo.",
+      "text_b": "We dropped the profile-photo step from onboarding after seeing it caused most of the drop-off.",
+      "expect": "supersedes"
+    },
+    {
+      "text_a": "Our pricing page lists a single $12/month plan with no tiers.",
+      "text_b": "As of this quarter, the pricing page now shows three tiers: Starter, Pro, and Team.",
+      "expect": "supersedes"
+    },
+    {
+      "text_a": "The retry policy waits a fixed 5 seconds between attempts.",
+      "text_b": "We replaced the fixed 5-second retry wait with exponential backoff plus jitter.",
+      "expect": "supersedes"
+    },
+    {
+      "text_a": "The espresso machine in the kitchen needs descaling every three months.",
+      "text_b": "The design team picked a teal accent color for the new marketing site.",
+      "expect": "unrelated"
+    },
+    {
+      "text_a": "Hazar's RTX 4070 Super has 12GB of VRAM for local model work.",
+      "text_b": "The lease on the downtown office runs through next August.",
+      "expect": "unrelated"
+    },
+    {
+      "text_a": "The changelog script pulls commit messages since the last tagged release.",
+      "text_b": "Hazar's older friend has been working through recovery from alcohol dependency.",
+      "expect": "unrelated"
+    },
+    {
+      "text_a": "Quarterly taxes are due on the 15th for anyone filing as self-employed.",
+      "text_b": "The wiki's frontmatter linter rejects any page missing a schema_version field.",
+      "expect": "unrelated"
+    }
+  ]
+}

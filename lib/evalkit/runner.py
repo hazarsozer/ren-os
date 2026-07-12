@@ -6,7 +6,7 @@ pairs) - hit-rate is computed against the fixture and the §3.2 mechanical miss
 log, never LLM self-report" + "an eval for every LLM-gated path (wrap classifier
 first) with pass/fail assertions" (council A-5).
 
-Two deterministic, LLM-free scorers:
+Three scorers:
   - `run_retrieval_eval` — hit-rate of a ranker against a frozen fixture of
     query -> expected-page pairs. This is what Phase 5's real wake-up ranker
     (and any future retrieval component) gets scored against; the fixture at
@@ -101,6 +101,51 @@ def run_retrieval_eval(
     )
 
 
+def run_judge_eval(
+    judge_fn: Callable[[str, str], str],
+    fixture_path: Path,
+) -> EvalReport:
+    """Score `judge_fn` against the frozen held-out fixture at `fixture_path`
+    (Task 14, RenOS 0.5.2). Each case is `{"text_a", "text_b", "expect"}`
+    with `expect` one of `lib.memory.judge.VALID_VERDICTS`.
+
+    Anti-Goodhart: this fixture must be genuinely held out — its pairs must
+    never appear among any few-shot examples inside the judge's own prompt
+    (see `tests/evalkit/test_runner.py`'s fixture-hygiene tests), and it
+    must include both paraphrase duplicates with no shared lines and
+    non-negation contradictions, since those are exactly the shapes a
+    simple heuristic (e.g. line-overlap or negation-word matching) would
+    miss but a real semantic judge should catch.
+
+    Scoring is exact-match accuracy: `judge_fn(text_a, text_b) == expect`.
+    `judge_fn` is called directly (no fail-closed wrapping) — this harness
+    measures judge QUALITY, not the fail-closed wrapper's behavior; use
+    `lib.memory.judge.judge_pairs` for that.
+    """
+    cases = _load_fixture(fixture_path)
+
+    hits = 0
+    failures: list[dict] = []
+
+    for case in cases:
+        text_a = case["text_a"]
+        text_b = case["text_b"]
+        expected = case["expect"]
+        got = judge_fn(text_a, text_b)
+        if got == expected:
+            hits += 1
+        else:
+            failures.append({"text_a": text_a, "text_b": text_b, "expected": expected, "got": got})
+
+    total = len(cases)
+    return EvalReport(
+        total=total,
+        hits=hits,
+        hit_rate=(hits / total) if total else 0.0,
+        failures=failures,
+    )
+
+
 def run_gate_eval(gate_fn: Callable[[str], str], cases: list[dict]) -> EvalReport:
     """Score `gate_fn` against `cases` (each `{"input": str, "expect": "accept"|"refuse"}`).
 
@@ -139,4 +184,4 @@ def run_gate_eval(gate_fn: Callable[[str], str], cases: list[dict]) -> EvalRepor
     )
 
 
-__all__ = ["EvalReport", "run_retrieval_eval", "run_gate_eval"]
+__all__ = ["EvalReport", "run_retrieval_eval", "run_gate_eval", "run_judge_eval"]
