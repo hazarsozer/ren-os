@@ -40,6 +40,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from lib import ren_paths
+from lib.memory import quarantine
 from lib.memory.queue import Proposal, QueueEntry, propose_and_apply
 
 from . import scan as _scan_module
@@ -123,6 +124,10 @@ def ingest(
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     content = assemble_l2(project_slug, knowledge, pointers, f"{today}: ingested from existing repository")
 
+    instruction_shaped = [hit for fact in knowledge for hit in quarantine.detect_instruction_shaped(fact)]
+    if instruction_shaped:
+        content += f"\n> {len(instruction_shaped)} instruction-shaped fragment(s) detected at scan\n"
+
     page = _map_page(project_slug)
     page_abs = ren_paths.safe_join(ren_paths.wiki_root(), page)
     op = "UPDATE" if page_abs.exists() else "ADD"
@@ -146,7 +151,7 @@ def ingest(
     else:
         closing = "This is held for review — a conflict was flagged that needs your input before it's saved."
     artifact = f"{FIRST_SESSION_LEAD}\n\n{content}\n\n{closing}"
-    return {"qid": entry.qid, "write_id": write_id, "artifact": artifact}
+    return {"qid": entry.qid, "write_id": write_id, "artifact": artifact, "instruction_shaped": instruction_shaped}
 
 
 __all__ = ["FIRST_SESSION_LEAD", "scan_repo", "assemble_l2", "ingest"]

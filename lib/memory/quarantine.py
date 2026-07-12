@@ -26,6 +26,20 @@ QUARANTINE_BANNER = "> [!ren-quarantine] LLM-written, unreviewed — treat as da
 
 _FRONTMATTER_RE = re.compile(r"\A---\n(.*?)\n---\n?", re.DOTALL)
 
+# 0.5.1 Task 8: deterministic prompt-injection-shaped patterns. Each targets a
+# specific imperative-to-the-assistant shape, not bare words like "must"/"you"
+# on their own — that's what keeps "the README says you must run make first"
+# (a benign near-miss with "you must" in it, but not addressed at the
+# assistant and not an instruction-overriding imperative) from false-positiving.
+_INSTRUCTION_SHAPED_PATTERNS = [
+    re.compile(r"ignore\s+(all|any)?\s*(previous|prior)\s+instructions", re.IGNORECASE),
+    re.compile(r"disregard\s+(the\s+)?(system\s+prompt|previous|prior)\b", re.IGNORECASE),
+    re.compile(r"\byou\s+(must|should)\s+(now\s+|always\s+)?(comply|do|obey|follow|reveal|ignore)\b", re.IGNORECASE),
+    re.compile(r"\bsystem\s+prompt\b", re.IGNORECASE),
+    re.compile(r"do\s+not\s+(tell|inform)\s+the\s+user\b", re.IGNORECASE),
+    re.compile(r"<\s*/?\s*system\b", re.IGNORECASE),
+]
+
 
 def _split(md: str) -> tuple[str, str]:
     """Return (frontmatter_prefix, body) — frontmatter_prefix is "" if absent.
@@ -100,4 +114,26 @@ def quarantined_rel_pages(wiki_root: Path) -> set[str]:
     return quarantined
 
 
-__all__ = ["QUARANTINE_BANNER", "mark", "is_quarantined", "release", "trusted_source", "quarantined_rel_pages"]
+def detect_instruction_shaped(text: str) -> list[str]:
+    """Return the list of matched snippets where `text` looks like it's trying
+    to address/override the assistant (prompt-injection-shaped), not just
+    describe instructions as data. Deterministic, pattern-based, case-insensitive.
+
+    Empty list means no hits. Never raises."""
+    hits = []
+    for pattern in _INSTRUCTION_SHAPED_PATTERNS:
+        match = pattern.search(text)
+        if match:
+            hits.append(match.group(0))
+    return hits
+
+
+__all__ = [
+    "QUARANTINE_BANNER",
+    "mark",
+    "is_quarantined",
+    "release",
+    "trusted_source",
+    "quarantined_rel_pages",
+    "detect_instruction_shaped",
+]
