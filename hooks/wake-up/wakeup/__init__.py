@@ -144,10 +144,13 @@ def read_l1(project_dir: Path) -> str:
     the page's OWN `ren_trust` stamp (Task 6) is `"model"` (a genuine RenOS
     write, not a foreign/human-planted file) before applying the exemption.
     A page that IS stamped `"model"` is injected raw regardless of the banner
-    (the exemption, as before). A page that is unstamped or stamped anything
-    else falls through to normal quarantine treatment: injected if it isn't
-    banner-quarantined (pre-stamping legacy content, unaffected), held out
-    (empty string) if it is — never injected raw on path shape alone.
+    (the exemption, as before). A page that is unstamped OR stamped anything
+    else (foreign, human, etc.) is held out (empty string) — never injected
+    raw on path shape alone. Migration `trust-backfill-1` (Task 7) stamps
+    `ren_trust` on every pre-0.5.1 page, so a legitimately old L1 page is
+    stamped after migration; an unstamped file at this path post-migration
+    has no legitimate explanation and gets the same held-out treatment as a
+    foreign-stamped one.
     """
     l1_dir = project_dir / L1_DIRNAME
     if not l1_dir.is_dir():
@@ -167,10 +170,9 @@ def read_l1(project_dir: Path) -> str:
     if prov and prov.get("trust") == "model":
         return text
 
-    # Not a verified model-class RenOS write — normal quarantine treatment.
-    if quarantine.is_quarantined(text):
-        return ""
-    return text
+    # Not a verified model-class RenOS write — held out, whether foreign-
+    # stamped or entirely unstamped. Never injected raw on path shape alone.
+    return ""
 
 
 def read_l2_map(project_dir: Path) -> str:
@@ -481,7 +483,19 @@ def compose_wake_up_context(
     if project is not None:
         project_dir = wiki_root / "projects" / project
 
-        l1_source_dir = project_dir
+        # Codex P5: whether or not read_l1 ultimately injects a given
+        # candidate, its most recent file at EITHER the project-local or the
+        # global fallback L1 path must not leak back in via the extras
+        # ("Related pages") discovery path, which excludes only banner-
+        # quarantined pages — a bannerless-but-unstamped hostile file that
+        # read_l1 correctly held out would otherwise be offered raw there.
+        for candidate_dir in (project_dir, wiki_root):
+            candidate_files = sorted(
+                (candidate_dir / L1_DIRNAME).glob("session-*.md"), key=_safe_mtime, reverse=True
+            )
+            if candidate_files:
+                surfaced_pages.append(str(candidate_files[0].relative_to(wiki_root).as_posix()))
+
         l1_text = read_l1(project_dir)
         if not l1_text:
             # codex D4: project-local `l1/` has nothing (either no wrap has
@@ -490,16 +504,10 @@ def compose_wake_up_context(
             # (and non-project-scoped wraps) stay reachable rather than the
             # project's most recent session silently vanishing from context.
             l1_text = read_l1(wiki_root)
-            l1_source_dir = wiki_root
 
         if l1_text:
             sections.append(f"### {project} — most recent session (L1)")
             sections.append(truncate_text_to_tokens(l1_text, L1_BUDGET))
-            l1_files = sorted(
-                (l1_source_dir / L1_DIRNAME).glob("session-*.md"), key=_safe_mtime, reverse=True
-            )
-            if l1_files:
-                surfaced_pages.append(str(l1_files[0].relative_to(wiki_root).as_posix()))
 
         l2_text = read_l2_map(project_dir)
         if l2_text:

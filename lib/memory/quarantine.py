@@ -151,11 +151,22 @@ def detect_instruction_shaped(text: str) -> list[str]:
     return hits
 
 
+_BACKTICK_RUN_RE = re.compile(r"`+")
+
+
 def escape_untrusted(content: str) -> str:
     """Wrap `content` in a fenced block preceded by `UNTRUSTED_WARNING`, so any
     instruction-shaped text inside it is inert (fenced-code) rather than
-    literal prose in whatever renders it. Never raises."""
-    return f"{UNTRUSTED_WARNING}\n```\n{content}\n```\n"
+    literal prose in whatever renders it. Never raises.
+
+    Fence-breakout-proof (standard CommonMark technique): the wrapper fence
+    uses one more backtick than the longest run of consecutive backticks
+    found in `content`, so attacker-controlled content containing its own
+    ``` fence can never close the wrapper fence early.
+    """
+    longest_run = max((len(m.group(0)) for m in _BACKTICK_RUN_RE.finditer(content)), default=0)
+    fence = "`" * max(3, longest_run + 1)
+    return f"{UNTRUSTED_WARNING}\n{fence}\n{content}\n{fence}\n"
 
 
 __all__ = [
