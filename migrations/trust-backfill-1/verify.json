@@ -1,0 +1,31 @@
+{
+  "$schema": "../../verify.schema.json",
+  "migration": "trust-backfill-1",
+  "page_type": "*",
+  "assertions": [
+    {
+      "id": "yaml-valid",
+      "description": "Output file has valid YAML frontmatter delimited by ---",
+      "predicate": "yaml.valid",
+      "target": "frontmatter"
+    },
+    {
+      "id": "trust-present",
+      "description": "ren_trust is present",
+      "predicate": "yaml.present",
+      "field": "ren_trust"
+    },
+    {
+      "id": "trust-valid",
+      "description": "ren_trust is one of the allowed trust classes",
+      "predicate": "yaml.in",
+      "field": "ren_trust",
+      "values": ["user", "model", "foreign"]
+    },
+    {
+      "id": "no-body-content-loss",
+      "description": "Body is byte-identical to snapshot — this migration only inserts one frontmatter line",
+      "predicate": "snapshot.body-identical"
+    }
+  ]
+}

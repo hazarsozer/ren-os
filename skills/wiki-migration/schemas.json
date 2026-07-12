@@ -13,5 +13,9 @@
       "current": 3,
       "migrations": ["routine-spec-1-to-2", "routine-spec-2-to-3"]
     }
+  },
+  "global_migrations": {
+    "$comment": "Migrations that apply across ALL page types (no schema_version chain) — not driven by migration_chain(), which is page-type-keyed. Listed here for discoverability only; each is run directly as documented in its own README.",
+    "migrations": ["trust-backfill-1"]
   }
 }
