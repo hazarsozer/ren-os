@@ -1,5 +1,38 @@
 # Changelog
 
+## [0.5.3] — 2026-07-12 — "the learning brain"
+
+Judged semantics, trust-aware memory, and now a metabolism: the wiki
+archives, decays, and consolidates — and never deletes.
+
+- **Archive tier** — pages move to `archive/<rel>` through the single write
+  door, journaled and revertible. The archive copy itself is the durable
+  recovery path: restoring a page does not depend on snapshot retention,
+  and archiving preserves the page's trust class (a foreign page stays
+  foreign — archive never launders trust). Archived pages are held out of
+  wake-up context and recall by default (`include_archived=True` to see them).
+- **90-day decay at wrap** — data-plane pages with no write AND no recall
+  in 90 days (and no salience boost) archive automatically, capped at 5 per
+  wrap, oldest first, surfaced on the wrap screen and one revert away.
+  If the recall log can't be read, decay skips entirely — under-decaying
+  is the failure mode, never over-archiving.
+- **Consolidation** — pairs the judge confirms as duplicates at ≥0.85
+  confidence auto-merge: the older page archives with
+  `reason="consolidated"`, the newer one gains a traceable
+  "Merged from [[older-page]]" line. Concurrent edits abort the merge
+  safely (nothing clobbered), and a partial merge is surfaced on the wrap
+  screen, never silent.
+- **Doctor knows the lifecycle** — `check_archive_integrity` flags orphaned
+  archive pages; fresh installs now come up doctor-clean (install's founding
+  writes no longer false-positive the apply-integrity check).
+- **Sandbox-safe installs** — RenOS now honors `CLAUDE_CONFIG_DIR`
+  (precedence: `REN_CLAUDE_DIR` > `CLAUDE_CONFIG_DIR` > `~/.claude`), so
+  multi-profile and CI setups no longer risk writes into the real global
+  CLAUDE.md.
+- Gate-0 live proof passed 7/7 legs on a fresh install (onboarding, labeled
+  recall, hostile-ingest quarantine, live judge catch, consolidation +
+  revert, archive + revert, suggestions + doctor).
+
 ## [0.5.2] — 2026-07-12 — "real semantics"
 
 The brain now understands paraphrase and contradiction: an LLM judge reads
