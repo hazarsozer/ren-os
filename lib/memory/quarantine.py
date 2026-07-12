@@ -34,9 +34,25 @@ _FRONTMATTER_RE = re.compile(r"\A---\n(.*?)\n---\n?", re.DOTALL)
 _INSTRUCTION_SHAPED_PATTERNS = [
     re.compile(r"ignore\s+(all|any)?\s*(previous|prior)\s+instructions", re.IGNORECASE),
     re.compile(r"disregard\s+(the\s+)?(system\s+prompt|previous|prior)\b", re.IGNORECASE),
-    re.compile(r"\byou\s+(must|should)\s+(now\s+|always\s+)?(comply|do|obey|follow|reveal|ignore)\b", re.IGNORECASE),
-    re.compile(r"\bsystem\s+prompt\b", re.IGNORECASE),
-    re.compile(r"do\s+not\s+(tell|inform)\s+the\s+user\b", re.IGNORECASE),
+    # Only assistant-override-shaped continuations count — "follow the style
+    # guide"/"obey the speed limit" are ordinary instructional prose, not an
+    # attempt to redirect the assistant.
+    re.compile(
+        r"\byou\s+(must|should)\s+(now\s+|always\s+)?"
+        r"(comply(\s+with)?|ignore|disregard|reveal|pretend\s+to\s+be|act\s+as|do\s+(exactly\s+)?what\s+i\s+say)\b",
+        re.IGNORECASE,
+    ),
+    # Bare "system prompt" is a routine topic mention in AI-adjacent docs;
+    # only flag it alongside an override/exfiltration verb nearby.
+    re.compile(r"\b(ignore|disregard|reveal|override|expose|your)\b(?:\s+\S+){0,3}\s+system\s+prompt", re.IGNORECASE),
+    # Concealment tied to the injection itself ("about this[change]", "about
+    # these instructions") or bare with no object — not ordinary UI-copy
+    # discussion of a specific named topic ("about internal debug flags").
+    re.compile(
+        r"do\s+not\s+(tell|inform)\s+the\s+user\s+about\s+(this\b|these\s+instructions\b|this\s+prompt\b)"
+        r"|do\s+not\s+(tell|inform)\s+the\s+user\b(?!\s+about)",
+        re.IGNORECASE,
+    ),
     re.compile(r"<\s*/?\s*system\b", re.IGNORECASE),
 ]
 

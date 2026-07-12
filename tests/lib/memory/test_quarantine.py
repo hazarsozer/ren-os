@@ -112,6 +112,11 @@ BENIGN_STRINGS = [
     "The README says you must run make first.",
     "This module reads config from disk.",
     "We decided to use Postgres for the database.",
+    "You must always follow the style guide when contributing.",
+    "You should always follow the coding conventions in this repo.",
+    "The system prompt for our chatbot service is documented here.",
+    "You must obey the speed limit while testing the robot.",
+    "Do not tell the user about internal debug flags in the UI copy.",
 ]
 
 

@@ -115,11 +115,16 @@ def ingest(
     immediately through the data-plane door (non-global page, v2.2 pivot).
 
     Returns `{"qid": <queue id>, "write_id": <write id or None if held>,
-    "artifact": <first-session artifact text>}`. The artifact text is
-    `FIRST_SESSION_LEAD` + a blank line + the assembled map body + a closing
-    line telling the friend it's already saved and one-step revertible (or,
-    on the rare held case — a detected contradiction — that it's waiting for
-    review instead).
+    "artifact": <first-session artifact text>, "instruction_shaped": <list of
+    matched snippets>}`. The artifact text is `FIRST_SESSION_LEAD` + a blank
+    line + the assembled map body + a closing line telling the friend it's
+    already saved and one-step revertible (or, on the rare held case — a
+    detected contradiction — that it's waiting for review instead).
+    `instruction_shaped` is the flat list of prompt-injection-shaped snippets
+    `lib.memory.quarantine.detect_instruction_shaped` found across `knowledge`
+    (empty if none); when non-empty, a matching provenance note ("N
+    instruction-shaped fragment(s) detected at scan") is appended to `content`
+    (and so to both the written page and `artifact`) before queuing.
     """
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     content = assemble_l2(project_slug, knowledge, pointers, f"{today}: ingested from existing repository")
