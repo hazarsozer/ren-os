@@ -21,7 +21,7 @@ import pytest
 from lib import ren_paths
 from lib.instrument import collect
 from lib.memory import journal, lifecycle, locks, queue, quarantine, write_apply
-from lib.memory.provenance import new_provenance
+from lib.memory.provenance import Provenance, new_provenance
 from lib.memory.queue import Proposal
 
 NOW = datetime(2026, 7, 12, tzinfo=timezone.utc)
@@ -236,3 +236,161 @@ def test_run_decay_skips_page_on_lost_update_and_continues(wiki_root, monkeypatc
     assert len(moves) == 1
     assert moves[0]["archive_page"] == "archive/b.md"
     assert (wiki_root / "a.md").exists()  # untouched — skipped, not aborted
+
+
+# ---------------------------------------------------------- consolidate_duplicates
+
+
+def _add_with_ts(page, content, ts, session="s1", writer="human", trust="user"):
+    """Write `page` stamped with an explicit `ren_ts` (bypasses the real
+    clock so tests can control which of a pair is 'older')."""
+    from ulid import ULID
+
+    prov = Provenance(
+        write_id=f"w-{ULID()}",
+        ts=ts,
+        writer=writer,
+        session=session,
+        op="ADD",
+        page=page,
+        supersedes=None,
+        trust=trust,
+    )
+    write_apply.apply_write(page, content, prov)
+    return prov
+
+
+def test_consolidate_merges_high_confidence_duplicate(wiki_root):
+    _add_with_ts("a.md", "content a\n", "2026-01-01T00:00:00Z")
+    _add_with_ts("b.md", "content b\n", "2026-02-01T00:00:00Z")
+
+    findings = [
+        {"page": "a.md", "with": "b.md", "verdict": "duplicate", "confidence": 0.9, "reason": "same fact"}
+    ]
+    moves = lifecycle.consolidate_duplicates(findings, "s1")
+
+    assert len(moves) == 1
+    assert not (wiki_root / "a.md").exists()
+    assert (wiki_root / "archive" / "a.md").exists()
+
+    b_content = (wiki_root / "b.md").read_text(encoding="utf-8")
+    assert "Merged from [[a.md]] (" in b_content
+
+    a_entries = journal.entries(page="a.md")
+    assert any(e.get("op") == "DELETE" for e in a_entries)
+    b_entries = journal.entries(page="b.md")
+    assert any(e.get("merged_from") == "a.md" for e in b_entries)
+
+
+def test_consolidate_older_by_ren_ts_regardless_of_finding_order(wiki_root):
+    _add_with_ts("older.md", "content older\n", "2026-01-01T00:00:00Z")
+    _add_with_ts("newer.md", "content newer\n", "2026-02-01T00:00:00Z")
+
+    # 'page' is the newer one, 'with' is the older one — the pair order must
+    # not determine which page archives.
+    findings = [
+        {"page": "newer.md", "with": "older.md", "verdict": "duplicate", "confidence": 0.9, "reason": "x"}
+    ]
+    moves = lifecycle.consolidate_duplicates(findings, "s1")
+
+    assert len(moves) == 1
+    assert not (wiki_root / "older.md").exists()
+    assert (wiki_root / "newer.md").exists()
+    assert "Merged from [[older.md]]" in (wiki_root / "newer.md").read_text(encoding="utf-8")
+
+
+def test_consolidate_sub_threshold_confidence_untouched(wiki_root):
+    _add_with_ts("a.md", "content a\n", "2026-01-01T00:00:00Z")
+    _add_with_ts("b.md", "content b\n", "2026-02-01T00:00:00Z")
+
+    findings = [
+        {"page": "a.md", "with": "b.md", "verdict": "duplicate", "confidence": 0.5, "reason": "meh"}
+    ]
+    moves = lifecycle.consolidate_duplicates(findings, "s1")
+
+    assert moves == []
+    assert (wiki_root / "a.md").exists()
+    assert (wiki_root / "archive" / "a.md").exists() is False
+
+
+def test_consolidate_global_page_untouched(wiki_root):
+    _add_with_ts("global/policy.md", "instruction content\n", "2026-01-01T00:00:00Z", writer="human")
+    _add_with_ts("b.md", "content b\n", "2026-02-01T00:00:00Z")
+
+    findings = [
+        {"page": "global/policy.md", "with": "b.md", "verdict": "duplicate", "confidence": 0.95, "reason": "x"}
+    ]
+    moves = lifecycle.consolidate_duplicates(findings, "s1")
+
+    assert moves == []
+    assert (wiki_root / "global" / "policy.md").exists()
+
+
+def test_consolidate_foreign_page_untouched(wiki_root):
+    _add_with_ts("a.md", "content a\n", "2026-01-01T00:00:00Z", writer="routine", trust="foreign")
+    _add_with_ts("b.md", "content b\n", "2026-02-01T00:00:00Z")
+
+    findings = [
+        {"page": "a.md", "with": "b.md", "verdict": "duplicate", "confidence": 0.95, "reason": "x"}
+    ]
+    moves = lifecycle.consolidate_duplicates(findings, "s1")
+
+    assert moves == []
+    assert (wiki_root / "a.md").exists()
+
+
+def test_consolidate_quarantined_page_untouched(wiki_root):
+    content = quarantine.QUARANTINE_BANNER + "auto content\n"
+    _add_with_ts("a.md", content, "2026-01-01T00:00:00Z", writer="llm-auto", trust="model")
+    _add_with_ts("b.md", "content b\n", "2026-02-01T00:00:00Z")
+
+    findings = [
+        {"page": "a.md", "with": "b.md", "verdict": "duplicate", "confidence": 0.95, "reason": "x"}
+    ]
+    moves = lifecycle.consolidate_duplicates(findings, "s1")
+
+    assert moves == []
+    assert (wiki_root / "a.md").exists()
+
+
+def test_consolidate_missing_ren_ts_is_skipped(wiki_root):
+    (wiki_root / "a.md").write_text("no frontmatter at all\n", encoding="utf-8")
+    _add_with_ts("b.md", "content b\n", "2026-02-01T00:00:00Z")
+
+    findings = [
+        {"page": "a.md", "with": "b.md", "verdict": "duplicate", "confidence": 0.95, "reason": "x"}
+    ]
+    moves = lifecycle.consolidate_duplicates(findings, "s1")
+
+    assert moves == []
+    assert (wiki_root / "a.md").exists()
+
+
+def test_consolidate_non_duplicate_verdict_untouched(wiki_root):
+    _add_with_ts("a.md", "content a\n", "2026-01-01T00:00:00Z")
+    _add_with_ts("b.md", "content b\n", "2026-02-01T00:00:00Z")
+
+    findings = [
+        {"page": "a.md", "with": "b.md", "verdict": "related", "confidence": 0.95, "reason": "x"}
+    ]
+    moves = lifecycle.consolidate_duplicates(findings, "s1")
+
+    assert moves == []
+
+
+def test_consolidate_cap_enforced(wiki_root):
+    findings = []
+    for i in range(4):
+        older = f"a{i}.md"
+        newer = f"b{i}.md"
+        _add_with_ts(older, f"content {older}\n", "2026-01-01T00:00:00Z")
+        _add_with_ts(newer, f"content {newer}\n", "2026-02-01T00:00:00Z")
+        findings.append(
+            {"page": older, "with": newer, "verdict": "duplicate", "confidence": 0.9, "reason": "x"}
+        )
+
+    moves = lifecycle.consolidate_duplicates(findings, "s1")
+
+    assert len(moves) == lifecycle.CONSOLIDATE_MAX_PER_WRAP == 3
+    archived = sum(1 for i in range(4) if not (wiki_root / f"a{i}.md").exists())
+    assert archived == 3

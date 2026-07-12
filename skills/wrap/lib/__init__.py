@@ -42,7 +42,7 @@ from lib import ren_paths
 from lib.instrument import collect
 from lib.memory import queue
 from lib.memory.judge import JUDGE_MIN_CONFIDENCE, JUDGE_PAIR_CAP, judge_pairs
-from lib.memory.lifecycle import run_decay
+from lib.memory.lifecycle import consolidate_duplicates, run_decay
 from lib.memory.queue import Proposal, propose_and_apply
 from lib.memory.scrub import SecretsFound
 from lib.memory.semantics import shortlist_pairs
@@ -182,6 +182,13 @@ def wrap_session(
         `semantic_findings` — any exception anywhere in the decay path
         degrades to `[]` rather than raising; wrap must never fail to close
         out a session because of a housekeeping sweep.
+      - "consolidated": [{"archived", "archive_page", "merged_into",
+        "write_id"}] — `lib.memory.lifecycle.consolidate_duplicates`'s moves
+        for this wrap's close-out (Task 18): up to `CONSOLIDATE_MAX_PER_WRAP`
+        judge-confirmed (`semantic_findings`, this same call) duplicate
+        pairs auto-merged on the data plane — the older page archives, the
+        newer carries a `Merged from [[...]]` provenance line. Isolated like
+        `decayed`; degrades to `[]` rather than raising.
 
     `project` (codex D4): when the wrap is scoped to a project, the L1 page
     is written to `projects/<project>/l1/session-<id>.md`, the EXACT path
@@ -275,6 +282,11 @@ def wrap_session(
     except Exception:  # noqa: BLE001 - a housekeeping sweep must never fail wrap close-out
         decayed = []
 
+    try:
+        consolidated = consolidate_duplicates(semantic_findings, session)
+    except Exception:  # noqa: BLE001 - a housekeeping sweep must never fail wrap close-out
+        consolidated = []
+
     return {
         "l1_qid": l1_entry.qid,
         "applied": applied,
@@ -284,6 +296,7 @@ def wrap_session(
         "fail_closed": fail_closed,
         "semantic_findings": semantic_findings,
         "decayed": decayed,
+        "consolidated": consolidated,
     }
 
 
@@ -468,6 +481,10 @@ def render_wrap_screen(wrap_result: dict, session: str) -> str:
     if decayed:
         n = len(decayed)
         lines.append(f"- {n} stale page{'s' if n != 1 else ''} archived — revertible")
+    consolidated = wrap_result.get("consolidated") or []
+    if consolidated:
+        n = len(consolidated)
+        lines.append(f"- {n} duplicate{'s' if n != 1 else ''} consolidated — revertible")
     lines.append("")
 
     # --- Classify this session's still-pending entries into held/suggestions ---

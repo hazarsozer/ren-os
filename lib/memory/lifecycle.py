@@ -27,10 +27,18 @@ from datetime import datetime, timedelta, timezone
 
 from lib import ren_paths
 from lib.instrument import collect
-from lib.memory import archive, journal, locks, quarantine, queue
+from lib.memory import archive, journal, locks, quarantine, queue, write_apply
+from lib.memory.provenance import new_provenance, read_frontmatter_provenance
 
 DECAY_WINDOW_DAYS = 90
 DECAY_MAX_PER_WRAP = 5
+
+# Task 18: consolidation of judge-confirmed duplicates. Stricter than the
+# wrap-screen report threshold (JUDGE_MIN_CONFIDENCE in lib.memory.judge) —
+# merging two pages is a bigger, harder-to-undo-cleanly act than merely
+# surfacing a possible duplicate for a human to read.
+CONSOLIDATE_MAX_PER_WRAP = 3
+CONSOLIDATE_MIN_CONFIDENCE = 0.85
 
 # Mirrors hooks/wake-up/wakeup.SALIENCE_WINDOW_DAYS — see module docstring
 # for why this isn't imported directly.
@@ -155,4 +163,131 @@ def run_decay(session: str) -> list[dict]:
     return moves
 
 
-__all__ = ["DECAY_WINDOW_DAYS", "DECAY_MAX_PER_WRAP", "decay_candidates", "run_decay"]
+def _ineligible_for_consolidation(rel: str, content: str) -> bool:
+    """True if `rel` (with its already-read `content`) must never be
+    touched by consolidation: `global/` (instruction plane), quarantined
+    (unreviewed llm-auto data), or `foreign` trust (ingested from outside
+    the session — never mechanically merged)."""
+    if rel == "global" or rel.startswith("global/"):
+        return True
+    if quarantine.is_quarantined(content):
+        return True
+    prov = read_frontmatter_provenance(content)
+    if prov is not None and prov.get("trust") == "foreign":
+        return True
+    return False
+
+
+def consolidate_duplicates(findings: list[dict], session: str) -> list[dict]:
+    """Auto-merge up to `CONSOLIDATE_MAX_PER_WRAP` judge-confirmed duplicate
+    pairs from `findings` (wrap's `semantic_findings` shape — see
+    `skills.wrap.lib._judge_semantic_findings`).
+
+    For each `verdict == "duplicate"` finding at confidence >=
+    `CONSOLIDATE_MIN_CONFIDENCE` where NEITHER page is `global/`,
+    quarantined, or `foreign` trust: the older page (by frontmatter `ren_ts`)
+    archives via `archive.archive_page(reason="consolidated")`, and the
+    newer page gets an UPDATE (through `write_apply.apply_write`, same
+    single write door `archive_page` itself uses, TOCTOU-guarded with
+    `expect_token` exactly like `archive_page` threads it) appending a
+    one-line `Merged from [[<old rel>]] (<date>).` under its body, journaled
+    with `journal_extra={"merged_from": old_rel}`.
+
+    Conservative, fail-closed per pair, never raises:
+      - a page missing `ren_ts` (never written through the provenance door)
+        makes the pair un-orderable — skipped rather than guessed.
+      - already-archived pages are skipped.
+      - `locks.LostUpdate`/`OSError`/`ValueError` from either write (a
+        concurrent write racing the sweep, most plausibly) skips just that
+        pair — the rest of the batch still runs, same isolation discipline
+        as `run_decay`.
+
+    Returns the merges that actually landed:
+      `[{"archived": <old rel>, "archive_page": <archive rel>, "merged_into":
+      <new rel>, "write_id": <UPDATE write_id>}]`.
+    """
+    root = ren_paths.wiki_root()
+    moves: list[dict] = []
+
+    for finding in findings:
+        if len(moves) >= CONSOLIDATE_MAX_PER_WRAP:
+            break
+
+        if finding.get("verdict") != "duplicate":
+            continue
+        if finding.get("confidence", 0) < CONSOLIDATE_MIN_CONFIDENCE:
+            continue
+
+        page = finding.get("page")
+        other = finding.get("with")
+        if not page or not other:
+            continue
+        if archive.is_archived(page) or archive.is_archived(other):
+            continue
+
+        try:
+            page_content = ren_paths.safe_join(root, page).read_text(encoding="utf-8")
+            other_content = ren_paths.safe_join(root, other).read_text(encoding="utf-8")
+        except OSError:
+            continue
+
+        if _ineligible_for_consolidation(page, page_content) or _ineligible_for_consolidation(
+            other, other_content
+        ):
+            continue
+
+        page_prov = read_frontmatter_provenance(page_content)
+        other_prov = read_frontmatter_provenance(other_content)
+        page_ts = _parse_ts(page_prov.get("ts") if page_prov else None)
+        other_ts = _parse_ts(other_prov.get("ts") if other_prov else None)
+        if page_ts is None or other_ts is None:
+            continue
+
+        if page_ts <= other_ts:
+            older_rel, newer_rel, newer_content = page, other, other_content
+        else:
+            older_rel, newer_rel, newer_content = other, page, page_content
+
+        try:
+            archive_move = archive.archive_page(older_rel, session, reason="consolidated")
+        except (locks.LostUpdate, ValueError, OSError):
+            continue
+
+        newer_abs = ren_paths.safe_join(root, newer_rel)
+        expect_token = locks.content_token(newer_abs)
+        date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        merged_body = newer_content.rstrip("\n") + f"\nMerged from [[{older_rel}]] ({date}).\n"
+
+        prov = new_provenance("routine", session, "UPDATE", newer_rel)
+        try:
+            write_apply.apply_write(
+                newer_rel,
+                merged_body,
+                prov,
+                expect_token=expect_token,
+                journal_extra={"merged_from": older_rel},
+            )
+        except (locks.LostUpdate, OSError):
+            continue
+
+        moves.append(
+            {
+                "archived": older_rel,
+                "archive_page": archive_move["archive_page"],
+                "merged_into": newer_rel,
+                "write_id": prov.write_id,
+            }
+        )
+
+    return moves
+
+
+__all__ = [
+    "DECAY_WINDOW_DAYS",
+    "DECAY_MAX_PER_WRAP",
+    "CONSOLIDATE_MAX_PER_WRAP",
+    "CONSOLIDATE_MIN_CONFIDENCE",
+    "decay_candidates",
+    "run_decay",
+    "consolidate_duplicates",
+]
