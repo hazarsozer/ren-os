@@ -42,6 +42,7 @@ from lib import ren_paths
 from lib.instrument import collect
 from lib.memory import queue
 from lib.memory.judge import JUDGE_MIN_CONFIDENCE, JUDGE_PAIR_CAP, judge_pairs
+from lib.memory.lifecycle import run_decay
 from lib.memory.queue import Proposal, propose_and_apply
 from lib.memory.scrub import SecretsFound
 from lib.memory.semantics import shortlist_pairs
@@ -174,6 +175,13 @@ def wrap_session(
         writes or applies anything; that's 0.5.3's consolidation. `[]` when
         nothing was applied this session, `llm_call` is `None`, or judging
         fails for any reason (fail-closed, never raises)
+      - "decayed": [{"archive_page", "add_write_id", "delete_write_id"}] —
+        `lib.memory.lifecycle.run_decay`'s moves for this wrap's close-out
+        (Task 17): up to `DECAY_MAX_PER_WRAP` stale, unrecalled, non-salient
+        data-plane pages archived (never deleted, revertible). Isolated like
+        `semantic_findings` — any exception anywhere in the decay path
+        degrades to `[]` rather than raising; wrap must never fail to close
+        out a session because of a housekeeping sweep.
 
     `project` (codex D4): when the wrap is scoped to a project, the L1 page
     is written to `projects/<project>/l1/session-<id>.md`, the EXACT path
@@ -262,6 +270,11 @@ def wrap_session(
         [a["page"] for a in applied], llm_call
     )
 
+    try:
+        decayed = run_decay(session)
+    except Exception:  # noqa: BLE001 - a housekeeping sweep must never fail wrap close-out
+        decayed = []
+
     return {
         "l1_qid": l1_entry.qid,
         "applied": applied,
@@ -270,6 +283,7 @@ def wrap_session(
         "refused": refused,
         "fail_closed": fail_closed,
         "semantic_findings": semantic_findings,
+        "decayed": decayed,
     }
 
 
@@ -450,6 +464,10 @@ def render_wrap_screen(wrap_result: dict, session: str) -> str:
             lines.append(f'- {page} (write_id={write_id}) — say "undo {write_id}" to revert')
     else:
         lines.append("- (none this session)")
+    decayed = wrap_result.get("decayed") or []
+    if decayed:
+        n = len(decayed)
+        lines.append(f"- {n} stale page{'s' if n != 1 else ''} archived — revertible")
     lines.append("")
 
     # --- Classify this session's still-pending entries into held/suggestions ---

@@ -828,3 +828,74 @@ class TestPendingList:
         from skills.wrap import lib
 
         assert "No pending suggestions." in lib.render_pending_list()
+
+
+# --------------------------------------------------- decay at wrap (Task 17)
+
+
+def _backdate_journal(page, ts):
+    """Rewrite the most recent journal entry for `page` to carry `ts`
+    (mirrors `tests/lib/memory/test_lifecycle.py`'s helper)."""
+    from lib.memory import journal
+
+    path = state_dir() / journal.JOURNAL_FILENAME
+    lines = path.read_text(encoding="utf-8").splitlines()
+    for i in range(len(lines) - 1, -1, -1):
+        entry = json.loads(lines[i])
+        if entry.get("page") == page:
+            entry["ts"] = ts
+            lines[i] = json.dumps(entry)
+            break
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+class TestDecayAtWrap:
+    def test_stale_page_is_archived_and_surfaces_in_result_and_screen(self, wiki):
+        from lib.memory import write_apply
+        from lib.memory.provenance import new_provenance
+
+        prov = new_provenance("human", "s0", "ADD", "notes.md")
+        write_apply.apply_write("notes.md", "old stale content\n", prov)
+        _backdate_journal("notes.md", "2026-01-01T00:00:00Z")
+
+        result = wrap_session(
+            narrative_md="# Summary\n",
+            durable_items=[],
+            session="sess-decay-1",
+        )
+
+        assert len(result["decayed"]) == 1
+        assert result["decayed"][0]["archive_page"] == "archive/notes.md"
+        assert not (wiki / "notes.md").exists()
+        assert (wiki / "archive" / "notes.md").exists()
+
+        screen = render_wrap_screen(result, "sess-decay-1")
+        assert "1 stale page archived — revertible" in screen
+
+    def test_no_stale_pages_means_no_decay_line(self, wiki):
+        result = wrap_session(
+            narrative_md="# Summary\n",
+            durable_items=[],
+            session="sess-decay-2",
+        )
+
+        assert result["decayed"] == []
+        screen = render_wrap_screen(result, "sess-decay-2")
+        assert "archived — revertible" not in screen
+
+    def test_decay_exception_is_isolated_and_wrap_still_completes(self, wiki, monkeypatch):
+        from skills.wrap import lib as wrap_lib
+
+        def crashing_run_decay(session):
+            raise RuntimeError("decay backend down")
+
+        monkeypatch.setattr(wrap_lib, "run_decay", crashing_run_decay)
+
+        result = wrap_session(
+            narrative_md="# Summary\n",
+            durable_items=[],
+            session="sess-decay-3",
+        )
+
+        assert result["decayed"] == []
+        assert result["l1_qid"]  # wrap otherwise completed normally
