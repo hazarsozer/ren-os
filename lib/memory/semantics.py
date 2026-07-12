@@ -20,9 +20,21 @@ auto-applied data-plane writes — its misses land in the wiki and stay there
 until an auditor finds them. That is why `skills.wiki-health`'s periodic sweep
 (duplicate/drift/contradiction scans built on this module's pairwise helpers)
 exists: write-time screening is best-effort, read-time auditing is the
-backstop. Real semantic detection (embeddings or similar) is 0.4/0.5 ladder
-work — do not extend this module with a fuzzy-matching dependency to "improve"
-recall here.
+backstop.
+
+As of 0.5.2, these heuristics are no longer the end of the line for the
+misses above: `shortlist_pairs` turns them into a SHORTLIST STAGE for an LLM
+judge (`lib.memory.judge`, 0.5.0) rather than the final word. Pairs the
+heuristics flag outright pass through with their reason; pairs they miss but
+that still share high significant-token overlap ("near-similar") are handed
+to the judge too, since that overlap band is exactly where paraphrased
+duplicates and reworded contradictions hide. Pairs below the overlap
+threshold are still never examined — the shortlist is deterministic and
+capped, not an all-pairs judge sweep. This module still does NOT depend on
+any fuzzy-matching/embeddings library to compute that overlap — it is a
+plain significant-token Jaccard score, same cheap-and-explainable spirit as
+the three heuristics above. Do not extend this module with a fuzzy-matching
+dependency to "improve" recall here; that's the judge's job now.
 """
 
 from __future__ import annotations
@@ -33,6 +45,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+from . import quarantine
 from .provenance import read_frontmatter_provenance
 
 ConflictKind = Literal["supersedes", "contradicts", "duplicate"]
@@ -318,11 +331,117 @@ def detect(op: str, page: str, content: str | None, wiki_root: Path) -> list[Con
     return conflicts
 
 
+# Task 11 (0.5.2): shortlist stage feeding the LLM judge. `SHORTLIST_CAP` caps
+# the judge's per-run workload; `_NEAR_SIMILAR_JACCARD` is the significant-token
+# overlap floor below which two pages aren't worth the judge's attention.
+SHORTLIST_CAP = 20
+_NEAR_SIMILAR_JACCARD = 0.5
+
+ShortlistReason = Literal[
+    "heuristic-contradiction", "heuristic-duplicate", "numeric-drift", "near-similar"
+]
+
+
+def _shortlist_candidate_pages(wiki_root: Path) -> list[tuple[str, str]]:
+    """(rel_path, text) for every page eligible for shortlist scanning.
+
+    Mirrors `skills.wiki-health`'s `_knowledge_pages` candidate discipline:
+    skip the `.ren/` metrics tree, quarantined pages, and (0.5.1 trust
+    taxonomy) `ren_trust: foreign` pages — ingested content a human hasn't
+    reviewed must stay invisible to automatic pairwise scans, the judge
+    included."""
+    pages: list[tuple[str, str]] = []
+    for md_path in sorted(wiki_root.rglob("*.md")):
+        rel_path = md_path.relative_to(wiki_root)
+        if ".ren" in rel_path.parts:
+            continue
+        text = md_path.read_text(encoding="utf-8", errors="replace")
+        if quarantine.is_quarantined(text):
+            continue
+        prov = read_frontmatter_provenance(text)
+        if prov is not None and prov.get("trust") == "foreign":
+            continue
+        pages.append((str(rel_path), text))
+    return pages
+
+
+def _heuristic_reason(text_a: str, text_b: str) -> ShortlistReason | None:
+    """First heuristic that fires for this pair, checked in a fixed priority
+    order (contradiction, duplicate, numeric-drift) so a pair matching more
+    than one heuristic still gets exactly one reason, deterministically."""
+    if contradiction_evidence(text_a, text_b) is not None:
+        return "heuristic-contradiction"
+    if duplicate_evidence(text_a, text_b) is not None:
+        return "heuristic-duplicate"
+    if numeric_drift_evidence(text_a, text_b) is not None:
+        return "numeric-drift"
+    return None
+
+
+def _jaccard(text_a: str, text_b: str) -> float:
+    toks_a = _significant_tokens(_strip_frontmatter(text_a))
+    toks_b = _significant_tokens(_strip_frontmatter(text_b))
+    union = toks_a | toks_b
+    if not union:
+        return 0.0
+    return len(toks_a & toks_b) / len(union)
+
+
+def shortlist_pairs(
+    wiki_root: Path, *, focus_pages: list[str] | None = None, cap: int = SHORTLIST_CAP
+) -> list[dict]:
+    """Deterministic candidate-pair generator for the LLM judge (Task 11,
+    0.5.2). Runs the three cheap heuristics plus a near-similar (significant-
+    token Jaccard >= `_NEAR_SIMILAR_JACCARD`) screen over every page pair from
+    `_shortlist_candidate_pages`, and returns up to `cap` `{"page", "with",
+    "reason"}` dicts — heuristic-flagged pairs first (in candidate order),
+    then near-similar pairs by descending Jaccard (ties broken by path sort).
+
+    `focus_pages`, when given, restricts consideration to pairs where at
+    least one side is in that list (the write queue passes the session's new
+    write targets; `skills.wiki-health`'s sweep passes `None` for a full scan).
+    """
+    wiki_root = Path(wiki_root)
+    pages = _shortlist_candidate_pages(wiki_root)
+    focus_set = set(focus_pages) if focus_pages is not None else None
+
+    heuristic_pairs: list[dict] = []
+    near_similar_candidates: list[tuple[float, str, str]] = []
+
+    n = len(pages)
+    for i in range(n):
+        rel_a, text_a = pages[i]
+        for j in range(i + 1, n):
+            rel_b, text_b = pages[j]
+            if focus_set is not None and rel_a not in focus_set and rel_b not in focus_set:
+                continue
+
+            reason = _heuristic_reason(text_a, text_b)
+            if reason is not None:
+                heuristic_pairs.append({"page": rel_a, "with": rel_b, "reason": reason})
+                continue
+
+            jaccard = _jaccard(text_a, text_b)
+            if jaccard >= _NEAR_SIMILAR_JACCARD:
+                near_similar_candidates.append((jaccard, rel_a, rel_b))
+
+    near_similar_candidates.sort(key=lambda t: (-t[0], t[1], t[2]))
+    near_similar_pairs = [
+        {"page": rel_a, "with": rel_b, "reason": "near-similar"}
+        for _, rel_a, rel_b in near_similar_candidates
+    ]
+
+    return (heuristic_pairs + near_similar_pairs)[:cap]
+
+
 __all__ = [
     "Conflict",
     "ConflictKind",
+    "ShortlistReason",
+    "SHORTLIST_CAP",
     "detect",
     "contradiction_evidence",
     "duplicate_evidence",
     "numeric_drift_evidence",
+    "shortlist_pairs",
 ]

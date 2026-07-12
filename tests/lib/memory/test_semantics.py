@@ -13,12 +13,15 @@ from pathlib import Path
 import pytest
 
 from lib.memory.provenance import new_provenance, stamp_frontmatter
+from lib.memory.quarantine import mark as quarantine_mark
 from lib.memory.semantics import (
+    SHORTLIST_CAP,
     Conflict,
     contradiction_evidence,
     detect,
     duplicate_evidence,
     numeric_drift_evidence,
+    shortlist_pairs,
 )
 
 
@@ -342,6 +345,134 @@ def test_near_empty_templated_pages_are_not_duplicates():
     a = "---\ntype: note\n---\n# Untitled\n- created from template\n"
     b = "---\ntype: note\n---\n# Untitled\n- created from template\n"
     assert duplicate_evidence(a, b) is None
+
+
+# --- shortlist_pairs: candidate-pair generator for the LLM judge (Task 11) --
+
+
+def test_paraphrased_pair_with_no_shared_lines_is_near_similar(tmp_path):
+    # No shared lines at all (different wording/order), but high
+    # significant-token overlap: exactly the class the heuristics miss and
+    # the judge exists to catch.
+    _write(
+        tmp_path,
+        "notes/a.md",
+        "Redis caches user sessions for fast lookup.\n",
+    )
+    _write(
+        tmp_path,
+        "notes/b.md",
+        "Fast lookup of user sessions is cached using Redis.\n",
+    )
+
+    pairs = shortlist_pairs(tmp_path)
+
+    assert {"page": "notes/a.md", "with": "notes/b.md", "reason": "near-similar"} in pairs
+
+
+def test_heuristic_contradiction_pair_appears_with_its_reason(tmp_path):
+    _write(tmp_path, "notes/a.md", "We use Postgres for storage backend now.\n")
+    _write(tmp_path, "notes/b.md", "We do not use Postgres for storage backend now.\n")
+
+    pairs = shortlist_pairs(tmp_path)
+
+    assert {"page": "notes/a.md", "with": "notes/b.md", "reason": "heuristic-contradiction"} in pairs
+
+
+def test_unrelated_pages_are_absent(tmp_path):
+    _write(tmp_path, "notes/a.md", "Redis caches user sessions for fast lookup.\n")
+    _write(tmp_path, "notes/b.md", "Fast lookup of user sessions is cached using Redis.\n")
+    _write(tmp_path, "notes/c.md", "The espresso machine needs quarterly descaling maintenance.\n")
+
+    pairs = shortlist_pairs(tmp_path)
+
+    involving_c = [p for p in pairs if p["page"] == "notes/c.md" or p["with"] == "notes/c.md"]
+    assert involving_c == []
+
+
+def test_dot_ren_and_quarantined_and_foreign_pages_are_excluded(tmp_path):
+    _write(tmp_path, "notes/a.md", "We use Postgres for storage backend now.\n")
+    _write(
+        tmp_path,
+        ".ren/metrics/a.md",
+        "We do not use Postgres for storage backend now.\n",
+    )
+    quarantined = quarantine_mark("We do not use Postgres for storage backend now.\n")
+    _write(tmp_path, "notes/quarantined.md", quarantined)
+
+    foreign_prov = new_provenance("llm-auto", "sess-1", "ADD", "notes/foreign.md", trust="foreign")
+    foreign = stamp_frontmatter("We do not use Postgres for storage backend now.\n", foreign_prov)
+    _write(tmp_path, "notes/foreign.md", foreign)
+
+    pairs = shortlist_pairs(tmp_path)
+
+    involved_pages = {p["page"] for p in pairs} | {p["with"] for p in pairs}
+    assert ".ren/metrics/a.md" not in involved_pages
+    assert "notes/quarantined.md" not in involved_pages
+    assert "notes/foreign.md" not in involved_pages
+
+
+def test_cap_respects_heuristic_first_then_near_similar_by_descending_jaccard(tmp_path):
+    # Two heuristic-contradiction pairs (should sort ahead of near-similar,
+    # in candidate order) plus several near-similar pairs of decreasing
+    # token overlap with a fixed anchor page.
+    _write(tmp_path, "h1/a.md", "We use Postgres for storage backend now.\n")
+    _write(tmp_path, "h1/b.md", "We do not use Postgres for storage backend now.\n")
+    _write(tmp_path, "h2/a.md", "The team deploys nightly builds automatically.\n")
+    _write(tmp_path, "h2/b.md", "The team does not deploy nightly builds automatically.\n")
+
+    _write(
+        tmp_path,
+        "anchor.md",
+        "alpha bravo charlie delta echo foxtrot golf hotel india juliet.\n",
+    )
+    # Decreasing overlap with anchor: near1 shares the most tokens, near3 the
+    # fewest (still >= 0.5 jaccard).
+    _write(
+        tmp_path,
+        "near1.md",
+        "alpha bravo charlie delta echo foxtrot golf hotel india kilo.\n",
+    )
+    _write(
+        tmp_path,
+        "near2.md",
+        "alpha bravo charlie delta echo foxtrot golf kilo lima mike.\n",
+    )
+    _write(
+        tmp_path,
+        "near3.md",
+        "alpha bravo charlie delta echo foxtrot kilo lima.\n",
+    )
+
+    pairs = shortlist_pairs(tmp_path, cap=SHORTLIST_CAP)
+
+    reasons = [p["reason"] for p in pairs]
+    heuristic_count = sum(1 for r in reasons if r != "near-similar")
+    assert heuristic_count == 2
+    assert reasons[:2] == ["heuristic-contradiction", "heuristic-contradiction"]
+
+    near_similar = [p for p in pairs if p["reason"] == "near-similar" and "anchor.md" in (p["page"], p["with"])]
+    near_similar_others = [p["with"] if p["page"] == "anchor.md" else p["page"] for p in near_similar]
+    assert near_similar_others == ["near1.md", "near2.md", "near3.md"]
+
+    # Cap respected even when raised low.
+    capped = shortlist_pairs(tmp_path, cap=3)
+    assert len(capped) == 3
+    assert [p["reason"] for p in capped] == ["heuristic-contradiction", "heuristic-contradiction", "near-similar"]
+
+
+def test_focus_pages_restricts_one_side_of_every_pair(tmp_path):
+    _write(tmp_path, "notes/a.md", "Redis caches user sessions for fast lookup.\n")
+    _write(tmp_path, "notes/b.md", "Fast lookup of user sessions is cached using Redis.\n")
+    _write(tmp_path, "notes/c.md", "Redis stores session data efficiently for lookups.\n")
+
+    pairs = shortlist_pairs(tmp_path, focus_pages=["notes/c.md"])
+
+    for p in pairs:
+        assert "notes/c.md" in (p["page"], p["with"])
+
+    unrestricted = shortlist_pairs(tmp_path)
+    assert len(unrestricted) >= len(pairs)
 
 
 def test_real_duplicates_still_flag():
