@@ -26,8 +26,8 @@ from __future__ import annotations
 import re
 
 from lib import ren_paths
-from lib.memory import write_apply
-from lib.memory.provenance import new_provenance
+from lib.memory import locks, write_apply
+from lib.memory.provenance import new_provenance, read_frontmatter_provenance
 
 ARCHIVE_PREFIX = "archive/"
 GLOBAL_PREFIX = "global/"
@@ -83,16 +83,24 @@ def archive_page(rel: str, session: str, *, reason: str) -> dict:
 
     page_abs = ren_paths.safe_join(ren_paths.wiki_root(), rel)
     original_content = page_abs.read_text(encoding="utf-8")
+    expect_token = locks.content_token(page_abs)
+
+    original_prov = read_frontmatter_provenance(original_content)
+    original_trust = original_prov.get("trust") if original_prov else None
 
     archive_rel = ARCHIVE_PREFIX + rel
     archived_content = _upsert_archive_frontmatter(original_content, rel, reason)
 
-    add_prov = new_provenance("routine", session, "ADD", archive_rel)
+    add_prov = new_provenance("routine", session, "ADD", archive_rel, trust=original_trust)
     write_apply.apply_write(archive_rel, archived_content, add_prov)
 
     delete_prov = new_provenance("routine", session, "DELETE", rel)
     write_apply.apply_write(
-        rel, None, delete_prov, journal_extra={"archived_to": archive_rel}
+        rel,
+        None,
+        delete_prov,
+        expect_token=expect_token,
+        journal_extra={"archived_to": archive_rel},
     )
 
     return {

@@ -18,7 +18,7 @@ import shutil
 import pytest
 
 from lib import ren_paths
-from lib.memory import archive, journal, revert, snapshot, write_apply
+from lib.memory import archive, journal, locks, revert, snapshot, write_apply
 from lib.memory.provenance import new_provenance
 
 
@@ -125,6 +125,47 @@ def test_archive_page_refuses_already_archived_page(wiki_root):
         archive.archive_page("archive/notes.md", "s1", reason="stale")
 
 
+# ------------------------------------------------------------- trust preserved
+
+
+def test_archive_page_preserves_foreign_trust(wiki_root):
+    prov = new_provenance("llm-auto", "s1", "ADD", "foreign.md", trust="foreign")
+    write_apply.apply_write("foreign.md", "QUARANTINE\n\nBody.\n", prov)
+
+    archive.archive_page("foreign.md", "s1", reason="stale")
+
+    archived = (wiki_root / "archive" / "foreign.md").read_text(encoding="utf-8")
+    assert 'ren_trust: "foreign"' in archived
+
+
+def test_archive_page_preserves_user_trust(wiki_root):
+    _add("notes.md", "Body.\n")  # _add uses writer="human" -> trust "user"
+
+    archive.archive_page("notes.md", "s1", reason="stale")
+
+    archived = (wiki_root / "archive" / "notes.md").read_text(encoding="utf-8")
+    assert 'ren_trust: "user"' in archived
+
+
+def test_archived_foreign_page_still_escaped_on_recall_fetch(wiki_root, monkeypatch):
+    from skills.recall.lib import fetch
+
+    prov = new_provenance("llm-auto", "s1", "ADD", "foreign.md", trust="foreign")
+    write_apply.apply_write("foreign.md", "Body about widgets.\n", prov)
+
+    archive.archive_page("foreign.md", "s1", reason="stale")
+
+    results = fetch(
+        "widgets",
+        "s1",
+        k=5,
+        include_archived=True,
+        include_quarantined=True,
+    )
+    hit = next(r for r in results if r["page"] == "archive/foreign.md")
+    assert hit["content"] != "Body about widgets.\n"  # escaped, not literal
+
+
 # ---------------------------------------------------------------------- revert
 
 
@@ -139,6 +180,37 @@ def test_revert_of_both_archive_writes_restores_original(wiki_root):
 
     assert (wiki_root / "notes.md").read_bytes() == prior_bytes
     assert not (wiki_root / "archive" / "notes.md").exists()
+
+
+def test_archive_page_raises_on_concurrent_update_between_read_and_delete(wiki_root):
+    """rev-t16 finding #2: a concurrent UPDATE landing between archive_page's
+    initial content read and its DELETE call must not be silently discarded.
+    `archive_page` now threads an `expect_token` captured at read-time through
+    to the DELETE `apply_write` call, so a page that changed underneath it
+    raises `LostUpdate` instead of racing."""
+    _add("notes.md", "v1 content\n")
+
+    real_apply_write = write_apply.apply_write
+    calls = {"n": 0}
+
+    def racy_apply_write(*args, **kwargs):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            # Fire a concurrent UPDATE right after the ADD call (first call),
+            # before archive_page's own DELETE call (second call) runs.
+            concurrent_prov = new_provenance("human", "s2", "UPDATE", "notes.md")
+            real_apply_write("notes.md", "v2 CONCURRENT UPDATE\n", concurrent_prov)
+        return real_apply_write(*args, **kwargs)
+
+    write_apply.apply_write = racy_apply_write
+    try:
+        with pytest.raises(locks.LostUpdate):
+            archive.archive_page("notes.md", "s1", reason="stale")
+    finally:
+        write_apply.apply_write = real_apply_write
+
+    # Nothing lost: the original page is still live with the concurrent update.
+    assert (wiki_root / "notes.md").read_text(encoding="utf-8").endswith("v2 CONCURRENT UPDATE\n")
 
 
 def test_restore_from_archive_copy_does_not_depend_on_delete_snapshot(wiki_root):
