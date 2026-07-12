@@ -202,9 +202,13 @@ def consolidate_duplicates(findings: list[dict], session: str) -> list[dict]:
         pair — the rest of the batch still runs, same isolation discipline
         as `run_decay`.
 
-    Returns the merges that actually landed:
-      `[{"archived": <old rel>, "archive_page": <archive rel>, "merged_into":
-      <new rel>, "write_id": <UPDATE write_id>}]`.
+    Returns the merges that actually landed, plus any partial failures
+    (older page archived, newer-page UPDATE then raised) surfaced distinctly
+    rather than dropped:
+      `[{"status": "merged", "archived": <old rel>, "archive_page":
+      <archive rel>, "merged_into": <new rel>, "write_id": <UPDATE write_id>}
+      | {"status": "partial", "archived": <old rel>, "archive_page":
+      <archive rel>, "update_failed": <new rel>, "error": <str>}]`.
     """
     root = ren_paths.wiki_root()
     moves: list[dict] = []
@@ -225,9 +229,18 @@ def consolidate_duplicates(findings: list[dict], session: str) -> list[dict]:
         if archive.is_archived(page) or archive.is_archived(other):
             continue
 
+        page_abs = ren_paths.safe_join(root, page)
+        other_abs = ren_paths.safe_join(root, other)
         try:
-            page_content = ren_paths.safe_join(root, page).read_text(encoding="utf-8")
-            other_content = ren_paths.safe_join(root, other).read_text(encoding="utf-8")
+            # Read content and capture its content_token in the same breath,
+            # mirroring archive.archive_page's own read+token pairing — the
+            # token must reflect exactly the state the write is built from,
+            # not a fresh read taken after the archive_page round-trip below
+            # (see task-18-review.md CRITICAL finding).
+            page_content = page_abs.read_text(encoding="utf-8")
+            page_token = locks.content_token(page_abs)
+            other_content = other_abs.read_text(encoding="utf-8")
+            other_token = locks.content_token(other_abs)
         except OSError:
             continue
 
@@ -244,17 +257,15 @@ def consolidate_duplicates(findings: list[dict], session: str) -> list[dict]:
             continue
 
         if page_ts <= other_ts:
-            older_rel, newer_rel, newer_content = page, other, other_content
+            older_rel, newer_rel, newer_content, expect_token = page, other, other_content, other_token
         else:
-            older_rel, newer_rel, newer_content = other, page, page_content
+            older_rel, newer_rel, newer_content, expect_token = other, page, page_content, page_token
 
         try:
             archive_move = archive.archive_page(older_rel, session, reason="consolidated")
         except (locks.LostUpdate, ValueError, OSError):
             continue
 
-        newer_abs = ren_paths.safe_join(root, newer_rel)
-        expect_token = locks.content_token(newer_abs)
         date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         merged_body = newer_content.rstrip("\n") + f"\nMerged from [[{older_rel}]] ({date}).\n"
 
@@ -267,11 +278,27 @@ def consolidate_duplicates(findings: list[dict], session: str) -> list[dict]:
                 expect_token=expect_token,
                 journal_extra={"merged_from": older_rel},
             )
-        except (locks.LostUpdate, OSError):
+        except (locks.LostUpdate, OSError) as exc:
+            # The older page is already archived (irreversible without a
+            # manual undo) but the newer-page UPDATE failed — a half-done
+            # merge. Surface it distinctly rather than silently dropping the
+            # pair (see task-18-review.md Important finding); "status" is
+            # new so callers checking "merged_into"/"write_id" on normal
+            # entries are unaffected.
+            moves.append(
+                {
+                    "status": "partial",
+                    "archived": older_rel,
+                    "archive_page": archive_move["archive_page"],
+                    "update_failed": newer_rel,
+                    "error": str(exc),
+                }
+            )
             continue
 
         moves.append(
             {
+                "status": "merged",
                 "archived": older_rel,
                 "archive_page": archive_move["archive_page"],
                 "merged_into": newer_rel,

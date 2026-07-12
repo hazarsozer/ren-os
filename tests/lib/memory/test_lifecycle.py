@@ -394,3 +394,96 @@ def test_consolidate_cap_enforced(wiki_root):
     assert len(moves) == lifecycle.CONSOLIDATE_MAX_PER_WRAP == 3
     archived = sum(1 for i in range(4) if not (wiki_root / f"a{i}.md").exists())
     assert archived == 3
+
+
+def test_consolidate_concurrent_write_during_archive_is_not_clobbered(wiki_root, monkeypatch):
+    """Regression for task-18-review.md CRITICAL: expect_token must be
+    captured at the same moment the newer page's content is read (top of
+    the loop), not fresh right before the write — otherwise a write landing
+    during the archive_page round-trip is silently lost."""
+    _add_with_ts("a.md", "content a\n", "2026-01-01T00:00:00Z")
+    _add_with_ts("b.md", "content b ORIGINAL\n", "2026-02-01T00:00:00Z")
+
+    from lib.memory import archive as archive_mod
+
+    real_archive_page = archive_mod.archive_page
+
+    def racy_archive_page(rel, session, *, reason):
+        result = real_archive_page(rel, session, reason=reason)
+        if rel == "a.md":
+            # A concurrent writer lands a change to b.md during the window
+            # between the read of newer_content and the UPDATE write.
+            concurrent_prov = new_provenance("routine", "other-session", "UPDATE", "b.md")
+            write_apply.apply_write(
+                "b.md", "content b CONCURRENTLY CHANGED\n", concurrent_prov
+            )
+        return result
+
+    monkeypatch.setattr(lifecycle.archive, "archive_page", racy_archive_page)
+
+    findings = [
+        {"page": "a.md", "with": "b.md", "verdict": "duplicate", "confidence": 0.9, "reason": "x"}
+    ]
+    moves = lifecycle.consolidate_duplicates(findings, "s1")
+
+    # The older page is already archived (irreversible without undo) but the
+    # UPDATE must have raised LostUpdate against the stale token — the
+    # concurrent writer's content must survive live, untouched.
+    b_content = (wiki_root / "b.md").read_text(encoding="utf-8")
+    assert "content b CONCURRENTLY CHANGED" in b_content
+    assert "Merged from" not in b_content
+
+    assert len(moves) == 1
+    assert moves[0]["status"] == "partial"
+    assert moves[0]["archived"] == "a.md"
+    assert moves[0]["update_failed"] == "b.md"
+    assert "error" in moves[0]
+
+
+def test_consolidate_partial_merge_surfaced_not_dropped(wiki_root, monkeypatch):
+    """Regression for task-18-review.md Important: an older-archived,
+    newer-UPDATE-failed pair must appear in `moves` with a distinct
+    "partial" status, not vanish silently."""
+    _add_with_ts("a.md", "content a\n", "2026-01-01T00:00:00Z")
+    _add_with_ts("b.md", "content b\n", "2026-02-01T00:00:00Z")
+
+    real_apply_write = write_apply.apply_write
+
+    def flaky_apply_write(rel, content, prov, **kwargs):
+        if rel == "b.md":
+            raise locks.LostUpdate("racy")
+        return real_apply_write(rel, content, prov, **kwargs)
+
+    monkeypatch.setattr(lifecycle.write_apply, "apply_write", flaky_apply_write)
+
+    findings = [
+        {"page": "a.md", "with": "b.md", "verdict": "duplicate", "confidence": 0.9, "reason": "x"}
+    ]
+    moves = lifecycle.consolidate_duplicates(findings, "s1")
+
+    assert len(moves) == 1
+    entry = moves[0]
+    assert entry["status"] == "partial"
+    assert entry["archived"] == "a.md"
+    assert entry["archive_page"] == "archive/a.md"
+    assert entry["update_failed"] == "b.md"
+    assert entry["error"]
+    # older page really was archived — this IS the half-done state
+    assert not (wiki_root / "a.md").exists()
+    assert (wiki_root / "archive" / "a.md").exists()
+
+
+def test_consolidate_merged_entry_has_merged_status(wiki_root):
+    """Normal success path now carries status="merged" alongside the
+    pre-existing keys, kept backward compatible."""
+    _add_with_ts("a.md", "content a\n", "2026-01-01T00:00:00Z")
+    _add_with_ts("b.md", "content b\n", "2026-02-01T00:00:00Z")
+
+    findings = [
+        {"page": "a.md", "with": "b.md", "verdict": "duplicate", "confidence": 0.9, "reason": "x"}
+    ]
+    moves = lifecycle.consolidate_duplicates(findings, "s1")
+
+    assert len(moves) == 1
+    assert moves[0]["status"] == "merged"
+    assert moves[0]["merged_into"] == "b.md"

@@ -182,13 +182,17 @@ def wrap_session(
         `semantic_findings` — any exception anywhere in the decay path
         degrades to `[]` rather than raising; wrap must never fail to close
         out a session because of a housekeeping sweep.
-      - "consolidated": [{"archived", "archive_page", "merged_into",
-        "write_id"}] — `lib.memory.lifecycle.consolidate_duplicates`'s moves
-        for this wrap's close-out (Task 18): up to `CONSOLIDATE_MAX_PER_WRAP`
+      - "consolidated": [{"status": "merged", "archived", "archive_page",
+        "merged_into", "write_id"} | {"status": "partial", "archived",
+        "archive_page", "update_failed", "error"}] —
+        `lib.memory.lifecycle.consolidate_duplicates`'s moves for this
+        wrap's close-out (Task 18): up to `CONSOLIDATE_MAX_PER_WRAP`
         judge-confirmed (`semantic_findings`, this same call) duplicate
         pairs auto-merged on the data plane — the older page archives, the
-        newer carries a `Merged from [[...]]` provenance line. Isolated like
-        `decayed`; degrades to `[]` rather than raising.
+        newer carries a `Merged from [[...]]` provenance line. A `"partial"`
+        entry means the older page archived but the newer-page UPDATE then
+        failed (concurrent write); it is not silently dropped. Isolated
+        like `decayed`; degrades to `[]` rather than raising.
 
     `project` (codex D4): when the wrap is scoped to a project, the L1 page
     is written to `projects/<project>/l1/session-<id>.md`, the EXACT path
@@ -482,9 +486,14 @@ def render_wrap_screen(wrap_result: dict, session: str) -> str:
         n = len(decayed)
         lines.append(f"- {n} stale page{'s' if n != 1 else ''} archived — revertible")
     consolidated = wrap_result.get("consolidated") or []
-    if consolidated:
-        n = len(consolidated)
+    merged = [m for m in consolidated if m.get("status") != "partial"]
+    partial = [m for m in consolidated if m.get("status") == "partial"]
+    if merged:
+        n = len(merged)
         lines.append(f"- {n} duplicate{'s' if n != 1 else ''} consolidated — revertible")
+    if partial:
+        n = len(partial)
+        lines.append(f"- {n} consolidation{'s' if n != 1 else ''} partial — see journal")
     lines.append("")
 
     # --- Classify this session's still-pending entries into held/suggestions ---
