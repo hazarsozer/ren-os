@@ -36,6 +36,7 @@ from typing import Final
 from lib import ren_paths
 from lib.instrument import miss_log
 from lib.memory import quarantine
+from lib.memory.provenance import read_frontmatter_provenance
 
 # Stop-words removed from queries to focus the token-overlap score.
 STOP_WORDS: Final[frozenset[str]] = frozenset(
@@ -181,13 +182,22 @@ def fetch(
     query: str, session: str, k: int = DEFAULT_K, include_quarantined: bool = False
 ) -> list[dict]:
     """The L3 fetch verb: rank every wiki page against `query`, return the
-    top-`k` as `{"page": <wiki-relative path>, "content": <file text>}`, and
-    log every returned page via `miss_log.log_fetch` (per spec §3.2, every L3
-    fetch is logged — this IS the mechanical miss-measurement substrate).
+    top-`k` as `{"page": <wiki-relative path>, "content": <file text>,
+    "trust": <ren_trust value>}`, and log every returned page via
+    `miss_log.log_fetch` (per spec §3.2, every L3 fetch is logged — this IS
+    the mechanical miss-measurement substrate).
 
     By default, quarantined pages (per `lib.memory.quarantine`) are dropped
     from the candidate set before ranking, so recall never surfaces held-out
     content unless the caller explicitly opts in with `include_quarantined=True`.
+
+    `trust` is read from the page's `ren_trust` frontmatter stamp (Task 6),
+    defaulting to `"model"` for unstamped pages. Task 9 read-time escaping:
+    any returned page that is still quarantine-banner-marked or whose trust
+    is `"foreign"` has its content passed through
+    `lib.memory.quarantine.escape_untrusted` before being returned — so a
+    hostile instruction inside untrusted content only ever reaches the
+    caller fenced-off, never as literal prose.
 
     Returns `[]` on an empty (or absent) wiki — never raises.
     """
@@ -201,7 +211,11 @@ def fetch(
     results: list[dict] = []
     for rel in ranked[:k]:
         content = _safe_read(root / rel)
-        results.append({"page": rel, "content": content})
+        prov = read_frontmatter_provenance(content)
+        trust = (prov or {}).get("trust") or "model"
+        if quarantine.is_quarantined(content) or trust == "foreign":
+            content = quarantine.escape_untrusted(content)
+        results.append({"page": rel, "content": content, "trust": trust})
         miss_log.log_fetch(rel, query, session)
     return results
 

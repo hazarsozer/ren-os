@@ -30,6 +30,7 @@ from lib.adapter.claude_md import render_global_block, spliced_text
 from lib.memory import quarantine
 from lib.memory.journal import entries as journal_entries
 from lib.memory.promotion import GLOBAL_PREFIX
+from lib.memory.provenance import read_frontmatter_provenance
 from lib.ren_paths import PathTraversalError
 from lib.suggestions import SuggestionSpec
 from lib.suggestions.gate import is_critical_page, recurs
@@ -117,6 +118,10 @@ def promotion_candidates(wiki_root: Path | None = None) -> list[SuggestionSpec]:
             continue
 
         if quarantine.is_quarantined(text):
+            continue
+
+        prov = read_frontmatter_provenance(text)
+        if prov and prov.get("trust") == "foreign":
             continue
 
         try:
@@ -215,6 +220,19 @@ def _page_type(wiki_root: Path, page: str) -> str | None:
     return _frontmatter_type(text)
 
 
+def _page_trust(wiki_root: Path, page: str) -> str | None:
+    """Tolerant `ren_trust` read for a wiki-relative page path. Any
+    resolution/read error yields `None` rather than raising."""
+    try:
+        text = ren_paths.safe_join(wiki_root, page).read_text(
+            encoding="utf-8", errors="replace"
+        )
+    except (OSError, PathTraversalError):
+        return None
+    prov = read_frontmatter_provenance(text)
+    return prov.get("trust") if prov else None
+
+
 def wiki_health_critical(sweep_result: dict) -> list[SuggestionSpec]:
     """Return one `SuggestionSpec` per critical contradiction pair from a
     `skills.wiki_health.lib.sweep()` result dict.
@@ -244,6 +262,9 @@ def wiki_health_critical(sweep_result: dict) -> list[SuggestionSpec]:
             or _page_type(wiki_root, page_b) in _ALLOWED_TYPES
         )
         if not critical:
+            continue
+
+        if _page_trust(wiki_root, page_a) == "foreign" or _page_trust(wiki_root, page_b) == "foreign":
             continue
 
         specs.append(

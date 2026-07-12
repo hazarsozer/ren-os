@@ -154,6 +154,33 @@ def test_evidence_outside_the_last_five_sessions_does_not_qualify(wiki):
     assert promotion_candidates(wiki) == []
 
 
+def test_released_but_foreign_page_never_yields_promotion_spec(wiki):
+    # Task 9: even after 3-of-5 reinforcement AND the quarantine banner being
+    # released, a page whose own ren_trust stamp is "foreign" must never
+    # yield a promotion spec — mirrors the existing is_quarantined skip.
+    page = "projects/x/foreign-pref.md"
+    sessions = ("s1", "s2", "s3")
+    propose_and_apply(
+        Proposal(
+            op="ADD", page=page, content=_page_content("preference", "v0"),
+            reason="seed", producer="ingest", writer="llm-auto", session=sessions[0],
+        )
+    )
+    for i, session in enumerate(sessions, start=1):
+        propose_and_apply(
+            Proposal(
+                op="UPDATE", page=page, content=_page_content("preference", f"v{i}"),
+                reason="seed", producer="ingest", writer="llm-auto", session=session,
+            )
+        )
+
+    abs_page = wiki / page
+    abs_page.write_text(quarantine.release(abs_page.read_text(encoding="utf-8")), encoding="utf-8")
+    assert not quarantine.is_quarantined(abs_page.read_text(encoding="utf-8"))  # banner really released
+
+    assert promotion_candidates(wiki) == []
+
+
 def test_unreadable_wiki_root_returns_empty_list(tmp_path, clean_path_env):
     clean_path_env.setenv("REN_FRAMEWORK_ROOT", str(tmp_path))
     missing = tmp_path / "does-not-exist"
@@ -307,6 +334,27 @@ def test_wiki_health_critical_fingerprint_is_order_stable(wiki):
     fp_b = wiki_health_critical(sweep_b)[0].fingerprint
 
     assert fp_a == fp_b
+
+
+def test_wiki_health_critical_foreign_page_is_excluded(wiki):
+    # Task 9: mirrors the promotion-side foreign skip — a critical-page pair
+    # is excluded if either page's ren_trust stamp is "foreign", even though
+    # it would otherwise qualify (doctrine type on one side).
+    (wiki / "projects" / "x").mkdir(parents=True, exist_ok=True)
+    (wiki / "projects" / "x" / "doc.md").write_text(
+        '---\ntype: doctrine\nren_write_id: "w-test"\nren_trust: "foreign"\n---\nsome content\n', encoding="utf-8"
+    )
+    (wiki / "projects" / "y").mkdir(parents=True, exist_ok=True)
+    (wiki / "projects" / "y" / "other.md").write_text(
+        "---\ntype: note\n---\nsome content\n", encoding="utf-8"
+    )
+    sweep_result = {
+        "contradiction_pairs": [
+            {"page": "projects/x/doc.md", "with": "projects/y/other.md", "evidence": "A vs not A"},
+        ]
+    }
+
+    assert wiki_health_critical(sweep_result) == []
 
 
 def test_wiki_health_critical_empty_pairs_returns_empty_list(wiki):

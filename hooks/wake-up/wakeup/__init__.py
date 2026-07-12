@@ -62,6 +62,7 @@ from typing import Final
 
 from lib.instrument import collect, miss_log
 from lib.memory import queue, quarantine
+from lib.memory.provenance import read_frontmatter_provenance
 from lib.ren_paths import DEFAULT_DEV_ROOT_REL, detect_project, resolve_dev_root
 
 logger = logging.getLogger(__name__)
@@ -126,7 +127,8 @@ def _read_text_safe(path: Path) -> str:
 def read_l1(project_dir: Path) -> str:
     """Return the most recent L1 session page's raw content (quarantine banner
     intact — it's data-not-instruction, and the hook must not strip that
-    signal), or "" if there is no `l1/` dir or no `session-*.md` files.
+    signal), or "" if there is no `l1/` dir or no `session-*.md` files, or the
+    most recent page fails the stamp check below.
 
     L1 EXEMPTION (spec §4 amendment, 0.4.1): L1 pages are `llm-auto` and thus
     quarantined like any other unreviewed content, but they are deliberately
@@ -135,6 +137,17 @@ def read_l1(project_dir: Path) -> str:
     summary of the user's OWN session — not foreign/ingested content — so the
     banner is sufficient signal (data-not-instruction) and the exclusion,
     which targets channels foreign content travels through, does not apply.
+
+    Codex P5 hardening (0.5.1 Task 9): the exemption above previously trusted
+    the L1 *path shape* alone — anything dropped at `l1/session-*.md` was
+    injected raw, banner or not. That's no longer enough: this now verifies
+    the page's OWN `ren_trust` stamp (Task 6) is `"model"` (a genuine RenOS
+    write, not a foreign/human-planted file) before applying the exemption.
+    A page that IS stamped `"model"` is injected raw regardless of the banner
+    (the exemption, as before). A page that is unstamped or stamped anything
+    else falls through to normal quarantine treatment: injected if it isn't
+    banner-quarantined (pre-stamping legacy content, unaffected), held out
+    (empty string) if it is — never injected raw on path shape alone.
     """
     l1_dir = project_dir / L1_DIRNAME
     if not l1_dir.is_dir():
@@ -146,7 +159,18 @@ def read_l1(project_dir: Path) -> str:
         return ""
     if not candidates:
         return ""
-    return _read_text_safe(candidates[0])
+    text = _read_text_safe(candidates[0])
+    if not text:
+        return ""
+
+    prov = read_frontmatter_provenance(text)
+    if prov and prov.get("trust") == "model":
+        return text
+
+    # Not a verified model-class RenOS write — normal quarantine treatment.
+    if quarantine.is_quarantined(text):
+        return ""
+    return text
 
 
 def read_l2_map(project_dir: Path) -> str:

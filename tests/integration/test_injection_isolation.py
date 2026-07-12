@@ -146,9 +146,15 @@ def test_hostile_page_retrievable_on_explicit_ask(wiki):
 
     pages = {r["page"]: r["content"] for r in results}
     assert "projects/x/hostile.md" in pages
-    assert HOSTILE in pages["projects/x/hostile.md"]
-    # banner intact — the caller can tell this is unreviewed content
-    assert quarantine.is_quarantined(pages["projects/x/hostile.md"])
+    content = pages["projects/x/hostile.md"]
+    assert HOSTILE in content
+    # Task 9: explicit-include fetch of quarantined content is now escaped —
+    # wrapped in the untrusted-content warning + fence rather than injected
+    # raw. The original quarantine banner is still visible inside the fence
+    # (the caller can tell this was unreviewed content), just no longer at
+    # the literal string start `is_quarantined` checks.
+    assert content.startswith(quarantine.UNTRUSTED_WARNING)
+    assert quarantine.QUARANTINE_BANNER.strip() in content
 
 
 def test_ingest_shaped_write_is_quarantined_end_to_end(wiki):
