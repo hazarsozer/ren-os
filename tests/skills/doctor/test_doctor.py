@@ -535,6 +535,36 @@ def test_check_archive_integrity_warns_on_missing_journal_entry(wiki):
     assert "archive/lessons/bar.md" in result.message
 
 
+def test_check_apply_integrity_ignores_install_provenance_writes(wiki):
+    """Gate-0 Finding 2: install's Stage-2 wiki-stamp writes founding pages
+    straight to the journal (session="install"), bypassing the queue by
+    construction — this must not warn on a fresh, healthy install."""
+    from lib.memory import journal
+    from lib.memory.provenance import new_provenance
+
+    for page in ("index.md", "log.md", "identity.md", "LICENSES.md"):
+        prov = new_provenance(writer="human", session="install", op="ADD", page=page)
+        journal.append(prov)
+
+    result = doctor.check_apply_integrity()
+    assert result.status == "ok"
+
+
+def test_check_apply_integrity_still_warns_on_non_install_orphan(wiki):
+    """A genuine crash-race orphan (any other session) must still warn —
+    the install exclusion must not swallow real orphans."""
+    from lib.memory import journal
+    from lib.memory.provenance import new_provenance
+
+    prov = new_provenance(writer="llm-auto", session="sess-1", op="ADD", page="lessons/orphan.md")
+    journal.append(prov)
+
+    result = doctor.check_apply_integrity()
+
+    assert result.status == "warn"
+    assert prov.write_id in result.message
+
+
 def test_check_apply_integrity_ignores_noop_revert_entries(wiki):
     """NOOP journal lines (revert records, metric-watch findings) never have
     a matching queue entry by design — they must not be flagged."""

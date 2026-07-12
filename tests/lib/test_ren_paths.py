@@ -29,6 +29,7 @@ from lib.ren_paths import (
     InvalidHandleError,
     PathTraversalError,
     SchemaVersionMismatchError,
+    claude_user_dir,
     framework_root,
     handle,
     safe_join,
@@ -325,3 +326,40 @@ def test_safe_join_raises_on_absolute_escape(tmp_path):
 def test_safe_join_accepts_string_base(tmp_path):
     result = safe_join(str(tmp_path), "child.md")
     assert result == (tmp_path / "child.md").resolve()
+
+
+# --- Gate-0 Finding 1: claude_user_dir() precedence -------------------------
+# REN_CLAUDE_DIR > CLAUDE_CONFIG_DIR > ~/.claude
+
+
+@pytest.fixture
+def clean_claude_env(monkeypatch):
+    monkeypatch.delenv("REN_CLAUDE_DIR", raising=False)
+    monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
+    return monkeypatch
+
+
+def test_claude_user_dir_defaults_to_home_dot_claude(clean_claude_env):
+    assert claude_user_dir() == Path.home() / ".claude"
+
+
+def test_claude_user_dir_honors_claude_config_dir_when_ren_unset(clean_claude_env, tmp_path):
+    """Gate-0 shape: CLAUDE_CONFIG_DIR set (sandboxed profile), REN_CLAUDE_DIR
+    unset — writes must land under CLAUDE_CONFIG_DIR, not the real ~/.claude."""
+    clean_claude_env.setenv("CLAUDE_CONFIG_DIR", str(tmp_path))
+    assert claude_user_dir() == tmp_path
+
+
+def test_claude_user_dir_ren_claude_dir_takes_precedence_over_claude_config_dir(
+    clean_claude_env, tmp_path
+):
+    ren_dir = tmp_path / "ren-override"
+    config_dir = tmp_path / "config-dir"
+    clean_claude_env.setenv("REN_CLAUDE_DIR", str(ren_dir))
+    clean_claude_env.setenv("CLAUDE_CONFIG_DIR", str(config_dir))
+    assert claude_user_dir() == ren_dir
+
+
+def test_claude_user_dir_ren_claude_dir_alone_still_works(clean_claude_env, tmp_path):
+    clean_claude_env.setenv("REN_CLAUDE_DIR", str(tmp_path))
+    assert claude_user_dir() == tmp_path

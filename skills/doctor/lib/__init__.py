@@ -430,7 +430,16 @@ def check_apply_integrity() -> CheckResult:
     `queue.apply`/`apply_auto`/`resolve_and_apply`, each of which persists a
     matching `status="applied"` queue entry with that `write_id`. `NOOP`
     entries (revert records, metric-watch findings) are never queue-backed
-    by design and are excluded from the scan entirely."""
+    by design and are excluded from the scan entirely.
+
+    Also excludes `session="install"` entries (Gate-0 Finding 2): install's
+    Stage-2 wiki-stamp (`lib.skeleton.stamp_skeleton`) calls
+    `write_apply.apply_write` directly for the founding pages
+    (index.md/log.md/identity.md/LICENSES.md), bypassing the queue entirely —
+    they're orphaned by construction on every fresh install, not by a crash
+    race, so flagging them is a false positive. The structural fix (routing
+    install writes through `queue.apply` so a matching applied entry exists)
+    is 0.6 backlog; this is the visibility-layer exclusion in the meantime."""
     from lib.memory import journal, queue
 
     applied_write_ids = {
@@ -440,6 +449,8 @@ def check_apply_integrity() -> CheckResult:
     orphans: list[str] = []
     for entry in journal.entries():
         if entry.get("op") not in ("ADD", "UPDATE", "DELETE"):
+            continue
+        if entry.get("session") == "install":
             continue
         write_id = entry.get("write_id")
         if write_id and write_id not in applied_write_ids:

@@ -136,15 +136,28 @@ def framework_root() -> Path:
 CLAUDE_DIR_ENV = "REN_CLAUDE_DIR"
 """Override for the user-level Claude config dir (tests + unusual homes)."""
 
+CLAUDE_CONFIG_DIR_ENV = "CLAUDE_CONFIG_DIR"
+"""The standard Claude Code CLI env var for isolating a Claude Code environment
+(profiles, CI, sandboxes). Second-tier fallback, below `REN_CLAUDE_DIR`."""
+
 
 def claude_user_dir() -> Path:
     """Return the user-level Claude config directory (`~/.claude` by default).
 
-    Honors `REN_CLAUDE_DIR` if set — same override pattern as
-    `REN_FRAMEWORK_ROOT`. This is where the global CLAUDE.md pointer layer
-    (`lib.adapter.claude_md`) manages its marker block.
+    Precedence (Gate-0 Finding 1): `REN_CLAUDE_DIR` → `CLAUDE_CONFIG_DIR` →
+    `~/.claude`. `REN_CLAUDE_DIR` is RenOS's own override (tests + unusual
+    homes); `CLAUDE_CONFIG_DIR` is the standard Claude Code CLI env var for a
+    sandboxed/profile-based config dir. Without honoring the latter, a friend
+    running Claude Code with only `CLAUDE_CONFIG_DIR` set (multiple profiles,
+    CI, sandboxes) would have RenOS silently write its managed CLAUDE.md block
+    into the real, unrelated `~/.claude/CLAUDE.md` instead. This is where the
+    global CLAUDE.md pointer layer (`lib.adapter.claude_md`) manages its
+    marker block.
     """
     override = _resolve_path_env(CLAUDE_DIR_ENV)
+    if override is not None:
+        return override
+    override = _resolve_path_env(CLAUDE_CONFIG_DIR_ENV)
     if override is not None:
         return override
     return Path.home() / ".claude"
@@ -433,6 +446,7 @@ __all__ = [
     "code_map_path",
     "framework_root",
     "CLAUDE_DIR_ENV",
+    "CLAUDE_CONFIG_DIR_ENV",
     "claude_user_dir",
     "DEV_ROOT_ENV",
     "DEFAULT_DEV_ROOT_REL",
