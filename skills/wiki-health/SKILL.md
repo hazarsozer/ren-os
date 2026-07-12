@@ -101,6 +101,15 @@ used to catch, by sweeping periodically instead of gating continuously.
      review)` section with the judge's reason/confidence next to the
      original heuristic evidence, so the friend can see what the judge
      filtered out — anti-Goodhart visibility, not a repair target.
+   - **Judge-flagged supersedes pairs** (only when `llm_call` was passed to
+     `sweep()`): a near-similar pair the judge confidently calls
+     `supersedes` has no automated home — it surfaces in `judge_supersedes`
+     and `render_report`'s `## Judge-flagged supersedes (for review)`
+     section, visible but never auto-anything, same doctrine as
+     judge-dismissed. A near-similar pair judged `contradicts` instead
+     joins `contradiction_pairs` (and can go critical via
+     `wiki_health_critical` for `global/` pages, same as a heuristic-found
+     contradiction) — judged evidence never silently vanishes.
 4. Before applying ANY batch of mechanical fixes, list the intended fixes
    to the friend first — **never mass-edit without listing intended fixes
    first**, even when every fix in the batch is individually unambiguous.

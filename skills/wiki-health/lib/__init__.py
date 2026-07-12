@@ -252,7 +252,7 @@ def _judge_annotate(
     duplicate_pairs: list[dict],
     numeric_drift_pairs: list[dict],
     llm_call: Callable[[str], str],
-) -> tuple[list[dict], list[dict], list[dict], list[dict]]:
+) -> tuple[list[dict], list[dict], list[dict], list[dict], list[dict]]:
     """Judge (Task 4) the wiki-wide shortlist (Task 11, `focus_pages=None`)
     and layer verdicts onto the three heuristic pair lists.
 
@@ -269,10 +269,23 @@ def _judge_annotate(
       preserved (anti-Goodhart: the judge filters visibility, never makes
       evidence disappear). Any other verdict is attached as a `"judge"` dict
       on the pair in place.
-    - A `near-similar` shortlist pair (not one of the three heuristics) only
-      surfaces at all if the judge confidently confirms `duplicate` — it is
-      then appended to `duplicate_pairs` with a synthetic evidence string
-      and its `"judge"` dict.
+    - A `near-similar` shortlist pair (not one of the three heuristics)
+      never silently vanishes once the judge has spoken confidently (0.5.2
+      drill leg 2 — judged evidence must never vanish):
+        - `duplicate` at >= `JUDGE_MIN_CONFIDENCE` joins `duplicate_pairs`
+          with a synthetic evidence string and its `"judge"` dict.
+        - `contradicts` at >= `JUDGE_MIN_CONFIDENCE` joins
+          `contradiction_pairs` the same way — this is what flows to
+          `wiki_health_critical` for `global/` pages, same as a
+          heuristic-found contradiction.
+        - `supersedes` at >= `JUDGE_MIN_CONFIDENCE` has no existing home in
+          the three heuristic lists (supersedes is not a contradiction —
+          don't shoehorn it in) — it's appended to the returned
+          `judge_supersedes` list instead, kept visible like
+          `judge_dismissed` but not automated on.
+        - Sub-threshold or `unrelated` near-similar verdicts produce no
+          finding — a near-similar pair was never a finding without the
+          judge, so this isn't a silent drop of asserted evidence.
     - Verdicts of `None` (fail-closed per-pair or dropped by the cap) leave
       the corresponding pair exactly as the no-llm sweep produced it.
     """
@@ -280,10 +293,11 @@ def _judge_annotate(
     duplicate_pairs = [dict(p) for p in duplicate_pairs]
     numeric_drift_pairs = [dict(p) for p in numeric_drift_pairs]
     judge_dismissed: list[dict] = []
+    judge_supersedes: list[dict] = []
 
     pairs = semantics.shortlist_pairs(wiki_root, focus_pages=None)
     if not pairs:
-        return contradiction_pairs, duplicate_pairs, numeric_drift_pairs, judge_dismissed
+        return contradiction_pairs, duplicate_pairs, numeric_drift_pairs, judge_dismissed, judge_supersedes
 
     texts = [
         (
@@ -307,11 +321,27 @@ def _judge_annotate(
         key = frozenset((pair["page"], pair["with"]))
 
         if pair["reason"] == "near-similar":
-            if verdict.kind == "duplicate" and verdict.confidence >= JUDGE_MIN_CONFIDENCE:
+            if verdict.confidence < JUDGE_MIN_CONFIDENCE:
+                continue
+            if verdict.kind == "duplicate":
                 duplicate_pairs.append({
                     "page": pair["page"],
                     "with": pair["with"],
                     "evidence": "near-similar (judge-confirmed)",
+                    "judge": judge_dict,
+                })
+            elif verdict.kind == "contradicts":
+                contradiction_pairs.append({
+                    "page": pair["page"],
+                    "with": pair["with"],
+                    "evidence": "near-similar (judge-confirmed contradiction)",
+                    "judge": judge_dict,
+                })
+            elif verdict.kind == "supersedes":
+                judge_supersedes.append({
+                    "page": pair["page"],
+                    "with": pair["with"],
+                    "evidence": "near-similar (judge-confirmed supersedes)",
                     "judge": judge_dict,
                 })
             continue
@@ -331,7 +361,7 @@ def _judge_annotate(
         else:
             entry["judge"] = judge_dict
 
-    return contradiction_pairs, duplicate_pairs, numeric_drift_pairs, judge_dismissed
+    return contradiction_pairs, duplicate_pairs, numeric_drift_pairs, judge_dismissed, judge_supersedes
 
 
 def sweep(wiki_root: Path | None = None, llm_call: Callable[[str], str] | None = None) -> dict:
@@ -345,19 +375,26 @@ def sweep(wiki_root: Path | None = None, llm_call: Callable[[str], str] | None =
     `_pair_findings`), in which case it's a dict naming what was skipped and
     why — plus an 8th key, `judge_dismissed` (Task 13, 0.5.2): always
     present, `[]` unless `llm_call` is given and the judge confidently
-    dismisses a heuristic pair as `unrelated` (see `_judge_annotate`).
+    dismisses a heuristic pair as `unrelated` (see `_judge_annotate`) — and
+    a 9th key, `judge_supersedes` (0.5.2 drill leg 2 fix): always present,
+    `[]` unless the judge confidently calls a near-similar pair
+    `supersedes` (kept visible, never automated on, same doctrine as
+    `judge_dismissed`).
 
     `llm_call` (optional, Task 13): when given, the wiki-wide shortlist
     (`lib.memory.semantics.shortlist_pairs`, `focus_pages=None`) is judged
     and the verdicts are layered onto `contradiction_pairs`,
     `duplicate_pairs`, and `numeric_drift_pairs` (each judged pair gains a
     `"judge"` dict), with confidently-dismissed pairs moved to
-    `judge_dismissed` and judge-confirmed near-similar duplicates joining
-    `duplicate_pairs`. Fail-closed like every other judge consumer: any
-    exception during judging (shortlist scan, page read, `judge_pairs`)
-    leaves the result exactly as the no-llm sweep would have produced it.
-    Without `llm_call` (the default), behavior is byte-identical to before
-    Task 13 plus the always-present empty `judge_dismissed` key."""
+    `judge_dismissed`, judge-confirmed near-similar duplicates joining
+    `duplicate_pairs`, judge-confirmed near-similar contradictions joining
+    `contradiction_pairs`, and judge-confirmed near-similar supersedes
+    joining `judge_supersedes` — judged evidence never silently vanishes.
+    Fail-closed like every other judge consumer: any exception during
+    judging (shortlist scan, page read, `judge_pairs`) leaves the result
+    exactly as the no-llm sweep would have produced it. Without `llm_call`
+    (the default), behavior is byte-identical to before Task 13 plus the
+    always-present empty `judge_dismissed`/`judge_supersedes` keys."""
     wiki_root = wiki_root or ren_paths.wiki_root()
     if not wiki_root.is_dir():
         return {
@@ -369,13 +406,21 @@ def sweep(wiki_root: Path | None = None, llm_call: Callable[[str], str] | None =
             "mass_deletions": _mass_deletions(),
             "quarantined_pages": {"count": 0, "pages": []},
             "judge_dismissed": [],
+            "judge_supersedes": [],
             "generated_at": _now_iso(),
         }
     contradiction_pairs, duplicate_pairs, numeric_drift_pairs, contradiction_scan_note = _pair_findings(wiki_root)
     judge_dismissed: list[dict] = []
+    judge_supersedes: list[dict] = []
     if llm_call is not None:
         try:
-            contradiction_pairs, duplicate_pairs, numeric_drift_pairs, judge_dismissed = _judge_annotate(
+            (
+                contradiction_pairs,
+                duplicate_pairs,
+                numeric_drift_pairs,
+                judge_dismissed,
+                judge_supersedes,
+            ) = _judge_annotate(
                 wiki_root, contradiction_pairs, duplicate_pairs, numeric_drift_pairs, llm_call
             )
         except Exception:  # noqa: BLE001 - fail-closed: keep the no-llm result already computed
@@ -389,6 +434,7 @@ def sweep(wiki_root: Path | None = None, llm_call: Callable[[str], str] | None =
         "mass_deletions": _mass_deletions(),
         "quarantined_pages": _quarantined_pages(wiki_root),
         "judge_dismissed": judge_dismissed,
+        "judge_supersedes": judge_supersedes,
         "generated_at": _now_iso(),
     }
 
@@ -463,6 +509,17 @@ def render_report(findings: dict) -> str:
                 f"- {d['page']} ↔ {d['with']}: judge={judge.get('verdict')} "
                 f"(confidence {judge.get('confidence')}): {judge.get('reason')} "
                 f"— heuristic evidence: {d['evidence']}"
+            )
+
+    supersedes = findings.get("judge_supersedes") or []
+    if supersedes:
+        lines.append("")
+        lines.append("## Judge-flagged supersedes (for review)")
+        for s in supersedes:
+            judge = s.get("judge") or {}
+            lines.append(
+                f"- {s['page']} ↔ {s['with']}: judge={judge.get('verdict')} "
+                f"(confidence {judge.get('confidence')}): {judge.get('reason')}"
             )
 
     return "\n".join(lines) + "\n"

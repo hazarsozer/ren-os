@@ -52,11 +52,12 @@ def test_sweep_returns_all_dict_keys(wiki):
     assert set(result.keys()) == {
         "dangling_pointers", "contradiction_pairs", "duplicate_pairs",
         "numeric_drift_pairs", "contradiction_scan_note",
-        "mass_deletions", "quarantined_pages", "judge_dismissed", "generated_at",
+        "mass_deletions", "quarantined_pages", "judge_dismissed", "judge_supersedes", "generated_at",
     }
     assert result["generated_at"]
     assert result["contradiction_scan_note"] is None
     assert result["judge_dismissed"] == []
+    assert result["judge_supersedes"] == []
 
 
 def test_sweep_finds_dangling_pointer(wiki):
@@ -414,6 +415,120 @@ def test_sweep_near_similar_not_confirmed_duplicate_does_not_surface(wiki, monke
 
     result = wiki_health.sweep(llm_call=_llm_returning("unrelated", confidence=0.9))
     assert result["duplicate_pairs"] == []
+    assert result["judge_dismissed"] == []
+
+
+def test_sweep_near_similar_contradicts_joins_contradiction_pairs(wiki, monkeypatch):
+    """0.5.2 drill leg 2: a near-similar pair the judge calls `contradicts`
+    must not vanish — it joins `contradiction_pairs` with a judge dict,
+    same shape convention as judge-confirmed near-similar duplicates."""
+    (wiki / "knowledge").mkdir()
+    (wiki / "knowledge" / "a.md").write_text(
+        "## Knowledge\nWe standardized on Postgres for persistence.\n", encoding="utf-8"
+    )
+    (wiki / "knowledge" / "b.md").write_text(
+        "## Knowledge\nAll persistence goes through SQLite.\n", encoding="utf-8"
+    )
+
+    def fake_shortlist(root, *, focus_pages=None, cap=20):
+        return [{"page": "knowledge/a.md", "with": "knowledge/b.md", "reason": "near-similar"}]
+
+    from lib.memory import semantics
+    monkeypatch.setattr(semantics, "shortlist_pairs", fake_shortlist)
+
+    no_llm_result = wiki_health.sweep()
+    assert no_llm_result["contradiction_pairs"] == []
+
+    result = wiki_health.sweep(llm_call=_llm_returning("contradicts", confidence=0.9))
+    pair = next(
+        c for c in result["contradiction_pairs"]
+        if frozenset((c["page"], c["with"])) == frozenset(("knowledge/a.md", "knowledge/b.md"))
+    )
+    assert pair["judge"] == {"verdict": "contradicts", "confidence": 0.9, "reason": "stub judge"}
+    assert pair["evidence"]
+    assert result["judge_dismissed"] == []
+    assert result.get("judge_supersedes") == []
+
+
+def test_sweep_near_similar_contradicts_flows_to_wiki_health_critical(wiki, monkeypatch):
+    """A judge-confirmed near-similar contradiction on a global/ page must
+    be able to go critical, same as a heuristic-found contradiction."""
+    from lib.suggestions.producers import wiki_health_critical
+
+    (wiki / "global").mkdir()
+    (wiki / "knowledge").mkdir()
+    (wiki / "global" / "a.md").write_text(
+        "## Knowledge\nWe standardized on Postgres for persistence.\n", encoding="utf-8"
+    )
+    (wiki / "knowledge" / "b.md").write_text(
+        "## Knowledge\nAll persistence goes through SQLite.\n", encoding="utf-8"
+    )
+
+    def fake_shortlist(root, *, focus_pages=None, cap=20):
+        return [{"page": "global/a.md", "with": "knowledge/b.md", "reason": "near-similar"}]
+
+    from lib.memory import semantics
+    monkeypatch.setattr(semantics, "shortlist_pairs", fake_shortlist)
+
+    result = wiki_health.sweep(llm_call=_llm_returning("contradicts", confidence=0.9))
+    specs = wiki_health_critical(result)
+    assert len(specs) == 1
+
+
+def test_sweep_near_similar_supersedes_surfaces_in_judge_supersedes(wiki, monkeypatch):
+    """A near-similar pair judged `supersedes` must surface visibly instead
+    of vanishing — its own result key, not shoehorned into contradictions."""
+    (wiki / "knowledge").mkdir()
+    (wiki / "knowledge" / "a.md").write_text("## Knowledge\nold fact here\n", encoding="utf-8")
+    (wiki / "knowledge" / "b.md").write_text("## Knowledge\nupdated fact here\n", encoding="utf-8")
+
+    def fake_shortlist(root, *, focus_pages=None, cap=20):
+        return [{"page": "knowledge/a.md", "with": "knowledge/b.md", "reason": "near-similar"}]
+
+    from lib.memory import semantics
+    monkeypatch.setattr(semantics, "shortlist_pairs", fake_shortlist)
+
+    no_llm_result = wiki_health.sweep()
+    assert no_llm_result.get("judge_supersedes") == []
+
+    result = wiki_health.sweep(llm_call=_llm_returning("supersedes", confidence=0.9))
+    assert result["contradiction_pairs"] == []
+    assert result["duplicate_pairs"] == []
+    supersedes = result["judge_supersedes"]
+    assert len(supersedes) == 1
+    assert supersedes[0]["page"] == "knowledge/a.md"
+    assert supersedes[0]["with"] == "knowledge/b.md"
+    assert supersedes[0]["judge"] == {"verdict": "supersedes", "confidence": 0.9, "reason": "stub judge"}
+
+    rendered = wiki_health.render_report(result)
+    assert "knowledge/a.md" in rendered and "knowledge/b.md" in rendered
+    assert "supersedes" in rendered.lower()
+
+
+def test_render_report_omits_judge_supersedes_section_when_empty(wiki):
+    result = wiki_health.sweep()
+    rendered = wiki_health.render_report(result)
+    assert "Supersedes" not in rendered
+
+
+def test_sweep_near_similar_sub_threshold_verdict_no_finding(wiki, monkeypatch):
+    """Sub-threshold near-similar verdicts stay a no-finding — a
+    near-similar pair was never a finding without the judge, so this is
+    not a silent drop of asserted evidence."""
+    (wiki / "knowledge").mkdir()
+    (wiki / "knowledge" / "a.md").write_text("## Knowledge\nsome content a\n", encoding="utf-8")
+    (wiki / "knowledge" / "b.md").write_text("## Knowledge\nsome content b\n", encoding="utf-8")
+
+    def fake_shortlist(root, *, focus_pages=None, cap=20):
+        return [{"page": "knowledge/a.md", "with": "knowledge/b.md", "reason": "near-similar"}]
+
+    from lib.memory import semantics
+    monkeypatch.setattr(semantics, "shortlist_pairs", fake_shortlist)
+
+    result = wiki_health.sweep(llm_call=_llm_returning("contradicts", confidence=0.1))
+    assert result["contradiction_pairs"] == []
+    assert result["duplicate_pairs"] == []
+    assert result.get("judge_supersedes") == []
     assert result["judge_dismissed"] == []
 
 
