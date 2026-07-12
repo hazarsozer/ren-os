@@ -510,18 +510,24 @@ def compose_wake_up_context(
     if project is not None:
         project_dir = wiki_root / "projects" / project
 
-        # Codex P5: whether or not read_l1 ultimately injects a given
-        # candidate, its most recent file at EITHER the project-local or the
-        # global fallback L1 path must not leak back in via the extras
-        # ("Related pages") discovery path, which excludes only banner-
-        # quarantined pages — a bannerless-but-unstamped hostile file that
-        # read_l1 correctly held out would otherwise be offered raw there.
+        # Codex P5 (as hardened by the 0.5.1 drill, Leg 4): whether or not
+        # read_l1 ultimately injects a given candidate, NO file under an L1
+        # dir may leak back in via the extras ("Related pages") discovery
+        # path, which excludes only banner-quarantined or foreign-stamped
+        # pages. L1 content may only enter wake-up context through
+        # read_l1's stamp-verified injection path (see read_l1's own
+        # docstring) — path-shape under `l1/` is never trusted for
+        # INCLUSION, but excluding every file at that path shape from the
+        # separate extras channel is safe and correct: it can only ever
+        # cause the module to under-surface (fall back to nothing there),
+        # never to leak an unvetted L1 file raw. The drill found that
+        # excluding only `candidate_files[0]` (the single most-recent file)
+        # left older, bannerless/unstamped hostile files in the same `l1/`
+        # dir free to re-enter once a newer legitimate L1 file existed —
+        # so every file, not just the newest, is excluded here.
         for candidate_dir in (project_dir, wiki_root):
-            candidate_files = sorted(
-                (candidate_dir / L1_DIRNAME).glob("session-*.md"), key=_safe_mtime, reverse=True
-            )
-            if candidate_files:
-                surfaced_pages.append(str(candidate_files[0].relative_to(wiki_root).as_posix()))
+            for l1_file in (candidate_dir / L1_DIRNAME).glob("session-*.md"):
+                surfaced_pages.append(str(l1_file.relative_to(wiki_root).as_posix()))
 
         l1_text = read_l1(project_dir)
         if not l1_text:
