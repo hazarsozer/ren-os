@@ -472,6 +472,47 @@ def check_judge_health() -> CheckResult:
     return CheckResult("judge_health", "ok", "no degraded judge events recorded")
 
 
+def check_archive_integrity(wiki_root: Path | None = None) -> CheckResult:
+    """Task 19 (0.5.3): make a broken archive tier VISIBLE. Every page under
+    `archive/` must carry `archived_from` frontmatter AND have a matching
+    journal entry proving how it got there — either the `ADD` write that
+    created the archive copy (`entry["page"] == <archive rel>`) or the
+    paired `DELETE`'s `archived_to` extra field pointing at it
+    (`lib.memory.archive.archive_page` writes both). A page failing either
+    check is an orphan: hand-dropped into `archive/`, or its journal entry
+    was lost/pruned. Warn, listing offenders — never block."""
+    from lib.memory import journal
+
+    wiki_root = wiki_root or ren_paths.wiki_root()
+    archive_dir = wiki_root / "archive"
+    if not archive_dir.is_dir():
+        return CheckResult("archive_integrity", "ok", "no archive tier yet")
+
+    entries = journal.entries()
+    journaled_archive_pages = {
+        e.get("page") for e in entries if e.get("op") == "ADD"
+    } | {
+        e.get("archived_to") for e in entries if e.get("archived_to")
+    }
+
+    orphans: list[str] = []
+    for path in sorted(archive_dir.rglob("*.md")):
+        rel = path.relative_to(wiki_root).as_posix()
+        text = path.read_text(encoding="utf-8")
+        if not _frontmatter_field(text, "archived_from"):
+            orphans.append(rel)
+        elif rel not in journaled_archive_pages:
+            orphans.append(rel)
+
+    if orphans:
+        return CheckResult(
+            "archive_integrity", "warn",
+            f"{len(orphans)} archive page(s) missing frontmatter or a matching journal entry: "
+            f"{', '.join(orphans[:5])}",
+        )
+    return CheckResult("archive_integrity", "ok", "every archive page has frontmatter and a matching journal entry")
+
+
 _ALL_CHECK_NAMES: tuple[str, ...] = (
     "check_env",
     "check_wiki_structure",
@@ -489,6 +530,7 @@ _ALL_CHECK_NAMES: tuple[str, ...] = (
     "check_suggestion_store",
     "check_apply_integrity",
     "check_judge_health",
+    "check_archive_integrity",
 )
 
 
@@ -526,5 +568,6 @@ __all__ = [
     "check_guard_health",
     "check_apply_integrity",
     "check_judge_health",
+    "check_archive_integrity",
     "run_checks",
 ]

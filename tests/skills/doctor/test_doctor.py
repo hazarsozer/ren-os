@@ -56,7 +56,7 @@ def test_run_checks_returns_one_result_per_check(wiki):
         "env", "wiki_structure", "frontmatter", "schema_versions",
         "budget_lint", "dangling_pointers", "graphify_status", "companions",
         "backup_configured", "execution_tiers", "global_drift", "harness_neutrality", "guard_health",
-        "suggestion_store", "apply_integrity", "judge_health",
+        "suggestion_store", "apply_integrity", "judge_health", "archive_integrity",
     }
 
 
@@ -484,6 +484,55 @@ def test_check_judge_health_ignores_capped_events(wiki):
     collect.record(collect.KIND_JUDGE_EVENT, {"event": "capped", "dropped": 3})
     result = doctor.check_judge_health()
     assert result.status == "ok"
+
+
+# --- Task 19: archive-integrity visibility ----------------------------------
+
+
+def test_check_archive_integrity_ok_when_no_archive_dir(wiki):
+    result = doctor.check_archive_integrity()
+    assert result.status == "ok"
+
+
+def test_check_archive_integrity_ok_on_page_created_via_archive_page(wiki):
+    from lib.memory.archive import archive_page
+
+    page = wiki / "lessons" / "foo.md"
+    page.parent.mkdir(parents=True, exist_ok=True)
+    page.write_text("some content\n", encoding="utf-8")
+
+    archive_page("lessons/foo.md", "sess-1", reason="test")
+
+    result = doctor.check_archive_integrity()
+    assert result.status == "ok"
+
+
+def test_check_archive_integrity_warns_on_missing_frontmatter(wiki):
+    archive_dir = wiki / "archive" / "lessons"
+    archive_dir.mkdir(parents=True, exist_ok=True)
+    (archive_dir / "orphan.md").write_text("no frontmatter at all\n", encoding="utf-8")
+
+    result = doctor.check_archive_integrity()
+
+    assert result.status == "warn"
+    assert "archive/lessons/orphan.md" in result.message
+
+
+def test_check_archive_integrity_warns_on_missing_journal_entry(wiki):
+    # archived_from frontmatter present, but nothing in the journal at all —
+    # simulates a page dropped into archive/ by hand, or a journal that was
+    # pruned/lost after the fact.
+    archive_dir = wiki / "archive" / "lessons"
+    archive_dir.mkdir(parents=True, exist_ok=True)
+    (archive_dir / "bar.md").write_text(
+        '---\narchived_from: "lessons/bar.md"\narchive_reason: "test"\n---\nbody\n',
+        encoding="utf-8",
+    )
+
+    result = doctor.check_archive_integrity()
+
+    assert result.status == "warn"
+    assert "archive/lessons/bar.md" in result.message
 
 
 def test_check_apply_integrity_ignores_noop_revert_entries(wiki):
