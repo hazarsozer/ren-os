@@ -47,7 +47,7 @@ stopped. End it with `/ren:ingest-project` on any existing repo and you get the
 |---|---|
 | 🧠 **Memory that compounds** | User-owned markdown every session reads *and extends* — with update/correct/revert semantics, never append-only. One write queue is the single door every producer writes through. |
 | 🪙 **Tokens that aren't wasted** | Every injected byte budgeted, cached, or pointed-to. No LLM call at session start, by design. Real cache-token accounting and a calibrated estimator replace guesswork. |
-| 🛡️ **Autonomy you can trust** | Writes governed by **risk tier + provenance**, not faith. Reads are free; memory auto-applies with journal + one-step revert; only promotions into standing instructions ask you (in chat); code/config diffs and destructive actions still gate. |
+| 🛡️ **Autonomy you can trust** | Writes governed by **risk tier + provenance**, not faith. Reads are free; memory auto-applies with journal + one-step revert; only promotions into standing instructions ask you (in chat); code/config diffs and destructive actions still gate. Every page also carries a **trust class** — `user` / `model` / `foreign` — stamped at the single write door, so a page's origin is never guessed after the fact. |
 
 **The success bar is measured, not vibes** — per spec §2: *"if 0.2 ships and the
 pillars are still estimates, 0.2 failed."* See [Measured numbers](#measured-numbers)
@@ -115,6 +115,47 @@ Provenance on every write, an append-only journal, per-write snapshots, file lea
 against lost updates, and quarantine banners on unreviewed LLM-authored content —
 that's the write-safety substrate (`lib/memory/`), and it's the only code that ever
 touches a wiki page.
+
+---
+
+## The learning brain (0.5.x)
+
+Everything below routes through the same write door and the same fail-closed
+posture as the rest of the substrate — none of it is a separate, less-governed
+path.
+
+- **Trust classes.** Every page carries a `ren_trust` stamp — `user`, `model`,
+  or `foreign` — set once, at write time, by `lib/memory/provenance.py`. Only
+  `/ren:ingest-project` mints `foreign` (content pulled from a repo you didn't
+  write yourself); everything else resolves to `user` or `model` from who
+  authored the content and who wrote it. Wikis created before this existed are
+  backfilled by `migrations/trust-backfill-1/`.
+- **LLM-judged semantics, fail-closed.** Write-time conflict detection is
+  still three deterministic heuristics with no LLM in the loop (`lib/memory/semantics.py`).
+  As of 0.5.0–0.5.2, pairs those heuristics flag — plus "near-similar" pairs
+  they'd otherwise miss — go through a bounded **shortlist** (`shortlist_pairs`)
+  to an LLM **judge** (`lib/memory/judge.py`) for a duplicate/contradiction
+  verdict with a confidence score. If no LLM call is available, the judge step
+  is skipped outright and the heuristics-only result stands — it never raises,
+  never blocks a write. Judge confidence has two bars: **0.7** to surface a
+  finding in a report (`/ren:wrap`, `/ren:wiki-health`), **0.85** — stricter —
+  to auto-consolidate. Anything the judge dismisses still shows up in
+  `/ren:wiki-health` output as "judge-dismissed (for review)" rather than
+  disappearing — a human can always see what the judge ruled out.
+- **Archive tier: never delete.** A page that's no longer live is moved to
+  `archive/<rel>` with its full prior content (`lib/memory/archive.py`) and the
+  original is journaled-deleted — both writes go through the single write
+  door. Recovery does not depend on snapshot retention: the archive copy is
+  itself the durable recovery path, so a page can be restored from
+  `archive/<rel>` long after its own write's snapshot has been pruned.
+- **Decay + consolidation.** A 90-day-idle window and a 5-pages-per-wrap cap
+  bound how much gets swept in one pass (`lib/memory/lifecycle.py`); if the
+  miss-log read that decay depends on fails, the sweep returns nothing rather
+  than guessing — under-decaying is the safe failure mode, not over-archiving.
+  Consolidation only merges pairs the judge confirmed as duplicates at ≥0.85
+  confidence, keeps the newer page, archives the older one, and appends a
+  "Merged from `[[older-page]]`" line so the merge is traceable from the
+  surviving page.
 
 ---
 

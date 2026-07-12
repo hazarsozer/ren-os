@@ -24,6 +24,11 @@ There are exactly two classes of moment this happens, and neither is at session 
   and draft wiki content. Same model account the session already uses; the
   drafted content then goes through the same scrub-gated write queue as
   everything else.
+- **The semantics judge** (`lib/memory/judge.py`, 0.5.0+) — a bounded
+  shortlist of candidate-pair text (`lib/memory/semantics.py:shortlist_pairs`)
+  is sent for a duplicate/contradiction verdict when consolidation or a
+  wiki-health/wrap report needs one. When no `llm_call` is supplied, this step
+  is skipped entirely — the heuristics-only result stands, fail-closed.
 
 That's the entire list. No background jobs, no separate service, no telemetry endpoint.
 
