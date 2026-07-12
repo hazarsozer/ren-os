@@ -342,16 +342,40 @@ def _build_rank_query(project: str | None, cwd: Path) -> str:
     return " ".join(parts).strip()
 
 
+def _is_foreign_stamped(path: Path) -> bool:
+    """True if `path`'s own `ren_trust` frontmatter stamp is `"foreign"` —
+    Task 9b: the banner-only exclusion (`quarantine.quarantined_rel_pages`)
+    misses a foreign-stamped page whose banner has since been released, so
+    this checks the durable stamp (Task 6) independently of banner state.
+    Unstamped pages are NOT foreign (deliberate scope decision — see module
+    docstring / Task 9b brief: only the ingest door mints "foreign", and
+    ordinary hand-written pages carry no `ren_*` stamps at all). Never
+    raises: any read/parse failure degrades to "not foreign".
+    """
+    text = _read_text_safe(path)
+    if not text:
+        return False
+    try:
+        prov = read_frontmatter_provenance(text)
+    except Exception:  # noqa: BLE001 - provenance parse failure must never abort wake-up
+        logger.debug("read_frontmatter_provenance failed for %s", path, exc_info=True)
+        return False
+    return bool(prov and prov.get("trust") == "foreign")
+
+
 def _discover_extra_candidates(wiki_root: Path, exclude: set[str]) -> tuple[list[str], int]:
     """Every `*.md` under `wiki_root`, excluding dotdirs, `exclude` (the pages
-    already surfaced as L1/L2, so they aren't offered twice), and quarantined
+    already surfaced as L1/L2, so they aren't offered twice), quarantined
     pages (0.4.1 trust hardening — see module docstring for the L1 exemption,
     which does NOT apply here since L1 is never routed through this extras
-    path).
+    path), and `ren_trust: foreign`-stamped pages (Task 9b — closes the gap
+    where a foreign page's released banner let it surface raw; unstamped
+    pages remain included, per the deliberate scope decision in `_is_foreign_stamped`).
 
     Returns `(candidates, held_count)` where `held_count` is the number of
-    otherwise-eligible pages dropped for being quarantined. Quarantine-scan
-    failure degrades to no exclusion (never raises) — logged at debug level.
+    otherwise-eligible pages dropped for being quarantined or foreign-stamped.
+    Quarantine-scan failure degrades to no exclusion (never raises) — logged
+    at debug level.
     """
     if not wiki_root.is_dir():
         return [], 0
@@ -370,6 +394,9 @@ def _discover_extra_candidates(wiki_root: Path, exclude: set[str]) -> tuple[list
         if rel in exclude:
             continue
         if rel in held_pages:
+            held_count += 1
+            continue
+        if _is_foreign_stamped(path):
             held_count += 1
             continue
         candidates.append(rel)
@@ -516,11 +543,19 @@ def compose_wake_up_context(
                 l2_quarantined = quarantine.is_quarantined(l2_text)
             except Exception:  # noqa: BLE001 - quarantine check failure must never abort wake-up
                 logger.debug("quarantine.is_quarantined failed for L2 map", exc_info=True)
-            if l2_quarantined:
+            l2_foreign = False
+            try:
+                l2_prov = read_frontmatter_provenance(l2_text)
+                l2_foreign = bool(l2_prov and l2_prov.get("trust") == "foreign")
+            except Exception:  # noqa: BLE001 - provenance parse failure must never abort wake-up
+                logger.debug("read_frontmatter_provenance failed for L2 map", exc_info=True)
+            if l2_quarantined or l2_foreign:
                 # L2 maps are scan-derived (repo-ingest, `writer="llm-auto"`) —
                 # foreign content, unlike L1's own-session summary. The L1
                 # exemption does NOT apply here; hold it out and count it in
                 # the held-out line until a human releases it from quarantine.
+                # Task 9b: a released banner alone no longer clears a
+                # `ren_trust: foreign` map — the stamp check catches that.
                 held_count += 1
             else:
                 sections.append(f"### {project} — knowledge map (L2)")
