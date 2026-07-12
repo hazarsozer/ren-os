@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.5.1] — 2026-07-12 — "trust taxonomy"
+
+Provenance classes, scrub-at-scan, escaped retrieval: the wiki now knows
+*who wrote what* and treats untrusted content as data, never as instructions.
+
+- **Every page carries a trust class** — `ren_trust: user / model / foreign`
+  is stamped at the single write door. Human writes are `user`, RenOS's own
+  writes are `model`, and only the ingest door can mint `foreign`.
+- **Existing wikis get backfilled** — upgrading past 0.5.1 runs the
+  `trust-backfill-1` migration automatically (human-written → user,
+  quarantined → foreign, else model; bodies untouched, re-runs are no-ops).
+- **Scrub-at-scan** — instruction-shaped content ("ignore all previous
+  instructions…") is detected at the ingest door, surfaced in the ingest
+  result and the artifact's provenance note. Patterns are tuned to
+  assistant-override intent, so ordinary prose like "you must follow the
+  style guide" doesn't trip it.
+- **Escaped retrieval** — foreign or quarantined content comes back from
+  recall wrapped in a breakout-proof fenced block behind a
+  "⚠ UNTRUSTED CONTENT" warning, with a trust label on every hit.
+- **Producers refuse foreign evidence** — promotion and wiki-health
+  suggestions never build on `foreign` pages, even after a quarantine
+  banner is released.
+- **Wake-up injection hardened** (Codex P5 + two drill-caught leaks) —
+  the L1 session summary is injected only when its own stamp verifies a
+  RenOS model-class write; unstamped or foreign files at the L1 path are
+  held out, and stale files under `l1/` can't sneak back in via
+  "Related pages". Foreign-stamped pages are excluded from extras
+  discovery even after banner release.
+
 ## [0.5.0] — 2026-07-10 — "learning-brain foundations"
 
 Boring on purpose: hygiene, plumbing, and a 12/12-confirmed external review's

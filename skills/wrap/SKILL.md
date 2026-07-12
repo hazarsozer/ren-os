@@ -8,10 +8,10 @@ description: |
   held for a contradiction or surfaced as a promotion suggestion.
   Most sessions produce zero durable candidates — the discipline is bias
   toward NOT durable, per spec §3.1.
-version: 0.5.0
+version: 0.5.1
 license: MIT
 
-framework_version: "0.5.0"
+framework_version: "0.5.1"
 schema_version: 1
 type: skill
 execution_tier: judgment
