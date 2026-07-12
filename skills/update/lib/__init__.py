@@ -46,3 +46,27 @@ def changelog_digest(old: str, new: str, changelog_path: Path) -> str:
             end = next((b for b in boundaries if b > match.start()), len(text))
             sections.append(text[match.start():end].strip())
     return "\n\n".join(sections)
+
+
+_TRUST_BACKFILL_GATE = "0.5.1"
+
+
+def should_run_trust_backfill(old: str, new: str) -> bool:
+    """True when an update crosses the 0.5.1 boundary (old < 0.5.1 <= new).
+
+    Gates ``migrations/trust-backfill-1/migrate.py`` (see that migration's
+    README) the same way `changelog_digest`'s range check gates the digest:
+    a pure version-tuple comparison, no chain machinery involved, because
+    trust-backfill-1 is a standalone global migration (not part of
+    `skills/wiki-migration`'s page-type chain — see
+    `skills/wiki-migration/schemas.json`'s `global_migrations` note).
+    """
+    try:
+        old_key, new_key, gate_key = (
+            _version_key(old),
+            _version_key(new),
+            _version_key(_TRUST_BACKFILL_GATE),
+        )
+    except ValueError:
+        return False
+    return old_key < gate_key <= new_key
