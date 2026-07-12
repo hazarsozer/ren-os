@@ -252,6 +252,31 @@ def test_render_report_lists_sections(wiki):
         assert header in text
 
 
+def test_render_report_omits_judge_dismissed_section_when_empty(wiki):
+    text = wiki_health.render_report(wiki_health.sweep())
+    assert "Judge-dismissed" not in text
+
+
+def test_render_report_shows_judge_dismissed_pairs():
+    findings = {
+        "generated_at": "2026-07-12T00:00:00Z",
+        "judge_dismissed": [
+            {
+                "page": "a.md",
+                "with": "b.md",
+                "evidence": "heuristic evidence line",
+                "judge": {"verdict": "unrelated", "confidence": 0.92, "reason": "different topics entirely"},
+            }
+        ],
+    }
+    text = wiki_health.render_report(findings)
+    assert "## Judge-dismissed (for review)" in text
+    assert "a.md ↔ b.md" in text
+    assert "different topics entirely" in text
+    assert "0.92" in text
+    assert "heuristic evidence line" in text
+
+
 def test_sweep_records_path_escaping_pointer_as_finding_not_crash(wiki):
     # Malicious/broken l2-map pointer that would escape the wiki root via
     # ren_paths.safe_join — must be recorded as a finding, not raise.

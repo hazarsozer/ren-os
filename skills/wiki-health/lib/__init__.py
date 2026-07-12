@@ -453,6 +453,18 @@ def render_report(findings: dict) -> str:
     lines.append(f"- {quarantined['count']} page(s)")
     lines.extend(f"  - {p}" for p in quarantined.get("pages", []))
 
+    dismissed = findings.get("judge_dismissed") or []
+    if dismissed:
+        lines.append("")
+        lines.append("## Judge-dismissed (for review)")
+        for d in dismissed:
+            judge = d.get("judge") or {}
+            lines.append(
+                f"- {d['page']} ↔ {d['with']}: judge={judge.get('verdict')} "
+                f"(confidence {judge.get('confidence')}): {judge.get('reason')} "
+                f"— heuristic evidence: {d['evidence']}"
+            )
+
     return "\n".join(lines) + "\n"
 
 

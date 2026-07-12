@@ -96,6 +96,11 @@ used to catch, by sweeping periodically instead of gating continuously.
      removed through the write substrate (journaled, revertible). Never
      release on your own judgment; a sweep finding is an offer, not a
      decision.
+   - **Judge-dismissed pairs** (only when `llm_call` was passed to `sweep()`):
+     never auto-anything. `render_report` shows a `## Judge-dismissed (for
+     review)` section with the judge's reason/confidence next to the
+     original heuristic evidence, so the friend can see what the judge
+     filtered out — anti-Goodhart visibility, not a repair target.
 4. Before applying ANY batch of mechanical fixes, list the intended fixes
    to the friend first — **never mass-edit without listing intended fixes
    first**, even when every fix in the batch is individually unambiguous.
