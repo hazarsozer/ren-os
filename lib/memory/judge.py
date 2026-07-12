@@ -39,6 +39,12 @@ VALID_VERDICTS: Final[frozenset[str]] = frozenset(
 )
 JUDGE_PAIR_CAP: Final[int] = 10
 
+# 0.5.2 Task 12 (wrap close-out consumer): the minimum confidence a judged
+# verdict must carry before a caller treats it as worth surfacing. Below
+# this, a judge call still happened (and still counts against the pair cap)
+# but the verdict is too uncertain to show a human.
+JUDGE_MIN_CONFIDENCE: Final[float] = 0.7
+
 _MAX_TEXT_CHARS: Final[int] = 4_000
 
 _JUDGE_PROMPT_TEMPLATE: Final[str] = """\
@@ -183,6 +189,7 @@ def judge_pairs(
 __all__ = [
     "VALID_VERDICTS",
     "JUDGE_PAIR_CAP",
+    "JUDGE_MIN_CONFIDENCE",
     "Verdict",
     "JudgeError",
     "build_judge_prompt",

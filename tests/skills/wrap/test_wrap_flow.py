@@ -573,6 +573,223 @@ class TestSuggestionPreviews:
 # =============================================================================
 
 
+def _llm_dual(classify_mapping: dict[str, str], judge_verdict: str, judge_confidence: float = 0.9):
+    """A stub `llm_call` that answers BOTH prompt shapes wrap can send:
+    the classifier's durable-item gate prompt, and the judge's pair-verdict
+    prompt. Picked apart by a phrase unique to each template — see
+    `classifier._CLASSIFIER_PROMPT_TEMPLATE` / `judge._JUDGE_PROMPT_TEMPLATE`."""
+    def llm_call(prompt: str) -> str:
+        if "candidate item from an end-of-session wrap" in prompt:
+            for item_text, verdict in classify_mapping.items():
+                if item_text in prompt:
+                    return json.dumps({"verdict": verdict, "reason": f"stub: {verdict}"})
+            return json.dumps({"verdict": "session-only", "reason": "stub: unmatched"})
+        return json.dumps(
+            {"verdict": judge_verdict, "confidence": judge_confidence, "reason": "stub judge"}
+        )
+    return llm_call
+
+
+# =============================================================================
+# semantic_findings — judge at wrap close-out (Task 12, 0.5.2)
+# =============================================================================
+
+
+def _stub_shortlist_pairs_pairing_focus_with(other_page: str):
+    """A fake `shortlist_pairs` that ignores Task 11's real candidate-page
+    filtering (which excludes quarantined pages — and EVERY wrap-applied
+    page is quarantined by construction, see `queue._quarantined_content`)
+    and simply pairs each focus page with `other_page`. This isolates Task
+    12's judge-wiring from Task 11's own (separately tested) filtering
+    rules: what's under test here is "does wrap call judge_pairs correctly
+    over whatever shortlist_pairs hands back", not "does shortlist_pairs
+    itself find this specific pair"."""
+    def fake(root, *, focus_pages=None, cap=20):
+        return [{"page": p, "with": other_page, "reason": "near-similar"} for p in (focus_pages or [])]
+    return fake
+
+
+class TestSemanticFindings:
+    def test_judged_paraphrase_duplicate_produces_a_finding(self, wiki, monkeypatch):
+        from skills.wrap import lib as wrap_lib
+
+        existing_page = wiki / "lessons" / "existing-fact.md"
+        existing_page.parent.mkdir(parents=True, exist_ok=True)
+        existing_page.write_text("Some pre-existing fact.\n", encoding="utf-8")
+
+        monkeypatch.setattr(
+            wrap_lib, "shortlist_pairs",
+            _stub_shortlist_pairs_pairing_focus_with("lessons/existing-fact.md"),
+        )
+
+        durable_item = "always run the linter before commit"
+        llm_call = _llm_dual({durable_item: "durable"}, judge_verdict="duplicate")
+
+        result = wrap_session(
+            narrative_md="# Summary\n",
+            durable_items=[durable_item],
+            session="sess-sem-1",
+            llm_call=llm_call,
+        )
+
+        assert len(result["applied"]) == 1
+        findings = result["semantic_findings"]
+        assert len(findings) == 1
+        finding = findings[0]
+        assert finding["page"] == result["applied"][0]["page"]
+        assert finding["with"] == "lessons/existing-fact.md"
+        assert finding["verdict"] == "duplicate"
+        assert finding["confidence"] == 0.9
+        assert finding["reason"] == "stub judge"
+
+    def test_no_llm_call_means_no_semantic_findings(self, wiki):
+        durable_item = "always run the linter before commit"
+        result = wrap_session(
+            narrative_md="# Summary\n",
+            durable_items=[durable_item],
+            session="sess-sem-2",
+            llm_call=None,
+        )
+        # No llm_call at all -> classifier falls back deterministically (never
+        # "durable"), so nothing is even applied — but the assertion that
+        # matters here is the judge path: it must never be reached either.
+        assert result["semantic_findings"] == []
+
+    def test_judge_exception_yields_no_findings_and_wrap_never_raises(self, wiki, monkeypatch):
+        from skills.wrap import lib as wrap_lib
+
+        existing_page = wiki / "lessons" / "existing-fact.md"
+        existing_page.parent.mkdir(parents=True, exist_ok=True)
+        existing_page.write_text("Some pre-existing fact.\n", encoding="utf-8")
+
+        monkeypatch.setattr(
+            wrap_lib, "shortlist_pairs",
+            _stub_shortlist_pairs_pairing_focus_with("lessons/existing-fact.md"),
+        )
+
+        durable_item = "always run the linter before commit"
+
+        def crashing_llm(prompt: str) -> str:
+            if "candidate item from an end-of-session wrap" in prompt:
+                return json.dumps({"verdict": "durable", "reason": "stub: durable"})
+            raise RuntimeError("judge backend down")
+
+        result = wrap_session(
+            narrative_md="# Summary\n",
+            durable_items=[durable_item],
+            session="sess-sem-3",
+            llm_call=crashing_llm,
+        )
+
+        assert len(result["applied"]) == 1
+        assert result["semantic_findings"] == []
+
+    def test_sub_threshold_confidence_is_filtered_out(self, wiki, monkeypatch):
+        from skills.wrap import lib as wrap_lib
+
+        existing_page = wiki / "lessons" / "existing-fact.md"
+        existing_page.parent.mkdir(parents=True, exist_ok=True)
+        existing_page.write_text("Some pre-existing fact.\n", encoding="utf-8")
+
+        monkeypatch.setattr(
+            wrap_lib, "shortlist_pairs",
+            _stub_shortlist_pairs_pairing_focus_with("lessons/existing-fact.md"),
+        )
+
+        durable_item = "always run the linter before commit"
+        llm_call = _llm_dual({durable_item: "durable"}, judge_verdict="duplicate", judge_confidence=0.5)
+
+        result = wrap_session(
+            narrative_md="# Summary\n",
+            durable_items=[durable_item],
+            session="sess-sem-4",
+            llm_call=llm_call,
+        )
+
+        assert len(result["applied"]) == 1
+        assert result["semantic_findings"] == []
+
+    def test_unrelated_verdict_is_filtered_out(self, wiki, monkeypatch):
+        from skills.wrap import lib as wrap_lib
+
+        existing_page = wiki / "lessons" / "existing-fact.md"
+        existing_page.parent.mkdir(parents=True, exist_ok=True)
+        existing_page.write_text("Some pre-existing fact.\n", encoding="utf-8")
+
+        monkeypatch.setattr(
+            wrap_lib, "shortlist_pairs",
+            _stub_shortlist_pairs_pairing_focus_with("lessons/existing-fact.md"),
+        )
+
+        durable_item = "always run the linter before commit"
+        llm_call = _llm_dual({durable_item: "durable"}, judge_verdict="unrelated")
+
+        result = wrap_session(
+            narrative_md="# Summary\n",
+            durable_items=[durable_item],
+            session="sess-sem-5",
+            llm_call=llm_call,
+        )
+
+        assert len(result["applied"]) == 1
+        assert result["semantic_findings"] == []
+
+    def test_no_applied_writes_means_no_semantic_findings_without_calling_llm(self, wiki):
+        # Nothing durable happened this session -> nothing to judge against;
+        # the llm_call stub raises if it's ever invoked, proving the judge
+        # path is skipped rather than merely producing filtered-out results.
+        def exploding_llm(prompt: str) -> str:
+            raise AssertionError("llm_call should not be invoked when nothing was applied")
+
+        result = wrap_session(
+            narrative_md="# Summary\n",
+            durable_items=[],
+            session="sess-sem-6",
+            llm_call=exploding_llm,
+        )
+
+        assert result["semantic_findings"] == []
+
+    def test_semantic_findings_rendered_on_wrap_screen(self, wiki):
+        result = {
+            "l1_qid": "q-does-not-exist",
+            "applied": [],
+            "held": [],
+            "gated_out": [],
+            "refused": [],
+            "fail_closed": False,
+            "semantic_findings": [
+                {
+                    "page": "lessons/a.md",
+                    "with": "lessons/b.md",
+                    "verdict": "duplicate",
+                    "confidence": 0.9,
+                    "reason": "same fact restated",
+                }
+            ],
+        }
+
+        screen = render_wrap_screen(result, session="sess-nothing")
+        assert "lessons/a.md" in screen
+        assert "lessons/b.md" in screen
+        assert "duplicate" in screen
+        assert "same fact restated" in screen
+
+    def test_no_semantic_findings_section_omitted(self, wiki):
+        result = {
+            "l1_qid": "q-does-not-exist",
+            "applied": [],
+            "held": [],
+            "gated_out": [],
+            "refused": [],
+            "fail_closed": False,
+            "semantic_findings": [],
+        }
+
+        screen = render_wrap_screen(result, session="sess-nothing")
+        assert "duplicate" not in screen
+
+
 class TestPendingList:
     def test_lists_entries_across_sessions_with_previews(self, wiki):
         from skills.wrap import lib

@@ -41,8 +41,10 @@ from typing import Callable
 from lib import ren_paths
 from lib.instrument import collect
 from lib.memory import queue
+from lib.memory.judge import JUDGE_MIN_CONFIDENCE, JUDGE_PAIR_CAP, judge_pairs
 from lib.memory.queue import Proposal, propose_and_apply
 from lib.memory.scrub import SecretsFound
+from lib.memory.semantics import shortlist_pairs
 from lib.suggestions import expire_stale_pending, prune_decided
 from lib.suggestions import record as record_suggestion
 from lib.suggestions.producers import (
@@ -84,6 +86,61 @@ def _slugify(text: str, *, max_words: int = 8) -> str:
     return "-".join(words[:max_words]) or "item"
 
 
+def _judge_semantic_findings(
+    focus_pages: list[str], llm_call: Callable[[str], str] | None
+) -> list[dict]:
+    """Judge (Task 4) the shortlist (Task 11) restricted to `focus_pages` —
+    this session's applied writes — and return informational findings for
+    the wrap screen only (0.5.3's consolidation is the future apply
+    consumer; nothing here writes anything).
+
+    Fail-closed like every other wrap sub-step: `focus_pages` empty means
+    nothing was written this session, so there's nothing to compare and
+    `llm_call` is never invoked; any exception anywhere in this path
+    (shortlist scan, page read, judging) degrades to `[]` rather than
+    raising — `judge_pairs` itself is already fail-closed per pair, but the
+    shortlist scan and page reads are plain filesystem code with no such
+    guarantee, so the whole function is wrapped for the same "wrap must
+    never crash" discipline as the rest of this module.
+    """
+    if not focus_pages:
+        return []
+
+    try:
+        root = ren_paths.wiki_root()
+        pairs = shortlist_pairs(root, focus_pages=focus_pages)
+        if not pairs:
+            return []
+
+        texts = [
+            (
+                (root / pair["page"]).read_text(encoding="utf-8", errors="replace"),
+                (root / pair["with"]).read_text(encoding="utf-8", errors="replace"),
+            )
+            for pair in pairs
+        ]
+        verdicts = judge_pairs(texts, llm_call, cap=JUDGE_PAIR_CAP)
+
+        findings: list[dict] = []
+        for pair, verdict in zip(pairs, verdicts):
+            if verdict is None or verdict.kind == "unrelated":
+                continue
+            if verdict.confidence < JUDGE_MIN_CONFIDENCE:
+                continue
+            findings.append(
+                {
+                    "page": pair["page"],
+                    "with": pair["with"],
+                    "verdict": verdict.kind,
+                    "confidence": verdict.confidence,
+                    "reason": verdict.reason,
+                }
+            )
+        return findings
+    except Exception:  # noqa: BLE001 - semantic findings are informational, must never break wrap
+        return []
+
+
 def wrap_session(
     narrative_md: str,
     durable_items: list[str],
@@ -110,6 +167,13 @@ def wrap_session(
       - "fail_closed": True if the classifier gate fell back to the
         deterministic path (due to an LLM error) for at least one durable
         candidate during this call
+      - "semantic_findings": [{"page", "with", "verdict", "confidence",
+        "reason"}] — LLM-judged (Task 4) verdicts over the shortlist (Task
+        11) restricted to this session's applied writes (`applied`'s pages).
+        INFORMATIONAL ONLY — rendered on the wrap screen, nothing here
+        writes or applies anything; that's 0.5.3's consolidation. `[]` when
+        nothing was applied this session, `llm_call` is `None`, or judging
+        fails for any reason (fail-closed, never raises)
 
     `project` (codex D4): when the wrap is scoped to a project, the L1 page
     is written to `projects/<project>/l1/session-<id>.md`, the EXACT path
@@ -194,6 +258,10 @@ def wrap_session(
     new_events = events_after[len(events_before):]
     fail_closed = any(e.get("event") == "fail_closed" for e in new_events)
 
+    semantic_findings = _judge_semantic_findings(
+        [a["page"] for a in applied], llm_call
+    )
+
     return {
         "l1_qid": l1_entry.qid,
         "applied": applied,
@@ -201,6 +269,7 @@ def wrap_session(
         "gated_out": gated_out,
         "refused": refused,
         "fail_closed": fail_closed,
+        "semantic_findings": semantic_findings,
     }
 
 
@@ -428,6 +497,20 @@ def render_wrap_screen(wrap_result: dict, session: str) -> str:
     else:
         lines.append("- (none)")
     lines.append("")
+
+    # --- Possible connections (informational, judge-sourced) ---
+    # Task 12: LLM-judged verdicts over this session's applied writes vs. the
+    # rest of the wiki. Purely informational — omitted entirely when empty,
+    # never a slash-command hint; acting on one is 0.5.3's job.
+    semantic_findings = wrap_result.get("semantic_findings") or []
+    if semantic_findings:
+        lines.append("## Possible connections (unverified)")
+        for finding in semantic_findings:
+            lines.append(
+                f"- {finding['page']} ↔ {finding['with']}: {finding['verdict']} "
+                f"(confidence {finding['confidence']:.2f}) — {finding['reason']}"
+            )
+        lines.append("")
 
     # --- Refused (never queued) ---
     refused = wrap_result.get("refused") or []
