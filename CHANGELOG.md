@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.5.2] — 2026-07-12 — "real semantics"
+
+The brain now understands paraphrase and contradiction: an LLM judge reads
+shortlisted page pairs and rules duplicate / contradicts / supersedes /
+unrelated — fail-closed to today's heuristics whenever no LLM is available.
+
+- **Shortlist, then judge** — a deterministic candidate generator
+  (`shortlist_pairs`) feeds heuristic hits and near-similar pairs (the
+  paraphrases heuristics miss) to the judge, capped and ordered stably.
+- **Wrap judges the session's writes** — new `semantic_findings` on the
+  wrap screen: your session's pages judged against the wiki, informational
+  only (consolidation lands in 0.5.3).
+- **The wiki-health sweep judges too** — judge-confirmed paraphrase
+  duplicates join the duplicate report; near-similar pairs judged as
+  contradictions flow all the way to critical suggestions; judged
+  supersedes relations get their own "for review" section; and pairs the
+  judge *dismisses* stay visible in the report (the judge never makes
+  evidence disappear).
+- **Fail-closed everywhere** — no LLM, a judge error, or a malformed
+  verdict all degrade to exact heuristic behavior; the sweep and wrap
+  never break. `/ren:doctor` warns when judging has been degrading
+  ("semantic judging degraded — running heuristics-only").
+- **Judge quality is measured, not assumed** — a held-out 16-case eval
+  fixture (4 per verdict class, paraphrases with zero shared lines,
+  non-negation contradictions) scores any judge; the live drill scored
+  16/16.
+
 ## [0.5.1] — 2026-07-12 — "trust taxonomy"
 
 Provenance classes, scrub-at-scan, escaped retrieval: the wiki now knows

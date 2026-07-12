@@ -4,10 +4,10 @@ description: |
   Use when the friend wants to back up their wiki to a private remote, or
   check backup status. Triggers on /ren:backup with optional subcommands
   (--setup, --tarball, --status). Git push primary, tarball fallback.
-version: 0.5.1
+version: 0.5.2
 license: MIT
 
-framework_version: "0.5.1"
+framework_version: "0.5.2"
 schema_version: 1
 type: skill
 execution_tier: deterministic
