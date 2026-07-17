@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.5.6] — 2026-07-18 — "don't touch my map"
+
+Hotfix for a silent data-loss bug (present since 0.2, but 0.5.5 is the first
+release that gives you a reason to hit it).
+
+- **Re-running `/ren:bootstrap-project` no longer wipes a project's map** —
+  bootstrap seeds a project's L2 map only when it doesn't exist yet. On an
+  existing project it now leaves your grown Knowledge / Decision-map / Log
+  untouched (previously it silently overwrote them with the empty
+  bootstrap-day template). Re-running bootstrap to pick up the new 0.5.5
+  `overview.md` page is now safe.
+
 ## [0.5.5] — 2026-07-17 — "orientation & real usage"
 
 Wake-up now answers the questions a session actually needs instead of

@@ -7,10 +7,10 @@ description: |
   exit criterion, failure handler, AND a capability/path allowlist bounding
   WHAT it may touch, not just when it runs. Triggers on the
   /ren:routine-init slash command.
-version: 0.5.5
+version: 0.5.6
 license: MIT
 
-framework_version: "0.5.5"
+framework_version: "0.5.6"
 schema_version: 1
 type: skill
 execution_tier: deterministic
