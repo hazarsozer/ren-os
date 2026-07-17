@@ -78,16 +78,16 @@ def test_one_crashing_check_does_not_prevent_others(wiki, monkeypatch):
 # ------------------------------------------------------------------- check_env
 
 
-def test_check_env_ok_when_tools_present(monkeypatch):
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+def test_check_env_ok_when_tools_present():
     result = doctor.check_env()
     assert result.status == "ok"
 
 
-def test_check_env_warns_when_api_key_missing(monkeypatch):
+def test_check_env_ok_regardless_of_api_key(monkeypatch):
+    """RenOS runs on subscription auth — no API key is ever required."""
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     result = doctor.check_env()
-    assert result.status == "warn"
+    assert result.status == "ok"
 
 
 # ----------------------------------------------------------- check_wiki_structure

@@ -30,6 +30,8 @@ from __future__ import annotations
 import json
 import logging
 import os
+import shutil
+import subprocess
 import sys
 import traceback
 from pathlib import Path
@@ -37,6 +39,69 @@ from pathlib import Path
 # Late import: keep hook startup fast (avoid importing lib/ unless needed)
 
 logger = logging.getLogger("ren-wake-up")
+
+# B1: on a clean machine the SessionStart hook runs under bare `python3`, which
+# lacks the project deps (pyyaml, python-ulid) that `wakeup` imports transitively
+# via lib.memory.provenance. Left unhandled that surfaced as a swallowed
+# ModuleNotFoundError → permanently-empty additionalContext, SILENTLY. The hook
+# must instead either self-heal (re-exec under `uv run`, which has the deps) or
+# degrade LOUDLY. This env flag guards the re-exec against infinite recursion.
+REEXEC_GUARD_ENV = "REN_WAKEUP_REEXEC"
+# SessionStart hook timeout is 10s; leave headroom. A warm `uv run` is sub-second;
+# a cold one that blows this budget times out here and falls through to the loud
+# degrade message rather than hanging the session start.
+_REEXEC_TIMEOUT_S = 7.0
+
+
+def _degrade_message() -> str:
+    """Loud additionalContext emitted when RenOS memory injection is disabled
+    because the hook could not load its Python deps AND could not self-heal via
+    `uv run`. NEVER return "" here — the whole point of B1 is that a broken
+    environment is visible, not silent."""
+    return (
+        "## RenOS wake-up: memory injection DISABLED\n\n"
+        "The wake-up hook could not load RenOS's Python dependencies "
+        "(e.g. `pyyaml`, `python-ulid`) under the plain `python3` interpreter, "
+        "and could not self-heal via `uv run`. Your wiki/memory context was "
+        "**not** injected this session — prior-session continuity is unavailable.\n\n"
+        "To fix: run `/ren:doctor` (it checks the environment), and/or install "
+        "`uv` so the hook can self-heal by re-running under the project venv."
+    )
+
+
+def _reexec_under_uv(raw_stdin: str) -> str | None:
+    """Re-run THIS script under `uv run --project <root> python …` (which has the
+    project deps) and return the additionalContext it computed. Returns None —
+    signalling the caller to fall back to `_degrade_message` — when uv is
+    unavailable, we are already inside a re-exec (guard flag set), or the child
+    fails/times out. Passes the original stdin through so the child sees the same
+    SessionStart event. NEVER raises."""
+    if os.environ.get(REEXEC_GUARD_ENV) == "1":
+        return None  # already re-exec'd once; do not recurse
+    if shutil.which("uv") is None:
+        return None
+    root = str(_plugin_root())
+    script = str(Path(__file__).resolve())
+    child_env = dict(os.environ)
+    child_env[REEXEC_GUARD_ENV] = "1"
+    try:
+        proc = subprocess.run(
+            ["uv", "run", "--project", root, "python", script],
+            input=raw_stdin, capture_output=True, text=True,
+            timeout=_REEXEC_TIMEOUT_S, env=child_env,
+        )
+    except (OSError, subprocess.SubprocessError):
+        logger.warning("uv re-exec failed to launch", exc_info=True)
+        return None
+    if proc.returncode != 0:
+        logger.warning("uv re-exec exited %s: %s", proc.returncode, (proc.stderr or "")[-500:])
+        return None
+    try:
+        out = json.loads(proc.stdout)
+        return out["hookSpecificOutput"]["additionalContext"]
+    except (json.JSONDecodeError, KeyError, TypeError):
+        logger.warning("uv re-exec produced unparsable output")
+        return None
 
 
 def _setup_logging() -> None:
@@ -98,6 +163,7 @@ def main() -> int:
     """Entry point. Reads stdin JSON; emits stdout JSON. Always returns 0."""
     _setup_logging()
 
+    raw = ""
     try:
         raw = sys.stdin.read()
         event = json.loads(raw) if raw.strip() else {}
@@ -134,6 +200,13 @@ def main() -> int:
             source=source,
             session=session,
         )
+    except ModuleNotFoundError as exc:
+        # B1: bare `python3` lacks the project deps. Try to self-heal by
+        # re-running under `uv run` (which has them); if that isn't possible,
+        # degrade LOUDLY instead of the old silent empty payload.
+        logger.warning("wakeup deps unavailable (%s); attempting uv re-exec", exc)
+        relayed = _reexec_under_uv(raw)
+        context_text = relayed if relayed is not None else _degrade_message()
     except Exception:  # noqa: BLE001 — load-bearing graceful failure
         logger.error("compose failed:\n%s", traceback.format_exc())
         context_text = ""

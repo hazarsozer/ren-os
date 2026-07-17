@@ -161,7 +161,7 @@ path.
 
 ## The skill surface
 
-Seventeen skills, each declaring an **execution tier** — deterministic scripts run as
+Eighteen skills, each declaring an **execution tier** — deterministic scripts run as
 scripts, worker-shaped drafting delegates to cheap subagent models, and judgment
 (approvals, session narrative) stays with the main model.
 
@@ -224,7 +224,7 @@ scripts, worker-shaped drafting delegates to cheap subagent models, and judgment
 ```
 ren-os/
 ├── .claude-plugin/     # plugin + marketplace manifests
-├── skills/             # the 17 /ren: skills (SKILL.md contract + lib/ core each)
+├── skills/             # the 18 /ren: skills (SKILL.md contract + lib/ core each)
 ├── lib/                # memory substrate, governance, instrumentation, adapters
 ├── doctrine/           # always-on + on-demand operating doctrine
 ├── wiki-skeleton/      # the templates /ren:install stamps (never dev content)

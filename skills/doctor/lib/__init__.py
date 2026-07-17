@@ -10,7 +10,7 @@ through `run_checks()` with per-check isolation (a crashing check becomes an
 CARRIED (logic ported from donor's bash, not the bash itself — Python
 integrates directly with this repo's lib modules, which the new checks below
 need anyway):
-  - `check_env` — git/python present, ANTHROPIC_API_KEY set. (Node/gh/claude-cli
+  - `check_env` — git/python present. (Node/gh/claude-cli
     checks from donor's check-env.sh are DROPPED — feed-era/marketplace-era
     concerns that don't apply to a bare Python+git framework.)
   - `check_wiki_structure` — wiki root exists, `identity.md`/`log.md` present.
@@ -77,8 +77,9 @@ def _wrap(name: str, fn) -> CheckResult:
 
 
 def check_env() -> CheckResult:
-    """git present, python present, ANTHROPIC_API_KEY set. Donor's Node/gh/
-    claude-cli checks dropped (feed/marketplace-era, not applicable here)."""
+    """git present, python present. Donor's Node/gh/claude-cli checks dropped
+    (feed/marketplace-era, not applicable here). No API-key check — RenOS runs on
+    subscription auth and ships with no keys, no services, no telemetry."""
     missing = []
     if shutil.which("git") is None:
         missing.append("git")
@@ -86,9 +87,7 @@ def check_env() -> CheckResult:
         missing.append("python3")
     if missing:
         return CheckResult("env", "warn", f"missing on PATH: {', '.join(missing)}")
-    if not os.environ.get("ANTHROPIC_API_KEY", "").strip():
-        return CheckResult("env", "warn", "ANTHROPIC_API_KEY not set")
-    return CheckResult("env", "ok", "git, python3, ANTHROPIC_API_KEY all present")
+    return CheckResult("env", "ok", "git, python3 all present")
 
 
 def check_wiki_structure(wiki_root: Path | None = None) -> CheckResult:

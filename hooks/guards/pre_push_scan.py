@@ -18,20 +18,27 @@ brick the harness; a guard silently never firing is doctor's job to flag,
 not this script's job to prevent by crashing louder).
 
 Checks, in order:
-  1. FORCE/REWRITE guard — force-push (including `+refspec` force syntax,
-     e.g. `git push origin +main` / `+HEAD:main`, not just `--force`/`-f`)
-     or a history-rewrite-then-push shape blocks unless `REN_ALLOW_FORCE=1`
-     is set (an explicit, deliberate human re-run, not a default-allow).
+  1. FORCE/REWRITE guard — bare force-push (`--force`/`-f`, or `+refspec`
+     force syntax e.g. `git push origin +main` / `+HEAD:main`) or a
+     mirror-push (`--mirror`) blocks unless `REN_ALLOW_FORCE=1` is set (an
+     explicit, deliberate human re-run, not a default-allow). Only the push
+     SEGMENT is inspected, so a `git rebase … && git push` isn't blocked on
+     the local rebase; `--force-with-lease` (the safe idiom) is allowed
+     without the env var (M8).
   2. Remote heuristic — pushes to a remote named "backup" skip BOTH the path
      denylist and the secrets scan (the private backup remote's entire point
      is to contain everything, including wiki/ and any fixture secrets it
      might carry); every other remote gets both checks. Remote-name
      extraction fails TOWARD scanning (unknown/ambiguous remote => scan).
-  3. PATH DENYLIST — `git ls-files` (not `git diff --stat`, which misses
-     already-tracked-but-newly-pushed history) checked against
-     `PATH_DENYLIST`.
-  4. SECRETS SCAN — `lib.memory.scrub.scan` over the same file list, skipping
-     files >1MB or non-UTF-8 (treated as binary). A finding blocks, naming
+  3. PATH DENYLIST — applies ONLY when the repo being pushed IS the RenOS
+     plugin repo (identified by a root `.claude-plugin/plugin.json` naming
+     the plugin "ren"); a user's own repo that tracks tests/ etc. is never
+     denylisted (B2). Scans `git ls-files` (not `git diff --stat`, which
+     misses already-tracked-but-newly-pushed history) against `PATH_DENYLIST`.
+  4. SECRETS SCAN — `lib.memory.scrub.scan` over the OUTGOING file set only
+     (`@{u}..HEAD`, or the full tree on a first push with no upstream),
+     skipping files >1MB or non-UTF-8 (treated as binary). A secret in a file
+     not part of this push does not block (B2). A finding blocks, naming
      KINDS and PATHS — never the secret content itself.
 """
 
@@ -62,8 +69,16 @@ PATH_DENYLIST: tuple[str, ...] = (
 )
 
 _GIT_PUSH_RE = re.compile(r"(?:^|[;&|]\s*)git\s+push\b")
-_FORCE_FLAG_RE = re.compile(r"(?:^|\s)(--force(?:-with-lease)?|-f)\b")
+# M8: `--force-with-lease` is the SAFE idiom (refuses to clobber unseen remote
+# work) — it must NOT require REN_ALLOW_FORCE. Only bare `--force`/`-f` do. The
+# negative lookahead keeps `--force` from matching the `--force` prefix of
+# `--force-with-lease`.
+_FORCE_FLAG_RE = re.compile(r"(?:^|\s)(--force(?!-with-lease)|-f)\b")
 _REWRITE_RE = re.compile(r"\bgit\s+(rebase|filter-repo)\b|--mirror\b")
+# M8: command separators, for isolating the segment that actually carries the
+# `git push` — so a `git rebase … && git push` doesn't trip the rewrite check
+# on the (local, separate) rebase segment.
+_SEGMENT_SPLIT_RE = re.compile(r"&&|\|\||[;&|\n]")
 
 ALLOW_FORCE_ENV = "REN_ALLOW_FORCE"
 BACKUP_REMOTE_NAME = "backup"
@@ -78,6 +93,78 @@ def _ensure_plugin_root_on_path() -> None:
     root_str = str(root)
     if root_str not in sys.path:
         sys.path.insert(0, root_str)
+
+
+def _push_segments(command: str) -> list[str]:
+    """Return EVERY separator-delimited command segment that carries `git push`,
+    stripped. Force/rewrite checks run against each of these, not the whole
+    command, so a `git rebase … && git push` (rebase in a separate, local
+    segment) isn't blocked and a `--force` inside an earlier commit message
+    can't false-positive — but a chained `git push … && git push --force …`
+    still has its trailing forced push inspected (each push segment is checked).
+    Falls back to `[whole command]` if no segment isolates a push."""
+    segments = [
+        segment.strip()
+        for segment in _SEGMENT_SPLIT_RE.split(command)
+        if re.search(r"\bgit\s+push\b", segment)
+    ]
+    return segments or [command.strip()]
+
+
+def _is_renos_repo(cwd: str) -> bool:
+    """True iff `cwd`'s git repo IS the RenOS plugin/dev repo — the only repo
+    the maintainer PATH_DENYLIST applies to. Identified by a repo-root
+    `.claude-plugin/plugin.json` naming the plugin "ren". Any other repo the
+    user happens to push from (their own projects, which legitimately track
+    `tests/`, `.claude/`, `docs/`) is never subject to the denylist. Never
+    raises — any failure degrades to False (not-renos => denylist skipped)."""
+    try:
+        top = subprocess.run(
+            ["git", "-C", cwd, "rev-parse", "--show-toplevel"],
+            capture_output=True, text=True, timeout=5,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    if top.returncode != 0 or not top.stdout.strip():
+        return False
+    manifest = Path(top.stdout.strip()) / ".claude-plugin" / "plugin.json"
+    try:
+        data = json.loads(manifest.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    return isinstance(data, dict) and data.get("name") == "ren"
+
+
+def _outgoing_files(cwd: str) -> list[str]:
+    """Files to run the secrets scan over: only those touched by commits not
+    yet on the upstream (`@{u}..HEAD`) — a secret-shaped string in a file that
+    is NOT part of this push must not block. When there is no upstream (first
+    push of a branch), everything tracked is outgoing, so fall back to the full
+    `git ls-files` tree. Never raises — degrades to [] on diff failure with an
+    upstream present (fail toward not-scanning that file set rather than
+    crashing the guard)."""
+    try:
+        rev = subprocess.run(
+            ["git", "-C", cwd, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"],
+            capture_output=True, text=True, timeout=5,
+        )
+        has_upstream = rev.returncode == 0 and bool(rev.stdout.strip())
+    except (OSError, subprocess.TimeoutExpired):
+        has_upstream = False
+
+    if not has_upstream:
+        return _ls_files(cwd)
+
+    try:
+        diff = subprocess.run(
+            ["git", "-C", cwd, "diff", "--name-only", "@{u}..HEAD"],
+            capture_output=True, text=True, timeout=15,
+        )
+        if diff.returncode != 0:
+            return []
+        return [line for line in diff.stdout.splitlines() if line.strip()]
+    except (OSError, subprocess.TimeoutExpired):
+        return []
 
 
 def _has_force_refspec(command: str) -> bool:
@@ -173,28 +260,44 @@ def check_push(command: str, cwd: str) -> int:
     if not _GIT_PUSH_RE.search(command):
         return 0  # not a push at all — nothing for this guard to do
 
-    if _FORCE_FLAG_RE.search(command) or _REWRITE_RE.search(command) or _has_force_refspec(command):
+    # M8: force/rewrite checks apply per push SEGMENT (not the whole command),
+    # so a `git rebase … && git push` (safe plain push git will reject if
+    # non-ff) isn't blocked and `--force-with-lease` (safe idiom) no longer
+    # requires the env var. But EVERY push segment is inspected, so a chained
+    # `git push … && git push --force …` still has its forced push caught.
+    segments = _push_segments(command)
+    if any(
+        _FORCE_FLAG_RE.search(s) or _REWRITE_RE.search(s) or _has_force_refspec(s)
+        for s in segments
+    ):
         if os.environ.get(ALLOW_FORCE_ENV) == "1":
             return 0
         return _block(
-            "BLOCKED: force-push / history-rewrite-then-push detected. "
+            "BLOCKED: force-push / mirror-push detected. "
             f"Re-run with {ALLOW_FORCE_ENV}=1 to confirm this is deliberate."
         )
 
-    remote = _extract_remote(command, cwd)
-    if remote == BACKUP_REMOTE_NAME:
-        return 0  # private backup remote: its whole point is to contain everything
+    # Backup-remote skip applies ONLY when EVERY push in the command targets the
+    # private backup remote (its whole point is to contain everything). A single
+    # chained push to any other remote forces the denylist + secrets scan to run.
+    remotes = [_extract_remote(s, cwd) for s in segments]
+    if remotes and all(r == BACKUP_REMOTE_NAME for r in remotes):
+        return 0
 
-    files = _ls_files(cwd)
+    # B2: the maintainer PATH_DENYLIST is a RenOS-repo-only concern — it must
+    # not block a user pushing their OWN repo that legitimately tracks tests/,
+    # .claude/, docs/. Scoped by repo identity.
+    if _is_renos_repo(cwd):
+        denylisted = _denylisted_paths(_ls_files(cwd))
+        if denylisted:
+            return _block(
+                "BLOCKED: push includes maintainer-only path(s) not allowed on this "
+                f"remote: {', '.join(denylisted[:10])}"
+            )
 
-    denylisted = _denylisted_paths(files)
-    if denylisted:
-        return _block(
-            "BLOCKED: push includes maintainer-only path(s) not allowed on this "
-            f"remote: {', '.join(denylisted[:10])}"
-        )
-
-    findings = _scan_secrets(cwd, files)
+    # B2: scan only the OUTGOING changes, not the whole tracked tree — a
+    # secret-shaped string in a file that isn't part of this push must not block.
+    findings = _scan_secrets(cwd, _outgoing_files(cwd))
     if findings:
         kinds = sorted({kind for _, kind in findings})
         paths = sorted({path for path, _ in findings})

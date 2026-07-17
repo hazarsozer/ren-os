@@ -65,6 +65,22 @@ def git_repo(tmp_path):
     return repo
 
 
+def _make_renos_identity(repo: Path) -> None:
+    """Mark `repo` as the RenOS plugin repo so the maintainer PATH_DENYLIST
+    applies (B2 repo-identity scoping)."""
+    manifest = repo / ".claude-plugin" / "plugin.json"
+    manifest.parent.mkdir(parents=True, exist_ok=True)
+    manifest.write_text('{"name": "ren"}\n', encoding="utf-8")
+    _git(repo, "add", ".claude-plugin/plugin.json")
+    _git(repo, "commit", "-q", "-m", "renos identity")
+
+
+@pytest.fixture
+def renos_git_repo(git_repo):
+    _make_renos_identity(git_repo)
+    return git_repo
+
+
 def _commit_file(repo: Path, rel: str, content: str) -> None:
     path = repo / rel
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -99,9 +115,55 @@ def test_refspec_plus_head_colon_main_force_push_blocked(git_repo, capsys):
     assert rc == 2
 
 
-def test_history_rewrite_then_push_blocked(git_repo, capsys):
+def test_rebase_then_plain_push_allowed(git_repo, clean_path_env):
+    # M8: the rewrite check applies only to the push SEGMENT. A local rebase
+    # followed by a plain push is safe (git rejects it if non-ff) and must not
+    # require REN_ALLOW_FORCE.
     rc = pre_push_scan.check_push("git rebase main && git push origin main", str(git_repo))
+    assert rc == 0
+
+
+def test_chained_double_push_with_trailing_force_blocked(git_repo, clean_path_env, capsys):
+    # HIGH regression guard: a plain push chained with a forced push must NOT
+    # slip through — every push segment is inspected, not just the first.
+    rc = pre_push_scan.check_push(
+        "git push origin main && git push --force origin main", str(git_repo)
+    )
     assert rc == 2
+    assert "force" in capsys.readouterr().err.lower()
+
+
+def test_chained_pushes_to_different_remotes_each_evaluated(renos_git_repo, clean_path_env, capsys):
+    # A backup push chained with an origin push must still run the denylist for
+    # the origin leg — the backup skip only applies when EVERY push is backup.
+    _commit_file(renos_git_repo, "wiki/secret-plan.md", "plan\n")
+    rc = pre_push_scan.check_push(
+        "git push backup main && git push origin main", str(renos_git_repo)
+    )
+    assert rc == 2
+    assert "wiki/secret-plan.md" in capsys.readouterr().err
+
+
+def test_all_backup_chained_pushes_skip_scans(renos_git_repo):
+    # When every push targets backup, both legs skip denylist + secrets.
+    _commit_file(renos_git_repo, "wiki/secret-plan.md", "plan\n")
+    rc = pre_push_scan.check_push(
+        "git push backup main && git push backup dev", str(renos_git_repo)
+    )
+    assert rc == 0
+
+
+def test_force_with_lease_allowed_without_env(git_repo, clean_path_env):
+    # M8: --force-with-lease is the SAFE idiom — allowed without REN_ALLOW_FORCE.
+    rc = pre_push_scan.check_push("git push --force-with-lease origin main", str(git_repo))
+    assert rc == 0
+
+
+def test_mirror_push_in_segment_still_blocked(git_repo, clean_path_env, capsys):
+    # M8: --mirror in the push segment is still a rewrite-shaped push and blocks.
+    rc = pre_push_scan.check_push("git filter-repo --path x && git push --mirror origin", str(git_repo))
+    assert rc == 2
+    assert "mirror" in capsys.readouterr().err.lower()
 
 
 def test_push_to_backup_remote_skips_both_scans(git_repo):
@@ -112,12 +174,39 @@ def test_push_to_backup_remote_skips_both_scans(git_repo):
     assert rc == 0
 
 
-def test_push_to_other_remote_with_wiki_path_blocked(git_repo, capsys):
-    _commit_file(git_repo, "wiki/secret-plan.md", "the founder's actual plan\n")
+def test_push_to_other_remote_with_wiki_path_blocked(renos_git_repo, capsys):
+    # B2: denylist applies because this repo IS the RenOS repo (plugin.json).
+    _commit_file(renos_git_repo, "wiki/secret-plan.md", "the founder's actual plan\n")
 
-    rc = pre_push_scan.check_push("git push origin main", str(git_repo))
+    rc = pre_push_scan.check_push("git push origin main", str(renos_git_repo))
     assert rc == 2
     assert "wiki/secret-plan.md" in capsys.readouterr().err
+
+
+def test_non_renos_repo_with_denylisted_paths_allowed(git_repo):
+    # B2 repro: a user's OWN repo tracking tests/ (and .claude/, docs/) must
+    # NOT be blocked by the maintainer denylist — no plugin.json => not RenOS.
+    _commit_file(git_repo, "tests/test_x.py", "def test_x():\n    assert True\n")
+    _commit_file(git_repo, ".claude/settings.json", "{}\n")
+    rc = pre_push_scan.check_push("git push origin main", str(git_repo))
+    assert rc == 0
+
+
+def test_secret_in_non_outgoing_file_does_not_block(git_repo):
+    # B2: with an upstream set, only files in @{u}..HEAD are scanned. A secret
+    # committed BEFORE the upstream point is not part of this push => allowed.
+    secret = "AKIAIOSFODNN7EXAMPLE"
+    _commit_file(git_repo, "old/legacy.py", f"AWS_KEY = '{secret}'\n")
+    # Establish an upstream at the current HEAD via a bare clone-style remote.
+    remote = git_repo.parent / "remote.git"
+    _git(git_repo, "clone", "-q", "--bare", str(git_repo), str(remote))
+    _git(git_repo, "remote", "add", "origin", str(remote))
+    _git(git_repo, "push", "-q", "-u", "origin", "HEAD")
+    # New outgoing commit with NO secret.
+    _commit_file(git_repo, "src/clean.py", "print('ok')\n")
+
+    rc = pre_push_scan.check_push("git push origin main", str(git_repo))
+    assert rc == 0
 
 
 def test_push_with_planted_secret_blocked_naming_kind_not_secret(git_repo, capsys):
@@ -292,6 +381,78 @@ def test_rm_of_two_wiki_files_under_threshold_allowed(wiki):
     assert rc == 0
 
 
+class TestQuotedRmTargets:
+    """G4: mass-delete must resolve quoted rm targets, not slip past them."""
+
+    @pytest.fixture(autouse=True)
+    def _setup(self, wiki):
+        self.wiki = wiki
+        self.cwd = str(wiki)
+
+    def test_single_quoted_wiki_page_blocked(self):
+        # A single quoted wiki page hits the single-page rule (it's a .md).
+        assert write_gate.check_mass_delete(
+            f'rm "{self.wiki}/projects/notes.md"', self.cwd) == 2
+
+    def test_quoted_multi_reaches_mass_tier(self):
+        # Three quoted .txt (non-page) targets — only the COUNT threshold can
+        # block them, proving quoted targets are actually counted.
+        cmd = " ".join(f'"{self.wiki}/a{i}.txt"' for i in range(3))
+        assert write_gate.check_mass_delete(f"rm {cmd}", self.cwd) == 2
+
+    def test_quoted_path_with_spaces_blocked(self):
+        assert write_gate.check_mass_delete(
+            f'rm "{self.wiki}/my notes.md"', self.cwd) == 2
+
+    def test_mixed_quoting_blocked(self):
+        # One quoted, one bare .md — either single-page hit blocks.
+        assert write_gate.check_mass_delete(
+            f'rm "{self.wiki}/a.md" {self.wiki}/b.md', self.cwd) == 2
+
+    def test_unquoted_still_blocked(self):
+        # Regression guard: the original unquoted path still blocks.
+        assert write_gate.check_mass_delete(
+            f"rm {self.wiki}/projects/notes.md", self.cwd) == 2
+
+    def test_quoted_two_non_page_under_threshold_allowed(self):
+        # Two quoted .txt targets — under the mass threshold, no page rule.
+        assert write_gate.check_mass_delete(
+            f'rm "{self.wiki}/a.txt" "{self.wiki}/b.txt"', self.cwd) == 0
+
+
+class TestRedirectFalsePositive:
+    """`>` glued inside a word (a->b) is not a redirect; real redirects are."""
+
+    @pytest.fixture(autouse=True)
+    def _setup(self, wiki):
+        (wiki / "projects").mkdir(parents=True, exist_ok=True)
+        self.wiki = wiki
+        # cwd INSIDE the wiki: a false redirect-target would resolve here.
+        self.cwd = str(wiki / "projects")
+
+    def test_glued_gt_in_word_not_a_redirect(self):
+        assert write_gate.check_bash_wiki_write("ls a->b", self.cwd) == 0
+
+    def test_glued_gt_arrow_arg_not_a_redirect(self):
+        assert write_gate.check_bash_wiki_write("echo x->y", self.cwd) == 0
+
+    def test_real_redirect_with_space_blocked(self):
+        assert write_gate.check_bash_wiki_write(
+            f"echo hi > {self.wiki}/projects/x.md", self.cwd) == 2
+
+    def test_real_redirect_no_space_blocked(self):
+        assert write_gate.check_bash_wiki_write(
+            f"echo hi >{self.wiki}/projects/x.md", self.cwd) == 2
+
+    def test_real_append_redirect_blocked(self):
+        assert write_gate.check_bash_wiki_write(
+            f"echo hi >> {self.wiki}/projects/x.md", self.cwd) == 2
+
+    def test_fd_redirect_blocked(self):
+        assert write_gate.check_bash_wiki_write(
+            f"cmd 2> {self.wiki}/projects/x.md", self.cwd) == 2
+
+
 class TestMvOutOfWiki:
     @pytest.fixture(autouse=True)
     def _setup(self, wiki):
@@ -336,14 +497,25 @@ class TestSinglePageRm:
 # =============================================================================
 
 
+def _assert_ask_wire_shape(decision: dict) -> None:
+    # Claude Code's PreToolUse contract: the decision MUST be nested under
+    # `hookSpecificOutput` with the event name, or exit-0 output is ignored
+    # (silently allowing). A bare top-level `permissionDecision` is the bug.
+    assert set(decision) == {"hookSpecificOutput"}
+    hso = decision["hookSpecificOutput"]
+    assert hso["hookEventName"] == "PreToolUse"
+    assert hso["permissionDecision"] == "ask"
+    assert isinstance(hso["permissionDecisionReason"], str) and hso["permissionDecisionReason"]
+
+
 def test_backup_remote_set_url_is_ask_decision():
     decision = write_gate.check_backup_remote_change("git remote set-url backup git@example.com:x/y.git")
-    assert decision == {"permissionDecision": "ask"}
+    _assert_ask_wire_shape(decision)
 
 
 def test_backup_remote_add_is_ask_decision():
     decision = write_gate.check_backup_remote_change("git remote add backup git@example.com:x/y.git")
-    assert decision == {"permissionDecision": "ask"}
+    _assert_ask_wire_shape(decision)
 
 
 def test_unrelated_remote_command_is_no_decision():
@@ -364,7 +536,7 @@ def test_main_emits_ask_decision_on_stdout(monkeypatch, wiki):
 
     rc = write_gate.main()
     assert rc == 0
-    assert json.loads(captured_out.getvalue()) == {"permissionDecision": "ask"}
+    _assert_ask_wire_shape(json.loads(captured_out.getvalue()))
 
 
 # --- write_gate main(): stdin contract + internal failure -------------------

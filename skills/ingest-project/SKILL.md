@@ -21,7 +21,6 @@ contract:
   required_outputs:
     - "One Proposal queued: ADD (or UPDATE) projects/<slug>/map.md, populated from real repo facts"
     - "The first-session artifact text shown to the user verbatim"
-    - "RenOS pointer block present in <project-path>/CLAUDE.md (markers only — content outside them untouched)"
   budgets:
     turns: 4
     files_written: 0

@@ -802,3 +802,76 @@ def test_rank_extras_excludes_archived_pages(wiki):
     assert "archive/old-notes.md" not in ranked
     assert "clean.md" in ranked
     assert held_count == 1
+
+
+# =============================================================================
+# B1: clean-machine dependency degrade / uv self-heal (0.5.4 release blocker)
+# =============================================================================
+
+
+def test_degrade_message_is_loud_and_actionable():
+    msg = _ENTRY._degrade_message()
+    assert msg  # never empty — that was the whole bug
+    assert "DISABLED" in msg
+    assert "/ren:doctor" in msg
+
+
+def test_reexec_guard_prevents_recursion(monkeypatch):
+    # Inside a re-exec (guard flag set), never spawn another uv run.
+    monkeypatch.setenv(_ENTRY.REEXEC_GUARD_ENV, "1")
+    assert _ENTRY._reexec_under_uv("{}") is None
+
+
+def test_missing_deps_degrades_loudly_when_reexec_unavailable(monkeypatch, capsys, tmp_path):
+    def _boom(**kwargs):
+        raise ModuleNotFoundError("No module named 'ulid'")
+
+    monkeypatch.setattr(wakeup, "compose_wake_up_context", _boom)
+    monkeypatch.setattr(_ENTRY, "_reexec_under_uv", lambda raw: None)
+    monkeypatch.setenv("REN_WIKI_ROOT", str(tmp_path / "wiki"))
+
+    rc, stdout = _run_hook_direct(monkeypatch, capsys, "{}")
+    assert rc == 0
+    ctx = json.loads(stdout)["hookSpecificOutput"]["additionalContext"]
+    assert ctx == _ENTRY._degrade_message()
+    assert ctx != ""  # loud, not silent-empty
+
+
+def test_missing_deps_reexec_relays_child_context(monkeypatch, capsys, tmp_path):
+    def _boom(**kwargs):
+        raise ModuleNotFoundError("No module named 'ulid'")
+
+    monkeypatch.setattr(wakeup, "compose_wake_up_context", _boom)
+    monkeypatch.setattr(_ENTRY, "_reexec_under_uv", lambda raw: "RELAYED FROM CHILD")
+    monkeypatch.setenv("REN_WIKI_ROOT", str(tmp_path / "wiki"))
+
+    rc, stdout = _run_hook_direct(monkeypatch, capsys, "{}")
+    assert rc == 0
+    ctx = json.loads(stdout)["hookSpecificOutput"]["additionalContext"]
+    assert ctx == "RELAYED FROM CHILD"
+
+
+def test_clean_python_hook_degrades_loudly_subprocess(tmp_path):
+    """Empirical repro of B1: run the real script under an interpreter that
+    cannot import `ulid` (shadowed to raise), with uv self-heal disabled — the
+    additionalContext must be the loud degrade block, never silent-empty."""
+    import subprocess
+
+    shadow = tmp_path / "shadow"
+    shadow.mkdir()
+    (shadow / "ulid.py").write_text(
+        "raise ModuleNotFoundError(\"No module named 'ulid'\")\n", encoding="utf-8"
+    )
+    env = dict(os.environ)
+    env["PYTHONPATH"] = str(shadow) + os.pathsep + env.get("PYTHONPATH", "")
+    env[_ENTRY.REEXEC_GUARD_ENV] = "1"  # skip uv re-exec -> force the loud degrade path
+    env["REN_WIKI_ROOT"] = str(tmp_path / "wiki")
+
+    proc = subprocess.run(
+        [sys.executable, str(REN_WAKE_UP_PY)],
+        input="{}", capture_output=True, text=True, env=env, timeout=30,
+    )
+    assert proc.returncode == 0, proc.stderr
+    ctx = json.loads(proc.stdout)["hookSpecificOutput"]["additionalContext"]
+    assert "DISABLED" in ctx
+    assert "/ren:doctor" in ctx

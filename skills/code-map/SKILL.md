@@ -46,7 +46,7 @@ references_on_demand: ["doctrine/companions.md"]
 
 # code-map
 
-A structural map of a codebase — symbols, call graphs, cross-file references — for sessions that need more than the wiki's own knowledge. This skill is a **thin wrapper over [Graphify](https://github.com/) (pinned 0.9.x)**, not a second code-intelligence engine. Per the reuse doctrine (spec §3.2 v2.1 D-4), the framework's own hand-rolled `lib/codemap/` engine was deleted in favor of this wrapper.
+A structural map of a codebase — symbols, call graphs, cross-file references — for sessions that need more than the wiki's own knowledge. This skill is a **thin wrapper over [Graphify](https://github.com/safishamsi/graphify) (pinned 0.9.x)**, not a second code-intelligence engine. Per the reuse doctrine (spec §3.2 v2.1 D-4), the framework's own hand-rolled `lib/codemap/` engine was deleted in favor of this wrapper.
 
 ## When to use this skill
 

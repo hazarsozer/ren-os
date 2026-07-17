@@ -11,7 +11,7 @@ version: 0.5.3
 license: MIT
 
 framework_version: "0.5.3"
-schema_version: 3
+schema_version: 1
 type: skill
 execution_tier: deterministic
 

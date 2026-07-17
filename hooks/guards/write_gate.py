@@ -24,10 +24,12 @@ substitution, `eval`, and base64-encoded payloads are not decoded/evaluated.
 
 Same stdin/exit-code contract as `pre_push_scan.py` (see that module's
 docstring for why there's no donor precedent to follow instead) — exit 0
-allow, exit 2 + stderr message block, and a JSON
-`{"permissionDecision": "ask"}` on stdout for the one ask-tier check here
-(backup-remote change: confirm, don't block — the private backup existing at
-all is desirable, only silently repointing it is the risk). NEVER raises
+allow, exit 2 + stderr message block, and a JSON `hookSpecificOutput`
+envelope with `permissionDecision: ask` on stdout for the one ask-tier check
+here (backup-remote change: confirm, don't block — the private backup existing
+at all is desirable, only silently repointing it is the risk). The ask JSON
+MUST be the nested PreToolUse shape; a bare top-level `permissionDecision` is
+unrecognized on exit 0 and silently allows. NEVER raises
 internally; any internal error degrades to ALLOW plus a stderr warning.
 """
 
@@ -56,6 +58,11 @@ BASH_WIKI_WRITE_MESSAGE = (
     "they'd bypass snapshot/journal/revert. (Best-effort guard: it catches "
     "redirects, sed -i, tee, cp/mv — not every possible writer.)"
 )
+BACKUP_REMOTE_ASK_REASON = (
+    "This repoints the private 'backup' git remote. The backup existing is "
+    "desirable, but silently changing where it points is a risk — confirm the "
+    "new URL is intended before running."
+)
 
 QUEUE_APPLY_ENV = "REN_QUEUE_APPLY"
 MASS_DELETE_THRESHOLD = 3
@@ -64,7 +71,12 @@ _RM_RE = re.compile(r"(?:^|[;&|]\s*)(rm|unlink)\b")
 _RECURSIVE_FLAG_RE = re.compile(r"(?:^|\s)-[a-zA-Z]*[rR][a-zA-Z]*(?:\s|$)|--recursive\b")
 _REMOTE_SET_RE = re.compile(r"\bgit\s+remote\s+(set-url|add)\s+\S*backup\S*", re.IGNORECASE)
 _SHELL_SEPARATORS = (";", "&&", "||", "|")
-_REDIRECT_TARGET_RE = re.compile(r">{1,2}\s*([^\s;|&<>]+)")
+# A redirect operator's `>`/`>>` must sit at a token boundary — start of
+# command, after whitespace, or after a bare file-descriptor number (`2>`,
+# itself boundary-anchored). This excludes a `>` glued inside a word like
+# `a->b`, which would otherwise false-match `b` as a redirect target. Accepted
+# best-effort gap: a no-space `word>file` (rare) is not matched.
+_REDIRECT_TARGET_RE = re.compile(r"(?:^|\s)\d*>{1,2}\s*([^\s;|&<>]+)")
 _QUOTED_SPAN_RE = re.compile(r"'[^']*'|\"[^\"]*\"")
 _DEST_COMMANDS = frozenset({"cp", "mv", "install", "rsync"})
 
@@ -112,6 +124,34 @@ def check_direct_write(file_path: str) -> int:
     return 2
 
 
+def _mask_quoted_spans(command: str):
+    """Mask each single/double-quoted region with an indexed placeholder and
+    return `(masked_command, restore_fn)`. Shared by rm-target extraction and
+    `_bash_write_targets` so quoted paths (with spaces, or containing shell
+    metacharacters like `>`/`;`) tokenize as ONE argument instead of being
+    split or mis-parsed. The placeholder base is lengthened until it cannot
+    occur as literal text in the command, so an adversarial token like
+    `wiki/_q0_evil.md` can never be mistaken for a masking artifact and
+    restoration-poisoned. `restore_fn(token)` maps placeholders back to their
+    original inner content (quotes already dropped)."""
+    base = "_q_"
+    while base in command:
+        base = "_q" + base
+    spans: list[str] = []
+
+    def _mask(match: re.Match) -> str:
+        spans.append(match.group(0)[1:-1])  # inner content, quotes dropped
+        return f"{base}{len(spans) - 1}{base}"
+
+    masked = _QUOTED_SPAN_RE.sub(_mask, command)
+    placeholder_re = re.compile(re.escape(base) + r"(\d+)" + re.escape(base))
+
+    def _restore(token: str) -> str:
+        return placeholder_re.sub(lambda m: spans[int(m.group(1))], token)
+
+    return masked, _restore
+
+
 def _rm_command_segment(command: str) -> str | None:
     """The substring following the rm/unlink keyword up to the first shell
     separator (flags and targets both still present) — shared by target
@@ -137,11 +177,16 @@ def _extract_rm_targets(command: str) -> list[str]:
     """Best-effort token extraction of path-looking arguments after
     rm/unlink, skipping flags and stopping at the first shell separator so a
     chained `&& something-else` isn't counted. Good enough for the
-    mass-delete COUNT heuristic — not a full shell parser."""
-    after = _rm_command_segment(command)
+    mass-delete COUNT heuristic — not a full shell parser. Quoted spans are
+    masked before tokenizing so `rm "wiki/a b.md" 'wiki/c.md'` yields the real
+    paths (with spaces preserved, surrounding quotes stripped) rather than
+    quote-glued fragments that resolve nowhere and slip past the guard."""
+    masked, restore = _mask_quoted_spans(command)
+    after = _rm_command_segment(masked)
     if after is None:
         return []
-    return [t for t in after.split() if t and not t.startswith("-")]
+    tokens = [t for t in after.split() if t and not t.startswith("-")]
+    return [restore(t).strip("'\"") for t in tokens]
 
 
 def check_mass_delete(command: str, cwd: str) -> int:
@@ -233,21 +278,9 @@ def _bash_write_targets(command: str) -> list[str]:
     # Mask each quoted region with an indexed token: kills false redirect
     # matches on quoted '>' and keeps quoted scripts as one token, preserving
     # arg positions for the per-segment extraction below. The spans are
-    # restored into extracted targets afterwards. The placeholder base is
-    # lengthened until it cannot occur as literal text in the command, so
-    # adversarial tokens like `wiki/_q0_evil.md` can never be mistaken for a
-    # masking artifact and restoration-poisoned into a path outside the wiki.
-    base = "_q_"
-    while base in command:
-        base = "_q" + base
-    placeholder_re = re.compile(re.escape(base) + r"(\d+)" + re.escape(base))
-    spans: list[str] = []
-
-    def _mask(match: re.Match) -> str:
-        spans.append(match.group(0)[1:-1])  # inner content, quotes dropped
-        return f"{base}{len(spans) - 1}{base}"
-
-    masked = _QUOTED_SPAN_RE.sub(_mask, command)
+    # restored into extracted targets afterwards (see _mask_quoted_spans for
+    # why the placeholder base can't be restoration-poisoned).
+    masked, _restore = _mask_quoted_spans(command)
     targets: list[str] = list(_REDIRECT_TARGET_RE.findall(masked))
     # A backslash-newline is a line CONTINUATION (one logical command) —
     # fold it to a space so it doesn't split; genuine newlines separate
@@ -275,9 +308,6 @@ def _bash_write_targets(command: str) -> list[str]:
     # Path("") — which would resolve to cwd and false-block reads run from
     # inside the wiki. Sound because the base is absent from the original
     # command: every placeholder-shaped substring IS a masking artifact.
-    def _restore(token: str) -> str:
-        return placeholder_re.sub(lambda m: spans[int(m.group(1))], token)
-
     restored = (_restore(t).strip("'\"") for t in targets)
     return [t for t in restored if t]
 
@@ -312,10 +342,19 @@ def check_bash_wiki_write(command: str, cwd: str) -> int:
 
 
 def check_backup_remote_change(command: str) -> dict | None:
-    """Return the ask-tier decision dict if `command` looks like it repoints
-    the "backup" git remote, else None."""
+    """Return the ask-tier PreToolUse decision if `command` looks like it
+    repoints the "backup" git remote, else None. The shape is the nested
+    `hookSpecificOutput` envelope Claude Code's PreToolUse contract requires —
+    a top-level `{"permissionDecision": "ask"}` is unrecognized and, on exit 0,
+    silently ALLOWS (making the guard a no-op)."""
     if _REMOTE_SET_RE.search(command):
-        return {"permissionDecision": "ask"}
+        return {
+            "hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "permissionDecision": "ask",
+                "permissionDecisionReason": BACKUP_REMOTE_ASK_REASON,
+            }
+        }
     return None
 
 
