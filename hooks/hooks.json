@@ -60,6 +60,20 @@
           }
         ]
       }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PLUGIN_ROOT/hooks/observers/read_tracker.py\"",
+            "timeout": 5,
+            "description": "ren-read-tracker: wiki page-read usage events for decay (spec 0.5.5 §4.3)",
+            "id": "ren-read-tracker"
+          }
+        ]
+      }
     ]
   }
 }
