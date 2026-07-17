@@ -78,6 +78,28 @@ the call site. The two are independent and both needed: (1) alone misses a
 FILLED overview (real body, not skeleton-shaped) that would otherwise
 duplicate into extras; (2) alone misses a skeleton page reachable OUTSIDE
 the four dedicated paths (e.g. a stray bootstrap-stamped template).
+
+Codex F1 follow-up (0.5.5, live-reproduced against the 219f9d3 fix above):
+that fix's `_is_overview_skeleton_or_empty` only recognized ONE skeleton
+shape — a body reducing to a single heading line (overview.md's shape) —
+so `index.md`/`LICENSES.md`/the venture module templates, which use a
+DIFFERENT idiom (headings interleaved with whole-line ITALIC placeholder
+prompts, identity.md's shape), still leaked verbatim. `_body_has_real_content`
+(consolidated from identity's own heading+italic check) is now the ONE
+shared predicate both `_is_overview_skeleton_or_empty` (and, through it,
+`_is_skeleton_or_empty_page`) and `_identity_is_filled` call, so a
+wholly-placeholder page of EITHER shape is excluded from the extras
+candidate pool. That alone isn't sufficient for `index.md`/`LICENSES.md`
+specifically — they mix real documentation prose with unanswered `_..._`
+prompts, so `_body_has_real_content` correctly keeps them as candidates —
+so every extras page now also runs through `_strip_extras_placeholder_lines`
+at injection (mirrors `read_identity`'s own stripping) to remove just the
+still-unanswered prompt lines, never the surrounding real content. Known
+limitation, accepted: a user's genuine heading-only one-line stub, or a
+real paragraph written as a single whole-line-italic line, may be treated
+as placeholder — dropped from extras ELIGIBILITY in the first case, or
+stripped from the injected text in the second. Both are low-harm (the page
+stays reachable by name) and affect auto-surfacing only.
 """
 
 from __future__ import annotations
@@ -308,12 +330,24 @@ def _parse_frontmatter_dict(text: str) -> dict:
     return data if isinstance(data, dict) else {}
 
 
-def _identity_has_real_body_content(body: str) -> bool:
+def _body_has_real_content(body: str) -> bool:
     """True if `body` (frontmatter already stripped) has at least one line
-    that isn't blank, a markdown heading, or a whole-line italic placeholder
-    prompt (see `_IDENTITY_ITALIC_LINE_RE`) — i.e. a human actually wrote
-    something in the body, independent of whatever the frontmatter says."""
-    for line in body.splitlines():
+    that isn't blank, an HTML comment, a markdown heading, or a whole-line
+    italic placeholder prompt (see `_IDENTITY_ITALIC_LINE_RE`) — i.e. a human
+    actually wrote something, independent of whatever the frontmatter says.
+
+    Shared by `_identity_is_filled`'s body-content fallback and the general
+    extras skeleton/placeholder gate (`_is_overview_skeleton_or_empty`, and
+    via it `_is_skeleton_or_empty_page`) — Codex F1 0.5.5 follow-up: the two
+    were separate, heading-only-shaped checks (one recognized identity's
+    heading+italic idiom, the other only overview's heading-only idiom)
+    until this consolidation. `_is_skeleton_or_empty_page`'s predecessor
+    only caught the heading-only shape, so a heading+italic-only page
+    (index.md, LICENSES.md, the venture module templates) read as "has
+    content" and leaked into extras — this is the general predicate both
+    idioms now share."""
+    without_comments = _OVERVIEW_HTML_COMMENT_RE.sub("", body)
+    for line in without_comments.splitlines():
         stripped = line.strip()
         if not stripped or stripped.startswith("#"):
             continue
@@ -368,19 +402,42 @@ def _identity_is_filled(text: str, body: str) -> bool:
     for field, default in _IDENTITY_ENUM_DEFAULTS.items():
         if field in fm and fm.get(field) != default:
             return True
-    return _identity_has_real_body_content(body)
+    return _body_has_real_content(body)
 
 
-def _strip_identity_placeholder_lines(body: str) -> str:
+def _strip_placeholder_lines(body: str) -> str:
     """Remove every whole-line italic placeholder prompt (see
     `_IDENTITY_ITALIC_LINE_RE`) from `body`, preserving everything else —
     headings, blank lines, and any real hand-written line — byte-for-byte.
-    Once identity is judged "filled" (`_identity_is_filled`), the ~370
-    placeholder tokens in the untouched body would otherwise crowd the real
-    signal (the frontmatter) out of `IDENTITY_BUDGET`."""
+
+    Originally identity-only ("once identity is judged 'filled'
+    (`_identity_is_filled`), the ~370 placeholder tokens in the untouched
+    body would otherwise crowd the real signal — the frontmatter — out of
+    `IDENTITY_BUDGET`"). Generalized (Codex F1 0.5.5 follow-up) for
+    `_strip_extras_placeholder_lines`: a page mixing real prose with
+    unanswered `_..._` prompts (index.md, LICENSES.md) correctly stays an
+    extras candidate — `_body_has_real_content` finds the real prose — but
+    its still-unanswered prompt lines must not leak verbatim into the
+    payload either."""
     lines = body.splitlines(keepends=True)
     kept = [line for line in lines if not _IDENTITY_ITALIC_LINE_RE.match(line.strip())]
     return "".join(kept)
+
+
+def _strip_extras_placeholder_lines(text: str) -> str:
+    """Frontmatter-preserving `_strip_placeholder_lines` for the extras
+    injection path (Codex F1 0.5.5 follow-up): every page surfaced via
+    "## Possibly relevant now" is run through this before injection, not
+    just the ones the general skeleton gate (`_is_skeleton_or_empty_page`)
+    excludes outright — a page can legitimately clear that gate (it has
+    SOME real content) while still carrying whole-line italic placeholder
+    prompts alongside it (index.md, LICENSES.md ship exactly this shape:
+    real documentation prose interleaved with per-section `_..._` prompts).
+    Frontmatter itself is never touched — only the body past it."""
+    match = _FRONTMATTER_RE.match(text)
+    frontmatter_prefix = text[: match.end()] if match else ""
+    body = text[match.end() :] if match else text
+    return frontmatter_prefix + _strip_placeholder_lines(body)
 
 
 def read_identity(wiki_root: Path) -> str:
@@ -392,9 +449,9 @@ def read_identity(wiki_root: Path) -> str:
     check reads the frontmatter rather than the body.
 
     When filled, the placeholder body's italic prompt lines are stripped
-    before returning (`_strip_identity_placeholder_lines`) so they don't
-    crowd the real frontmatter signal out of the token budget; any real,
-    hand-written body content is preserved untouched.
+    before returning (`_strip_placeholder_lines`) so they don't crowd the
+    real frontmatter signal out of the token budget; any real, hand-written
+    body content is preserved untouched.
     """
     text = _read_text_safe(wiki_root / IDENTITY_FILENAME)
     if not text:
@@ -407,7 +464,7 @@ def read_identity(wiki_root: Path) -> str:
 
     match = _FRONTMATTER_RE.match(text)
     frontmatter_prefix = text[:match.end()] if match else ""
-    return frontmatter_prefix + _strip_identity_placeholder_lines(body)
+    return frontmatter_prefix + _strip_placeholder_lines(body)
 
 
 _OVERVIEW_HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
@@ -415,16 +472,21 @@ _OVERVIEW_HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
 
 def _is_overview_skeleton_or_empty(body: str) -> bool:
     """True if `body` (frontmatter already stripped) carries no real content
-    of its own — i.e. it's the shipped skeleton (a heading plus an HTML
-    comment) or genuinely empty/whitespace. Mirrors
-    `skills.wrap.lib._is_skeleton_or_empty_body` exactly (replicated, not
-    imported — hooks must not import skills; see module docstring's layering
-    note. A few lines of pure string logic isn't worth a shared module)."""
-    without_comments = _OVERVIEW_HTML_COMMENT_RE.sub("", body)
-    lines = [line.strip() for line in without_comments.splitlines() if line.strip()]
-    if not lines:
-        return True
-    return len(lines) == 1 and lines[0].startswith("#")
+    of its own — i.e. it's a shipped skeleton (headings, HTML comments,
+    and/or whole-line italic placeholder prompts only, per
+    `_body_has_real_content`) or genuinely empty/whitespace.
+
+    Was heading-only-shaped (`len(lines) == 1 and lines[0].startswith("#")`)
+    to mirror `skills.wrap.lib._is_skeleton_or_empty_body` exactly, which is
+    all `overview.md.tmpl` (heading + HTML comment) needs. Widened (Codex F1
+    0.5.5 follow-up) to `_body_has_real_content` so the SAME check also
+    recognizes the heading + whole-line-italic-prompt idiom used by
+    index.md/LICENSES.md/identity.md/the venture module templates — see
+    `_is_skeleton_or_empty_page`, the general extras-candidate gate this
+    function backs. Still NOT imported from `skills.wrap.lib` (hooks must
+    not import skills; see module docstring's layering note) — replicated,
+    now with the wider shape."""
+    return not _body_has_real_content(body)
 
 
 def read_overview(project_dir: Path) -> str:
@@ -966,7 +1028,7 @@ def compose_wake_up_context(
             if not text:
                 continue
             sections.append(f"#### {rel}")
-            sections.append(truncate_text_to_tokens(text, per_page_budget))
+            sections.append(truncate_text_to_tokens(_strip_extras_placeholder_lines(text), per_page_budget))
             surfaced_pages.append(rel)
 
     if held_count > 0:

@@ -1208,6 +1208,62 @@ def test_real_sibling_page_still_appears_in_extras_after_f1_fix(project):
     assert "A real, hand-written note with actual content." in payload
 
 
+# ------------------------------------------------- F1 follow-up (0.5.5, index.md/LICENSES.md)
+#
+# The 219f9d3 fix above only recognized ONE skeleton shape: a body reducing
+# to a single heading line (overview.md's shape). `index.md`/`LICENSES.md`
+# use a DIFFERENT idiom — headings interleaved with whole-line ITALIC
+# placeholder prompts (identity.md's shape) — plus real documentation prose
+# alongside those prompts. `len(lines) == 1` said "not skeleton" for both,
+# so they leaked verbatim into "## Possibly relevant now" on every fresh
+# install; a live drill reproduced this AFTER 219f9d3 shipped.
+
+
+def test_f1_master_skeleton_placeholder_lines_do_not_leak_via_extras(wiki, tmp_path):
+    """RED against 219f9d3, GREEN after the follow-up fix: stamp the REAL
+    master-profile skeleton via `stamp_skeleton` (not a hand-written
+    fixture) so `index.md` and `LICENSES.md` are their actual shipped
+    shape, then drive a live `compose_wake_up_context` call. With no other
+    wiki content, the candidate pool is exactly {index.md, log.md,
+    LICENSES.md} (`identity.md` is excluded via Part B's dedicated_paths) —
+    exactly `DEFAULT_EXTRAS_COUNT`, so all three are guaranteed to surface
+    regardless of ranking; this isn't a "candidates got ranked out" false
+    pass."""
+    from lib.skeleton import stamp_skeleton
+
+    skeleton_root = Path(__file__).resolve().parents[2] / "wiki-skeleton"
+    stamp_skeleton(
+        skeleton_root=skeleton_root,
+        target_root=wiki_root(),
+        profile="master",
+        placeholders={"name": "Friend", "handle": "friend", "framework_version": "0.5.5"},
+    )
+
+    cwd = tmp_path / "somewhere"
+    cwd.mkdir()
+    payload = wakeup.compose_wake_up_context(cwd=cwd, wiki_root=wiki_root(), session="sess-1")
+
+    assert wakeup.SECTION_EXTRAS in payload
+
+    # index.md's "## Knowledge" prompt.
+    assert "General facts about this wiki" not in payload
+    # LICENSES.md's "## Required plugins" prompt.
+    assert "Populated by Stage 6" not in payload
+    # The rest of index.md/LICENSES.md's other unanswered prompts too, not
+    # just the two the test name calls out.
+    assert "Pointers into" not in payload  # index.md ## Decision map prompt
+    assert "Only listed if the friend opted in" not in payload  # LICENSES.md ## Conditional plugins prompt
+
+    # Over-exclusion guard: log.md has NO placeholder idiom at all (pure
+    # real prose) and index.md/LICENSES.md's own non-placeholder content
+    # (documentation prose, the "See also" links) must survive alongside
+    # the stripped prompts — none of the three pages were wholesale
+    # excluded, only their placeholder lines were removed.
+    assert "Wiki bootstrapped" in payload
+    assert "chronological event log for this wiki" in payload  # index.md "See also"
+    assert "Skim before you ship anything as a hosted service" in payload  # LICENSES.md real prose
+
+
 # =============================================================================
 # B1: clean-machine dependency degrade / uv self-heal (0.5.4 release blocker)
 # =============================================================================
