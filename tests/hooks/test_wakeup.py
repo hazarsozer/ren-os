@@ -862,6 +862,57 @@ class TestStructuredSections:
         assert "identity.md" in pages
         assert "projects/demo-project/overview.md" in pages
 
+    def test_truncated_section_gets_pointer_line(self, project):
+        # Task 6 (0.5.5): an oversize overview is truncated AND gets a
+        # pointer line naming its wiki-relative source, so the friend knows
+        # where the rest of the content lives.
+        _write(project["project_dir"] / "overview.md", "b" * 5000)  # far beyond OVERVIEW_BUDGET's char cap
+        _write(project["project_dir"] / "l1" / "session-001.md", _model_stamped("Short L1 content"))
+
+        payload = wakeup.compose_wake_up_context(cwd=project["cwd"], wiki_root=wiki_root(), session="sess-1")
+
+        overview_start = payload.index(wakeup.SECTION_OVERVIEW)
+        l1_start = payload.index(wakeup.SECTION_L1)
+        overview_chunk = payload[overview_start:l1_start].rstrip()
+        assert overview_chunk.endswith("*(continues in `projects/demo-project/overview.md`)*")
+
+    def test_untruncated_section_has_no_pointer(self, project):
+        _write(project["project_dir"] / "overview.md", "# demo-project\n\nShort overview.\n")
+        _write(project["project_dir"] / "l1" / "session-001.md", _model_stamped("Short L1 content"))
+
+        payload = wakeup.compose_wake_up_context(cwd=project["cwd"], wiki_root=wiki_root(), session="sess-1")
+
+        assert "continues in" not in payload
+
+    def test_all_four_structured_sections_get_pointer_lines_when_oversized(self, project):
+        # Sections 1-4 (identity, overview, L1, L2) each carry their own
+        # wiki-relative pointer when truncated; extras are unaffected (they
+        # already show their rel-path as a `#### {rel}` heading).
+        _write(project["project_dir"].parent.parent / "identity.md", "---\ntype: identity\n---\n" + ("a" * 5000))
+        _write(project["project_dir"] / "overview.md", "b" * 5000)
+        _write(project["project_dir"] / "l1" / "session-001.md", _model_stamped("c" * 10000))
+        _write(project["project_dir"] / "map.md", "d" * 10000)
+
+        payload = wakeup.compose_wake_up_context(cwd=project["cwd"], wiki_root=wiki_root(), session="sess-1")
+
+        assert "*(continues in `identity.md`)*" in payload
+        assert "*(continues in `projects/demo-project/overview.md`)*" in payload
+        assert "*(continues in `projects/demo-project/l1/session-001.md`)*" in payload
+        assert "*(continues in `projects/demo-project/map.md`)*" in payload
+
+    def test_oversized_extra_page_gets_no_pointer_line(self, project):
+        # Extras keep their existing per-page cap behavior unchanged
+        # (Task 6 brief) — no pointer line, since the `#### {rel}` heading
+        # right above the content already names the source.
+        _write(project["project_dir"] / "overview.md", "# demo-project\n\nShort overview.\n")
+        _write(project["project_dir"] / "l1" / "session-001.md", _model_stamped("Short L1 content"))
+        _write(project["project_dir"].parent.parent / "extra.md", "e" * 10000)
+
+        payload = wakeup.compose_wake_up_context(cwd=project["cwd"], wiki_root=wiki_root(), session="sess-1")
+
+        assert wakeup.SECTION_EXTRAS in payload
+        assert "continues in" not in payload
+
 
 # --------------------------------------------------------------- no-LLM scan
 

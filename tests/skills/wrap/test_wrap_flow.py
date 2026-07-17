@@ -10,6 +10,7 @@ Run with: uv run pytest tests/skills/wrap/test_wrap_flow.py -v
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -68,6 +69,20 @@ def _llm_by_lookup(mapping: dict[str, str]):
                 return json.dumps({"verdict": verdict, "reason": f"stub: {verdict}"})
         return json.dumps({"verdict": "session-only", "reason": "stub: unmatched"})
     return llm_call
+
+
+# --- L1 narrative prompt: size target ---------------------------------------
+
+
+def test_skill_md_l1_narrative_instruction_states_size_target():
+    """Task 6 (0.5.5): the L1-narrative composition instruction in SKILL.md
+    (the live session's own prompt for step 1, `wrap_session`'s narrative_md
+    input) carries an explicit size target, mirroring the overview
+    producer's ≤600-token instruction (Task 3's `_OVERVIEW_PROMPT_TEMPLATE`)."""
+    skill_md = (
+        Path(__file__).resolve().parents[3] / "skills" / "wrap" / "SKILL.md"
+    ).read_text(encoding="utf-8")
+    assert "Lead with outcomes. Target ≤1,000 tokens." in skill_md
 
 
 # --- L1 narrative: always applied + quarantined -----------------------------

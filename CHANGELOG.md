@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.5.5] — 2026-07-17 — "orientation & real usage"
+
+Wake-up now answers the questions a session actually needs instead of
+handing over an undifferentiated context blob — and decay learns from what
+you actually touch, not just what got written.
+
+- **Question-shaped wake-up** — the SessionStart payload is now seven short
+  answers: who you're working with (identity), what this project is (a new
+  `overview.md`), what happened last session (L1), where to find project
+  knowledge (the L2 map), active routines, anything waiting on your answer,
+  and a small set of related pages.
+- **The overview stays current on its own** — `/ren:wrap` judges whether a
+  session materially changed the project's stage or direction and rewrites
+  `overview.md` only when it did (≤600 tokens, a thesis not a novel) — most
+  sessions leave it untouched.
+- **Structural-artifact quarantine exemption widened** — L1, the overview,
+  and the L2 map all now inject with their quarantine banner intact when
+  quarantined (they're RenOS's own path-constrained writes, not foreign
+  content); a `ren_trust: "foreign"` stamp still holds any of them out and
+  counts toward the "N quarantined page(s) held out" line.
+- **Decay learns from real usage** — the 90-day idle window that feeds
+  archival now counts wake-up injection, page reads, and recall hits as
+  "touched," not just writes, so a page you keep reading but never edit
+  doesn't get swept.
+- **Producer size targets** — the overview stays ≤600 tokens, the L1
+  narrative targets ≤1,000 tokens and leads with outcomes, and any injected
+  section that gets truncated now names where the rest lives with a
+  "continues in `<path>`" pointer line.
+- **Small fixes** — the PostToolUse read-tracker and the PreToolUse write
+  guard now exit cleanly on a closed/broken stdin instead of crashing.
+
 ## [0.5.4] — 2026-07-17 — "daily-driver ready"
 
 Hotfix release closing the daily-driver readiness review

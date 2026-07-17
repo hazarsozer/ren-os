@@ -143,6 +143,21 @@ def truncate_text_to_tokens(text: str, max_tokens: int) -> str:
     return f"[...truncated; first {len(text) - max_chars} chars elided...]\n" + text[-max_chars:]
 
 
+def _inject_section(text: str, budget: int, pointer_rel: str | None = None) -> str:
+    """Truncate `text` to `budget` tokens via `truncate_text_to_tokens` and,
+    when truncation actually removed content (output shorter than input —
+    the truncation marker was added), append a
+    "\\n*(continues in `{pointer_rel}`)*" pointer line naming the
+    section's wiki-relative source file, so the user knows where to find
+    the rest. No pointer line is appended when nothing was cut, or when
+    `pointer_rel` isn't given (Task 6, 0.5.5 — does not change
+    `truncate_text_to_tokens` itself, which has other callers)."""
+    truncated = truncate_text_to_tokens(text, budget)
+    if pointer_rel and len(truncated) < len(text):
+        truncated = f"{truncated}\n*(continues in `{pointer_rel}`)*"
+    return truncated
+
+
 # `resolve_dev_root` and `detect_project` now live in `lib.ren_paths` (codex
 # D4 wiring) — imported above, re-exported here so existing callers of
 # `wakeup.resolve_dev_root` / `wakeup.detect_project` keep working. Shared
@@ -158,6 +173,22 @@ def _read_text_safe(path: Path) -> str:
     except (OSError, UnicodeDecodeError) as exc:
         logger.debug("could not read %s: %s", path, exc)
         return ""
+
+
+def _most_recent_l1_path(l1_dir: Path) -> Path | None:
+    """Return the most recent `session-*.md` file under `l1_dir` (by mtime),
+    or `None` if the dir is absent/unlistable or has no matching files.
+    Factored out of `read_l1` (Task 6, 0.5.5) so the compose loop can name
+    the pointer path for a truncated L1 section without re-deriving the
+    same sort/selection logic."""
+    if not l1_dir.is_dir():
+        return None
+    try:
+        candidates = sorted(l1_dir.glob("session-*.md"), key=lambda p: _safe_mtime(p), reverse=True)
+    except OSError as exc:
+        logger.debug("could not list %s: %s", l1_dir, exc)
+        return None
+    return candidates[0] if candidates else None
 
 
 def read_l1(project_dir: Path) -> str:
@@ -188,17 +219,10 @@ def read_l1(project_dir: Path) -> str:
     has no legitimate explanation and gets the same held-out treatment as a
     foreign-stamped one.
     """
-    l1_dir = project_dir / L1_DIRNAME
-    if not l1_dir.is_dir():
+    path = _most_recent_l1_path(project_dir / L1_DIRNAME)
+    if path is None:
         return ""
-    try:
-        candidates = sorted(l1_dir.glob("session-*.md"), key=lambda p: _safe_mtime(p), reverse=True)
-    except OSError as exc:
-        logger.debug("could not list %s: %s", l1_dir, exc)
-        return ""
-    if not candidates:
-        return ""
-    text = _read_text_safe(candidates[0])
+    text = _read_text_safe(path)
     if not text:
         return ""
 
@@ -603,7 +627,10 @@ def compose_wake_up_context(
     stamped. Also injects live routines and a small set of heuristically-
     ranked + salience-boosted extra pages — all
     within a hard token budget (oversized sections are truncated with a
-    marker, never silently dropped). Records every surfaced page via
+    marker, never silently dropped; identity/overview/L1/L2 additionally
+    get a "*(continues in `{rel_path}`)*" pointer line when truncation
+    actually occurred, per `_inject_section` — Task 6, 0.5.5). Records
+    every surfaced page via
     `miss_log.log_surface` and the payload's byte size via
     `collect.record(KIND_INJECTED_BYTES, ...)` — this instrumentation is
     unconditional, not optional.
@@ -626,7 +653,7 @@ def compose_wake_up_context(
             held_count += 1
         else:
             sections.append(SECTION_IDENTITY)
-            sections.append(truncate_text_to_tokens(identity_text, IDENTITY_BUDGET))
+            sections.append(_inject_section(identity_text, IDENTITY_BUDGET, IDENTITY_FILENAME))
             surfaced_pages.append(IDENTITY_FILENAME)
 
     project = None
@@ -644,8 +671,9 @@ def compose_wake_up_context(
                 held_count += 1
             else:
                 sections.append(SECTION_OVERVIEW)
-                sections.append(truncate_text_to_tokens(overview_text, OVERVIEW_BUDGET))
-                surfaced_pages.append(f"projects/{project}/{OVERVIEW_FILENAME}")
+                overview_rel = f"projects/{project}/{OVERVIEW_FILENAME}"
+                sections.append(_inject_section(overview_text, OVERVIEW_BUDGET, overview_rel))
+                surfaced_pages.append(overview_rel)
 
         # Codex P5 (as hardened by the 0.5.1 drill, Leg 4): whether or not
         # read_l1 ultimately injects a given candidate, NO file under an L1
@@ -667,6 +695,7 @@ def compose_wake_up_context(
                 surfaced_pages.append(str(l1_file.relative_to(wiki_root).as_posix()))
 
         l1_text = read_l1(project_dir)
+        l1_source_dir = project_dir
         if not l1_text:
             # codex D4: project-local `l1/` has nothing (either no wrap has
             # ever written here, or this wiki predates the project-aware L1
@@ -674,10 +703,13 @@ def compose_wake_up_context(
             # (and non-project-scoped wraps) stay reachable rather than the
             # project's most recent session silently vanishing from context.
             l1_text = read_l1(wiki_root)
+            l1_source_dir = wiki_root
 
         if l1_text:
             sections.append(SECTION_L1)
-            sections.append(truncate_text_to_tokens(l1_text, L1_BUDGET))
+            l1_path = _most_recent_l1_path(l1_source_dir / L1_DIRNAME)
+            l1_rel = l1_path.relative_to(wiki_root).as_posix() if l1_path else None
+            sections.append(_inject_section(l1_text, L1_BUDGET, l1_rel))
 
         l2_text = read_l2_map(project_dir)
         if l2_text:
@@ -690,8 +722,9 @@ def compose_wake_up_context(
                 held_count += 1
             else:
                 sections.append(SECTION_L2)
-                sections.append(truncate_text_to_tokens(l2_text, L2_BUDGET))
-                surfaced_pages.append(f"projects/{project}/{L2_MAP_FILENAME}")
+                l2_rel = f"projects/{project}/{L2_MAP_FILENAME}"
+                sections.append(_inject_section(l2_text, L2_BUDGET, l2_rel))
+                surfaced_pages.append(l2_rel)
 
     live_routines = read_live_routines(wiki_root)
     if live_routines:
