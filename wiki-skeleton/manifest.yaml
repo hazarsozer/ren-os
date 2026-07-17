@@ -81,7 +81,13 @@ profiles:
     # The per-project taxonomy lives in skills/bootstrap-project/ (L2 pointer-map
     # + log page, Phase 2). This profile is reserved for future shared
     # per-project files. v1: empty.
-    entries: []
+    entries:
+      - path: "overview.md"
+        template: "templates/projects/overview.md.tmpl"
+        type: file
+        write_rule: copy_if_missing
+        min_framework_version: "0.5.5"
+        description: "Per-project orientation page — guaranteed wake-up slot (0.5.5)"
 
   venture:
     description: >

@@ -68,3 +68,52 @@ def test_venture_module_directory_matches_manifest_templates():
         f"modules/venture/{p.name}" for p in venture_dir.glob("*.md.tmpl")
     }
     assert manifest_templates == on_disk
+
+
+def _project_profile_entries(manifest: dict) -> list:
+    """Helper to get project profile entries (empty list initially)."""
+    return manifest["profiles"]["project"]["entries"]
+
+
+def test_project_profile_includes_overview():
+    manifest = _load_manifest()
+    paths = [e["path"] for e in _project_profile_entries(manifest)]
+    assert "overview.md" in paths, f"expected overview.md in project profile, got {paths}"
+    entry = next(e for e in _project_profile_entries(manifest) if e["path"] == "overview.md")
+    assert entry["write_rule"] == "copy_if_missing"
+
+
+def test_overview_template_passes_frontmatter_lint():
+    """Verify overview.md template has correct frontmatter: page_type=overview, schema_version=1."""
+    import string
+    import tempfile
+    import yaml
+
+    manifest = _load_manifest()
+    entry = next(
+        (e for e in _project_profile_entries(manifest) if e["path"] == "overview.md"),
+        None,
+    )
+    assert entry is not None, "overview.md not found in project profile"
+
+    # Load and render the template with placeholders
+    template_path = SKELETON_ROOT / entry["template"]
+    assert template_path.is_file(), f"template not found: {template_path}"
+
+    template_text = template_path.read_text(encoding="utf-8")
+    template_obj = string.Template(template_text)
+    rendered = template_obj.substitute(
+        handle="test-friend",
+        name="Test Friend",
+        today="2026-01-01",
+        framework_version="0.5.5",
+    )
+
+    # Extract frontmatter and validate it
+    if rendered.startswith("---"):
+        end_idx = rendered.find("\n---", 3)
+        if end_idx != -1:
+            fm_text = rendered[3:end_idx]
+            data = yaml.safe_load(fm_text)
+            assert data.get("page_type") == "overview", f"expected page_type=overview, got {data}"
+            assert data.get("schema_version") == 1, f"expected schema_version=1, got {data}"
