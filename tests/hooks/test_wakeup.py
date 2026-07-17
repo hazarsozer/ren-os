@@ -691,13 +691,18 @@ def test_rank_extras_includes_unstamped_bannerless_ordinary_page(wiki):
 
 
 def test_rank_extras_includes_user_and_model_stamped_pages(wiki):
+    # Bodies carry real prose (not just a bare heading) so this exercises
+    # trust-stamp handling in isolation from the F1 skeleton/empty-body
+    # filter (`_is_skeleton_or_empty_page`), which — correctly — treats a
+    # heading-only body as no real signal, same as `read_overview` already
+    # does for overview.md.
     _write(
         wiki / "user-page.md",
-        '---\nren_write_id: "w-1"\nren_writer: "human"\nren_trust: "user"\n---\n# Mine',
+        '---\nren_write_id: "w-1"\nren_writer: "human"\nren_trust: "user"\n---\n# Mine\n\nSome real notes I wrote by hand.',
     )
     _write(
         wiki / "model-page.md",
-        '---\nren_write_id: "w-2"\nren_writer: "llm-auto"\nren_trust: "model"\n---\n# Auto',
+        '---\nren_write_id: "w-2"\nren_writer: "llm-auto"\nren_trust: "model"\n---\n# Auto\n\nSome real auto-generated notes.',
     )
 
     ranked, held_count = wakeup.rank_extras("", wiki, exclude=set())
@@ -1117,6 +1122,90 @@ def test_rank_extras_excludes_archived_pages(wiki):
     assert "archive/old-notes.md" not in ranked
     assert "clean.md" in ranked
     assert held_count == 1
+
+
+# ---------------------------------------------------------- F1 fix (0.5.5 live drill)
+#
+# `_discover_extra_candidates`/`rank_extras` rediscover every *.md wiki page
+# by raw path and inject it via `_read_text_safe`, BYPASSING the
+# skeleton-suppression `read_identity`/`read_overview` apply to their own
+# dedicated sections. A still-skeleton identity.md or overview.md (or any
+# other bootstrap-stamped skeleton page) must not leak its placeholder body
+# into "## Possibly relevant now" for the entire pre-fill period.
+
+
+def test_f1_skeleton_pages_do_not_leak_placeholder_into_extras(project):
+    """The F1 regression test: a full stamped skeleton wiki (SKELETON
+    identity.md + SKELETON project overview.md) plus several real sibling
+    pages, driven through a live `compose_wake_up_context` call — not just
+    the individual `read_identity`/`read_overview` unit checks, which the
+    original tests already covered without catching this leak."""
+    from lib.skeleton import stamp_skeleton
+
+    skeleton_root = Path(__file__).resolve().parents[2] / "wiki-skeleton"
+    stamp_skeleton(
+        skeleton_root=skeleton_root,
+        target_root=wiki_root(),
+        profile="master",
+        placeholders={"name": "Friend", "handle": "friend", "framework_version": "0.5.5"},
+    )
+    stamp_skeleton(
+        skeleton_root=skeleton_root,
+        target_root=wiki_root(),
+        profile="project",
+        placeholders={"framework_version": "0.5.5"},
+        path_prefix=f"projects/{project['slug']}/",
+    )
+
+    # Real sibling pages so extras ranking has genuine candidates — without
+    # these, an empty extras section would trivially "pass" the
+    # no-placeholder assertion for the wrong reason.
+    _write(project["project_dir"].parent.parent / "decisions" / "d1.md", "# Decision one\n\nWe chose FastAPI for the backend.\n")
+    _write(project["project_dir"].parent.parent / "research" / "r1.md", "# Research one\n\nCompetitor X charges $10/mo.\n")
+    _write(project["project_dir"].parent.parent / "patterns" / "p1.md", "# Pattern one\n\nRepository pattern for data access.\n")
+
+    payload = wakeup.compose_wake_up_context(cwd=project["cwd"], wiki_root=wiki_root(), session="sess-1")
+
+    assert "_One paragraph: who you are" not in payload
+    assert "What this project is" not in payload
+    assert "# Project overview" not in payload
+
+
+def test_filled_identity_and_overview_do_not_duplicate_into_extras(project):
+    """Part B: pages already injected by their own dedicated wake-up section
+    (identity.md — section 1, this project's overview.md — section 2) must
+    not ALSO appear under "## Possibly relevant now", even when FILLED —
+    a filled overview has real body content that Part A's skeleton check
+    would not exclude on its own, so only the dedicated-path exclusion
+    stops the duplication."""
+    from skills.interview.lib import render_identity
+
+    identity_content = render_identity({"languages": ["Python"]})
+    _write(project["project_dir"].parent.parent / "identity.md", identity_content)
+
+    _write(project["project_dir"] / "overview.md", "# demo-project\n\nA demo project building widgets for cats.\n")
+
+    _write(project["project_dir"].parent.parent / "decisions" / "d1.md", "# Decision one\n\nWe chose FastAPI for the backend.\n")
+    _write(project["project_dir"].parent.parent / "research" / "r1.md", "# Research one\n\nCompetitor X charges $10/mo.\n")
+
+    payload = wakeup.compose_wake_up_context(cwd=project["cwd"], wiki_root=wiki_root(), session="sess-1")
+
+    assert payload.count("A demo project building widgets for cats.") == 1
+    assert "languages" in payload  # section 1 frontmatter signal present
+    assert "#### identity.md" not in payload
+    assert "#### projects/demo-project/overview.md" not in payload
+
+
+def test_real_sibling_page_still_appears_in_extras_after_f1_fix(project):
+    """Guard against over-exclusion: Part A's skeleton-body filter and Part
+    B's dedicated-path exclusion must not swallow ordinary real pages that
+    are neither skeleton nor one of the four dedicated-section sources."""
+    _write(project["project_dir"].parent.parent / "notes.md", "# Notes\n\nA real, hand-written note with actual content.\n")
+
+    payload = wakeup.compose_wake_up_context(cwd=project["cwd"], wiki_root=wiki_root(), session="sess-1")
+
+    assert wakeup.SECTION_EXTRAS in payload
+    assert "A real, hand-written note with actual content." in payload
 
 
 # =============================================================================

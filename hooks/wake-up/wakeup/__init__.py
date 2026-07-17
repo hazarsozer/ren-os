@@ -59,6 +59,25 @@ foreign-stamp half. The IDENTITY section keeps the full `_withhold_untrusted`
 check (quarantine AND foreign): `identity.md` is user-written, so a
 quarantined identity is anomalous, not routine, and stays withheld. See
 `read_l1`'s docstring for the same point at the call site.
+
+Codex F1 (0.5.5 live drill, release-blocker): the extras discovery path
+(`_discover_extra_candidates`/`rank_extras`) rediscovers every `*.md` wiki
+page by raw path and injects it via `_read_text_safe`, entirely bypassing
+the skeleton-suppression sections 1-4 apply via `read_identity`/
+`read_overview` — a still-skeleton identity.md or overview.md leaked its
+placeholder body into "## Possibly relevant now" for the whole pre-fill
+period. Fixed two ways, both in the extras path: (1) `_is_skeleton_or_empty_page`
+excludes any candidate whose frontmatter-stripped body is skeleton/empty
+(reuses `_is_overview_skeleton_or_empty`, the same check `read_overview`
+uses) — a general net, not scoped to any particular page; (2)
+`compose_wake_up_context` excludes the exact rel-paths sections 1-4 look at
+(`identity.md`, the active project's `overview.md`/`map.md`, every L1
+session file) from the extras candidate pool regardless of whether that
+section actually injected anything this compose — see `dedicated_paths` at
+the call site. The two are independent and both needed: (1) alone misses a
+FILLED overview (real body, not skeleton-shaped) that would otherwise
+duplicate into extras; (2) alone misses a skeleton page reachable OUTSIDE
+the four dedicated paths (e.g. a stray bootstrap-stamped template).
 """
 
 from __future__ import annotations
@@ -642,6 +661,31 @@ def _is_foreign_stamped(path: Path) -> bool:
     return bool(prov and prov.get("trust") == "foreign")
 
 
+def _is_skeleton_or_empty_page(path: Path) -> bool:
+    """True if `path`'s frontmatter-stripped body is skeleton-or-empty per
+    `_is_overview_skeleton_or_empty` (Codex F1, 0.5.5 live drill).
+
+    `_discover_extra_candidates` previously rediscovered every `*.md` page
+    by raw path and injected it via `_read_text_safe`, bypassing the
+    skeleton-suppression `read_overview` (and, via frontmatter,
+    `read_identity`) apply to their own dedicated sections — a still-skeleton
+    overview.md (or any other bootstrap-stamped skeleton page reachable
+    outside the dedicated identity/overview/L1/L2 paths, e.g. a sibling
+    project's untouched overview) leaked its placeholder body into
+    "## Possibly relevant now" for the entire pre-fill period. This is a
+    general safety net alongside the dedicated-path exclusion added in
+    `compose_wake_up_context` (Part B) — the two are independent: this catches
+    ANY skeleton-shaped page regardless of path, that one catches the exact
+    paths already covered by sections 1-4 for THIS compose regardless of
+    their skeleton state.
+
+    Never raises: any read failure degrades to True (an unreadable file has
+    nothing worth surfacing either).
+    """
+    text = _read_text_safe(path)
+    return _is_overview_skeleton_or_empty(_strip_frontmatter(text))
+
+
 def _discover_extra_candidates(wiki_root: Path, exclude: set[str]) -> tuple[list[str], int]:
     """Every `*.md` under `wiki_root`, excluding dotdirs, `exclude` (the pages
     already surfaced as L1/L2, so they aren't offered twice), quarantined
@@ -650,8 +694,13 @@ def _discover_extra_candidates(wiki_root: Path, exclude: set[str]) -> tuple[list
     path), `ren_trust: foreign`-stamped pages (Task 9b — closes the gap
     where a foreign page's released banner let it surface raw; unstamped
     pages remain included, per the deliberate scope decision in `_is_foreign_stamped`),
-    and `archive/`-prefixed pages (Task 16, 0.5.3 — archived pages are held
-    out of ranking, same as quarantined/foreign, since they're no longer live).
+    `archive/`-prefixed pages (Task 16, 0.5.3 — archived pages are held
+    out of ranking, same as quarantined/foreign, since they're no longer
+    live), and skeleton/empty-body pages (Codex F1, 0.5.5 live drill — see
+    `_is_skeleton_or_empty_page`). Skeleton/empty exclusions are NOT counted
+    in `held_count` — that count and its "N quarantined page(s) held out"
+    message describe withheld TRUST signal; an empty/placeholder page has no
+    content to withhold or show on request.
 
     Returns `(candidates, held_count)` where `held_count` is the number of
     otherwise-eligible pages dropped for being quarantined, foreign-stamped,
@@ -683,6 +732,8 @@ def _discover_extra_candidates(wiki_root: Path, exclude: set[str]) -> tuple[list
             continue
         if _is_foreign_stamped(path):
             held_count += 1
+            continue
+        if _is_skeleton_or_empty_page(path):
             continue
         candidates.append(rel)
     return candidates, held_count
@@ -793,6 +844,18 @@ def compose_wake_up_context(
     surfaced_pages: list[str] = []
     held_count = 0
 
+    # Codex F1 (0.5.5 live drill), Part B: the pages injected by sections
+    # 1-4 (identity, overview, L2 map — L1 is handled separately below, same
+    # doctrine) must be excluded from the extras candidate pool for THIS
+    # compose regardless of whether their content actually ends up injected.
+    # `surfaced_pages` alone isn't enough for that — it only gains an entry
+    # when a section's read function returns non-empty content, so a
+    # SKELETON identity/overview (read_identity/read_overview correctly
+    # return "" for those) left its path off `surfaced_pages`, free to
+    # re-enter raw via "Possibly relevant now". `dedicated_paths` names the
+    # exact rel-paths sections 1-4 look at, independent of what they find.
+    dedicated_paths: set[str] = {IDENTITY_FILENAME}
+
     identity_text = read_identity(wiki_root)
     if identity_text:
         if _withhold_untrusted(identity_text):
@@ -810,6 +873,10 @@ def compose_wake_up_context(
 
     if project is not None:
         project_dir = wiki_root / "projects" / project
+        overview_rel = f"projects/{project}/{OVERVIEW_FILENAME}"
+        l2_rel = f"projects/{project}/{L2_MAP_FILENAME}"
+        dedicated_paths.add(overview_rel)
+        dedicated_paths.add(l2_rel)
 
         overview_text = read_overview(project_dir)
         if overview_text:
@@ -817,7 +884,6 @@ def compose_wake_up_context(
                 held_count += 1
             else:
                 sections.append(SECTION_OVERVIEW)
-                overview_rel = f"projects/{project}/{OVERVIEW_FILENAME}"
                 sections.append(_inject_section(overview_text, OVERVIEW_BUDGET, overview_rel))
                 surfaced_pages.append(overview_rel)
 
@@ -868,7 +934,6 @@ def compose_wake_up_context(
                 held_count += 1
             else:
                 sections.append(SECTION_L2)
-                l2_rel = f"projects/{project}/{L2_MAP_FILENAME}"
                 sections.append(_inject_section(l2_text, L2_BUDGET, l2_rel))
                 surfaced_pages.append(l2_rel)
 
@@ -885,7 +950,9 @@ def compose_wake_up_context(
     extras: list[str] = []
     try:
         query = _build_rank_query(project, cwd)
-        extras, extras_held_count = rank_extras(query, wiki_root, exclude=set(surfaced_pages))
+        extras, extras_held_count = rank_extras(
+            query, wiki_root, exclude=set(surfaced_pages) | dedicated_paths
+        )
     except Exception:  # noqa: BLE001 - ranking failure degrades to no extras
         logger.debug("rank_extras failed", exc_info=True)
         extras, extras_held_count = [], 0
