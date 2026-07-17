@@ -6,10 +6,10 @@ description: |
   /ren:recall slash command followed by a free-text query. Every fetch this
   skill performs is logged — that log is the mechanical miss-measurement
   substrate (spec §3.2), not a surveillance feature.
-version: 0.5.3
+version: 0.5.4
 license: MIT
 
-framework_version: "0.5.3"
+framework_version: "0.5.4"
 schema_version: 1
 type: skill
 execution_tier: deterministic

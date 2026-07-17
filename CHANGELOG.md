@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.5.4] — 2026-07-17 — "daily-driver ready"
+
+Hotfix release closing the daily-driver readiness review
+([issue #8](https://github.com/hazarsozer/ren-os/issues/8)) — all four
+confirmed runtime bugs fixed, plus the review's smaller items.
+
+- **Wake-up works on clean machines** — the SessionStart hook now
+  self-heals when the system `python3` lacks the plugin's dependencies
+  (re-runs itself under `uv`), and when it can't, it says so loudly in
+  the session context instead of silently injecting nothing. Memory
+  injection no longer dies invisibly on a fresh install.
+- **`git push` unblocked in your own repos** — the maintainer-path guard
+  (`tests/`, `.claude/`, `wiki/`, …) now applies only inside the RenOS
+  repo itself; your projects push freely. The secrets scan checks only
+  the files you're actually pushing, not the whole tracked tree.
+- **Guards that actually guard** — the backup-remote confirm prompt now
+  speaks Claude Code's real hook protocol (it was being silently
+  ignored); quoted paths no longer slip past the wiki delete guards;
+  force/rewrite checks cover every push in a chained command; and
+  `--force-with-lease` (the safe idiom) no longer needs an override.
+- **Small fixes** — `ls a->b` inside the wiki is no longer mistaken for
+  a write; doctor no longer asks for an `ANTHROPIC_API_KEY` (RenOS uses
+  no API keys); ingest-project's contract matches its documented
+  behavior; corrected the Graphify link, the skill count (18), and
+  routine-init's frontmatter schema version.
+
 ## [0.5.3] — 2026-07-12 — "the learning brain"
 
 Judged semantics, trust-aware memory, and now a metabolism: the wiki
