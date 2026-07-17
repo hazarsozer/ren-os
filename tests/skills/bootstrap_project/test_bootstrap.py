@@ -16,14 +16,17 @@ Run with: uv run pytest tests/skills/bootstrap_project/test_bootstrap.py -v
 from __future__ import annotations
 
 import importlib
+from datetime import datetime, timezone
 
 import pytest
 
 from lib.memory import journal, quarantine
+from lib.memory.queue import Proposal, propose_and_apply
 from lib.ren_paths import wiki_root
 
 bootstrap_lib = importlib.import_module("skills.bootstrap-project.lib")
 bootstrap = bootstrap_lib.bootstrap
+assemble_l2 = bootstrap_lib.assemble_l2
 
 
 @pytest.fixture
@@ -62,17 +65,55 @@ def test_bootstrap_auto_applies_add_with_empty_map(wiki):
     assert "## Knowledge" in page_text
 
 
-def test_bootstrap_on_existing_map_auto_applies_update(wiki):
+def test_bootstrap_on_existing_map_skips_map_write_entirely(wiki):
     first = bootstrap("existing-idea", session="sess-1")
     assert first.status == "applied"  # v2.2: no separate approve()/apply() step
 
-    # A same-day re-bootstrap renders byte-identical map content (the log
-    # line is date-only, knowledge/pointers are both always empty here), so
-    # 0.4.0's applied-page dedup (lib.memory.queue.propose) correctly
-    # short-circuits it as a no-op rather than writing an identical UPDATE.
+    # A re-bootstrap must NEVER queue a write against an already-existing
+    # map — bootstrap only SEEDS the map when absent; its real content is
+    # grown by other writers (ingest, wrap, pin) over the project's life.
+    # No proposal at all (not even a no-op UPDATE) is queued on this path.
     second = bootstrap("existing-idea", session="sess-2")
-    assert second.proposal.op == "UPDATE"
-    assert second.status == "noop-duplicate"
+    assert second is None
+
+
+def test_bootstrap_rerun_never_overwrites_populated_map(wiki):
+    """Regression: re-running bootstrap on a project whose map has since
+    been grown with real Knowledge/Decision-map content (by ingest, wrap, or
+    pin) must leave that real content intact — not wipe it back to the empty
+    bootstrap seed. This was a live-reproduced data-loss bug (0.5.5 upgrade
+    check, finding F1)."""
+    bootstrap("grown-idea", session="sess-1")
+
+    # Simulate a later writer (e.g. /ren:ingest-project or /ren:wrap)
+    # populating the map with real facts and pointers.
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    real_content = assemble_l2(
+        "grown-idea",
+        ["Uses FastAPI", "Deployed on Fly.io"],
+        [{"topic": "database choice", "path": "projects/grown-idea/decisions/db.md",
+          "anchor": "decision", "write_id": "w-real123"}],
+        f"{today}: real knowledge added",
+    )
+    grow_entry, _ = propose_and_apply(
+        Proposal(
+            op="UPDATE",
+            page="projects/grown-idea/map.md",
+            content=real_content,
+            reason="ingest-project",
+            producer="promotion",
+            writer="human",
+            session="sess-1",
+        )
+    )
+    assert grow_entry.status == "applied"
+
+    bootstrap("grown-idea", session="sess-2")
+
+    page_text = (wiki / "projects" / "grown-idea" / "map.md").read_text(encoding="utf-8")
+    assert "Uses FastAPI" in page_text
+    assert "Deployed on Fly.io" in page_text
+    assert "database choice" in page_text
 
 
 def test_bootstrap_applies_clean_human_provenance_not_quarantined(wiki):

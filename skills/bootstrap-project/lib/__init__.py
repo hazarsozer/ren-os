@@ -13,7 +13,10 @@ scan yet. It does two things:
   2. Queues an EMPTY L2 map at `projects/<slug>/map.md` — same frozen schema
      `skills/ingest-project/lib/assemble_l2` renders, just with no knowledge
      or pointers yet (the friend or a later `/ren:ingest-project`/`/ren:wrap`
-     fills it in).
+     fills it in) — but ONLY when that page doesn't exist yet. If it already
+     exists, the map write is skipped entirely: bootstrap only SEEDS an empty
+     map once, it never re-touches a map that's since been grown with real
+     content by other writers.
 
 Always `producer="promotion"`, `writer="human"` (a human explicitly asked to
 start this project — nothing here is LLM-drafted), so it's never quarantined,
@@ -55,11 +58,17 @@ def _map_page(project_slug: str) -> str:
     return f"projects/{project_slug}/map.md"
 
 
-def bootstrap(project_slug: str, session: str, repo_root: Path | None = None) -> QueueEntry:
-    """Stamp the shared skeleton (additive) and queue an empty L2 map for
+def bootstrap(project_slug: str, session: str, repo_root: Path | None = None) -> QueueEntry | None:
+    """Stamp the shared skeleton (additive) and seed an empty L2 map for
     `project_slug`.
 
-    ADD if `projects/<project_slug>/map.md` doesn't exist yet, else UPDATE.
+    ADD only, and only if `projects/<project_slug>/map.md` doesn't exist yet.
+    If it already exists, the map write is skipped entirely — no proposal is
+    queued, the existing map (and whatever real content other writers have
+    since grown it with) is left completely untouched — and `None` is
+    returned instead of a `QueueEntry`. bootstrap seeds a map once; it never
+    re-touches one that already exists.
+
     Always human-provenance — never quarantined. Auto-applies through the
     data-plane door (v2.2); the returned entry's `write_id` is set once
     applied.
@@ -99,25 +108,25 @@ def bootstrap(project_slug: str, session: str, repo_root: Path | None = None) ->
         path_prefix=f"projects/{project_slug}/",
     )
 
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    content = assemble_l2(project_slug, [], [], f"{today}: project bootstrapped")
-
     page = _map_page(project_slug)
     page_abs = ren_paths.safe_join(ren_paths.wiki_root(), page)
-    op = "UPDATE" if page_abs.exists() else "ADD"
 
-    entry, _ = propose_and_apply(
-        Proposal(
-            op=op,
-            page=page,
-            content=content,
-            reason="bootstrap-project",
-            producer="promotion",
-            writer="human",
-            session=session,
-            salience=False,
+    entry: QueueEntry | None = None
+    if not page_abs.exists():
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        content = assemble_l2(project_slug, [], [], f"{today}: project bootstrapped")
+        entry, _ = propose_and_apply(
+            Proposal(
+                op="ADD",
+                page=page,
+                content=content,
+                reason="bootstrap-project",
+                producer="promotion",
+                writer="human",
+                session=session,
+                salience=False,
+            )
         )
-    )
 
     if repo_root is not None:
         try:

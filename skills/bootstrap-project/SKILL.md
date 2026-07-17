@@ -17,9 +17,9 @@ execution_tier: deterministic
 contract:
   required_outputs:
     - "Any missing shared wiki dirs/files stamped (additive, never overwrite)"
-    - "One Proposal queued: ADD (or UPDATE) projects/<slug>/map.md, an empty L2 map"
+    - "If projects/<slug>/map.md doesn't exist yet: one Proposal queued (ADD, an empty L2 map). If it already exists: no proposal is queued and the existing map is left untouched."
     - "When bootstrapping inside a project repo: <repo_root>/AGENTS.md written (portability pointer surface)"
-    - "Confirmation line printed to user including the queue id"
+    - "Confirmation line printed to user including the queue id (or a 'map already exists' notice on the skip path)"
   budgets:
     turns: 2
     files_written: 0
@@ -31,7 +31,7 @@ contract:
     write: []
     execute: []
   completion_conditions:
-    - "A QueueEntry exists at state_dir()/queue/<qid>.json with status=applied (or status=pending only when held by a contradiction conflict), op=ADD or UPDATE, page=projects/<slug>/map.md"
+    - "Either a QueueEntry exists at state_dir()/queue/<qid>.json with status=applied, op=ADD, page=projects/<slug>/map.md — or the map already existed and bootstrap() returned None with no new queue entry"
   output_paths: []
 
 tags: [onboarding, project, l2-map, bootstrap, queue]
@@ -59,12 +59,12 @@ The fresh-project half of the L2 pair. `/ren:ingest-project` scans an existing r
 1. Resolve `project_slug` (kebab-case) and the active `session` id. If bootstrapping inside a project repo (the common case), resolve `repo_root=Path.cwd()`.
 2. Call `skills.bootstrap-project.lib.bootstrap(project_slug, session, repo_root=repo_root)`:
    - Stamps the shared skeleton (`lib/skeleton.py` against `wiki-skeleton/manifest.yaml`'s `master` profile) into the wiki root — additive only; an already-onboarded wiki is untouched.
-   - Assembles an empty L2 map (`skills.ingest-project.lib.assemble_l2` — same frozen schema `ingest` uses, just with empty `knowledge`/`pointers` and a single "project bootstrapped" log line) and proposes it (`ADD` if the map doesn't exist yet, `UPDATE` if it does) at `lib.memory.queue`.
+   - Only when `projects/<slug>/map.md` does NOT exist yet: assembles an empty L2 map (`skills.ingest-project.lib.assemble_l2` — same frozen schema `ingest` uses, just with empty `knowledge`/`pointers` and a single "project bootstrapped" log line) and proposes it (`ADD`) at `lib.memory.queue`. If the map already exists, this step is skipped entirely — no proposal, no write — and `bootstrap()` returns `None`. The map is only ever SEEDED once; its real content is grown over time by other writers (`/ren:ingest-project`, `/ren:wrap`, `/ren:pin`), and bootstrap must never re-run over that growth.
    - Always `producer="promotion"`, `writer="human"` — a human directly asked for this, so it's never quarantined on apply.
    - When `repo_root` is given, also writes `<repo_root>/AGENTS.md` via `lib.portability.agents_surface.write_agents_md` — the thin, harness-neutral pointer file foreign coding agents (e.g. Codex) read to find this project's wiki map (Codex D5: the surface existed but had zero production callers before this wiring). A failure writing AGENTS.md never breaks bootstrap itself; omit `repo_root` (default `None`) to skip it entirely.
    - Also writes `<repo_root>/CLAUDE.md` via `lib.adapter.claude_md.write_project_claude_md(repo_root, project_slug)` — stamps the thin RenOS pointer block (managed `ren:` markers) pointing at the project's L2 map, preserving any surrounding user content. Wired as of 0.4.3 (closes a 0.2 finalize claim that had zero production callers). Same failure isolation as `AGENTS.md`: a failure never breaks bootstrap itself.
 3. `ingest-project`'s `lib.ingest()` still does not call `write_project_claude_md` — `bootstrap-project` owns the `CLAUDE.md` stamp; `ingest` only writes the wiki map.
-4. Confirm to the user: `Queued <qid> — bootstrapped projects/<slug>/map.md`.
+4. Confirm to the user: `Queued <qid> — bootstrapped projects/<slug>/map.md`. On the skip path (map already existed, `bootstrap()` returned `None`), instead confirm: `projects/<slug>/map.md already exists — left untouched.`
 
 ## Why this reuses `ingest-project`'s `assemble_l2`
 
@@ -81,7 +81,7 @@ Both skills produce the SAME frozen L2 schema (`type: l2-map`, Knowledge / Decis
 | Failure | Behavior | User-visible |
 |---|---|---|
 | No slug given | Refuse, prompt for a name | "What should this project be called? Usage: /ren:bootstrap-project <slug>" |
-| A map already exists for this slug | Proposes `UPDATE` (queued, not silently skipped) | "projects/<slug>/map.md already exists — queued an update instead." |
+| A map already exists for this slug | Map write skipped entirely — no proposal queued, existing content (however much it's grown) is untouched | "projects/<slug>/map.md already exists — left untouched." |
 | Skeleton stamp finds existing user files | Skipped, reported, nothing overwritten | (silent per-file; only new entries are queued) |
 
 ## References
