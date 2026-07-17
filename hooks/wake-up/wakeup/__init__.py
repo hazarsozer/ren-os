@@ -79,6 +79,8 @@ DEFAULT_MAX_TOKENS: Final[int] = 5_000
 CHARS_PER_TOKEN: Final[float] = 4.0  # rough heuristic; tiktoken-free for hook latency
 
 # Per-section token allocations.
+IDENTITY_BUDGET: Final[int] = 400
+OVERVIEW_BUDGET: Final[int] = 600
 L1_BUDGET: Final[int] = 1_200
 L2_BUDGET: Final[int] = 1_200
 ROUTINE_SPEC_BUDGET: Final[int] = 400
@@ -86,7 +88,31 @@ EXTRAS_BUDGET: Final[int] = 1_600   # ranked additional pages, split across howe
 EXTRA_PAGE_BUDGET: Final[int] = 400  # per-page cap within the extras budget
 DEFAULT_EXTRAS_COUNT: Final[int] = 3
 
+IDENTITY_FILENAME: Final[str] = "identity.md"
+OVERVIEW_FILENAME: Final[str] = "overview.md"
+_IDENTITY_TEMPLATE_PATH: Final[Path] = (
+    Path(__file__).resolve().parents[3] / "wiki-skeleton" / "templates" / "identity.md.tmpl"
+)
+
+# Question-shaped section headers (spec §4.1) — exact strings, relied on by
+# tests and Task 6's truncate-marker helper.
+SECTION_IDENTITY: Final[str] = "## Who am I working with"
+SECTION_OVERVIEW: Final[str] = "## What is this project"
+SECTION_L1: Final[str] = "## What happened last session"
+SECTION_L2: Final[str] = "## Where to find project knowledge"
+SECTION_ROUTINES: Final[str] = "## Active routines"
+SECTION_PENDING: Final[str] = "## Waiting on you"
+SECTION_EXTRAS: Final[str] = "## Possibly relevant now"
+
 _GIT_TIMEOUT_S: Final[float] = 3.0
+
+_FRONTMATTER_RE = re.compile(r"\A---\s*\n(.*?)\n---\s*\n?", re.DOTALL)
+
+
+def _strip_frontmatter(text: str) -> str:
+    """Return `text` with a leading YAML frontmatter block removed, if present."""
+    match = _FRONTMATTER_RE.match(text)
+    return text[match.end():] if match else text
 
 
 def estimate_tokens(text: str) -> int:
@@ -185,6 +211,66 @@ def read_l2_map(project_dir: Path) -> str:
     scan, which is foreign/scan-derived content, not the user's own session.
     """
     return _read_text_safe(project_dir / L2_MAP_FILENAME)
+
+
+def read_identity(wiki_root: Path) -> str:
+    """Return the top-level `identity.md`'s raw content, or "" if absent, or
+    if the content-minus-frontmatter is empty/whitespace, or if the file is
+    still the shipped skeleton template (never filled in via `/ren:interview`
+    or by hand) — a friend who skipped onboarding should not have placeholder
+    boilerplate injected as if it were real identity signal.
+
+    Template comparison is byte-for-byte against
+    `wiki-skeleton/templates/identity.md.tmpl`; any error reading that
+    template (missing, permissions, ...) degrades to the emptiness check
+    alone — this must never crash the wake-up hook.
+    """
+    text = _read_text_safe(wiki_root / IDENTITY_FILENAME)
+    if not text:
+        return ""
+    if not _strip_frontmatter(text).strip():
+        return ""
+    try:
+        template_text = _IDENTITY_TEMPLATE_PATH.read_text(encoding="utf-8")
+    except OSError as exc:
+        logger.debug("could not read identity template %s: %s", _IDENTITY_TEMPLATE_PATH, exc)
+        return text
+    if text == template_text:
+        return ""
+    return text
+
+
+def read_overview(project_dir: Path) -> str:
+    """Return the project's `overview.md` content, or "" if absent.
+
+    Quarantine/foreign-trust CHECK happens in `compose_wake_up_context` (via
+    `_withhold_untrusted`), same pattern as `read_l2_map`.
+    """
+    return _read_text_safe(project_dir / OVERVIEW_FILENAME)
+
+
+def _withhold_untrusted(content: str) -> bool:
+    """True if `content` should be held out of the wake-up payload: either
+    banner-quarantined or `ren_trust: foreign`-stamped. Shared by every
+    section that does NOT get L1's exemption (L2 map, identity, overview) —
+    see module docstring for why L1 alone is exempt. Never raises: any
+    quarantine/provenance-read failure degrades to "not withheld" (never
+    silently drops legitimate content, per hook failure doctrine).
+    """
+    if not content:
+        return False
+    quarantined = False
+    try:
+        quarantined = quarantine.is_quarantined(content)
+    except Exception:  # noqa: BLE001 - quarantine check failure must never abort wake-up
+        logger.debug("quarantine.is_quarantined failed", exc_info=True)
+    foreign = False
+    try:
+        prov = read_frontmatter_provenance(content)
+        foreign = bool(prov and prov.get("trust") == "foreign")
+    except Exception:  # noqa: BLE001 - provenance parse failure must never abort wake-up
+        logger.debug("read_frontmatter_provenance failed", exc_info=True)
+    return quarantined or foreign
 
 
 def _safe_mtime(path: Path) -> float:
@@ -507,6 +593,15 @@ def compose_wake_up_context(
     surfaced_pages: list[str] = []
     held_count = 0
 
+    identity_text = read_identity(wiki_root)
+    if identity_text:
+        if _withhold_untrusted(identity_text):
+            held_count += 1
+        else:
+            sections.append(SECTION_IDENTITY)
+            sections.append(truncate_text_to_tokens(identity_text, IDENTITY_BUDGET))
+            surfaced_pages.append(IDENTITY_FILENAME)
+
     project = None
     try:
         project = detect_project(cwd, wiki_root, dev_root=dev_root)
@@ -515,6 +610,15 @@ def compose_wake_up_context(
 
     if project is not None:
         project_dir = wiki_root / "projects" / project
+
+        overview_text = read_overview(project_dir)
+        if overview_text:
+            if _withhold_untrusted(overview_text):
+                held_count += 1
+            else:
+                sections.append(SECTION_OVERVIEW)
+                sections.append(truncate_text_to_tokens(overview_text, OVERVIEW_BUDGET))
+                surfaced_pages.append(f"projects/{project}/{OVERVIEW_FILENAME}")
 
         # Codex P5 (as hardened by the 0.5.1 drill, Leg 4): whether or not
         # read_l1 ultimately injects a given candidate, NO file under an L1
@@ -545,23 +649,12 @@ def compose_wake_up_context(
             l1_text = read_l1(wiki_root)
 
         if l1_text:
-            sections.append(f"### {project} — most recent session (L1)")
+            sections.append(SECTION_L1)
             sections.append(truncate_text_to_tokens(l1_text, L1_BUDGET))
 
         l2_text = read_l2_map(project_dir)
         if l2_text:
-            l2_quarantined = False
-            try:
-                l2_quarantined = quarantine.is_quarantined(l2_text)
-            except Exception:  # noqa: BLE001 - quarantine check failure must never abort wake-up
-                logger.debug("quarantine.is_quarantined failed for L2 map", exc_info=True)
-            l2_foreign = False
-            try:
-                l2_prov = read_frontmatter_provenance(l2_text)
-                l2_foreign = bool(l2_prov and l2_prov.get("trust") == "foreign")
-            except Exception:  # noqa: BLE001 - provenance parse failure must never abort wake-up
-                logger.debug("read_frontmatter_provenance failed for L2 map", exc_info=True)
-            if l2_quarantined or l2_foreign:
+            if _withhold_untrusted(l2_text):
                 # L2 maps are scan-derived (repo-ingest, `writer="llm-auto"`) —
                 # foreign content, unlike L1's own-session summary. The L1
                 # exemption does NOT apply here; hold it out and count it in
@@ -570,13 +663,13 @@ def compose_wake_up_context(
                 # `ren_trust: foreign` map — the stamp check catches that.
                 held_count += 1
             else:
-                sections.append(f"### {project} — knowledge map (L2)")
+                sections.append(SECTION_L2)
                 sections.append(truncate_text_to_tokens(l2_text, L2_BUDGET))
                 surfaced_pages.append(f"projects/{project}/{L2_MAP_FILENAME}")
 
     live_routines = read_live_routines(wiki_root)
     if live_routines:
-        sections.append("### Live automations (routine-specs)")
+        sections.append(SECTION_ROUTINES)
         sections.append(truncate_text_to_tokens(live_routines, ROUTINE_SPEC_BUDGET))
 
     suggestion = suggestion_line()
@@ -593,7 +686,7 @@ def compose_wake_up_context(
     held_count += extras_held_count
 
     if extras:
-        sections.append("### Related pages")
+        sections.append(SECTION_EXTRAS)
         per_page_budget = max(EXTRA_PAGE_BUDGET, EXTRAS_BUDGET // max(len(extras), 1))
         for rel in extras:
             text = _read_text_safe(wiki_root / rel)
@@ -630,16 +723,29 @@ __all__ = [
     "DEFAULT_MAX_TOKENS",
     "CHARS_PER_TOKEN",
     "DEFAULT_DEV_ROOT_REL",
+    "IDENTITY_BUDGET",
+    "OVERVIEW_BUDGET",
+    "IDENTITY_FILENAME",
+    "OVERVIEW_FILENAME",
     "L1_BUDGET",
     "L2_BUDGET",
     "ROUTINE_SPEC_BUDGET",
     "EXTRAS_BUDGET",
     "EXTRA_PAGE_BUDGET",
     "SALIENCE_WINDOW_DAYS",
+    "SECTION_IDENTITY",
+    "SECTION_OVERVIEW",
+    "SECTION_L1",
+    "SECTION_L2",
+    "SECTION_ROUTINES",
+    "SECTION_PENDING",
+    "SECTION_EXTRAS",
     "estimate_tokens",
     "truncate_text_to_tokens",
     "resolve_dev_root",
     "detect_project",
+    "read_identity",
+    "read_overview",
     "read_l1",
     "read_l2_map",
     "read_live_routines",

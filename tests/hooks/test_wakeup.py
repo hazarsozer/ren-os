@@ -376,7 +376,7 @@ def test_wakeup_falls_back_to_global_l1_when_project_local_absent(project, wiki)
 
     payload = wakeup.compose_wake_up_context(cwd=project["cwd"], wiki_root=wiki_root(), session="sess-1")
 
-    heading = f"### {project['slug']} — most recent session (L1)"
+    heading = wakeup.SECTION_L1
     assert heading in payload
     l1_section = payload.split(heading, 1)[1].split("###", 1)[0]
     assert "Legacy global session summary." in l1_section
@@ -716,6 +716,112 @@ def test_rank_extras_excludes_quarantined_pages(wiki):
     assert "hostile.md" not in ranked
     assert "clean.md" in ranked
     assert held_count == 1
+
+
+# ---------------------------------------------------------- structured sections
+
+
+class TestStructuredSections:
+    def test_section_order_and_headers(self, project):
+        _write(project["project_dir"].parent.parent / "identity.md", "---\ntype: identity\n---\n# About Friend\n\nBuilds things.\n")
+        _write(project["project_dir"] / "overview.md", "# demo-project\n\nA demo project.\n")
+        _write(project["project_dir"] / "l1" / "session-001.md", _model_stamped("L1 content"))
+        _write(project["project_dir"] / "map.md", "# demo-project — knowledge map\n## Knowledge\n- uses FastAPI\n")
+        _write(project["project_dir"].parent.parent / "routines" / "r1.md", '---\ntype: routine-spec\nname: r1\ntrigger_type: manual\nlinked_repo: demo\n---\n')
+        _write(project["project_dir"].parent.parent / "extra.md", "# Extra\n\nsome extra content")
+
+        payload = wakeup.compose_wake_up_context(cwd=project["cwd"], wiki_root=wiki_root(), session="sess-1")
+
+        idx = [
+            payload.index(h)
+            for h in (
+                wakeup.SECTION_IDENTITY,
+                wakeup.SECTION_OVERVIEW,
+                wakeup.SECTION_L1,
+                wakeup.SECTION_L2,
+                wakeup.SECTION_ROUTINES,
+                wakeup.SECTION_EXTRAS,
+            )
+        ]
+        assert idx == sorted(idx)
+
+    def test_absent_sources_omit_headers(self, project):
+        _write(project["project_dir"] / "l1" / "session-001.md", _model_stamped("L1 content"))
+
+        payload = wakeup.compose_wake_up_context(cwd=project["cwd"], wiki_root=wiki_root(), session="sess-1")
+
+        assert wakeup.SECTION_IDENTITY not in payload
+        assert wakeup.SECTION_OVERVIEW not in payload
+
+    def test_skeleton_identity_omitted(self, wiki):
+        template_path = Path(__file__).resolve().parents[2] / "wiki-skeleton" / "templates" / "identity.md.tmpl"
+        _write(wiki / "identity.md", template_path.read_text(encoding="utf-8"))
+
+        assert wakeup.read_identity(wiki) == ""
+
+    def test_empty_identity_body_omitted(self, wiki):
+        _write(wiki / "identity.md", "---\ntype: identity\n---\n\n   \n")
+
+        assert wakeup.read_identity(wiki) == ""
+
+    def test_missing_identity_omitted(self, wiki):
+        assert wakeup.read_identity(wiki) == ""
+
+    def test_real_identity_returned(self, wiki):
+        content = "---\ntype: identity\n---\n# About Hazar\n\nBuilds RenOS.\n"
+        _write(wiki / "identity.md", content)
+
+        assert wakeup.read_identity(wiki) == content
+
+    def test_missing_overview_omitted(self, project):
+        assert wakeup.read_overview(project["project_dir"]) == ""
+
+    def test_real_overview_returned(self, project):
+        content = "# demo-project\n\nA demo project.\n"
+        _write(project["project_dir"] / "overview.md", content)
+
+        assert wakeup.read_overview(project["project_dir"]) == content
+
+    def test_identity_and_overview_budgets_enforced(self, project):
+        _write(project["project_dir"].parent.parent / "identity.md", "---\ntype: identity\n---\n" + ("x" * 5000))
+        _write(project["project_dir"] / "overview.md", "y" * 5000)
+        _write(project["project_dir"] / "l1" / "session-001.md", _model_stamped("L1 content"))
+
+        payload = wakeup.compose_wake_up_context(cwd=project["cwd"], wiki_root=wiki_root(), session="sess-1")
+
+        identity_start = payload.index(wakeup.SECTION_IDENTITY)
+        overview_start = payload.index(wakeup.SECTION_OVERVIEW)
+        identity_chunk = payload[identity_start:overview_start]
+        assert len(identity_chunk) <= wakeup.IDENTITY_BUDGET * wakeup.CHARS_PER_TOKEN + len(wakeup.SECTION_IDENTITY) + 200
+
+    def test_foreign_overview_withheld(self, project):
+        from lib.memory import quarantine
+
+        marked = quarantine.mark("# demo-project\n\nscan-derived overview")
+        released = quarantine.release(marked)
+        foreign_stamped = (
+            '---\nren_write_id: "w-test"\nren_writer: "llm-auto"\nren_trust: "foreign"\n---\n'
+            + released
+        )
+        _write(project["project_dir"] / "overview.md", foreign_stamped)
+        _write(project["project_dir"] / "l1" / "session-001.md", _model_stamped("L1 content"))
+
+        payload = wakeup.compose_wake_up_context(cwd=project["cwd"], wiki_root=wiki_root(), session="sess-1")
+
+        assert wakeup.SECTION_OVERVIEW not in payload
+        assert "scan-derived overview" not in payload
+
+    def test_identity_and_overview_appended_to_surfaced_pages(self, project):
+        _write(project["project_dir"].parent.parent / "identity.md", "---\ntype: identity\n---\n# About Friend\n\nBuilds things.\n")
+        _write(project["project_dir"] / "overview.md", "# demo-project\n\nA demo project.\n")
+        _write(project["project_dir"] / "l1" / "session-001.md", _model_stamped("L1 content"))
+
+        wakeup.compose_wake_up_context(cwd=project["cwd"], wiki_root=wiki_root(), session="sess-1")
+
+        surfaces = collect.read(kind=collect.KIND_WAKEUP_SURFACE)
+        pages = set(surfaces[-1]["pages"])
+        assert "identity.md" in pages
+        assert "projects/demo-project/overview.md" in pages
 
 
 # --------------------------------------------------------------- no-LLM scan
