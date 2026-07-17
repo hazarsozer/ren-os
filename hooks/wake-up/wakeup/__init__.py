@@ -109,6 +109,18 @@ OVERVIEW_FILENAME: Final[str] = "overview.md"
 _IDENTITY_LIST_FIELDS: Final[tuple[str, ...]] = (
     "languages", "package_managers", "clouds", "databases", "strong_skills", "growth_areas",
 )
+# The four enum questions `/ren:interview` asks (skills/interview/lib
+# QUESTIONS), mapped to their skeleton default — the exact literal each field
+# holds in both `identity.md.tmpl` and `render_identity`'s `_DEFAULTS` when
+# unanswered. See `_identity_is_filled` (Task 6c-2, 0.5.5 release-blocker):
+# a friend who answers ONLY these four and skips every list/contact question
+# was previously judged "not filled".
+_IDENTITY_ENUM_DEFAULTS: Final[dict[str, str]] = {
+    "working_style": "balanced",
+    "communication_style": "balanced-with-emoji",
+    "plans_before_code": "often",
+    "tdd_attitude": "case-by-case",
+}
 # Every placeholder PROMPT line in identity.md.tmpl / render_identity's body
 # is a single markdown line wrapped start-to-end in underscores (whole-line
 # italic), e.g. "_One paragraph: who you are..._" — the invariant shared by
@@ -299,11 +311,29 @@ def _identity_is_filled(text: str, body: str) -> bool:
     `skills.interview.lib.render_identity` ALWAYS writes the exact same
     placeholder BODY regardless of the answers given — the interview's real
     answers land only in frontmatter fields (`_IDENTITY_LIST_FIELDS`,
-    `contact.timezone`, `contact.working_hours`). A body-level skeleton check
-    (the shape `read_overview` uses) would therefore suppress identity
-    forever, even for a fully interviewed friend — so "filled" is judged from
-    the frontmatter first, falling back to real body content only for a hand
-    edit that bypassed the interview's frontmatter fields entirely.
+    `contact.timezone`, `contact.working_hours`, and the four enum fields in
+    `_IDENTITY_ENUM_DEFAULTS`). A body-level skeleton check (the shape
+    `read_overview` uses) would therefore suppress identity forever, even for
+    a fully interviewed friend — so "filled" is judged from the frontmatter
+    first, falling back to real body content only for a hand edit that
+    bypassed the interview's frontmatter fields entirely.
+
+    Task 6c-2 (0.5.5 release-blocker, codex-reported): the original version
+    of this check only looked at the list fields and contact — a friend who
+    answered ONLY the four enum questions (working_style, communication_style,
+    plans_before_code, tdd_attitude) and skipped everything else was judged
+    "not filled". The enum check below fixes that: a field present in
+    frontmatter with a value other than its skeleton default counts as real
+    signal. `skipped_questions` is deliberately NOT used as a signal here —
+    the bootstrap-stamped skeleton and a fully-answered interview can both
+    yield `skipped_questions: []`, so an empty list can't distinguish
+    pristine-skeleton from fully-filled.
+
+    Known limitation (acceptable, not fixed): if a friend's real answers
+    happen to equal every enum default AND all lists are empty AND contact is
+    empty AND the body is placeholder-only, identity is indistinguishable
+    from a pristine skeleton and stays omitted — vanishingly unlikely, and
+    low-harm since injecting all-default values would add no signal anyway.
     """
     fm = _parse_frontmatter_dict(text)
     for field in _IDENTITY_LIST_FIELDS:
@@ -315,6 +345,9 @@ def _identity_is_filled(text: str, body: str) -> bool:
         timezone_ = str(contact.get("timezone") or "").strip()
         working_hours = str(contact.get("working_hours") or "").strip()
         if timezone_ or working_hours:
+            return True
+    for field, default in _IDENTITY_ENUM_DEFAULTS.items():
+        if field in fm and fm.get(field) != default:
             return True
     return _identity_has_real_body_content(body)
 

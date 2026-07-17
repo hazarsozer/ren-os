@@ -803,6 +803,35 @@ class TestStructuredSections:
         assert "languages" in result
         assert "_One paragraph: who you are" not in result
 
+    def test_enum_only_answers_identity_filled(self, wiki):
+        # Task 6c-2 fix (0.5.5 release-blocker, codex-reported): a friend who
+        # ran /ren:interview and answered ONLY the four enum questions
+        # (working_style, communication_style, plans_before_code,
+        # tdd_attitude), skipping every list/contact question, was judged
+        # "not filled" by the old list/contact-only `_identity_is_filled`
+        # check — read_identity silently omitted their identity section.
+        from skills.interview.lib import render_identity
+
+        content = render_identity({"working_style": "structured", "plans_before_code": "always"})
+        _write(wiki / "identity.md", content)
+
+        result = wakeup.read_identity(wiki)
+
+        assert result != ""
+        assert "working_style: structured" in result
+        assert "plans_before_code: always" in result
+
+    def test_pristine_skeleton_via_render_identity_omitted(self, wiki):
+        # Guard against the enum-default fix above false-positiving a fully
+        # skipped interview (all four enums at their skeleton default, every
+        # list/contact field empty, placeholder body) as "filled".
+        from skills.interview.lib import render_identity
+
+        content = render_identity({})
+        _write(wiki / "identity.md", content)
+
+        assert wakeup.read_identity(wiki) == ""
+
     def test_missing_overview_omitted(self, project):
         assert wakeup.read_overview(project["project_dir"]) == ""
 
