@@ -19,7 +19,7 @@ from datetime import datetime, timezone
 import pytest
 
 from lib import ren_paths
-from lib.instrument import collect
+from lib.instrument import collect, miss_log
 from lib.memory import journal, lifecycle, locks, queue, quarantine, write_apply
 from lib.memory.provenance import Provenance, new_provenance
 from lib.memory.queue import Proposal
@@ -72,6 +72,19 @@ def _record_fetch(page, ts, session="s1"):
         f.write(json.dumps(entry) + "\n")
 
 
+def _record_surface(pages, ts, session="s1"):
+    """Write one WAKEUP_SURFACE metric entry directly, stamped with `ts`
+    (bypasses `collect.record`'s real-clock timestamp so tests can backdate
+    it). `pages` is list-valued, unlike `_record_fetch`'s single `page`."""
+    import json
+
+    month_file = ren_paths.state_dir() / "metrics" / f"{ts[:7]}.jsonl"
+    month_file.parent.mkdir(parents=True, exist_ok=True)
+    entry = {"ts": ts, "kind": collect.KIND_WAKEUP_SURFACE, "pages": list(pages), "session": session}
+    with month_file.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(entry) + "\n")
+
+
 # ---------------------------------------------------------------- candidates
 
 
@@ -97,6 +110,66 @@ def test_page_with_old_fetch_decays_on_journal_age(wiki_root):
     _record_fetch("notes.md", OLD_TS)
 
     assert lifecycle.decay_candidates(NOW) == ["notes.md"]
+
+
+def test_surfaced_page_survives_decay(wiki_root):
+    """A page wake-up injected (KIND_WAKEUP_SURFACE), never fetched, still
+    counts as a usage touch and is protected."""
+    _add("notes.md", "stale write, but wake-up surfaced it\n")
+    _backdate_journal("notes.md", OLD_TS)
+    miss_log.log_surface(["notes.md"], session="s1")  # real clock: fresh relative to NOW
+
+    assert lifecycle.decay_candidates(NOW) == []
+
+
+def test_read_page_survives_decay(wiki_root):
+    """A page read directly (KIND_PAGE_READ via miss_log.log_read), never
+    fetched or surfaced, still counts as a usage touch and is protected."""
+    _add("notes.md", "stale write, but directly read\n")
+    _backdate_journal("notes.md", OLD_TS)
+    miss_log.log_read("notes.md", "s1")  # real clock: fresh relative to NOW
+
+    assert lifecycle.decay_candidates(NOW) == []
+
+
+def test_untouched_page_still_decays(wiki_root):
+    """Regression guard: a page with no fetch, surface, or read event at all
+    still decays on journal age alone."""
+    _add("notes.md", "stale content, never touched\n")
+    _backdate_journal("notes.md", OLD_TS)
+
+    assert lifecycle.decay_candidates(NOW) == ["notes.md"]
+
+
+def test_stale_events_do_not_protect(wiki_root):
+    """A 100-day-old wake-up surface event does not protect — only a RECENT
+    one does (mirrors test_page_with_old_fetch_decays_on_journal_age)."""
+    _add("notes.md", "stale write, stale surface\n")
+    _backdate_journal("notes.md", OLD_TS)
+    _record_surface(["notes.md"], OLD_TS)
+
+    assert lifecycle.decay_candidates(NOW) == ["notes.md"]
+
+
+@pytest.mark.parametrize(
+    "raising_kind", [collect.KIND_L3_FETCH, collect.KIND_WAKEUP_SURFACE, collect.KIND_PAGE_READ]
+)
+def test_unreadable_usage_log_skips_decay(wiki_root, monkeypatch, raising_kind):
+    """If ANY of the three consumed kinds is unreadable, decay is skipped
+    entirely (conservative all-or-nothing), not just for that kind."""
+    _add("notes.md", "stale content\n")
+    _backdate_journal("notes.md", OLD_TS)
+
+    real_read = collect.read
+
+    def selective_raiser(kind=None, since=None):
+        if kind == raising_kind:
+            raise OSError("usage log unreadable")
+        return real_read(kind=kind, since=since)
+
+    monkeypatch.setattr(lifecycle.collect, "read", selective_raiser)
+
+    assert lifecycle.decay_candidates(NOW) == []
 
 
 def test_recently_written_page_is_not_a_candidate(wiki_root):

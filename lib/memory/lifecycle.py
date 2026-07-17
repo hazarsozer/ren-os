@@ -1,16 +1,26 @@
 """
 lib.memory.lifecycle — 90-day decay at wrap (Task 17, RenOS 0.5.3 "learning
-brain").
+brain"; usage-touch consumption added Task 4, RenOS 0.5.5).
 
 Conservative decay, archive-never-delete (built on Task 16's `archive_page`):
 a data-plane page (never `global/`, never already `archive/`, never
 quarantined) with no active salience boost is a decay candidate once BOTH
-its last journal write AND its last miss-log fetch (if any) are older than
-`DECAY_WINDOW_DAYS`. Absence of a fetch record does NOT protect a page — no
-one has asked for it back, which is itself the decay signal — but the
-miss-log read is a single all-or-nothing gate: if it's unreadable (I/O
-error), `decay_candidates` returns `[]` entirely rather than guessing per
-page, per the spec's "conservative" mandate.
+its last journal write AND its last USAGE TOUCH (if any) are older than
+`DECAY_WINDOW_DAYS`. A usage touch is any of three mechanical signals: an
+on-demand L3 fetch (`collect.KIND_L3_FETCH`, via `miss_log.log_fetch`), a
+wake-up injection that surfaced the page (`collect.KIND_WAKEUP_SURFACE`, via
+`miss_log.log_surface` — list-valued `"pages"`, unlike the other two kinds'
+single `"page"`), or a direct page read (`collect.KIND_PAGE_READ`, via
+`miss_log.log_read`). Absence of ALL THREE does NOT protect a page — no one
+has asked for it back, mechanically or by hand, which is itself the decay
+signal — but reading the three usage-metric kinds is a single all-or-nothing
+gate: if any is unreadable (I/O error), `decay_candidates` returns `[]`
+entirely rather than guessing per page, per the spec's "conservative"
+mandate.
+
+Pruning: the metrics log already rotates by calendar month
+(`collect._month_file`), so a long-running install's usage history is
+naturally bounded without any explicit prune step here (YAGNI).
 
 Salience mirrors `hooks/wake-up/wakeup._salient_pages`'s window semantics
 (same SALIENCE_WINDOW_DAYS value, same "any applied queue entry with
@@ -98,25 +108,37 @@ def _last_write_ts(rel: str) -> datetime | None:
 def decay_candidates(now: datetime) -> list[str]:
     """Data-plane pages eligible for 90-day decay, oldest-write-first.
 
-    Conservative I/O rule: if the miss-log (`collect.read(kind=KIND_L3_FETCH)`)
-    is unreadable, returns `[]` — decay is skipped entirely for this call,
-    never partially.
+    Conservative I/O rule: reads all three usage-metric kinds
+    (`collect.read(kind=KIND_L3_FETCH | KIND_WAKEUP_SURFACE | KIND_PAGE_READ)`)
+    inside one gate — if ANY is unreadable, returns `[]` — decay is skipped
+    entirely for this call, never partially.
     """
     try:
         fetch_entries = collect.read(kind=collect.KIND_L3_FETCH)
+        surface_entries = collect.read(kind=collect.KIND_WAKEUP_SURFACE)
+        read_entries = collect.read(kind=collect.KIND_PAGE_READ)
     except OSError:
         return []
 
-    last_fetch_by_page: dict[str, datetime] = {}
-    for entry in fetch_entries:
-        page = entry.get("page")
+    last_touch_by_page: dict[str, datetime] = {}
+
+    def _touch(page: str | None, ts_raw: str | None) -> None:
         if not page:
-            continue
-        entry_time = _parse_ts(entry.get("ts"))
+            return
+        entry_time = _parse_ts(ts_raw)
         if entry_time is None:
-            continue
-        if page not in last_fetch_by_page or entry_time > last_fetch_by_page[page]:
-            last_fetch_by_page[page] = entry_time
+            return
+        if page not in last_touch_by_page or entry_time > last_touch_by_page[page]:
+            last_touch_by_page[page] = entry_time
+
+    for entry in fetch_entries:
+        _touch(entry.get("page"), entry.get("ts"))
+    for entry in surface_entries:
+        ts_raw = entry.get("ts")
+        for page in entry.get("pages") or []:
+            _touch(page, ts_raw)
+    for entry in read_entries:
+        _touch(entry.get("page"), entry.get("ts"))
 
     root = ren_paths.wiki_root()
     salient = _salient_pages(now)
@@ -130,8 +152,8 @@ def decay_candidates(now: datetime) -> list[str]:
         if write_ts is None or now - write_ts <= timedelta(days=DECAY_WINDOW_DAYS):
             continue
 
-        fetch_ts = last_fetch_by_page.get(rel)
-        if fetch_ts is not None and now - fetch_ts <= timedelta(days=DECAY_WINDOW_DAYS):
+        touch_ts = last_touch_by_page.get(rel)
+        if touch_ts is not None and now - touch_ts <= timedelta(days=DECAY_WINDOW_DAYS):
             continue
 
         try:

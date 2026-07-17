@@ -12,6 +12,10 @@ already" involved. Two thin event-log wrappers plus a join:
     already inject.
   - `log_surface` — call this from the wake-up hook with exactly the pages it
     injected for a session.
+  - `log_read` — call this wherever a page is read directly (not via an L3
+    fetch or wake-up injection), e.g. Task 5's read hook. Feeds decay
+    protection (`lib.memory.lifecycle.decay_candidates`) as a third usage
+    signal alongside fetches and wake-up surfacing.
   - `misses` — joins the two logs BY SESSION: a fetch is a miss iff its
     session has a recorded wakeup-surface AND the fetched page isn't in it.
     Fetches from a session with NO surface record are excluded from the
@@ -45,6 +49,12 @@ def log_fetch(page: str, query: str, session: str) -> None:
 def log_surface(pages: list[str], session: str) -> None:
     """Record the exact set of pages wake-up surfaced for `session`."""
     collect.record(collect.KIND_WAKEUP_SURFACE, {"pages": list(pages), "session": session})
+
+
+def log_read(page: str, session: str) -> None:
+    """Record a direct read of `page` (mirrors `log_fetch`'s shape, minus the
+    free-text query — there's nothing to scrub)."""
+    collect.record(collect.KIND_PAGE_READ, {"page": page, "session": session})
 
 
 @dataclass(frozen=True)
@@ -86,4 +96,4 @@ def misses(since: str | None = None) -> MissReport:
     return MissReport(fetches=fetch_count, misses=miss_count, miss_rate=miss_rate)
 
 
-__all__ = ["log_fetch", "log_surface", "MissReport", "misses"]
+__all__ = ["log_fetch", "log_surface", "log_read", "MissReport", "misses"]
