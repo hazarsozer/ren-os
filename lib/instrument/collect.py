@@ -66,6 +66,7 @@ KIND_CAPABILITY_TOKENS = "capability_tokens"
 KIND_CODEMAP_TOKENS = "codemap_tokens"
 KIND_CLASSIFIER_EVENT = "classifier_event"
 KIND_JUDGE_EVENT = "judge_event"
+KIND_OVERVIEW_EVENT = "overview_event"
 
 
 def _now_iso() -> str:
@@ -200,6 +201,7 @@ __all__ = [
     "KIND_CODEMAP_TOKENS",
     "KIND_CLASSIFIER_EVENT",
     "KIND_JUDGE_EVENT",
+    "KIND_OVERVIEW_EVENT",
     "record",
     "read",
     "harvest_session_usage",

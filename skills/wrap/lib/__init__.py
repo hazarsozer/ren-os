@@ -35,10 +35,14 @@ from __future__ import annotations
 
 import re
 from dataclasses import asdict
+from datetime import date
 from pathlib import Path
 from typing import Callable
 
+import yaml
+
 from lib import ren_paths
+from lib.adapter.worker import parse_worker_json
 from lib.instrument import collect
 from lib.memory import queue
 from lib.memory.judge import JUDGE_MIN_CONFIDENCE, JUDGE_PAIR_CAP, judge_pairs
@@ -142,6 +146,174 @@ def _judge_semantic_findings(
         return []
 
 
+_OVERVIEW_FRONTMATTER_RE = re.compile(r"\A---\n(.*?)\n---\n?", re.DOTALL)
+_OVERVIEW_HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
+
+_OVERVIEW_PROMPT_TEMPLATE: str = """\
+You maintain a project's overview page across sessions. Decide whether this
+session's narrative represents a MATERIAL change to the project's stage,
+direction, or key facts — not routine chatter, not a restatement of what the
+overview already says.
+
+Current overview body (may be empty/placeholder if none exists yet):
+---
+{current_overview}
+---
+
+This session's narrative:
+---
+{narrative}
+---
+
+If material_change is true, write a full replacement overview body: what the
+project is, its current stage, and 3-5 load-bearing facts. Target <=600
+tokens - a thesis, not a novel. If material_change is false, "overview" is
+ignored and may be empty.
+
+Output JSON ONLY (no surrounding prose, no code fence). Schema:
+
+{{"material_change": true | false, "overview": "<full replacement body>"}}
+"""
+
+
+def _split_overview_frontmatter(text: str) -> tuple[dict, str]:
+    """Return `(frontmatter_dict, body)` for `text`. Any parse failure (bad
+    YAML, no frontmatter) degrades to an empty dict rather than raising —
+    frontmatter here is only used to carry a few cosmetic fields (title,
+    created date) forward across overview UPDATEs, never load-bearing."""
+    match = _OVERVIEW_FRONTMATTER_RE.match(text)
+    if not match:
+        return {}, text
+    try:
+        data = yaml.safe_load(match.group(1))
+    except yaml.YAMLError:
+        data = None
+    return (data if isinstance(data, dict) else {}), text[match.end():]
+
+
+def _is_skeleton_or_empty_body(body: str) -> bool:
+    """True if `body` (frontmatter already stripped) carries no real content
+    of its own — i.e. it's the shipped skeleton (a heading plus an HTML
+    comment) or genuinely empty/whitespace. Same idea as `read_identity`'s
+    skeleton check (Task 1), adapted for overview's comment-only body shape
+    rather than a byte-for-byte template match."""
+    without_comments = _OVERVIEW_HTML_COMMENT_RE.sub("", body)
+    lines = [line.strip() for line in without_comments.splitlines() if line.strip()]
+    if not lines:
+        return True
+    return len(lines) == 1 and lines[0].startswith("#")
+
+
+def _build_overview_content(existing_text: str, overview_body: str) -> str:
+    """Build the full page content (frontmatter + body) for an overview
+    ADD/UPDATE. Carries `title`/`created`/`framework_version` forward from
+    the existing page's frontmatter when present (a fresh CREATE falls back
+    to the skeleton template's defaults); `updated` is always today.
+    `ren_*` provenance keys are stamped downstream by `write_apply`, not
+    here."""
+    fm, _ = _split_overview_frontmatter(existing_text)
+    today = date.today().isoformat()
+    lines = [
+        "---",
+        f'title: "{fm.get("title", "Project Overview")}"',
+        "type: overview",
+        "schema_version: 1",
+        f'framework_version: "{fm.get("framework_version") or ren_paths.framework_version()}"',
+        f"created: {fm.get('created', today)}",
+        f"updated: {today}",
+        "---",
+        "",
+    ]
+    return "\n".join(lines) + overview_body.strip() + "\n"
+
+
+def maintain_overview(
+    project: str,
+    session: str,
+    narrative: str,
+    llm_call: Callable[[str], str] | None,
+) -> dict | None:
+    """Maintain `projects/<project>/overview.md`: CREATE it when absent or
+    still skeleton-only, UPDATE it when the LLM judges this session's
+    narrative a material change to stage/direction/key facts. Never writes
+    on a merely-session-only narrative, and never writes at all if the LLM
+    call or its output can't be trusted (fail-closed, per anti-Goodhart
+    doctrine — an LLM error must never silently produce no write AND no
+    signal; a `KIND_OVERVIEW_EVENT` "skipped" event is recorded so
+    `wrap_session` can surface it on the wrap report rather than the
+    outcome vanishing into an indistinguishable no-op).
+
+    Returns the queue-apply result (`{"qid", "write_id", "page"}`) when a
+    write actually landed; `None` when nothing changed (no material change)
+    or the LLM path failed. `propose_and_apply` holding the entry pending
+    instead of auto-applying (shouldn't happen for a data-plane `projects/`
+    target, but treated the same as "not written" if it ever does) also
+    returns `None`.
+    """
+    page = f"projects/{project}/overview.md"
+    path = ren_paths.safe_join(ren_paths.wiki_root(), page)
+
+    existing_text = ""
+    exists = path.is_file()
+    if exists:
+        try:
+            existing_text = path.read_text(encoding="utf-8")
+        except OSError:
+            existing_text = ""
+
+    _, existing_body = _split_overview_frontmatter(existing_text)
+    prompt = _OVERVIEW_PROMPT_TEMPLATE.format(
+        current_overview=existing_body.strip() if not _is_skeleton_or_empty_body(existing_body) else "(none yet)",
+        narrative=narrative,
+    )
+
+    if llm_call is None:
+        collect.record(
+            collect.KIND_OVERVIEW_EVENT,
+            {"event": "skipped", "reason": "no llm_call available"},
+        )
+        return None
+
+    try:
+        raw = llm_call(prompt)
+        if not isinstance(raw, str):
+            raise ValueError(f"llm_call must return str, got {type(raw).__name__}")
+        data = parse_worker_json(raw)
+        if not isinstance(data, dict):
+            raise ValueError(f"overview output must be a JSON object, got {type(data).__name__}")
+        material_change = data.get("material_change")
+        if not isinstance(material_change, bool):
+            raise ValueError(f"'material_change' must be a bool, got {material_change!r}")
+        overview_body = data.get("overview")
+        if material_change and (not isinstance(overview_body, str) or not overview_body.strip()):
+            raise ValueError("'overview' must be a non-empty string when material_change is true")
+    except Exception as exc:  # noqa: BLE001 - fail-closed: never write, never stay silent
+        collect.record(
+            collect.KIND_OVERVIEW_EVENT,
+            {"event": "skipped", "reason": str(exc)},
+        )
+        return None
+
+    if not material_change:
+        return None
+
+    content = _build_overview_content(existing_text, overview_body)
+    entry, prov = propose_and_apply(
+        Proposal(
+            op="UPDATE" if exists else "ADD",
+            page=page,
+            content=content,
+            reason="overview maintenance (material change)",
+            producer="wrap",
+            writer="llm-auto",
+            session=session,
+        )
+    )
+    if prov is None:
+        return None
+    return {"qid": entry.qid, "write_id": prov.write_id, "page": page}
+
+
 def wrap_session(
     narrative_md: str,
     durable_items: list[str],
@@ -193,6 +365,15 @@ def wrap_session(
         entry means the older page archived but the newer-page UPDATE then
         failed (concurrent write); it is not silently dropped. Isolated
         like `decayed`; degrades to `[]` rather than raising.
+      - "overview": one of "created" | "updated" | "unchanged" | "skipped" —
+        `maintain_overview`'s (Task 3, 0.5.5) outcome for
+        `projects/<project>/overview.md`, called right after the L1 write.
+        "created"/"updated" mean a write landed (page was absent/skeleton vs.
+        already had real content); "unchanged" means the LLM judged this
+        session's narrative not a material change; "skipped" means either no
+        `project` is in scope for this wrap, or the LLM call/output failed
+        and `maintain_overview` fail-closed (never silent — always one of
+        these four values, never omitted).
 
     `project` (codex D4): when the wrap is scoped to a project, the L1 page
     is written to `projects/<project>/l1/session-<id>.md`, the EXACT path
@@ -234,6 +415,34 @@ def wrap_session(
             session=session,
         )
     )
+
+    overview_status = "skipped"
+    if project:
+        overview_path = ren_paths.safe_join(
+            ren_paths.wiki_root(), f"projects/{project}/overview.md"
+        )
+        overview_had_real_content = False
+        if overview_path.is_file():
+            try:
+                _, existing_body = _split_overview_frontmatter(
+                    overview_path.read_text(encoding="utf-8")
+                )
+                overview_had_real_content = not _is_skeleton_or_empty_body(existing_body)
+            except OSError:
+                overview_had_real_content = False
+
+        ov_events_before = collect.read(kind=collect.KIND_OVERVIEW_EVENT)
+        overview_result = maintain_overview(project, session, narrative_md, llm_call)
+        ov_events_after = collect.read(kind=collect.KIND_OVERVIEW_EVENT)
+        new_ov_events = ov_events_after[len(ov_events_before):]
+        overview_skipped = any(e.get("event") == "skipped" for e in new_ov_events)
+
+        if overview_result is not None:
+            overview_status = "updated" if overview_had_real_content else "created"
+        elif overview_skipped:
+            overview_status = "skipped"
+        else:
+            overview_status = "unchanged"
 
     events_before = collect.read(kind=collect.KIND_CLASSIFIER_EVENT)
 
@@ -301,6 +510,7 @@ def wrap_session(
         "semantic_findings": semantic_findings,
         "decayed": decayed,
         "consolidated": consolidated,
+        "overview": overview_status,
     }
 
 
@@ -466,6 +676,7 @@ def render_wrap_screen(wrap_result: dict, session: str) -> str:
         lines.append(f"- session summary ({l1_entry['qid']}): {status_label}")
     else:
         lines.append("- session summary: (not found)")
+    lines.append(f"- project overview: {wrap_result.get('overview', 'skipped')}")
     lines.append("")
 
     # --- Saved this session (revertible) ---
@@ -572,4 +783,10 @@ def render_wrap_screen(wrap_result: dict, session: str) -> str:
     return "\n".join(lines) + "\n"
 
 
-__all__ = ["wrap_session", "render_wrap_screen", "render_pending_list", "harvest_suggestions"]
+__all__ = [
+    "wrap_session",
+    "maintain_overview",
+    "render_wrap_screen",
+    "render_pending_list",
+    "harvest_suggestions",
+]
