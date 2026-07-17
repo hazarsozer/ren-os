@@ -33,7 +33,7 @@ from lib.ren_paths import safe_join, wiki_root
 
 IDENTITY_PAGE = "identity.md"
 
-FRAMEWORK_VERSION = "0.5.4"
+FRAMEWORK_VERSION = "0.5.5"
 
 # Sane, neutral defaults — never the framework developer's own preference
 # (donor's own framing, carried verbatim as a design principle). Matches
