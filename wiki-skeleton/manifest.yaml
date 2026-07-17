@@ -79,8 +79,8 @@ profiles:
   project:
     description: "Files stamped into wiki/projects/<project>/ by /ren:bootstrap-project"
     # The per-project taxonomy lives in skills/bootstrap-project/ (L2 pointer-map
-    # + log page, Phase 2). This profile is reserved for future shared
-    # per-project files. v1: empty.
+    # + log page, Phase 2). This profile is stamped by /ren:bootstrap-project
+    # with a path_prefix of "projects/<slug>/" (see lib/skeleton.py).
     entries:
       - path: "overview.md"
         template: "templates/projects/overview.md.tmpl"

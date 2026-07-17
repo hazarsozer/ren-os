@@ -108,12 +108,23 @@ def stamp_skeleton(
     target_root: Path,
     profile: str = "master",
     placeholders: dict[str, str] | None = None,
+    path_prefix: str = "",
 ) -> StampResult:
     """Stamp one manifest profile's entries from `skeleton_root` into `target_root`.
 
     `skeleton_root` is a directory containing `manifest.yaml` plus the
     template files its entries reference (e.g. `wiki-skeleton/`).
     `target_root` is the friend's wiki root (e.g. `~/.renos/wiki`).
+
+    `path_prefix` (default `""`, i.e. no-op) is prepended to every entry's
+    `path` when resolving the on-disk target and the page passed to
+    `write_apply` — used by `skills.bootstrap-project` to stamp the `project`
+    profile's manifest-relative paths (e.g. `"overview.md"`) under
+    `projects/<slug>/` while `target_root` stays `ren_paths.wiki_root()`
+    (see module docstring on why `target_root` must always agree with
+    `wiki_root()`). `StampResult.written`/`.skipped` still report the
+    manifest's un-prefixed `path`, matching the `master`/`venture` profiles'
+    existing (unprefixed) behavior.
 
     Never overwrites an existing path — see module docstring for the
     per-write_rule contract. Directories are created with `parents=True` so a
@@ -132,8 +143,9 @@ def stamp_skeleton(
     result = StampResult()
     for entry in entries:
         path = entry["path"]
+        rel_path = f"{path_prefix}{path}"
         rule = entry["write_rule"]
-        target = target_root / path
+        target = target_root / rel_path
 
         if rule == "never_write":
             result.skipped.append(path)
@@ -153,7 +165,7 @@ def stamp_skeleton(
             continue
 
         template_text = (skeleton_root / entry["template"]).read_text(encoding="utf-8")
-        rendered = _substitute(template_text, bound, path, result.warnings)
+        rendered = _substitute(template_text, bound, rel_path, result.warnings)
         target.parent.mkdir(parents=True, exist_ok=True)
         # One-door invariant (Task 9.3 FIX 1): founding pages go through
         # write_apply so they carry provenance, a journal line, a snapshot,
@@ -163,9 +175,9 @@ def stamp_skeleton(
             writer="human",
             session=os.environ.get(locks.SESSION_ID_ENV, "install"),
             op="ADD",
-            page=path,
+            page=rel_path,
         )
-        write_apply.apply_write(path, rendered, prov)
+        write_apply.apply_write(rel_path, rendered, prov)
         result.written.append(path)
 
     return result

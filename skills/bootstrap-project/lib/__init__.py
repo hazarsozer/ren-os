@@ -82,6 +82,23 @@ def bootstrap(project_slug: str, session: str, repo_root: Path | None = None) ->
         },
     )
 
+    # 0.5.5 Task 2: also stamp the `project` manifest profile (overview.md —
+    # the guaranteed wake-up orientation page) under projects/<slug>/.
+    # target_root stays wiki_root() (write_apply always resolves against it
+    # internally, per lib/skeleton.py's module docstring); path_prefix nests
+    # the profile's manifest-relative paths under this project's slug.
+    stamp_skeleton(
+        skeleton_root=_SKELETON_ROOT,
+        target_root=ren_paths.wiki_root(),
+        profile="project",
+        placeholders={
+            "handle": "friend",
+            "name": "friend",
+            "framework_version": ren_paths.framework_version(),
+        },
+        path_prefix=f"projects/{project_slug}/",
+    )
+
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     content = assemble_l2(project_slug, [], [], f"{today}: project bootstrapped")
 

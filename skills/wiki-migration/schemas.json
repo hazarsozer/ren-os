@@ -9,6 +9,10 @@
       "current": 1,
       "migrations": []
     },
+    "overview": {
+      "current": 1,
+      "migrations": []
+    },
     "routine-spec": {
       "current": 3,
       "migrations": ["routine-spec-1-to-2", "routine-spec-2-to-3"]

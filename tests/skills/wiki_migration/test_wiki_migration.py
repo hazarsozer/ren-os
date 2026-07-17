@@ -37,6 +37,17 @@ def test_load_registry_returns_page_types():
     assert registry["page_types"]["routine-spec"]["current"] == 3
 
 
+def test_load_registry_includes_overview_page_type():
+    """overview (wiki-skeleton/templates/projects/overview.md.tmpl, 0.5.5) must
+    be registered so doctor's migration_chain("overview", ...) can track
+    drift — the registry's own $comment says it enumerates every page type
+    actually stamped by this repo."""
+    registry = wiki_migration.load_registry()
+    assert "overview" in registry["page_types"]
+    assert registry["page_types"]["overview"]["current"] == 1
+    assert registry["page_types"]["overview"]["migrations"] == []
+
+
 def test_load_registry_missing_file_returns_empty_dict(tmp_path):
     assert wiki_migration.load_registry(tmp_path / "nope.json") == {}
 

@@ -253,3 +253,42 @@ def test_stamped_pages_are_journaled_with_provenance_and_revertible(tmp_path):
     result = revert.revert(index_write_id)
     assert result.restored
     assert not (target / "index.md").exists()  # revert of an ADD deletes
+
+
+def test_path_prefix_nests_profile_entries_under_a_subdirectory(tmp_path):
+    """The `project` profile's paths (e.g. "overview.md") are relative to
+    wiki/projects/<slug>/, not the wiki root — path_prefix lets a caller
+    (skills.bootstrap-project) stamp them at the right nested location while
+    still resolving writes through write_apply against ren_paths.wiki_root()
+    (see module docstring)."""
+    target = tmp_path / "wiki"
+    result = stamp_skeleton(
+        skeleton_root=SKELETON_ROOT,
+        target_root=target,
+        profile="project",
+        placeholders=_placeholders(),
+        path_prefix="projects/my-idea/",
+    )
+
+    assert "overview.md" in result.written
+    assert (target / "projects" / "my-idea" / "overview.md").is_file()
+
+
+def test_path_prefix_copy_if_missing_still_never_overwrites(tmp_path):
+    target = tmp_path / "wiki"
+    nested = target / "projects" / "my-idea"
+    nested.mkdir(parents=True)
+    sentinel = "MY OWN OVERVIEW — DO NOT TOUCH"
+    (nested / "overview.md").write_text(sentinel, encoding="utf-8")
+
+    result = stamp_skeleton(
+        skeleton_root=SKELETON_ROOT,
+        target_root=target,
+        profile="project",
+        placeholders=_placeholders(),
+        path_prefix="projects/my-idea/",
+    )
+
+    assert (nested / "overview.md").read_text(encoding="utf-8") == sentinel
+    assert "overview.md" in result.skipped
+    assert "overview.md" not in result.written

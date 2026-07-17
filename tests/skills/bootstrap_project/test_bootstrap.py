@@ -106,6 +106,31 @@ def test_bootstrap_stamps_missing_skeleton_dirs(wiki):
     assert (wiki / "decisions").is_dir()
 
 
+def test_bootstrap_stamps_project_overview(wiki):
+    """0.5.5 Task 2: bootstrap must also stamp the `project` manifest
+    profile (overview.md), nested under projects/<slug>/, not just the
+    master skeleton + empty L2 map."""
+    bootstrap("new-idea", session="sess-1")
+
+    overview = wiki / "projects" / "new-idea" / "overview.md"
+    assert overview.is_file()
+    text = overview.read_text(encoding="utf-8")
+    assert "type: overview" in text
+
+
+def test_bootstrap_rerun_never_overwrites_edited_overview(wiki):
+    """Re-running bootstrap must leave a user-edited overview.md untouched —
+    same additive-never-overwrite contract as the master skeleton files."""
+    bootstrap("new-idea", session="sess-1")
+    overview = wiki / "projects" / "new-idea" / "overview.md"
+    sentinel = "MY OWN OVERVIEW — DO NOT TOUCH"
+    overview.write_text(sentinel, encoding="utf-8")
+
+    bootstrap("new-idea", session="sess-2")
+
+    assert overview.read_text(encoding="utf-8") == sentinel
+
+
 def test_bootstrap_writes_agents_md_when_repo_root_given(wiki, tmp_path):
     repo = tmp_path / "myrepo"
     repo.mkdir()

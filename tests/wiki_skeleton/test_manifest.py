@@ -71,7 +71,7 @@ def test_venture_module_directory_matches_manifest_templates():
 
 
 def _project_profile_entries(manifest: dict) -> list:
-    """Helper to get project profile entries (empty list initially)."""
+    """Helper to get project profile entries (overview.md as of 0.5.5)."""
     return manifest["profiles"]["project"]["entries"]
 
 
@@ -84,9 +84,14 @@ def test_project_profile_includes_overview():
 
 
 def test_overview_template_passes_frontmatter_lint():
-    """Verify overview.md template has correct frontmatter: page_type=overview, schema_version=1."""
-    import string
-    import tempfile
+    """Verify overview.md template has correct frontmatter: type=overview,
+    schema_version=1. The repo convention is `type` (not `page_type`) — the
+    doctor/promotion machinery reads `type` (lib/memory/promotion.py,
+    skills/doctor/lib/__init__.py), and every sibling template
+    (identity.md.tmpl) uses it. Placeholders use the real `{{var}}` syntax
+    lib.skeleton.stamp_skeleton substitutes (not string.Template's `$var`)."""
+    import re
+
     import yaml
 
     manifest = _load_manifest()
@@ -101,19 +106,14 @@ def test_overview_template_passes_frontmatter_lint():
     assert template_path.is_file(), f"template not found: {template_path}"
 
     template_text = template_path.read_text(encoding="utf-8")
-    template_obj = string.Template(template_text)
-    rendered = template_obj.substitute(
-        handle="test-friend",
-        name="Test Friend",
-        today="2026-01-01",
-        framework_version="0.5.5",
-    )
+    bindings = {"today": "2026-01-01", "framework_version": "0.5.5"}
+    rendered = re.sub(r"\{\{(\w+)\}\}", lambda m: bindings[m.group(1)], template_text)
 
     # Extract frontmatter and validate it
-    if rendered.startswith("---"):
-        end_idx = rendered.find("\n---", 3)
-        if end_idx != -1:
-            fm_text = rendered[3:end_idx]
-            data = yaml.safe_load(fm_text)
-            assert data.get("page_type") == "overview", f"expected page_type=overview, got {data}"
-            assert data.get("schema_version") == 1, f"expected schema_version=1, got {data}"
+    assert rendered.startswith("---")
+    end_idx = rendered.find("\n---", 3)
+    assert end_idx != -1
+    fm_text = rendered[3:end_idx]
+    data = yaml.safe_load(fm_text)
+    assert data.get("type") == "overview", f"expected type=overview, got {data}"
+    assert data.get("schema_version") == 1, f"expected schema_version=1, got {data}"
