@@ -754,8 +754,20 @@ class TestStructuredSections:
         assert wakeup.SECTION_OVERVIEW not in payload
 
     def test_skeleton_identity_omitted(self, wiki):
-        template_path = Path(__file__).resolve().parents[2] / "wiki-skeleton" / "templates" / "identity.md.tmpl"
-        _write(wiki / "identity.md", template_path.read_text(encoding="utf-8"))
+        # Task 6c fix: the old fixture compared against the RAW .tmpl
+        # (literal `{{name}}`/`{{handle}}` placeholders), which never exists
+        # on disk — `stamp_skeleton` (the real /ren:install path) always
+        # substitutes placeholders AND stamps `ren_*` provenance before a
+        # file lands in a friend's wiki. This drives the actual install code
+        # path so the fixture matches a real fresh, pre-interview install.
+        from lib.skeleton import stamp_skeleton
+
+        skeleton_root = Path(__file__).resolve().parents[2] / "wiki-skeleton"
+        stamp_skeleton(
+            skeleton_root=skeleton_root,
+            target_root=wiki,
+            placeholders={"name": "Friend", "handle": "friend", "framework_version": "0.5.5"},
+        )
 
         assert wakeup.read_identity(wiki) == ""
 
@@ -773,6 +785,24 @@ class TestStructuredSections:
 
         assert wakeup.read_identity(wiki) == content
 
+    def test_post_interview_identity_strips_placeholder_body_keeps_frontmatter(self, wiki):
+        # Task 6c fix: `/ren:interview`'s render_identity ALWAYS writes the
+        # same placeholder body regardless of the answers given — real
+        # answers land only in frontmatter. read_identity must judge "filled"
+        # from the frontmatter (not a body-skeleton check, which would
+        # suppress identity forever) and must strip the now-crowding
+        # placeholder body before injecting.
+        from skills.interview.lib import render_identity
+
+        content = render_identity({"languages": ["Python"]})
+        _write(wiki / "identity.md", content)
+
+        result = wakeup.read_identity(wiki)
+
+        assert result != ""
+        assert "languages" in result
+        assert "_One paragraph: who you are" not in result
+
     def test_missing_overview_omitted(self, project):
         assert wakeup.read_overview(project["project_dir"]) == ""
 
@@ -781,6 +811,28 @@ class TestStructuredSections:
         _write(project["project_dir"] / "overview.md", content)
 
         assert wakeup.read_overview(project["project_dir"]) == content
+
+    def test_skeleton_overview_omitted(self, project):
+        # Task 6c fix: read_overview had no skeleton check at all — a
+        # bootstrap-stamped overview.md (heading + HTML comment, matching
+        # wiki-skeleton/templates/projects/overview.md.tmpl) injected its
+        # placeholder body as if it were real project signal until the first
+        # material-change wrap.
+        skeleton = (
+            '---\ntitle: "Project Overview"\ntype: overview\nschema_version: 1\n'
+            'framework_version: "0.5.5"\ncreated: 2026-07-17\nupdated: 2026-07-17\n---\n\n'
+            "# Project overview\n\n"
+            "<!-- What this project is, its current stage/thesis, and 3-5 "
+            "load-bearing facts. -->\n"
+        )
+        _write(project["project_dir"] / "overview.md", skeleton)
+
+        assert wakeup.read_overview(project["project_dir"]) == ""
+
+    def test_comment_only_overview_omitted(self, project):
+        _write(project["project_dir"] / "overview.md", "<!-- nothing here yet -->\n")
+
+        assert wakeup.read_overview(project["project_dir"]) == ""
 
     def test_identity_and_overview_budgets_enforced(self, project):
         _write(project["project_dir"].parent.parent / "identity.md", "---\ntype: identity\n---\n" + ("x" * 5000))

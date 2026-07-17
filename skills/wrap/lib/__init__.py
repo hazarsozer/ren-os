@@ -205,6 +205,14 @@ def _is_skeleton_or_empty_body(body: str) -> bool:
     return len(lines) == 1 and lines[0].startswith("#")
 
 
+def _yaml_double_quoted(value: object) -> str:
+    """Escape `value` for embedding in a double-quoted YAML scalar: backslash
+    first (so a source backslash isn't double-escaped by the next replace),
+    then double-quote. Without this, a hand-edited overview `title` carrying
+    a `"` would malform the frontmatter fence it's interpolated into."""
+    return str(value).replace("\\", "\\\\").replace('"', '\\"')
+
+
 def _build_overview_content(existing_text: str, overview_body: str) -> str:
     """Build the full page content (frontmatter + body) for an overview
     ADD/UPDATE. Carries `title`/`created`/`framework_version` forward from
@@ -216,7 +224,7 @@ def _build_overview_content(existing_text: str, overview_body: str) -> str:
     today = date.today().isoformat()
     lines = [
         "---",
-        f'title: "{fm.get("title", "Project Overview")}"',
+        f'title: "{_yaml_double_quoted(fm.get("title", "Project Overview"))}"',
         "type: overview",
         "schema_version: 1",
         f'framework_version: "{fm.get("framework_version") or ren_paths.framework_version()}"',

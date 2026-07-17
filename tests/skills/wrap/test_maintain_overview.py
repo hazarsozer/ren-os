@@ -168,6 +168,38 @@ def test_overview_prompt_strips_quarantine_banner_from_current_body(wiki):
     assert "Already has real content." in captured_prompts[0]
 
 
+def test_overview_title_with_quote_round_trips_valid_frontmatter(wiki):
+    # MINOR fix (Task 6c, same holistic review): _build_overview_content
+    # interpolated `title` into the frontmatter fence via an unescaped
+    # f-string — a hand-edited title carrying a `"` would malform the
+    # fence. `title` is carried forward from the EXISTING page's frontmatter
+    # on every UPDATE, so a friend who once hand-edited a quoted title would
+    # keep re-breaking their own overview on every subsequent wrap.
+    import re
+
+    import yaml
+
+    page = _overview_path(wiki)
+    page.parent.mkdir(parents=True)
+    existing = (
+        "---\n"
+        "title: 'My \"Cool\" Project'\n"
+        "type: overview\nschema_version: 1\n"
+        "---\n\n# Project overview\n\nAlready has real content.\n"
+    )
+    page.write_text(existing, encoding="utf-8")
+
+    llm_yes = _llm_json(material_change=True, overview="New replacement body.")
+    res = maintain_overview("demo-project", "sess-1", "session narrative", llm_yes)
+
+    assert res is not None
+    text = page.read_text(encoding="utf-8")
+    fm_match = re.match(r"\A---\n(.*?)\n---\n", text, re.DOTALL)
+    assert fm_match is not None
+    frontmatter = yaml.safe_load(fm_match.group(1))
+    assert frontmatter["title"] == 'My "Cool" Project'
+
+
 def test_overview_update_is_revertible(wiki):
     page = _overview_path(wiki)
     page.parent.mkdir(parents=True)

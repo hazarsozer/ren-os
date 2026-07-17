@@ -70,6 +70,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Final
 
+import yaml
+
 from lib.instrument import collect, miss_log
 from lib.memory import archive, queue, quarantine
 from lib.memory.provenance import read_frontmatter_provenance
@@ -100,9 +102,18 @@ DEFAULT_EXTRAS_COUNT: Final[int] = 3
 
 IDENTITY_FILENAME: Final[str] = "identity.md"
 OVERVIEW_FILENAME: Final[str] = "overview.md"
-_IDENTITY_TEMPLATE_PATH: Final[Path] = (
-    Path(__file__).resolve().parents[3] / "wiki-skeleton" / "templates" / "identity.md.tmpl"
+
+# `/ren:interview`'s `render_identity` (skills/interview/lib) ALWAYS writes
+# this exact set of list fields to identity.md's frontmatter, non-empty only
+# when the friend actually answered that question — see `_identity_is_filled`.
+_IDENTITY_LIST_FIELDS: Final[tuple[str, ...]] = (
+    "languages", "package_managers", "clouds", "databases", "strong_skills", "growth_areas",
 )
+# Every placeholder PROMPT line in identity.md.tmpl / render_identity's body
+# is a single markdown line wrapped start-to-end in underscores (whole-line
+# italic), e.g. "_One paragraph: who you are..._" — the invariant shared by
+# both template variants regardless of their slightly different wording.
+_IDENTITY_ITALIC_LINE_RE = re.compile(r"^_.+_$")
 
 # Question-shaped section headers (spec §4.1) — exact strings, relied on by
 # tests and Task 6's truncate-marker helper.
@@ -249,41 +260,140 @@ def read_l2_map(project_dir: Path) -> str:
     return _read_text_safe(project_dir / L2_MAP_FILENAME)
 
 
-def read_identity(wiki_root: Path) -> str:
-    """Return the top-level `identity.md`'s raw content, or "" if absent, or
-    if the content-minus-frontmatter is empty/whitespace, or if the file is
-    still the shipped skeleton template (never filled in via `/ren:interview`
-    or by hand) — a friend who skipped onboarding should not have placeholder
-    boilerplate injected as if it were real identity signal.
+def _parse_frontmatter_dict(text: str) -> dict:
+    """Parse `text`'s leading YAML frontmatter block (if any) into a dict via
+    `yaml.safe_load`. Returns {} on any parse failure, malformed YAML, or
+    absent frontmatter — never raises. Distinct from
+    `read_frontmatter_provenance`, which only surfaces the `ren_*` provenance
+    subset: `/ren:interview`'s real answers land in plain (non-`ren_*`)
+    frontmatter keys, which is what this reads."""
+    match = _FRONTMATTER_RE.match(text)
+    if not match:
+        return {}
+    try:
+        data = yaml.safe_load(match.group(1))
+    except yaml.YAMLError:
+        return {}
+    return data if isinstance(data, dict) else {}
 
-    Template comparison is byte-for-byte against
-    `wiki-skeleton/templates/identity.md.tmpl`; any error reading that
-    template (missing, permissions, ...) degrades to the emptiness check
-    alone — this must never crash the wake-up hook.
+
+def _identity_has_real_body_content(body: str) -> bool:
+    """True if `body` (frontmatter already stripped) has at least one line
+    that isn't blank, a markdown heading, or a whole-line italic placeholder
+    prompt (see `_IDENTITY_ITALIC_LINE_RE`) — i.e. a human actually wrote
+    something in the body, independent of whatever the frontmatter says."""
+    for line in body.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        if _IDENTITY_ITALIC_LINE_RE.match(stripped):
+            continue
+        return True
+    return False
+
+
+def _identity_is_filled(text: str, body: str) -> bool:
+    """True if `/ren:interview` (or a hand edit) has actually populated this
+    identity page.
+
+    `skills.interview.lib.render_identity` ALWAYS writes the exact same
+    placeholder BODY regardless of the answers given — the interview's real
+    answers land only in frontmatter fields (`_IDENTITY_LIST_FIELDS`,
+    `contact.timezone`, `contact.working_hours`). A body-level skeleton check
+    (the shape `read_overview` uses) would therefore suppress identity
+    forever, even for a fully interviewed friend — so "filled" is judged from
+    the frontmatter first, falling back to real body content only for a hand
+    edit that bypassed the interview's frontmatter fields entirely.
+    """
+    fm = _parse_frontmatter_dict(text)
+    for field in _IDENTITY_LIST_FIELDS:
+        value = fm.get(field)
+        if isinstance(value, list) and value:
+            return True
+    contact = fm.get("contact")
+    if isinstance(contact, dict):
+        timezone_ = str(contact.get("timezone") or "").strip()
+        working_hours = str(contact.get("working_hours") or "").strip()
+        if timezone_ or working_hours:
+            return True
+    return _identity_has_real_body_content(body)
+
+
+def _strip_identity_placeholder_lines(body: str) -> str:
+    """Remove every whole-line italic placeholder prompt (see
+    `_IDENTITY_ITALIC_LINE_RE`) from `body`, preserving everything else —
+    headings, blank lines, and any real hand-written line — byte-for-byte.
+    Once identity is judged "filled" (`_identity_is_filled`), the ~370
+    placeholder tokens in the untouched body would otherwise crowd the real
+    signal (the frontmatter) out of `IDENTITY_BUDGET`."""
+    lines = body.splitlines(keepends=True)
+    kept = [line for line in lines if not _IDENTITY_ITALIC_LINE_RE.match(line.strip())]
+    return "".join(kept)
+
+
+def read_identity(wiki_root: Path) -> str:
+    """Return the top-level `identity.md`'s content, or "" if absent, empty,
+    or still unfilled — skeleton-default frontmatter (never answered via
+    `/ren:interview` or by hand) with a placeholder body — a friend who
+    skipped onboarding should not have placeholder boilerplate injected as if
+    it were real identity signal. See `_identity_is_filled` for why this
+    check reads the frontmatter rather than the body.
+
+    When filled, the placeholder body's italic prompt lines are stripped
+    before returning (`_strip_identity_placeholder_lines`) so they don't
+    crowd the real frontmatter signal out of the token budget; any real,
+    hand-written body content is preserved untouched.
     """
     text = _read_text_safe(wiki_root / IDENTITY_FILENAME)
     if not text:
         return ""
-    if not _strip_frontmatter(text).strip():
+    body = _strip_frontmatter(text)
+    if not body.strip():
         return ""
-    try:
-        template_text = _IDENTITY_TEMPLATE_PATH.read_text(encoding="utf-8")
-    except OSError as exc:
-        logger.debug("could not read identity template %s: %s", _IDENTITY_TEMPLATE_PATH, exc)
-        return text
-    if text == template_text:
+    if not _identity_is_filled(text, body):
         return ""
-    return text
+
+    match = _FRONTMATTER_RE.match(text)
+    frontmatter_prefix = text[:match.end()] if match else ""
+    return frontmatter_prefix + _strip_identity_placeholder_lines(body)
+
+
+_OVERVIEW_HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
+
+
+def _is_overview_skeleton_or_empty(body: str) -> bool:
+    """True if `body` (frontmatter already stripped) carries no real content
+    of its own — i.e. it's the shipped skeleton (a heading plus an HTML
+    comment) or genuinely empty/whitespace. Mirrors
+    `skills.wrap.lib._is_skeleton_or_empty_body` exactly (replicated, not
+    imported — hooks must not import skills; see module docstring's layering
+    note. A few lines of pure string logic isn't worth a shared module)."""
+    without_comments = _OVERVIEW_HTML_COMMENT_RE.sub("", body)
+    lines = [line.strip() for line in without_comments.splitlines() if line.strip()]
+    if not lines:
+        return True
+    return len(lines) == 1 and lines[0].startswith("#")
 
 
 def read_overview(project_dir: Path) -> str:
-    """Return the project's `overview.md` content, or "" if absent.
+    """Return the project's `overview.md` content, or "" if absent, empty, or
+    still the shipped skeleton (a heading plus an HTML comment — never
+    replaced because wrap's `maintain_overview` has never judged a session's
+    narrative a material change) — same "no placeholder injected as real
+    signal" doctrine as `read_identity`, applied at the body level since,
+    unlike identity, overview's skeleton body IS the entire unfilled signal
+    (there's no separate frontmatter fields an interview populates).
 
     Foreign-trust CHECK happens in `compose_wake_up_context` (via
     `_is_foreign`), same pattern as `read_l2_map` — spec §4.5 amendment:
     a quarantined-but-not-foreign overview injects with its banner intact.
     """
-    return _read_text_safe(project_dir / OVERVIEW_FILENAME)
+    text = _read_text_safe(project_dir / OVERVIEW_FILENAME)
+    if not text:
+        return ""
+    if _is_overview_skeleton_or_empty(_strip_frontmatter(text)):
+        return ""
+    return text
 
 
 def _is_foreign(content: str) -> bool:
