@@ -1,4 +1,24 @@
-# RenOS 0.2.0 — Publish Checklist
+# RenOS — Publish Checklist
+
+## Recurring release steps (0.3.x onward — the living process)
+
+1. `uv run python scripts/bump_version.py X.Y.Z`
+2. Write the `## [X.Y.Z]` section in `CHANGELOG.md`
+3. Suite + lints green: `uv run pytest tests/ -q`,
+   `scripts/lint-yaml-frontmatter.py`, `scripts/lint_no_dev_wiki_content.py`
+4. `git commit` → `git tag -a vX.Y.Z -m "vX.Y.Z"` (ANNOTATED — lightweight
+   tags are not pushed by `--follow-tags`; v0.5.4 was missed this way)
+5. `git push origin main --follow-tags`
+6. Watch CI on the specific run:
+   `gh run watch <run-id> -R hazarsozer/ren-os --exit-status`
+7. Create the GitHub Release from the CHANGELOG section (friends watch
+   Releases for update notifications):
+   `gh release create vX.Y.Z -R hazarsozer/ren-os --verify-tag --title "vX.Y.Z — <codename>" --notes-file <changelog-section>`
+8. Update dev-repo memory/session notes
+
+---
+
+# RenOS 0.2.0 — Original Publish Checklist (historical)
 
 > ✅ **Completed 2026-07-07** — published to `hazarsozer/ren-os` (main = full 0.2
 > history, tag `v0.2.0`; prior release archived at `archive/v0.1.0`). Verified
