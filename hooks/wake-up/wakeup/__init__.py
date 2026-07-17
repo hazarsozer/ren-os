@@ -36,19 +36,29 @@ prefix. No LLM call anywhere in this module (verified by
 `tests/hooks/test_wakeup.py`'s source-scan test).
 
 RenOS 0.4.1 "trust hardening" (spec §4 L1-exemption amendment): extras (the
-ranked "Related pages" section) AND the L2 knowledge map exclude every page
-`lib.memory.quarantine` considers quarantined — that channel is where
-foreign/ingested content travels, so it gets the read-time exclusion. L1 is
-the ONLY exemption, and stays injected with its quarantine banner intact: L1
-is RenOS's own summary of the user's own session, not foreign content, so the
-banner alone (data-not-instruction) is the correct signal — dropping it from
-context would break session continuity for no trust benefit. See `read_l1`'s
-docstring for the same point at the call site. L2 maps do NOT get this
-exemption: `ingest-project` writes them with `writer="llm-auto"` from a
-repo scan, which is exactly the foreign/scan-derived content this exclusion
-targets — a quarantined map is held out of `compose_wake_up_context` and
-counted in the "N quarantined page(s) held out" line until a human releases
-it (see `skills/ingest-project/SKILL.md`'s close-out step).
+ranked "Related pages" section) exclude every page `lib.memory.quarantine`
+considers quarantined — that channel is where foreign/ingested content
+travels, so it gets the read-time exclusion.
+
+RenOS 0.5.5 (spec §4.5 amendment): the L1 exemption is extended to two more
+of RenOS's own structural artifacts — the project OVERVIEW (`overview.md`)
+and the L2 KNOWLEDGE MAP (`map.md`). All three are RenOS's own
+path-constrained structural writes (wrap/bootstrap `llm-auto` output at a
+fixed, non-arbitrary path), not free-form foreign content — a quarantine
+banner on any of them is a routine consequence of the ordinary llm-auto
+write path, not a trust signal about the content itself. All three inject
+WITH their quarantine banner intact when quarantined: the banner alone
+(data-not-instruction) is the correct signal, and dropping the content from
+context would break continuity for no trust benefit. The FOREIGN check is
+unaffected by this amendment: a page stamped `ren_trust: "foreign"` (i.e.
+`ingest-project`'s repo-scan writes) is still held out of all three
+sections and counted in the "N quarantined page(s) held out" line
+regardless of banner state — only the quarantine-withhold half of
+`_withhold_untrusted` is lifted for these three sections, not the
+foreign-stamp half. The IDENTITY section keeps the full `_withhold_untrusted`
+check (quarantine AND foreign): `identity.md` is user-written, so a
+quarantined identity is anomalous, not routine, and stays withheld. See
+`read_l1`'s docstring for the same point at the call site.
 """
 
 from __future__ import annotations
@@ -205,10 +215,12 @@ def read_l2_map(project_dir: Path) -> str:
     """Return the project's L2 pointer-map content (`map.md`), or "" if absent.
 
     Quarantine banner intact — this function only reads the file. The
-    quarantine CHECK (and the decision to hold it out of the payload) happens
-    in `compose_wake_up_context`, because L2 does NOT get L1's exemption: a
-    map written by `ingest-project` carries `writer="llm-auto"` from a repo
-    scan, which is foreign/scan-derived content, not the user's own session.
+    foreign-stamp CHECK (and the decision to hold it out of the payload)
+    happens in `compose_wake_up_context`: as of the spec §4.5 amendment, the
+    L2 map gets the same structural-artifact exemption as L1 for the
+    quarantine-withhold check (it's RenOS's own path-constrained write, not
+    free-form foreign content) and injects with its banner intact — only a
+    `ren_trust: "foreign"` stamp still holds it out.
     """
     return _read_text_safe(project_dir / L2_MAP_FILENAME)
 
@@ -243,17 +255,37 @@ def read_identity(wiki_root: Path) -> str:
 def read_overview(project_dir: Path) -> str:
     """Return the project's `overview.md` content, or "" if absent.
 
-    Quarantine/foreign-trust CHECK happens in `compose_wake_up_context` (via
-    `_withhold_untrusted`), same pattern as `read_l2_map`.
+    Foreign-trust CHECK happens in `compose_wake_up_context` (via
+    `_is_foreign`), same pattern as `read_l2_map` — spec §4.5 amendment:
+    a quarantined-but-not-foreign overview injects with its banner intact.
     """
     return _read_text_safe(project_dir / OVERVIEW_FILENAME)
 
 
+def _is_foreign(content: str) -> bool:
+    """True if `content` is `ren_trust: "foreign"`-stamped. Shared by every
+    section, exempt or not — the foreign-stamp check is never lifted, only
+    the quarantine-withhold check is (spec §4.5 amendment; see module
+    docstring). Never raises: any provenance-read failure degrades to "not
+    foreign" (never silently drops legitimate content).
+    """
+    if not content:
+        return False
+    try:
+        prov = read_frontmatter_provenance(content)
+        return bool(prov and prov.get("trust") == "foreign")
+    except Exception:  # noqa: BLE001 - provenance parse failure must never abort wake-up
+        logger.debug("read_frontmatter_provenance failed", exc_info=True)
+        return False
+
+
 def _withhold_untrusted(content: str) -> bool:
     """True if `content` should be held out of the wake-up payload: either
-    banner-quarantined or `ren_trust: foreign`-stamped. Shared by every
-    section that does NOT get L1's exemption (L2 map, identity, overview) —
-    see module docstring for why L1 alone is exempt. Never raises: any
+    banner-quarantined or `ren_trust: foreign`-stamped. Used by sections that
+    do NOT get the structural-artifact exemption (identity only, as of the
+    spec §4.5 amendment — L1, overview, and the L2 map inject quarantined
+    content with the banner intact and only withhold on the foreign-stamp
+    check via `_is_foreign`; see module docstring). Never raises: any
     quarantine/provenance-read failure degrades to "not withheld" (never
     silently drops legitimate content, per hook failure doctrine).
     """
@@ -264,13 +296,7 @@ def _withhold_untrusted(content: str) -> bool:
         quarantined = quarantine.is_quarantined(content)
     except Exception:  # noqa: BLE001 - quarantine check failure must never abort wake-up
         logger.debug("quarantine.is_quarantined failed", exc_info=True)
-    foreign = False
-    try:
-        prov = read_frontmatter_provenance(content)
-        foreign = bool(prov and prov.get("trust") == "foreign")
-    except Exception:  # noqa: BLE001 - provenance parse failure must never abort wake-up
-        logger.debug("read_frontmatter_provenance failed", exc_info=True)
-    return quarantined or foreign
+    return quarantined or _is_foreign(content)
 
 
 def _safe_mtime(path: Path) -> float:
@@ -570,11 +596,12 @@ def compose_wake_up_context(
 ) -> str:
     """Compose the additionalContext payload for the SessionStart hook.
 
-    Injects the active project's L1 (quarantine banner intact, always
-    injected — see module docstring for the L1 exemption) + L2 map (injected
-    ONLY if not quarantined; a quarantined map is held out and counted in the
-    "N quarantined page(s) held out" line instead), live routines, and a
-    small set of heuristically-ranked + salience-boosted extra pages — all
+    Injects the active project's L1, overview, and L2 map with their
+    quarantine banner intact when quarantined (spec §4.5 structural-artifact
+    exemption — see module docstring); each is still held out and counted in
+    the "N quarantined page(s) held out" line if `ren_trust: "foreign"`-
+    stamped. Also injects live routines and a small set of heuristically-
+    ranked + salience-boosted extra pages — all
     within a hard token budget (oversized sections are truncated with a
     marker, never silently dropped). Records every surfaced page via
     `miss_log.log_surface` and the payload's byte size via
@@ -613,7 +640,7 @@ def compose_wake_up_context(
 
         overview_text = read_overview(project_dir)
         if overview_text:
-            if _withhold_untrusted(overview_text):
+            if _is_foreign(overview_text):
                 held_count += 1
             else:
                 sections.append(SECTION_OVERVIEW)
@@ -654,13 +681,12 @@ def compose_wake_up_context(
 
         l2_text = read_l2_map(project_dir)
         if l2_text:
-            if _withhold_untrusted(l2_text):
-                # L2 maps are scan-derived (repo-ingest, `writer="llm-auto"`) —
-                # foreign content, unlike L1's own-session summary. The L1
-                # exemption does NOT apply here; hold it out and count it in
-                # the held-out line until a human releases it from quarantine.
-                # Task 9b: a released banner alone no longer clears a
-                # `ren_trust: foreign` map — the stamp check catches that.
+            if _is_foreign(l2_text):
+                # spec §4.5: the L2 map now gets the structural-artifact
+                # exemption for quarantine (banner-intact injection below),
+                # but a `ren_trust: "foreign"` stamp (ingest-project's
+                # repo-scan writes) still holds it out and counts it in the
+                # held-out line — that check is unaffected by the amendment.
                 held_count += 1
             else:
                 sections.append(SECTION_L2)

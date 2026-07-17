@@ -45,6 +45,7 @@ from lib import ren_paths
 from lib.adapter.worker import parse_worker_json
 from lib.instrument import collect
 from lib.memory import queue
+from lib.memory import quarantine
 from lib.memory.judge import JUDGE_MIN_CONFIDENCE, JUDGE_PAIR_CAP, judge_pairs
 from lib.memory.lifecycle import consolidate_duplicates, run_decay
 from lib.memory.queue import Proposal, propose_and_apply
@@ -262,6 +263,14 @@ def maintain_overview(
             existing_text = ""
 
     _, existing_body = _split_overview_frontmatter(existing_text)
+    # Task 3b (spec §4.5): the current overview may carry a quarantine
+    # banner (routine for an llm-auto write, per the wake-up exemption) —
+    # strip it before embedding the body in the LLM prompt so the banner
+    # text itself never becomes part of what the model reads as "current
+    # overview". Pure string strip only; the on-disk page's release is a
+    # separate, human-gated act (/ren:wiki-health) and this must never do
+    # file I/O to release it.
+    existing_body = quarantine.release(existing_body)
     prompt = _OVERVIEW_PROMPT_TEMPLATE.format(
         current_overview=existing_body.strip() if not _is_skeleton_or_empty_body(existing_body) else "(none yet)",
         narrative=narrative,

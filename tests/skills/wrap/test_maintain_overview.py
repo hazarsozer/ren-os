@@ -141,6 +141,33 @@ def test_overview_llm_bad_json_fail_closed(wiki):
     assert page.read_text(encoding="utf-8") == _skeleton_text()
 
 
+def test_overview_prompt_strips_quarantine_banner_from_current_body(wiki):
+    # Task 3b (spec §4.5): the existing overview may be quarantine-bannered
+    # (routine for an llm-auto write) — the prompt embedding the "current
+    # overview" must not include the banner text itself.
+    from lib.memory import quarantine
+
+    page = _overview_path(wiki)
+    page.parent.mkdir(parents=True)
+    bannered = (
+        '---\ntitle: "Project Overview"\ntype: overview\nschema_version: 1\n'
+        '---\n' + quarantine.QUARANTINE_BANNER + '\n# Project overview\n\nAlready has real content.\n'
+    )
+    page.write_text(bannered, encoding="utf-8")
+
+    captured_prompts: list[str] = []
+
+    def llm_capture(prompt: str) -> str:
+        captured_prompts.append(prompt)
+        return json.dumps({"material_change": False, "overview": "irrelevant"})
+
+    maintain_overview("demo-project", "sess-1", "minor chatter", llm_capture)
+
+    assert len(captured_prompts) == 1
+    assert quarantine.QUARANTINE_BANNER.strip() not in captured_prompts[0]
+    assert "Already has real content." in captured_prompts[0]
+
+
 def test_overview_update_is_revertible(wiki):
     page = _overview_path(wiki)
     page.parent.mkdir(parents=True)

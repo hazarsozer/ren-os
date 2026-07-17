@@ -192,11 +192,11 @@ def test_extras_exclude_quarantined_pages(project):
     assert "held out of this context" in payload
 
 
-def test_quarantined_l2_map_is_held_out_and_counted(project):
-    # ingest-project writes map.md with writer="llm-auto" → quarantined on
-    # disk. Unlike L1 (own-session summary), the L2 map is scan-derived
-    # foreign content and gets NO exemption: it must not be injected, and
-    # must be counted in the held-out line.
+def test_quarantined_l2_map_injects_with_banner_intact(project):
+    # spec §4.5 amendment: ingest-project writes map.md with writer="llm-auto"
+    # → quarantined on disk. L2 now gets the same structural-artifact
+    # exemption as L1 for the quarantine-withhold check — it injects WITH
+    # its banner intact rather than being held out.
     from lib.memory import quarantine
 
     _write(
@@ -206,8 +206,8 @@ def test_quarantined_l2_map_is_held_out_and_counted(project):
 
     payload = wakeup.compose_wake_up_context(cwd=project["cwd"], wiki_root=wiki_root(), session="sess-1")
 
-    assert "uses FastAPI" not in payload
-    assert "held out of this context" in payload
+    assert "uses FastAPI" in payload
+    assert QUARANTINE_BANNER.strip() in payload
 
 
 def test_released_l2_map_is_injected_as_before(project):
@@ -810,6 +810,45 @@ class TestStructuredSections:
 
         assert wakeup.SECTION_OVERVIEW not in payload
         assert "scan-derived overview" not in payload
+
+    def test_quarantined_overview_injects_with_banner_intact(self, project):
+        # spec §4.5 amendment: overview.md is a wrap `llm-auto` write and thus
+        # quarantined like any other unreviewed content, but — like L1 and now
+        # the L2 map — it gets the structural-artifact exemption: it injects
+        # WITH its banner intact instead of being withheld. Only a
+        # `ren_trust: "foreign"` stamp still holds it out (see
+        # test_foreign_overview_withheld).
+        from lib.memory import quarantine
+
+        _write(
+            project["project_dir"] / "overview.md",
+            quarantine.mark("# demo-project\n\nA demo project.\n"),
+        )
+        _write(project["project_dir"] / "l1" / "session-001.md", _model_stamped("L1 content"))
+
+        payload = wakeup.compose_wake_up_context(cwd=project["cwd"], wiki_root=wiki_root(), session="sess-1")
+
+        assert wakeup.SECTION_OVERVIEW in payload
+        assert "A demo project." in payload
+        assert QUARANTINE_BANNER.strip() in payload
+
+    def test_quarantined_identity_still_withheld(self, wiki, project):
+        # spec §4.5 amendment explicitly does NOT extend to identity.md — it's
+        # user-written, so a quarantined identity is anomalous and stays
+        # withheld (full _withhold_untrusted check, quarantine included).
+        from lib.memory import quarantine
+
+        _write(
+            wiki / "identity.md",
+            quarantine.mark("---\ntype: identity\n---\n# About Friend\n\nBuilds things.\n"),
+        )
+        _write(project["project_dir"] / "l1" / "session-001.md", _model_stamped("L1 content"))
+
+        payload = wakeup.compose_wake_up_context(cwd=project["cwd"], wiki_root=wiki_root(), session="sess-1")
+
+        assert wakeup.SECTION_IDENTITY not in payload
+        assert "Builds things." not in payload
+        assert "held out of this context" in payload
 
     def test_identity_and_overview_appended_to_surfaced_pages(self, project):
         _write(project["project_dir"].parent.parent / "identity.md", "---\ntype: identity\n---\n# About Friend\n\nBuilds things.\n")
