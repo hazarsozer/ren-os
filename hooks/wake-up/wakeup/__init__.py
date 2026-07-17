@@ -629,8 +629,11 @@ def compose_wake_up_context(
     within a hard token budget (oversized sections are truncated with a
     marker, never silently dropped; identity/overview/L1/L2 additionally
     get a "*(continues in `{rel_path}`)*" pointer line when truncation
-    actually occurred, per `_inject_section` — Task 6, 0.5.5). Records
-    every surfaced page via
+    actually occurred, per `_inject_section` — Task 6, 0.5.5). The
+    `SECTION_PENDING` header is emitted immediately before
+    `suggestion_line()`'s output when it is non-empty, and omitted
+    entirely (no bare header) when nothing is pending — same omission
+    rule as every other section. Records every surfaced page via
     `miss_log.log_surface` and the payload's byte size via
     `collect.record(KIND_INJECTED_BYTES, ...)` — this instrumentation is
     unconditional, not optional.
@@ -733,6 +736,7 @@ def compose_wake_up_context(
 
     suggestion = suggestion_line()
     if suggestion:
+        sections.append(SECTION_PENDING)
         sections.append(suggestion)
 
     extras: list[str] = []

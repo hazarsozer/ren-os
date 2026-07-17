@@ -25,9 +25,9 @@ you actually touch, not just what got written.
   "touched," not just writes, so a page you keep reading but never edit
   doesn't get swept.
 - **Producer size targets** — the overview stays ≤600 tokens, the L1
-  narrative targets ≤1,000 tokens and leads with outcomes, and any injected
-  section that gets truncated now names where the rest lives with a
-  "continues in `<path>`" pointer line.
+  narrative targets ≤1,000 tokens and leads with outcomes, and the identity,
+  overview, L1, and L2 map sections now name where the rest lives with a
+  "continues in `<path>`" pointer line when they get truncated.
 - **Small fixes** — the PostToolUse read-tracker and the PreToolUse write
   guard now exit cleanly on a closed/broken stdin instead of crashing.
 

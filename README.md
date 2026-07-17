@@ -89,13 +89,14 @@ injected prompt. (The wake-up hook does inject **data-plane** context,
 question-shaped: who you're working with (identity), what this project is
 (an overview `/ren:wrap` maintains across sessions on material change), what
 happened last session (L1, always injected), where to find project
-knowledge (the L2 map), active routines, anything waiting on your answer,
-and a small set of heuristically-ranked related pages — skipped if
-held-out by quarantine, with a "N quarantined page(s) held out" count-only
-line — plus a pointer to any pending instruction suggestions ("N instruction
-suggestion(s) pending — run /ren:suggestions to review"). A section too big
-for its token budget is truncated with a pointer line naming where the rest
-lives — knowledge, never instructions.)
+knowledge (the L2 map), active routines, anything waiting on your answer
+(pending suggestions, contradiction holds, and a count of pending
+instruction suggestions — "run /ren:suggestions to review"), and a small
+set of heuristically-ranked related pages — skipped if held-out by
+quarantine, with a "N quarantined page(s) held out" count-only line.
+Identity, the project overview, the last-session summary, and the project
+map are each truncated with a pointer line naming where the rest lives if
+they exceed their token budget — knowledge, never instructions.)
 
 ```
 ~/.claude/CLAUDE.md          ← managed block: behavioral core + recall doctrine

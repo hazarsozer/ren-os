@@ -913,6 +913,44 @@ class TestStructuredSections:
         assert wakeup.SECTION_EXTRAS in payload
         assert "continues in" not in payload
 
+    def test_pending_header_precedes_suggestion_content_in_schema_order(self, project):
+        # spec §4.1 section 6 ("## Waiting on you") — SECTION_PENDING was
+        # defined but never wired into compose_wake_up_context; the pending
+        # block injected as a bare suggestion_line() paragraph with no
+        # header. Confirms the header now appears immediately before the
+        # suggestion content (join is "\n\n".join, so the header and the
+        # first line of suggestion_line()'s output are separated only by
+        # the section-join blank line) and sits between routines (section
+        # 5) and extras (section 7), matching schema order.
+        from lib.memory.queue import Proposal, propose
+
+        _write(project["project_dir"] / "l1" / "session-001.md", _model_stamped("L1 content"))
+        _write(
+            project["project_dir"].parent.parent / "routines" / "r1.md",
+            '---\ntype: routine-spec\nname: r1\ntrigger_type: manual\nlinked_repo: demo\n---\n',
+        )
+        _write(project["project_dir"].parent.parent / "extra.md", "# Extra\n\nsome extra content")
+        propose(Proposal(
+            op="ADD", page="global/rule.md", content="r", reason="t",
+            producer="promotion", writer="human", session="s1",
+        ))
+
+        payload = wakeup.compose_wake_up_context(cwd=project["cwd"], wiki_root=wiki_root(), session="sess-1")
+
+        assert f"{wakeup.SECTION_PENDING}\n\n1 suggestion" in payload
+
+        routines_idx = payload.index(wakeup.SECTION_ROUTINES)
+        pending_idx = payload.index(wakeup.SECTION_PENDING)
+        extras_idx = payload.index(wakeup.SECTION_EXTRAS)
+        assert routines_idx < pending_idx < extras_idx
+
+    def test_no_pending_header_when_nothing_pending(self, project):
+        _write(project["project_dir"] / "l1" / "session-001.md", _model_stamped("L1 content"))
+
+        payload = wakeup.compose_wake_up_context(cwd=project["cwd"], wiki_root=wiki_root(), session="sess-1")
+
+        assert wakeup.SECTION_PENDING not in payload
+
 
 # --------------------------------------------------------------- no-LLM scan
 
