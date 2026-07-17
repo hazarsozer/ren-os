@@ -365,6 +365,14 @@ def main() -> int:
     except json.JSONDecodeError as exc:
         logger.warning("could not parse stdin JSON: %s", exc)
         return 0
+    except Exception as exc:  # noqa: BLE001 — load-bearing: a PreToolUse guard
+        # must never crash the wrapped tool call over an unreadable/closed
+        # stdin (e.g. AttributeError when sys.stdin is None, OSError on a
+        # broken pipe) — fail open (allow) same as every other guard failure
+        # mode here. Scoped tightly to stdin read/parse only: the deliberate
+        # deny path (return 2) and the ask-tier JSON below are untouched.
+        logger.warning("could not read/parse stdin: %s", exc)
+        return 0
 
     try:
         tool_name = event.get("tool_name") or ""

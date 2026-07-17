@@ -159,6 +159,33 @@ def test_garbage_stdin_exit_zero(wiki_root_path):
     assert _page_reads() == []
 
 
+def test_closed_stdin_exit_zero(wiki_root_path):
+    # Critical fix (0.5.5 Task 5): a closed/unreadable stdin — reproduced
+    # live via `python3 hooks/observers/read_tracker.py <&-`, which raises
+    # AttributeError ('NoneType' object has no attribute 'read', since
+    # Python sets sys.stdin to None when fd 0 is invalid at startup) — must
+    # NOT propagate past exit 0. This is a PostToolUse OBSERVER; any
+    # non-zero exit is a contract violation regardless of cause. `preexec_fn`
+    # closes fd 0 in the child after fork, before exec, mirroring `<&-`.
+    env = dict(os.environ)
+    for var in _ENV_VARS_TO_CLEAR:
+        env.pop(var, None)
+    env["REN_WIKI_ROOT"] = str(wiki_root_path)
+
+    result = subprocess.run(
+        [sys.executable, str(HOOK_SCRIPT)],
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=15,
+        preexec_fn=lambda: os.close(0),
+    )
+
+    assert result.returncode == 0
+    assert result.stdout == ""
+    assert _page_reads() == []
+
+
 def test_non_read_tool_name_ignored(wiki_root_path):
     # Defense-in-depth: the hook double-checks tool_name itself even though
     # hooks.json's matcher already scopes it to "Read".

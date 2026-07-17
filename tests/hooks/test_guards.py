@@ -563,6 +563,35 @@ def test_write_gate_main_internal_exception_allows_with_warning(monkeypatch, wik
     assert "WARNING" in capsys.readouterr().err
 
 
+class _BrokenStdin:
+    """Stand-in for sys.stdin whose .read() raises — reproduces the closed-fd
+    live repro (`<&-` → AttributeError on a None sys.stdin) without needing a
+    subprocess: any exception shape from the read/parse step must fail open."""
+
+    def read(self) -> str:
+        raise OSError("Bad file descriptor")
+
+
+def test_write_gate_main_closed_stdin_allows_not_crashes(monkeypatch, capsys):
+    # Critical fix (0.5.5 Task 5, same-class bug as read_tracker): a
+    # PreToolUse guard crashing on unreadable stdin would wrongly affect the
+    # wrapped tool call. Closed/broken stdin must ALLOW (exit 0), not crash
+    # (exit 1) and not BLOCK (exit 2) — this is a stdin-parse failure, not a
+    # deliberate deny decision.
+    monkeypatch.setattr("sys.stdin", _BrokenStdin())
+    rc = write_gate.main()
+    assert rc == 0
+
+
+def test_deny_path_still_blocks_after_stdin_broadening(wiki):
+    # Regression guard for the fix above: broadening the stdin-parse except
+    # must NOT touch the deliberate deny path (mass-delete / single wiki-page
+    # rm, exit 2) — quoted and unquoted targets both still block.
+    cwd = str(wiki)
+    assert write_gate.check_mass_delete(f'rm "{wiki}/projects/notes.md"', cwd) == 2
+    assert write_gate.check_mass_delete(f"rm {wiki}/projects/notes.md", cwd) == 2
+
+
 # =============================================================================
 # write_apply: REN_QUEUE_APPLY env set/unset (surgical addition, this task)
 # =============================================================================

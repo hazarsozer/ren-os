@@ -86,13 +86,21 @@ def _record_read(rel: str, session: str) -> None:
 
 
 def main() -> int:
+    # Single outer try/except spanning the ENTIRE body (stdin read/parse
+    # included): a PostToolUse observer must ALWAYS exit 0, no matter what
+    # goes wrong — a closed/broken stdin (AttributeError when sys.stdin is
+    # None, e.g. `<&-`; OSError on a broken pipe) is just as much a "must not
+    # crash" case as a bad-JSON payload or a missing project dependency. The
+    # inner except stays narrow so ordinary bad JSON keeps its existing
+    # silent no-op (no stderr note); anything else falls through to the
+    # outer handlers below.
     try:
-        raw = sys.stdin.read()
-        event = json.loads(raw) if raw.strip() else {}
-    except (json.JSONDecodeError, ValueError):
-        return 0
+        try:
+            raw = sys.stdin.read()
+            event = json.loads(raw) if raw.strip() else {}
+        except (json.JSONDecodeError, ValueError):
+            return 0
 
-    try:
         if (event.get("tool_name") or "") != "Read":
             return 0
 
