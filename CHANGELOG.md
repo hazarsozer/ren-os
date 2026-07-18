@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.5.7] - 2026-07-18 — "runs on Macs"
+
+Portability hotfix closing [issue #9](https://github.com/hazarsozer/ren-os/issues/9) —
+RenOS was silently broken on stock macOS (bash 3.2 + BSD sed); CI never
+caught it because it only ran on Linux.
+
+- **`/ren:update` snapshot/prune works on stock macOS** — replaced the
+  bash-4-only `mapfile` builtin with bash-3.2-safe `read` loops, so snapshot
+  and prune no longer fail on the bash Apple ships by default.
+- **Schema migrations are BSD+GNU sed portable** — rewrote the migration
+  scripts' `sed` usage to work on both BSD sed (macOS) and GNU sed (Linux):
+  `-i.bak` instead of bare `-i`, and `a\`-plus-newline appends instead of the
+  GNU-only one-liner `/a text` form. Also fixes a silent-corruption risk
+  where BSD sed strips leading blanks on `a\` continuation lines — those are
+  now escaped.
+- **New migrations must be written in Python** — the shell migration path is
+  now legacy; see `migrations/README.md`.
+- **CI now catches this class of bug** — a new
+  `scripts/lint-shell-portability.py` guards against `mapfile`/`readarray`,
+  bare `sed -i`, and GNU-only one-liner `sed` appends, wired into CI
+  alongside a scoped `macos-latest` job that runs the shell-touching test
+  clusters. Previously CI was Linux-only, so none of this was visible before
+  it reached a Mac.
+
 ## [0.5.6] — 2026-07-18 — "don't touch my map"
 
 Hotfix for a silent data-loss bug (present since 0.2, but 0.5.5 is the first

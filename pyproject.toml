@@ -1,6 +1,6 @@
 [project]
 name = "renos"
-version = "0.5.6"
+version = "0.5.7"
 description = "RenOS — an Agentic OS: knowledge + governance layer for coding-agent harnesses"
 requires-python = ">=3.11"
 dependencies = [
