@@ -51,6 +51,18 @@ def test_allows_portable_append(tmp_path):
     assert mod.scan_file(p) == []
 
 
+def test_allows_substitution_with_spaces_in_pattern(tmp_path):
+    """sed "s/a b/c/" should NOT match — spaces inside pattern, not a GNU oneline a/i/c."""
+    p = _write(tmp_path, "a.sh", 'sed "s/a b/c/" file.txt\n')
+    assert mod.scan_file(p) == []
+
+
+def test_allows_address_with_spaces_no_aic(tmp_path):
+    """sed -e "/a b/d" should NOT match — address with space but d (delete), not a/i/c."""
+    p = _write(tmp_path, "a.sh", 'sed -e "/a b/d" file.txt\n')
+    assert mod.scan_file(p) == []
+
+
 def test_ignores_comments_and_non_sh(tmp_path):
     _write(tmp_path, "a.sh", '# mapfile is banned; sed -i too\necho ok\n')
     _write(tmp_path, "b.py", 'x = "mapfile"\n')

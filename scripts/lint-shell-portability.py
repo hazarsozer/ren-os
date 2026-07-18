@@ -20,7 +20,9 @@ RE_MAPFILE = re.compile(r"\b(mapfile|readarray)\b")
 RE_BARE_SED_I = re.compile(r"\bsed\s+(?:-\w+\s+)*-i(?=\s|\"|'|$)")
 # One-line GNU append/insert/change inside a sed script arg: /a<space>text
 # on the same line (the portable form puts a backslash-newline after a\).
-RE_GNU_ONELINE_AIC = re.compile(r"\bsed\b[^\n]*/[aic] \S")
+# Require the sed script arg to START with a quoted address (/"pat"/[aic]) to avoid
+# false-positives on substitutions like s/a b/c/ or addresses with other commands like /pat/d.
+RE_GNU_ONELINE_AIC = re.compile(r"""\bsed\b[^\n]*["']/[^"']*/[aic] \S""")
 
 
 def scan_file(path: Path) -> list[tuple[int, str]]:
