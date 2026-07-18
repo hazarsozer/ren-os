@@ -60,24 +60,29 @@ sed -i.bak "s/^schema_version: 2\$/schema_version: ${TARGET_SCHEMA}/" "$PAGE"
 #    the final block reads in the right order — same incremental technique
 #    donor's 1-to-2 script uses for single-line inserts.
 if ! grep -q "^allowlist:" "$PAGE"; then
-  sed -i "/^schema_version: ${TARGET_SCHEMA}\$/a allowlist:" "$PAGE"
-  sed -i "/^allowlist:\$/a\\  paths: []" "$PAGE"
-  sed -i "/^  paths: \[\]\$/a\\  capabilities: []" "$PAGE"
+  sed -i.bak "/^schema_version: ${TARGET_SCHEMA}\$/a\\
+allowlist:" "$PAGE"
+  sed -i.bak "/^allowlist:\$/a\\
+  paths: []" "$PAGE"
+  sed -i.bak "/^  paths: \[\]\$/a\\
+  capabilities: []" "$PAGE"
 fi
 
 # 4. failure_handler: 0.2 has exactly ONE valid value. If a failure_handler
 #    line already exists (v1/v2's free-text value), OVERWRITE it — the old
 #    mechanism it described isn't implemented in 0.2. If absent, insert it.
 if grep -q "^failure_handler:" "$PAGE"; then
-  sed -i "s/^failure_handler:.*/failure_handler: notify-journal/" "$PAGE"
+  sed -i.bak "s/^failure_handler:.*/failure_handler: notify-journal/" "$PAGE"
 elif grep -q "^  capabilities: \[\]\$" "$PAGE"; then
-  sed -i "/^  capabilities: \[\]\$/a failure_handler: notify-journal" "$PAGE"
+  sed -i.bak "/^  capabilities: \[\]\$/a\\
+failure_handler: notify-journal" "$PAGE"
 fi
 
 # 5. exit_criterion — placeholder if absent (a real one is required for a NEW
 #    spec via routine-init; a migrated spec gets a placeholder + a warning).
 if ! grep -q "^exit_criterion:" "$PAGE"; then
-  sed -i "/^failure_handler: notify-journal\$/a exit_criterion: \"MIGRATED — declare a real exit criterion\"" "$PAGE"
+  sed -i.bak "/^failure_handler: notify-journal\$/a\\
+exit_criterion: \"MIGRATED — declare a real exit criterion\"" "$PAGE"
 fi
 
 rm -f "${PAGE}.bak"

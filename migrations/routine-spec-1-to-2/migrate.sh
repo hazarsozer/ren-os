@@ -37,12 +37,14 @@ sed -i.bak "s/^schema_version: 1\$/schema_version: ${TARGET_SCHEMA}/" "$PAGE"
 #    strip inline comments, so a commented value would fail the verify.json yaml.in
 #    enum check. The default + "please review" guidance live in README.md and the diff.
 if ! grep -q "^verification_strategy:" "$PAGE"; then
-  sed -i "/^schema_version: ${TARGET_SCHEMA}\$/a verification_strategy: manual" "$PAGE"
+  sed -i.bak "/^schema_version: ${TARGET_SCHEMA}\$/a\\
+verification_strategy: manual" "$PAGE"
 fi
 
 # 4. Insert verification_tools (default empty list) after verification_strategy, if absent.
 if ! grep -q "^verification_tools:" "$PAGE"; then
-  sed -i "/^verification_strategy:/a verification_tools: []" "$PAGE"
+  sed -i.bak "/^verification_strategy:/a\\
+verification_tools: []" "$PAGE"
 fi
 
 rm -f "${PAGE}.bak"
