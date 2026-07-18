@@ -62,10 +62,15 @@ sed -i.bak "s/^schema_version: 2\$/schema_version: ${TARGET_SCHEMA}/" "$PAGE"
 if ! grep -q "^allowlist:" "$PAGE"; then
   sed -i.bak "/^schema_version: ${TARGET_SCHEMA}\$/a\\
 allowlist:" "$PAGE"
+  # NOTE: the continuation line's leading 2 spaces must be escaped with a
+  # backslash. BSD/macOS sed strips unescaped leading blanks after `a\`;
+  # GNU sed preserves them either way. Without the backslash, macOS output
+  # loses the indent, breaking the next anchored sed/grep in the chain and
+  # silently dropping paths/capabilities/failure_handler/exit_criterion.
   sed -i.bak "/^allowlist:\$/a\\
-  paths: []" "$PAGE"
+\\  paths: []" "$PAGE"
   sed -i.bak "/^  paths: \[\]\$/a\\
-  capabilities: []" "$PAGE"
+\\  capabilities: []" "$PAGE"
 fi
 
 # 4. failure_handler: 0.2 has exactly ONE valid value. If a failure_handler
