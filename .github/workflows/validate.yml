@@ -34,3 +34,31 @@ jobs:
 
       - name: YAML frontmatter lint (fast-fail before any semantic checks)
         run: uv run python3 scripts/lint-yaml-frontmatter.py
+
+      - name: Shell portability lint (bash-3.2 / BSD-sed guard, issue #9)
+        run: uv run python scripts/lint-shell-portability.py
+
+  # ──────────────────────────────────────────────────────────────────
+  # macOS: only the shell-script test clusters (BSD sed / stock-bash
+  # surface). Full suite is pure-Python/OS-agnostic and macOS minutes
+  # bill 10× on a private repo — see issue #9 / spec 2026-07-18.
+  # ──────────────────────────────────────────────────────────────────
+  macos-shell:
+    name: macOS shell-script tests
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Run shell-touching test clusters
+        run: uv run pytest tests/skills/update/test_update_scripts.py tests/migrations/ tests/skills/wiki_migration/ -q
