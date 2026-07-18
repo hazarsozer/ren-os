@@ -65,7 +65,8 @@ else
 fi
 
 # Prune old snapshots: keep newest $RETAIN. Sort by directory name (which embeds ISO8601 → lexicographic == chronological).
-mapfile -t ALL_SNAPS < <(find "$SNAPSHOT_BASE" -maxdepth 1 -mindepth 1 -type d -name 'v*-pre-update-*' | sort)
+ALL_SNAPS=()
+while IFS= read -r _line; do ALL_SNAPS+=("$_line"); done < <(find "$SNAPSHOT_BASE" -maxdepth 1 -mindepth 1 -type d -name 'v*-pre-update-*' | sort)
 TOTAL=${#ALL_SNAPS[@]}
 if (( TOTAL > RETAIN )); then
   TO_DELETE=$(( TOTAL - RETAIN ))

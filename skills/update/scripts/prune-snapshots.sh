@@ -32,7 +32,8 @@ if [[ ! -d "$SNAPSHOT_BASE" ]]; then
 fi
 
 # Prune normal snapshots
-mapfile -t SNAPS < <(find "$SNAPSHOT_BASE" -maxdepth 1 -mindepth 1 -type d -name 'v*-pre-update-*' | sort)
+SNAPS=()
+while IFS= read -r _line; do SNAPS+=("$_line"); done < <(find "$SNAPSHOT_BASE" -maxdepth 1 -mindepth 1 -type d -name 'v*-pre-update-*' | sort)
 TOTAL=${#SNAPS[@]}
 TO_DELETE=$(( TOTAL > RETAIN ? TOTAL - RETAIN : 0 ))
 
@@ -49,7 +50,8 @@ if (( TO_DELETE > 0 )); then
 fi
 
 # Prune STASH-* (broken-state stashes from restore.sh). Keep latest N as well.
-mapfile -t STASHES < <(find "$SNAPSHOT_BASE" -maxdepth 1 -mindepth 1 -type d -name 'STASH-broken-*' | sort)
+STASHES=()
+while IFS= read -r _line; do STASHES+=("$_line"); done < <(find "$SNAPSHOT_BASE" -maxdepth 1 -mindepth 1 -type d -name 'STASH-broken-*' | sort)
 TOTAL_S=${#STASHES[@]}
 TO_DELETE_S=$(( TOTAL_S > RETAIN ? TOTAL_S - RETAIN : 0 ))
 
