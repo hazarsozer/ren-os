@@ -23,21 +23,35 @@ heading and/or HTML comments" body — which false-positived on the REAL
 skeleton: the shipped `wiki-skeleton/templates/*.tmpl` pages (`index.md`,
 `identity.md`, `log.md`, `LICENSES.md`) all carry guidance prose, so a
 pristine post-`/ren:install` wiki looked populated and a friend's FIRST
-ingest-project (or SECOND bootstrap-project) tripped the gate with nothing of
-theirs actually at risk.
+ingest-project tripped the gate with nothing of theirs actually at risk.
+(A SECOND bootstrap-project on the same wiki is a separate case: the first
+bootstrap's real flow appends a `## Log` entry to the project's `map.md`, so
+a real project map already exists by the second run — the gate correctly
+still requires backup there. Only the pristine-skeleton-only case was the
+false positive; `stamp_skeleton()` alone, with no `## Log` entry written,
+still passes, as `test_skeleton_plus_project_skeleton_passes` pins.)
 
 So the scan now only looks where the friend's OWN content can land:
 `_CONTENT_DIRS` (`research/`, `decisions/`, `alternatives/`, `patterns/`,
-`maps/`, `projects/`) plus `log.md` having entries beyond the single stamped
-`init` one. Inside those dirs the heading/HTML-comment-only check still
-applies, which is exactly right for the one template stamped there
-(`projects/<slug>/overview.md`, whose skeleton body IS heading + comment).
+`maps/`, `projects/`, `global/`, `archive/`, `venture/`) plus `log.md` having
+entries beyond the single stamped `init` one. Inside those dirs the
+heading/HTML-comment-only check still applies, which is exactly right for the
+one template stamped there (`projects/<slug>/overview.md`, whose skeleton
+body IS heading + comment).
 
-Tradeoff, stated: a filled-in `identity.md` or `venture/*.md` alone does not
-trip the gate. Those are onboarding profile pages, cheap to re-run
-(`/ren:interview`), and not the destructive write target this gate protects
-(bootstrap/ingest meeting an existing project page). Any real session that
-grows them also writes a `log.md` entry, which does trip it.
+`global/` is the instruction plane — human-gated promoted doctrine
+(`lib.memory.promotion.GLOBAL_PREFIX`), the highest-value, least-regenerable
+content the wiki can hold. `archive/` holds pages moved there by
+`lib.memory.archive` instead of deleted. Both are exactly the kind of content
+this gate exists to protect, and their absence from the first cut of
+`_CONTENT_DIRS` meant a wiki with promotions but no project content was
+wrongly judged empty.
+
+Tradeoff, stated: a filled-in root-level `identity.md` alone does not trip
+the gate (it sits outside `_CONTENT_DIRS`). It's an onboarding profile page,
+cheap to re-run (`/ren:interview`), and not the destructive write target this
+gate protects (bootstrap/ingest meeting an existing project page). Any real
+session that grows it also writes a `log.md` entry, which does trip it.
 """
 
 from __future__ import annotations
@@ -51,7 +65,10 @@ from skills.backup.lib import backup_configured
 
 OVERRIDE_ENV_VAR = "RENOS_ALLOW_NO_BACKUP"
 
-_CONTENT_DIRS = ("research", "decisions", "alternatives", "patterns", "maps", "projects")
+_CONTENT_DIRS = (
+    "research", "decisions", "alternatives", "patterns", "maps", "projects",
+    "global", "archive", "venture",
+)
 """Wiki subtrees where the friend's OWN knowledge lands. Root-level skeleton
 pages (`index.md`, `identity.md`, `LICENSES.md`) are intentionally excluded —
 their shipped templates carry guidance prose, see module docstring."""

@@ -133,6 +133,28 @@ def test_grown_research_page_on_real_skeleton_raises(tmp_path, monkeypatch):
         require_backup(target, operation="ingest-project")
 
 
+def test_grown_global_page_on_real_skeleton_raises(tmp_path, monkeypatch):
+    """`global/` holds human-gated promoted doctrine (the instruction plane,
+    lib.memory.promotion.GLOBAL_PREFIX) — the highest-value, least-
+    regenerable content the wiki can hold. A wiki with a promotion but no
+    project content must still be judged populated."""
+    target = _stamp_master(tmp_path, monkeypatch)
+    (target / "global").mkdir(parents=True)
+    (target / "global" / "testing-philosophy.md").write_text(
+        "---\n"
+        "type: doctrine\n"
+        "promoted-from: research/testing-notes.md (w-042)\n"
+        "---\n\n"
+        "# Testing Philosophy\n\n"
+        "Write the test first, watch it fail, then implement. Coverage "
+        "without a red phase first is not TDD — it's just measurement.\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr("lib.governance.backup_gate.backup_configured", lambda root: False)
+    with pytest.raises(BackupRequired):
+        require_backup(target, operation="ingest-project")
+
+
 def test_grown_log_on_real_skeleton_raises(tmp_path, monkeypatch):
     """The stamped log has exactly one `init` entry; a second entry means the
     friend has real history worth backing up."""
