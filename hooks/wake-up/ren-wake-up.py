@@ -336,6 +336,18 @@ def main() -> int:
         logger.info("no wiki at %s; emitting uninitialized notice", wiki_root)
         context_text = _uninitialized_message()
 
+    # 0.6.1 E5a: persist the EXACT payload about to be emitted so /ren:wrap can
+    # pair it with the session's measured tokens and calibrate the estimator
+    # (`lib.instrument.calibration`). Best-effort by construction — a failure
+    # here degrades to "not written" and the injection proceeds untouched.
+    try:
+        _ensure_plugin_root_on_path()
+        from lib.instrument.calibration import persist_last_injection
+
+        persist_last_injection(context_text)
+    except Exception:  # noqa: BLE001 - bookkeeping must never break injection
+        logger.debug("could not persist last injection payload", exc_info=True)
+
     output = {
         "hookSpecificOutput": {
             "hookEventName": "SessionStart",

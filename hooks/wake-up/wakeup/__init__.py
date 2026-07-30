@@ -104,6 +104,7 @@ stays reachable by name) and affect auto-surfacing only.
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 import subprocess
@@ -116,7 +117,7 @@ import yaml
 from lib.instrument import collect, miss_log
 from lib.memory import archive, queue, quarantine
 from lib.memory.provenance import read_frontmatter_provenance
-from lib.ren_paths import DEFAULT_DEV_ROOT_REL, detect_project, resolve_dev_root
+from lib.ren_paths import DEFAULT_DEV_ROOT_REL, detect_project, resolve_dev_root, state_dir
 
 logger = logging.getLogger(__name__)
 
@@ -189,9 +190,28 @@ def _strip_frontmatter(text: str) -> str:
     return text[match.end():] if match else text
 
 
+def _calibrated_chars_per_token() -> float:
+    """The calibrated chars-per-token ratio if `lib.instrument.calibration`'s
+    loop (0.6.1 E5a) has persisted one, else `CHARS_PER_TOKEN`.
+
+    One small stdlib JSON read of a single-line file — deliberately NOT a
+    tokenizer call, so `estimate_tokens` keeps its no-deps/no-latency
+    property. Anything unexpected (absent file, unreadable, malformed JSON,
+    missing/non-numeric/non-positive ratio) falls back to the constant, same
+    tolerance as `lib.instrument.estimator._load_ratio_state`."""
+    try:
+        path = state_dir() / "metrics" / "estimator.json"
+        data = json.loads(path.read_text(encoding="utf-8"))
+        ratio = float(data["chars_per_token"])
+    except Exception:  # noqa: BLE001 - a calibration read must never break wake-up
+        return CHARS_PER_TOKEN
+    return ratio if ratio > 0 else CHARS_PER_TOKEN
+
+
 def estimate_tokens(text: str) -> int:
-    """Rough token count via chars/4 heuristic (no tiktoken dep for hook latency)."""
-    return int(len(text) / CHARS_PER_TOKEN)
+    """Rough token count via a chars/ratio heuristic (no tiktoken dep for hook
+    latency) — the calibrated ratio when one is stored, else `CHARS_PER_TOKEN`."""
+    return int(len(text) / _calibrated_chars_per_token())
 
 
 def truncate_text_to_tokens(text: str, max_tokens: int) -> str:
