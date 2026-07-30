@@ -86,7 +86,14 @@ from lib.instrument import collect
 from lib.instrument.estimator import calibrate
 
 LAST_INJECTION_FILENAME = "last_injection.json"
+#: The eb6b932 format (payload only, no session id). Superseded by the JSON
+#: file above; unlinked whenever the new one is written so a stale orphan
+#: can't sit in `metrics/` forever pretending to be current state.
+LEGACY_LAST_INJECTION_FILENAME = "last_injection.txt"
 CLAUDE_CONFIG_DIR_ENV = "CLAUDE_CONFIG_DIR"
+#: Marker key written into the pairing file once its session has been
+#: harvested — see `mark_last_injection_consumed`.
+CONSUMED_KEY = "consumed"
 
 #: Chars-per-token band a pair must accept to be believable for English-ish
 #: markdown. Real ratios cluster near 4; anything outside this means the two
@@ -103,6 +110,10 @@ MAX_OUTPUT_PAIRS = 20
 
 def last_injection_path() -> Path:
     return ren_paths.state_dir() / collect.METRICS_DIRNAME / LAST_INJECTION_FILENAME
+
+
+def legacy_last_injection_path() -> Path:
+    return ren_paths.state_dir() / collect.METRICS_DIRNAME / LEGACY_LAST_INJECTION_FILENAME
 
 
 def _write_text_atomic(text: str) -> None:
@@ -131,23 +142,66 @@ def persist_last_injection(text: str, session: str) -> bool:
         )
     except (OSError, UnicodeEncodeError, TypeError, ValueError):
         return False
+    try:
+        legacy_last_injection_path().unlink(missing_ok=True)
+    except OSError:
+        pass  # an orphaned legacy file is cosmetic; never fail the write over it
     return True
+
+
+def _read_stamp() -> dict:
+    """The raw pairing-file dict, or `{}` on absent/unreadable/malformed/
+    wrong-shaped content. Never raises."""
+    try:
+        data = json.loads(last_injection_path().read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def stamp_is_consumed() -> bool:
+    """Whether the pairing file carries the `consumed` marker — i.e. some wrap
+    already harvested the session it names (see `mark_last_injection_consumed`)."""
+    return bool(_read_stamp().get(CONSUMED_KEY))
 
 
 def read_last_injection() -> tuple[str, str]:
     """`(session, text)` from the pairing file, or `("", "")` on absent,
-    unreadable, malformed, or wrong-shaped content. Never raises."""
-    try:
-        data = json.loads(last_injection_path().read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
-        return "", ""
-    if not isinstance(data, dict):
+    unreadable, malformed, or wrong-shaped content — and also on an
+    ALREADY-CONSUMED stamp. Never raises.
+
+    Refusing a consumed stamp is load-bearing (fix round 2). A stamp survives
+    the session that wrote it, so a session whose own wake-up never stamped
+    (degraded, no-wiki, or hook write failure) would otherwise harvest the
+    PREVIOUS session's stamp — and because that transcript self-identifies with
+    the old id, the session cross-check cannot catch it: the same session gets
+    calibrated and usage-recorded twice. Consuming the stamp closes that.
+    """
+    data = _read_stamp()
+    if data.get(CONSUMED_KEY):
         return "", ""
     session = data.get("session")
     text = data.get("text")
     if not isinstance(session, str) or not isinstance(text, str):
         return "", ""
     return session, text
+
+
+def mark_last_injection_consumed() -> bool:
+    """Stamp the pairing file `consumed` so no later wrap can harvest the same
+    session again. Kept (rather than unlinked) so the persisted payload stays
+    available for the 0.6.2 injection-pair work; `read_last_injection` refuses
+    it either way. Returns `False` on any failure — a double-harvest guard must
+    never itself break a wrap close-out."""
+    data = _read_stamp()
+    if not data:
+        return False
+    data[CONSUMED_KEY] = True
+    try:
+        _write_text_atomic(json.dumps(data, ensure_ascii=False))
+    except (OSError, UnicodeEncodeError, TypeError, ValueError):
+        return False
+    return True
 
 
 # ------------------------------------------------------ transcript resolution
@@ -264,8 +318,14 @@ def harvest_and_calibrate(
     Returns `{"calibrated": bool, "reason": str, "samples": [(kind, chars,
     tokens), ...], "already_recorded": bool, "new_spawns": int,
     "session": str, "label": str | None, "usage": dict | None}`. `reason` is
-    one of `"no-session"`, `"no-transcript"`, `"session-mismatch"`,
-    `"harvest-failed"`, `"no-samples"`, `"calibrate-failed"`, or `"ok"`.
+    one of `"no-session"`, `"already-harvested"`, `"no-transcript"`,
+    `"session-mismatch"`, `"harvest-failed"`, `"no-samples"`,
+    `"calibrate-failed"`, or `"ok"`.
+
+    The stamp is CONSUMED once its session has been harvested, so a second
+    wrap in the same session — or a later session whose own wake-up never
+    stamped — is a no-op (`"already-harvested"`) rather than a second
+    calibration of the same text.
 
     Repeat wraps in one session record the DELTA, never a duplicate: spawn
     records already present for the session are counted and only the tail
@@ -287,6 +347,8 @@ def harvest_and_calibrate(
 
     persisted_session, _persisted_text = read_last_injection()
     if not persisted_session:
+        if stamp_is_consumed():
+            out["reason"] = "already-harvested"
         return out
     out["session"] = persisted_session
 
@@ -305,11 +367,18 @@ def harvest_and_calibrate(
         return out
     out["usage"] = usage
 
-    # Cheap cross-check: the transcript must say it IS this session. Guards
-    # against a stale pairing file colliding with a recycled/foreign
-    # transcript name — pairing one session's text with another's tokens is
-    # worse than not calibrating.
-    if usage["session"] != persisted_session:
+    # Cross-check keyed on the transcript FILENAME id, which
+    # `resolve_transcript` guarantees. Fix round 2 replaced the previous
+    # first-line-`sessionId` equality test: the reviewer flagged that a
+    # compact/resume transcript might open with copied pre-compact lines
+    # bearing the OLD id, which would reject exactly the resume sessions we
+    # want. Evidence (all 430 transcripts under this machine's
+    # ~/.claude/projects): `sessionId` is single-valued within every file and
+    # equals the filename in every file — so the first-line test carried no
+    # information the filename doesn't, at the cost of that false-reject risk.
+    # The transcript's self-reported id is kept as advisory output only.
+    out["transcript_session"] = usage["session"]
+    if transcript.stem != persisted_session:
         out["reason"] = "session-mismatch"
         return out
 
@@ -326,7 +395,7 @@ def harvest_and_calibrate(
     collect.record(
         collect.KIND_SESSION_USAGE,
         {
-            "session": usage["session"],
+            "session": persisted_session,
             "cache_read_input_tokens": usage["cache_read_input_tokens"],
             "cache_creation_input_tokens": usage["cache_creation_input_tokens"],
             "input_tokens": usage["input_tokens"],
@@ -339,6 +408,12 @@ def harvest_and_calibrate(
     for spawn in new_spawns:
         collect.record(collect.KIND_SUBAGENT_SPAWN, spawn)
     out["new_spawns"] = len(new_spawns)
+
+    # The stamp has now done its job. Consume it so a LATER session whose own
+    # wake-up never stamped cannot re-harvest this one (see
+    # `read_last_injection`). Done after recording, so a failure between the
+    # two can only cost a calibration, never duplicate a record.
+    mark_last_injection_consumed()
 
     samples: list[tuple[str, int]] = []
     described: list[tuple[str, int, int]] = []
@@ -367,7 +442,12 @@ def harvest_and_calibrate(
 
 
 __all__ = [
+    "CONSUMED_KEY",
     "LAST_INJECTION_FILENAME",
+    "LEGACY_LAST_INJECTION_FILENAME",
+    "mark_last_injection_consumed",
+    "stamp_is_consumed",
+    "legacy_last_injection_path",
     "MAX_OUTPUT_PAIRS",
     "PLAUSIBLE_RATIO_BAND",
     "harvest_and_calibrate",

@@ -178,6 +178,12 @@ def test_second_wrap_records_only_the_new_spawns(transcript_env):
     first = calibration.harvest_and_calibrate(cwd=transcript_env["cwd"])
     assert first["new_spawns"] == 1
 
+    # Fix round 2: the first harvest CONSUMED the stamp, so a second harvest is
+    # a no-op unless the session stamped again (a resume/compact SessionStart
+    # does exactly that). Re-stamp to reach the delta path under test here;
+    # `test_harvesting_twice_on_one_stamp_is_a_no_op` covers the other branch.
+    _persist("sess-1")
+
     # The session continued after the first wrap and spawned again.
     _write_transcript(path, [
         _spawn_turn("sess-1", ["claude-opus-4-5"]),
@@ -221,19 +227,90 @@ def test_no_pairing_file_means_no_calibration(transcript_env):
     assert not (state_dir() / "metrics" / "estimator.json").exists()
 
 
-def test_transcript_claiming_a_different_session_is_rejected(transcript_env):
-    """Cheap cross-check: the transcript must say it IS the stamped session."""
+def test_transcript_whose_lines_carry_an_older_session_id_still_calibrates(transcript_env):
+    """Fix round 2: the cross-check is keyed on the transcript FILENAME id (an
+    invariant of `resolve_transcript`), NOT on the first line's `sessionId`.
+
+    Evidence for the change: across all 430 transcripts under this machine's
+    ~/.claude/projects, `sessionId` is single-valued per file and equals the
+    filename in every file — so the old first-line test added no information,
+    while risking a false reject on the hypothetical resume/compact shape where
+    copied pre-compact lines carry an older id. That shape is what this test
+    pins: it must calibrate, not be rejected."""
     _persist("sess-1")
     _write_transcript(
         transcript_env["project_dir"] / "sess-1.jsonl",
-        [_assistant_text_turn("someone-else", "x" * 600, output_tokens=100)],
+        [
+            _assistant_text_turn("older-pre-compact-id", "x" * 600, output_tokens=100),
+            _assistant_text_turn("sess-1", "x" * 600, output_tokens=100),
+        ],
     )
+
+    result = calibration.harvest_and_calibrate(cwd=transcript_env["cwd"])
+
+    assert result["calibrated"] is True
+    assert result["transcript_session"] == "older-pre-compact-id", "advisory only"
+    rows = collect.read(kind=collect.KIND_SESSION_USAGE)
+    assert [r["session"] for r in rows] == ["sess-1"], "recorded under the STAMPED id"
+
+
+def test_foreign_named_transcript_is_rejected(transcript_env, monkeypatch):
+    """The mismatch branch still exists for anything that reaches the harvest
+    with a transcript not named after the stamped session."""
+    _persist("sess-1")
+    foreign = transcript_env["project_dir"] / "someone-else.jsonl"
+    _write_transcript(foreign, [_assistant_text_turn("someone-else", "x" * 600, output_tokens=100)])
+    monkeypatch.setattr(calibration, "resolve_transcript", lambda *a, **k: foreign)
 
     result = calibration.harvest_and_calibrate(cwd=transcript_env["cwd"])
 
     assert result["reason"] == "session-mismatch"
     assert result["calibrated"] is False
     assert collect.read(kind=collect.KIND_SESSION_USAGE) == []
+
+
+def test_harvesting_twice_on_one_stamp_is_a_no_op(transcript_env):
+    """Fix round 2 (MEDIUM): the stamp is consumed by a successful harvest.
+
+    Without this, a session whose own wake-up never stamped (degraded, no-wiki,
+    or a failed write) would harvest the PREVIOUS session's stamp — and since
+    that transcript self-identifies with the old id, the session cross-check
+    cannot catch it, so the same session gets calibrated and recorded twice."""
+    _persist("sess-1")
+    _write_transcript(
+        transcript_env["project_dir"] / "sess-1.jsonl",
+        [_assistant_text_turn("sess-1", "x" * 600, output_tokens=100)],
+    )
+
+    first = calibration.harvest_and_calibrate(cwd=transcript_env["cwd"])
+    assert first["calibrated"] is True
+    ratio_after_first = json.loads(
+        (state_dir() / "metrics" / "estimator.json").read_text(encoding="utf-8")
+    )
+
+    second = calibration.harvest_and_calibrate(cwd=transcript_env["cwd"])
+
+    assert second["calibrated"] is False
+    assert second["reason"] == "already-harvested"
+    assert calibration.stamp_is_consumed() is True
+    assert calibration.read_last_injection() == ("", ""), "a consumed stamp is refused"
+    assert json.loads(
+        (state_dir() / "metrics" / "estimator.json").read_text(encoding="utf-8")
+    ) == ratio_after_first, "no second fold of the same samples"
+    assert len(collect.read(kind=collect.KIND_SESSION_USAGE)) == 1
+
+
+def test_writing_the_new_pairing_file_unlinks_the_legacy_txt(isolated_state):
+    """LOW: eb6b932 wrote `last_injection.txt` (payload only). Writing the JSON
+    format removes that orphan rather than leaving stale state in `metrics/`."""
+    legacy = calibration.legacy_last_injection_path()
+    legacy.parent.mkdir(parents=True, exist_ok=True)
+    legacy.write_text("pre-fix payload", encoding="utf-8")
+
+    assert calibration.persist_last_injection("hello", "sess-1") is True
+
+    assert not legacy.exists()
+    assert calibration.read_last_injection() == ("sess-1", "hello")
 
 
 def test_zero_token_turns_never_calibrate(transcript_env):
@@ -390,6 +467,11 @@ def _run_hook(cwd, env_extra: dict, session_id: str = "sess-hook") -> dict:
     env = dict(os.environ)
     env.pop("REN_WIKI_ROOT", None)
     env.pop("CLAUDE_PLUGIN_OPTION_WIKIROOT", None)
+    # Hermeticity (fix round 2, LOW): the hook resolves its dev root and its
+    # transcript dir from these too, so an ambient value in the developer's
+    # shell would leak the real ~/.claude / dev root into a tmp_path test.
+    env.pop("CLAUDE_PLUGIN_OPTION_DEVROOT", None)
+    env.pop("CLAUDE_CONFIG_DIR", None)
     env["PYTHONPATH"] = str(REPO_ROOT)
     env.update(env_extra)
     proc = subprocess.run(

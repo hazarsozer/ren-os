@@ -217,36 +217,49 @@ def estimate_tokens(text: str) -> int:
     return int(len(text) / _calibrated_chars_per_token())
 
 
-def _budget_tokens(text: str) -> int:
-    """Token count for BUDGET DECISIONS — deliberately the fixed
-    `CHARS_PER_TOKEN`, never the calibrated ratio.
+def _budget_tokens(text: str, chars_per_token: float | None = None) -> int:
+    """Token count for BUDGET DECISIONS.
 
-    Fix round 1 (reviewer IMPORTANT): the truncation DECISION and the
-    truncation ITSELF must agree, and `truncate_text_to_tokens` converts
-    `max_tokens` to a char cap with `CHARS_PER_TOKEN`. When the decision used
-    the calibrated ratio and the cut used the constant, a calibrated ratio
-    above 4 made the guard conclude "in budget" while the payload was in fact
-    over it (and, symmetrically, a ratio below 4 could truncate and still
-    leave the composed text above the decision's own estimate). One ratio per
-    comparison; the calibrated ratio informs `estimate_tokens` for
-    metrics/reporting only."""
-    return int(len(text) / CHARS_PER_TOKEN)
+    The decision and the cut must use ONE ratio: `truncate_text_to_tokens`
+    converts `max_tokens` to a char cap, and if it converted with 4.0 while
+    this said otherwise, a payload could be judged "in budget" while actually
+    over it (or be truncated and still exceed the decision's own estimate).
+
+    Fix round 2: that agreement is now reached on the CALIBRATED ratio, not on
+    the constant. Round 1 standardized both sides on `CHARS_PER_TOKEN`, which
+    made the whole calibration loop a no-op inside wake-up — the measured
+    number was read but never acted on. `chars_per_token` is threaded in by
+    `compose_wake_up_context`, which reads it ONCE per hook run (one small
+    JSON read) and passes the same value to every cut. `None` means "read it
+    yourself" (fallback `CHARS_PER_TOKEN` on absent/corrupt state)."""
+    return int(len(text) / (chars_per_token or _calibrated_chars_per_token()))
 
 
-def truncate_text_to_tokens(text: str, max_tokens: int) -> str:
+def truncate_text_to_tokens(
+    text: str, max_tokens: int, chars_per_token: float | None = None
+) -> str:
     """Truncate `text` to fit within `max_tokens`, keeping the TAIL (most
     recent/relevant content) and prefixing a `[...truncated; N chars
     elided...]` marker when anything was cut — content is truncated, never
-    silently dropped."""
+    silently dropped.
+
+    `chars_per_token` defaults to the CALIBRATED ratio (`None` → read it),
+    so the cut and the budget decision that authorized it always agree — see
+    `_budget_tokens`."""
     if max_tokens <= 0:
         return ""
-    max_chars = int(max_tokens * CHARS_PER_TOKEN)
+    max_chars = int(max_tokens * (chars_per_token or _calibrated_chars_per_token()))
     if len(text) <= max_chars:
         return text
     return f"[...truncated; first {len(text) - max_chars} chars elided...]\n" + text[-max_chars:]
 
 
-def _inject_section(text: str, budget: int, pointer_rel: str | None = None) -> str:
+def _inject_section(
+    text: str,
+    budget: int,
+    pointer_rel: str | None = None,
+    chars_per_token: float | None = None,
+) -> str:
     """Truncate `text` to `budget` tokens via `truncate_text_to_tokens` and,
     when truncation actually removed content (output shorter than input —
     the truncation marker was added), append a
@@ -255,7 +268,7 @@ def _inject_section(text: str, budget: int, pointer_rel: str | None = None) -> s
     the rest. No pointer line is appended when nothing was cut, or when
     `pointer_rel` isn't given (Task 6, 0.5.5 — does not change
     `truncate_text_to_tokens` itself, which has other callers)."""
-    truncated = truncate_text_to_tokens(text, budget)
+    truncated = truncate_text_to_tokens(text, budget, chars_per_token)
     if pointer_rel and len(truncated) < len(text):
         truncated = f"{truncated}\n*(continues in `{pointer_rel}`)*"
     return truncated
@@ -941,6 +954,12 @@ def compose_wake_up_context(
         logger.info("wiki not found at %s; emitting empty context", wiki_root)
         return ""
 
+    # ONE ratio for this entire compose: read the calibrated chars-per-token
+    # once (fix round 2) and hand the SAME value to every truncation and to
+    # the final budget guard, so the loop's measured number actually governs
+    # the cuts and decision/cut can never disagree. One JSON read per hook run.
+    chars_per_token = _calibrated_chars_per_token()
+
     sections: list[str] = [f"## RenOS wake-up context (source={source})\n"]
     surfaced_pages: list[str] = []
     held_count = 0
@@ -963,7 +982,7 @@ def compose_wake_up_context(
             held_count += 1
         else:
             sections.append(SECTION_IDENTITY)
-            sections.append(_inject_section(identity_text, IDENTITY_BUDGET, IDENTITY_FILENAME))
+            sections.append(_inject_section(identity_text, IDENTITY_BUDGET, IDENTITY_FILENAME, chars_per_token))
             surfaced_pages.append(IDENTITY_FILENAME)
 
     project = None
@@ -985,7 +1004,7 @@ def compose_wake_up_context(
                 held_count += 1
             else:
                 sections.append(SECTION_OVERVIEW)
-                sections.append(_inject_section(overview_text, OVERVIEW_BUDGET, overview_rel))
+                sections.append(_inject_section(overview_text, OVERVIEW_BUDGET, overview_rel, chars_per_token))
                 surfaced_pages.append(overview_rel)
 
         # Codex P5 (as hardened by the 0.5.1 drill, Leg 4): whether or not
@@ -1022,7 +1041,7 @@ def compose_wake_up_context(
             sections.append(SECTION_L1)
             l1_path = _most_recent_l1_path(l1_source_dir / L1_DIRNAME)
             l1_rel = l1_path.relative_to(wiki_root).as_posix() if l1_path else None
-            sections.append(_inject_section(l1_text, L1_BUDGET, l1_rel))
+            sections.append(_inject_section(l1_text, L1_BUDGET, l1_rel, chars_per_token))
 
         l2_text = read_l2_map(project_dir)
         if l2_text:
@@ -1035,13 +1054,13 @@ def compose_wake_up_context(
                 held_count += 1
             else:
                 sections.append(SECTION_L2)
-                sections.append(_inject_section(l2_text, L2_BUDGET, l2_rel))
+                sections.append(_inject_section(l2_text, L2_BUDGET, l2_rel, chars_per_token))
                 surfaced_pages.append(l2_rel)
 
     live_routines = read_live_routines(wiki_root)
     if live_routines:
         sections.append(SECTION_ROUTINES)
-        sections.append(truncate_text_to_tokens(live_routines, ROUTINE_SPEC_BUDGET))
+        sections.append(truncate_text_to_tokens(live_routines, ROUTINE_SPEC_BUDGET, chars_per_token))
 
     suggestion = suggestion_line()
     if suggestion:
@@ -1067,7 +1086,7 @@ def compose_wake_up_context(
             if not text:
                 continue
             sections.append(f"#### {rel}")
-            sections.append(truncate_text_to_tokens(_strip_extras_placeholder_lines(text), per_page_budget))
+            sections.append(truncate_text_to_tokens(_strip_extras_placeholder_lines(text), per_page_budget, chars_per_token))
             surfaced_pages.append(rel)
 
     if held_count > 0:
@@ -1078,10 +1097,10 @@ def compose_wake_up_context(
 
     composed = "\n\n".join(s for s in sections if s.strip())
 
-    final_tokens = _budget_tokens(composed)
+    final_tokens = _budget_tokens(composed, chars_per_token)
     if final_tokens > max_tokens:
         logger.info("composed %d tokens; truncating to %d", final_tokens, max_tokens)
-        composed = truncate_text_to_tokens(composed, max_tokens)
+        composed = truncate_text_to_tokens(composed, max_tokens, chars_per_token)
 
     try:
         if surfaced_pages:
