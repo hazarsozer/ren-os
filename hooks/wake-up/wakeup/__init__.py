@@ -115,6 +115,7 @@ from typing import Final
 import yaml
 
 from lib.instrument import collect, miss_log
+from lib.instrument.calibration import PLAUSIBLE_RATIO_BAND
 from lib.memory import archive, queue, quarantine
 from lib.memory.provenance import read_frontmatter_provenance
 from lib.ren_paths import DEFAULT_DEV_ROOT_REL, detect_project, resolve_dev_root, state_dir
@@ -198,14 +199,22 @@ def _calibrated_chars_per_token() -> float:
     tokenizer call, so `estimate_tokens` keeps its no-deps/no-latency
     property. Anything unexpected (absent file, unreadable, malformed JSON,
     missing/non-numeric/non-positive ratio) falls back to the constant, same
-    tolerance as `lib.instrument.estimator._load_ratio_state`."""
+    tolerance as `lib.instrument.estimator._load_ratio_state`.
+
+    Fix round 3: a positive ratio isn't enough — it must also be plausible.
+    `PLAUSIBLE_RATIO_BAND` (mirrored from `lib.instrument.calibration`, which
+    already imports cleanly here) is the same band that module uses to reject
+    calibration inputs it never measured; a corrupt or hand-edited
+    estimator.json (0.5, 50.0, ...) would otherwise silently crush or
+    10x-inflate every char budget this ratio now governs."""
     try:
         path = state_dir() / "metrics" / "estimator.json"
         data = json.loads(path.read_text(encoding="utf-8"))
         ratio = float(data["chars_per_token"])
     except Exception:  # noqa: BLE001 - a calibration read must never break wake-up
         return CHARS_PER_TOKEN
-    return ratio if ratio > 0 else CHARS_PER_TOKEN
+    low, high = PLAUSIBLE_RATIO_BAND
+    return ratio if low <= ratio <= high else CHARS_PER_TOKEN
 
 
 def estimate_tokens(text: str) -> int:

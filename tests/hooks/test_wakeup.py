@@ -193,6 +193,23 @@ def test_budget_decision_uses_the_same_ratio_as_the_cut(project):
     assert len(wakeup.truncate_text_to_tokens("y" * 900, 100)) <= 300 + 60
 
 
+@pytest.mark.parametrize("corrupt_ratio", [0.5, 50.0])
+def test_calibrated_ratio_outside_plausible_band_falls_back_to_constant(project, corrupt_ratio):
+    """Fix round 3 (0.6.1 E5a re-review, Important): a corrupt or hand-edited
+    estimator.json can carry any positive ratio. Since round 2 this ratio
+    governs every char budget in the wake-up payload, so an implausible value
+    (e.g. 0.5 or 50.0) would silently crush or 10x-inflate the injection
+    instead of tripping the same fallback that absent/malformed state does."""
+    estimator_path = wakeup.state_dir() / "metrics" / "estimator.json"
+    estimator_path.parent.mkdir(parents=True, exist_ok=True)
+    estimator_path.write_text(
+        json.dumps({"chars_per_token": corrupt_ratio, "samples": 5, "updated": "x"}),
+        encoding="utf-8",
+    )
+
+    assert wakeup._calibrated_chars_per_token() == pytest.approx(wakeup.CHARS_PER_TOKEN)
+
+
 def test_no_project_detected_returns_minimal_payload_no_crash(wiki, clean_path_env, tmp_path):
     dev_root = tmp_path / "Dev"
     dev_root.mkdir()

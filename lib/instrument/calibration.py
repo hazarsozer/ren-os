@@ -317,7 +317,8 @@ def harvest_and_calibrate(
 
     Returns `{"calibrated": bool, "reason": str, "samples": [(kind, chars,
     tokens), ...], "already_recorded": bool, "new_spawns": int,
-    "session": str, "label": str | None, "usage": dict | None}`. `reason` is
+    "session": str, "label": str | None, "usage": dict | None,
+    "transcript_session": str}`. `reason` is
     one of `"no-session"`, `"already-harvested"`, `"no-transcript"`,
     `"session-mismatch"`, `"harvest-failed"`, `"no-samples"`,
     `"calibrate-failed"`, or `"ok"`.
