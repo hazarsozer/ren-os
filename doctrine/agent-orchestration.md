@@ -26,12 +26,13 @@ on the orchestrator class. See `model-classes.md` for which models currently
 back each class; this document never names models directly.
 
 - **classifier** — cheap, frequent **worker** agents: parallel search, mechanical edits, classification, extraction. The default for fan-out workers.
-- **worker** — main development, **orchestrating** the fan-out, and non-trivial coding.
-- **orchestrator** — only the hardest reasoning: architecture calls, adversarial review, deep synthesis.
+- **worker** — main development, non-trivial coding, and delegated coordination of a sub-fan-out when cost matters.
+- **orchestrator** — only the hardest reasoning: architecture calls, adversarial review, deep synthesis — this is what the main session should usually be, since it drives dispatch, synthesis, and judgment.
 
-Rule of thumb: a 3–5 agent fan-out is classifier-class workers under a
-worker-class orchestrator; reserve the orchestrator class for the one step
-that genuinely needs it.
+Rule of thumb: a 3–5 agent fan-out is classifier-class workers dispatched by
+the main session, optionally under a worker-class coordinator (a "lead
+worker," not an orchestrator) when delegating that coordination saves cost;
+reserve the orchestrator class for the one step that genuinely needs it.
 
 ## Anti-patterns
 
