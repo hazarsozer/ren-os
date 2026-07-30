@@ -523,8 +523,13 @@ def wrap_session(
     # audit reads), then folds measured (text, tokens) pairs into the stored
     # chars-per-token ratio wake-up's cheap estimator reads back. Isolated
     # like the sweeps above: instrumentation must never fail a close-out.
+    #
+    # `session` here is a MODEL-supplied label, so it is passed for logging
+    # only — the harvest resolves the transcript from the harness `session_id`
+    # the wake-up hook stamped into the pairing file. Fix round 1: relying on
+    # the label meant the loop never fired in production.
     try:
-        calibration.harvest_and_calibrate(session, cwd=cwd or Path.cwd())
+        calibration.harvest_and_calibrate(session=session, cwd=cwd or Path.cwd())
     except Exception:  # noqa: BLE001 - instrumentation must never fail wrap close-out
         pass
 

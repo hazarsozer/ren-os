@@ -210,8 +210,27 @@ def _calibrated_chars_per_token() -> float:
 
 def estimate_tokens(text: str) -> int:
     """Rough token count via a chars/ratio heuristic (no tiktoken dep for hook
-    latency) — the calibrated ratio when one is stored, else `CHARS_PER_TOKEN`."""
+    latency) — the calibrated ratio when one is stored, else `CHARS_PER_TOKEN`.
+
+    For REPORTING/metrics. Budget arithmetic must use `_budget_tokens` — see
+    its docstring."""
     return int(len(text) / _calibrated_chars_per_token())
+
+
+def _budget_tokens(text: str) -> int:
+    """Token count for BUDGET DECISIONS — deliberately the fixed
+    `CHARS_PER_TOKEN`, never the calibrated ratio.
+
+    Fix round 1 (reviewer IMPORTANT): the truncation DECISION and the
+    truncation ITSELF must agree, and `truncate_text_to_tokens` converts
+    `max_tokens` to a char cap with `CHARS_PER_TOKEN`. When the decision used
+    the calibrated ratio and the cut used the constant, a calibrated ratio
+    above 4 made the guard conclude "in budget" while the payload was in fact
+    over it (and, symmetrically, a ratio below 4 could truncate and still
+    leave the composed text above the decision's own estimate). One ratio per
+    comparison; the calibrated ratio informs `estimate_tokens` for
+    metrics/reporting only."""
+    return int(len(text) / CHARS_PER_TOKEN)
 
 
 def truncate_text_to_tokens(text: str, max_tokens: int) -> str:
@@ -1059,7 +1078,7 @@ def compose_wake_up_context(
 
     composed = "\n\n".join(s for s in sections if s.strip())
 
-    final_tokens = estimate_tokens(composed)
+    final_tokens = _budget_tokens(composed)
     if final_tokens > max_tokens:
         logger.info("composed %d tokens; truncating to %d", final_tokens, max_tokens)
         composed = truncate_text_to_tokens(composed, max_tokens)

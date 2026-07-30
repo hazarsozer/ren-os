@@ -69,6 +69,13 @@ KIND_JUDGE_EVENT = "judge_event"
 KIND_OVERVIEW_EVENT = "overview_event"
 KIND_PAGE_READ = "page_read"
 KIND_SUBAGENT_SPAWN = "subagent_spawn"
+#: One per-session whole-session token summary, written by `/ren:wrap`'s
+#: calibration harvest (`lib.instrument.calibration`). Deliberately NOT
+#: `KIND_CACHE_READ`: that kind carries wake-up-era per-injection semantics,
+#: and a reader aggregating it must not silently mix in whole-session
+#: snapshots. Rows are snapshots, not deltas — the LATEST row for a session
+#: supersedes earlier ones (a second wrap in the same session re-snapshots).
+KIND_SESSION_USAGE = "session_usage"
 
 
 def _now_iso() -> str:
@@ -243,6 +250,7 @@ __all__ = [
     "KIND_OVERVIEW_EVENT",
     "KIND_PAGE_READ",
     "KIND_SUBAGENT_SPAWN",
+    "KIND_SESSION_USAGE",
     "record",
     "read",
     "harvest_session_usage",

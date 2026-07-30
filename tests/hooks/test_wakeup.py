@@ -158,6 +158,30 @@ def test_oversized_l1_is_truncated_with_marker_never_dropped(project):
     assert len(payload) < len(huge)
 
 
+def test_budget_decision_uses_the_same_ratio_as_the_cut(project):
+    """Fix round 1 (0.6.1 E5a reviewer IMPORTANT): the final budget guard must
+    not judge with the calibrated ratio while `truncate_text_to_tokens` cuts
+    with `CHARS_PER_TOKEN` — a calibrated ratio above 4 made the guard say "in
+    budget" for a payload that was, in the cut's own units, well over it."""
+    from lib.instrument import estimator
+
+    estimator.calibrate([("x" * 2000, 100)])  # ratio => 20.0, 5x the constant
+    _write(project["project_dir"] / "l1" / "session-001.md",
+           _model_stamped("y" * 50_000))
+
+    max_tokens = 500
+    payload = wakeup.compose_wake_up_context(
+        cwd=project["cwd"], wiki_root=wiki_root(), session="sess-1",
+        max_tokens=max_tokens,
+    )
+
+    # Budget arithmetic is fixed-ratio on BOTH sides now. The only slack is
+    # truncate's own "[...truncated; N chars elided...]" marker line.
+    assert wakeup._budget_tokens(payload) <= max_tokens + 25
+    assert wakeup.estimate_tokens("y" * 800) == 40, "calibrated ratio still read"
+    assert wakeup._budget_tokens("y" * 800) == int(800 / wakeup.CHARS_PER_TOKEN)
+
+
 def test_no_project_detected_returns_minimal_payload_no_crash(wiki, clean_path_env, tmp_path):
     dev_root = tmp_path / "Dev"
     dev_root.mkdir()

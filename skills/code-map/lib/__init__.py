@@ -226,6 +226,12 @@ def consume(repo_root: Path, session: str) -> dict:
         raise CodeMapUnavailable("code-map graph is stale; run build() again")
 
     graph_text = graph_path.read_text(encoding="utf-8")
+    # 0.6.1 E5a caveat: `estimator`'s `chars_per_token` is a SINGLE GLOBAL
+    # ratio, and since the calibration loop closed it is measured from
+    # assistant PROSE turns — while both numbers below are SOURCE CODE. One
+    # number, two text shapes. Fine for a savings ratio (both sides are
+    # divided by the same constant, so the ratio is unaffected) but the
+    # absolute counts are ballpark only. Per-shape ratios: 0.6.2 follow-up.
     tokens_loaded = estimator.estimate_tokens(graph_text)
     tokens_baseline = estimator.estimate_tokens(_concatenate_sources(repo_root))
 
