@@ -119,7 +119,13 @@ def test_audit_doc_covers_all_write_sites():
         [
             "grep",
             "-rlE",
-            r"write_text\(|write_bytes\(|open\(.+[\"']w[\"']|shutil\.copy|os\.replace|\.unlink\(",
+            # Python write/move/delete primitives, plus the shell equivalents
+            # (`rm -rf`, `cp -a`, `mv`) used by skills/update/scripts/*.sh —
+            # without those the shell tree destroyers were invisible here.
+            r"write_text\(|write_bytes\(|open\(.+[\"']w[\"']"
+            r"|shutil\.copy|shutil\.move|shutil\.rmtree"
+            r"|os\.replace|os\.rename|\.rename\(|\.unlink\("
+            r"|rm -rf|cp -a|mv ",
             "lib",
             "skills",
         ],

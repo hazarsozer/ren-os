@@ -19,13 +19,19 @@ marked `VIOLATION` without `FIXED`.
 Sweep (run from the repo root, `__pycache__` and tests excluded):
 
 ```
-grep -rnE 'write_text\(|write_bytes\(|open\(.+["'"'"']w["'"'"']|shutil\.copy|os\.replace|\.rename\(|\.unlink\(' lib skills
+grep -rnE 'write_text\(|write_bytes\(|open\(.+["'"'"']w["'"'"']|shutil\.copy|shutil\.move|shutil\.rmtree|os\.replace|os\.rename|\.rename\(|\.unlink\(|rm -rf|cp -a|mv ' lib skills
 ```
 
 `open(..., "a")` (append-only, e.g. `lib/memory/journal.py`) is deliberately
-out of scope: appending cannot truncate. `shutil.copy*` and `Path.rename` have
-zero hits in Python code; the only copy/prune pair lives in a shell script
-(`skills/update/scripts/snapshot.sh`) and is classified below.
+out of scope: appending cannot truncate. `shutil.copy*`, `shutil.move`,
+`os.rename` and `Path.rename` have zero hits in Python code — the only
+`shutil.rmtree` is the snapshot-store prune (#7). The shell tree operations
+(`rm -rf`, `cp -a`) live entirely in `skills/update/scripts/`: **three**
+scripts, not one — `snapshot.sh` (#19), `restore.sh` (#20, which deletes the
+whole wiki tree before restoring it), and `prune-snapshots.sh` (#21). All three
+are classified below. The shell patterns are part of the covering test's sweep
+too, so a new `rm -rf` in a shipped script fails the suite until it is
+classified here.
 
 ## Classification vocabulary
 
@@ -88,9 +94,11 @@ no write primitives at all.
 | 17 | `skills/backup/lib/__init__.py:142` | `unlink` | scratch/state | `prune_old_tarballs` — retention over `wiki-*.tar.gz` backups, keeps the newest `keep`; strict filename regex, never the wiki itself. |
 | 18 | `skills/backup/lib/__init__.py:343` | `unlink` | scratch/state | Removes the *partial tarball this call just created* after a `tarfile` failure. |
 | 19 | `skills/update/scripts/snapshot.sh:59-64, 74` | `cp -a` / `cp -al`, `rm -rf` | scratch/state | Pre-update wiki snapshot into `wiki-snapshots/<name>/` (fresh timestamped dir, never an existing one), plus retention `rm -rf` of the oldest snapshot dirs. Reads the wiki, never writes into it. The `cp -a` default over `cp -al` is itself a defense against this bug class (hard-linked snapshots would share inodes with the live wiki and be corrupted by any naive truncate-and-rewrite). |
+| 20 | `skills/update/scripts/restore.sh:51-52` (and `:78`) | `rm -rf "$WIKI_ROOT"` + `cp -a`, `cp -a` per page | confirmed | The largest blast radius in the codebase: `--whole` **deletes the entire live wiki tree** and replaces it with the snapshot. Classified `confirmed` because the script is only reachable from `/ren:update --restore-snapshot`, where the friend picks a specific snapshot out of the `--list` picker, and `--whole` refuses (`exit 2`) unless that snapshot directory exists. Destroying current content *is* restore, same reasoning as #6. Two properties recorded rather than changed (pre-existing behavior, surgical constraint): (a) the pre-restore stash at `:47` is **best-effort only** — `if cp -al … \|\| cp -a …; then` gates only the `echo`, so if both copies fail the `rm -rf` still runs and the pre-restore state is unrecoverable; (b) `--page` (`:78`) overwrites one live page with no existence check, also by design. |
+| 21 | `skills/update/scripts/prune-snapshots.sh:47, 64` | `rm -rf` | scratch/state | Retention over `${CLAUDE_PLUGIN_DATA}/wiki-snapshots/`: oldest `v*-pre-update-*` dirs (`:47`) and oldest `STASH-broken-*` dirs (`:64`) beyond `snapshotRetain`. Both `find` globs are `-maxdepth 1` under the snapshot base with strict name patterns, so nothing outside the snapshot store is reachable and the live wiki is never touched. `--dry-run` reports without deleting. |
 
-Counts: 19 sites — `queue-mediated` 4, `additive` 1, `confirmed` 1,
-`scratch/state` 12, **`VIOLATION` 1 (fixed)**.
+Counts: 21 sites — `queue-mediated` 4, `additive` 1, `confirmed` 2,
+`scratch/state` 13, **`VIOLATION` 1 (fixed)**.
 
 ## VIOLATION 1 — `write_agents_md` truncated a pre-existing AGENTS.md
 
