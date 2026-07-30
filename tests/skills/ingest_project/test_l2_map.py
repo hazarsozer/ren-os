@@ -19,6 +19,7 @@ Run with: uv run pytest tests/skills/ingest_project/test_l2_map.py -v
 from __future__ import annotations
 
 import importlib
+import subprocess
 
 import pytest
 
@@ -50,14 +51,20 @@ def wiki(clean_path_env, tmp_path):
 
 
 @pytest.fixture
-def configured_backup(monkeypatch):
-    """0.6.0 Task 4: `ingest` now gates on a configured backup once the wiki
-    holds grown content — needed by tests that call `ingest` a SECOND time
-    against an already-populated wiki. The gate's own behavior is covered by
-    `tests/governance/test_backup_gate.py` plus
-    `test_ingest_blocked_without_backup_on_populated_wiki` below (the real
-    skill entry point, unpatched)."""
-    monkeypatch.setattr("lib.governance.backup_gate.backup_configured", lambda root: True)
+def configured_backup(wiki, tmp_path):
+    """0.6.0 Task 4: `ingest` gates on a configured backup once the wiki
+    holds grown content — tests that call `ingest` a SECOND time against an
+    already-populated wiki need one. Fix round 1 (finding 2): satisfy the gate
+    through its REAL public surface (a `backup` git remote pointing at a bare
+    repo in the sandbox) instead of faking the gate's internals, which is how
+    a false positive in the gate's populated-wiki detection stayed hidden. The
+    gate's own behavior is covered by `tests/governance/test_backup_gate.py`
+    plus `test_ingest_blocked_without_backup_on_populated_wiki` below (the
+    real skill entry point, unpatched)."""
+    bare = tmp_path / "backup.git"
+    subprocess.run(["git", "init", "--bare", "-q", str(bare)], check=True)
+    subprocess.run(["git", "init", "-q"], cwd=wiki, check=True)
+    subprocess.run(["git", "remote", "add", "backup", str(bare)], cwd=wiki, check=True)
 
 
 def _fixture_repo(tmp_path):

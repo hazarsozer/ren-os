@@ -15,9 +15,40 @@ Run with: uv run pytest tests/governance/test_backup_gate.py -v
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from lib.governance.backup_gate import BackupRequired, require_backup
+from lib.skeleton import stamp_skeleton
+
+SKELETON_ROOT = Path(__file__).resolve().parents[2] / "wiki-skeleton"
+
+_PLACEHOLDERS = {
+    "handle": "test-friend",
+    "name": "Test Friend",
+    "today": "2026-01-01",
+    "framework_version": "0.6.0",
+}
+
+
+def _stamp_master(tmp_path, monkeypatch) -> Path:
+    """Stamp the REAL master profile into a tmp wiki and return its root.
+
+    stamp_skeleton routes writes through lib.memory.write_apply, which
+    resolves pages against ren_paths.wiki_root() — so the env override must
+    make wiki_root() == the target_root we pass (see lib/skeleton.py's module
+    docstring)."""
+    target = tmp_path / "wiki"
+    monkeypatch.setenv("REN_WIKI_ROOT", str(target))
+    monkeypatch.setenv("REN_FRAMEWORK_ROOT", str(tmp_path / ".renos"))
+    stamp_skeleton(
+        skeleton_root=SKELETON_ROOT,
+        target_root=target,
+        profile="master",
+        placeholders=_PLACEHOLDERS,
+    )
+    return target
 
 
 def test_fresh_wiki_passes(tmp_path):
@@ -53,9 +84,61 @@ def test_configured_backup_passes(tmp_path, monkeypatch):
 
 
 def test_skeleton_only_wiki_passes(tmp_path, monkeypatch):
-    # a stamped-but-untouched skeleton page (no frontmatter, heading-only
-    # body) is not "grown content" — must not trip the gate even with no
-    # backup configured.
-    (tmp_path / "index.md").write_text("# Wiki\n<!-- skeleton -->\n")
+    """FIX ROUND 1 (CRITICAL): this test used to hand-write a synthetic
+    skeleton (`# Wiki\\n<!-- skeleton -->`), which is why a false positive
+    shipped — the REAL shipped templates carry guidance prose, so every
+    stamped page looked "grown" and a friend's first ingest/second bootstrap
+    on a pristine post-/ren:install wiki tripped the gate. The regression pin
+    is now real `stamp_skeleton()` output."""
+    target = _stamp_master(tmp_path, monkeypatch)
     monkeypatch.setattr("lib.governance.backup_gate.backup_configured", lambda root: False)
-    require_backup(tmp_path, operation="bootstrap-project")
+    require_backup(target, operation="bootstrap-project")
+
+
+def test_skeleton_plus_project_skeleton_passes(tmp_path, monkeypatch):
+    """The second bootstrap-project on a wiki holding only a first project's
+    stamped (untouched) overview page must still pass."""
+    target = _stamp_master(tmp_path, monkeypatch)
+    stamp_skeleton(
+        skeleton_root=SKELETON_ROOT,
+        target_root=target,
+        profile="project",
+        placeholders=_PLACEHOLDERS,
+        path_prefix="projects/demo/",
+    )
+    monkeypatch.setattr("lib.governance.backup_gate.backup_configured", lambda root: False)
+    require_backup(target, operation="bootstrap-project")
+
+
+def test_grown_project_page_on_real_skeleton_raises(tmp_path, monkeypatch):
+    """...but once a project page actually holds the friend's content, the
+    gate MUST fire."""
+    target = _stamp_master(tmp_path, monkeypatch)
+    (target / "projects" / "demo").mkdir(parents=True)
+    (target / "projects" / "demo" / "map.md").write_text(
+        "# demo\n\n- [auth] → decisions/003-auth.md#choice (w-123)\n", encoding="utf-8"
+    )
+    monkeypatch.setattr("lib.governance.backup_gate.backup_configured", lambda root: False)
+    with pytest.raises(BackupRequired):
+        require_backup(target, operation="ingest-project")
+
+
+def test_grown_research_page_on_real_skeleton_raises(tmp_path, monkeypatch):
+    target = _stamp_master(tmp_path, monkeypatch)
+    (target / "research" / "sqlite-vs-pg.md").write_text(
+        "# SQLite vs Postgres\n\nWe picked SQLite because...\n", encoding="utf-8"
+    )
+    monkeypatch.setattr("lib.governance.backup_gate.backup_configured", lambda root: False)
+    with pytest.raises(BackupRequired):
+        require_backup(target, operation="ingest-project")
+
+
+def test_grown_log_on_real_skeleton_raises(tmp_path, monkeypatch):
+    """The stamped log has exactly one `init` entry; a second entry means the
+    friend has real history worth backing up."""
+    target = _stamp_master(tmp_path, monkeypatch)
+    with (target / "log.md").open("a", encoding="utf-8") as handle:
+        handle.write("\n## [2026-07-30] ingest | brought in the api repo\n")
+    monkeypatch.setattr("lib.governance.backup_gate.backup_configured", lambda root: False)
+    with pytest.raises(BackupRequired):
+        require_backup(target, operation="ingest-project")
