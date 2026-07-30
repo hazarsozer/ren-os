@@ -41,6 +41,7 @@ from pathlib import Path
 
 from lib import ren_paths
 from lib.adapter.claude_md import write_project_claude_md
+from lib.governance.backup_gate import require_backup
 from lib.memory.queue import Proposal, QueueEntry, propose_and_apply
 from lib.portability.agents_surface import write_agents_md
 from lib.skeleton import stamp_skeleton
@@ -69,6 +70,11 @@ def bootstrap(project_slug: str, session: str, repo_root: Path | None = None) ->
     returned instead of a `QueueEntry`. bootstrap seeds a map once; it never
     re-touches one that already exists.
 
+    Gated on a configured backup once the wiki holds grown content (0.6.0
+    Task 4, issue #11 §2) — see `lib.governance.backup_gate.require_backup`.
+    A fresh/empty wiki always passes, so the very first bootstrap is never
+    blocked.
+
     Always human-provenance — never quarantined. Auto-applies through the
     data-plane door (v2.2); the returned entry's `write_id` is set once
     applied.
@@ -80,6 +86,8 @@ def bootstrap(project_slug: str, session: str, repo_root: Path | None = None) ->
     (default) skips both, full backward compatibility. A failure writing
     either file never breaks bootstrap itself.
     """
+    require_backup(ren_paths.wiki_root(), operation="bootstrap-project")
+
     stamp_skeleton(
         skeleton_root=_SKELETON_ROOT,
         target_root=ren_paths.wiki_root(),

@@ -294,7 +294,12 @@ def check_backup_configured(wiki_root: Path | None = None) -> CheckResult:
     backup_lib = importlib.import_module("skills.backup.lib")
     if backup_lib.backup_configured(wiki_root):
         return CheckResult("backup_configured", "ok", "backup remote or recent tarball present")
-    return CheckResult("backup_configured", "warn", "no backup remote configured and no recent tarball — run /ren:backup --setup or /ren:backup")
+    return CheckResult(
+        "backup_configured",
+        "warn",
+        "no backup remote configured and no recent tarball — run /ren:backup --setup or /ren:backup "
+        "(required before ingest-project/bootstrap-project can write to a populated wiki, per the 0.6.0 backup gate)",
+    )
 
 
 _VALID_EXECUTION_TIERS = frozenset({"deterministic", "worker", "judgment"})

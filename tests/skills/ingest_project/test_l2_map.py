@@ -19,9 +19,11 @@ Run with: uv run pytest tests/skills/ingest_project/test_l2_map.py -v
 from __future__ import annotations
 
 import importlib
+import subprocess
 
 import pytest
 
+from lib.governance.backup_gate import BackupRequired
 from lib.memory import journal, quarantine, queue
 from lib.ren_paths import wiki_root
 
@@ -46,6 +48,23 @@ def wiki(clean_path_env, tmp_path):
     root = wiki_root()
     root.mkdir(parents=True, exist_ok=True)
     return root
+
+
+@pytest.fixture
+def configured_backup(wiki, tmp_path):
+    """0.6.0 Task 4: `ingest` gates on a configured backup once the wiki
+    holds grown content — tests that call `ingest` a SECOND time against an
+    already-populated wiki need one. Fix round 1 (finding 2): satisfy the gate
+    through its REAL public surface (a `backup` git remote pointing at a bare
+    repo in the sandbox) instead of faking the gate's internals, which is how
+    a false positive in the gate's populated-wiki detection stayed hidden. The
+    gate's own behavior is covered by `tests/governance/test_backup_gate.py`
+    plus `test_ingest_blocked_without_backup_on_populated_wiki` below (the
+    real skill entry point, unpatched)."""
+    bare = tmp_path / "backup.git"
+    subprocess.run(["git", "init", "--bare", "-q", str(bare)], check=True)
+    subprocess.run(["git", "init", "-q"], cwd=wiki, check=True)
+    subprocess.run(["git", "remote", "add", "backup", str(bare)], cwd=wiki, check=True)
 
 
 def _fixture_repo(tmp_path):
@@ -206,7 +225,7 @@ def test_ingest_still_auto_applies_with_ren_trust_foreign(wiki):
     assert "ren_trust: \"foreign\"" in page_text
 
 
-def test_ingest_on_existing_map_auto_applies_update_with_supersedes_conflict(wiki):
+def test_ingest_on_existing_map_auto_applies_update_with_supersedes_conflict(wiki, configured_backup):
     first = ingest("re-ingest-me", ["first pass knowledge"], [], session="sess-1")
     assert first["write_id"] is not None  # v2.2: no separate approve()/apply() step
 
@@ -271,3 +290,16 @@ def test_map_decision_section_states_pointer_base():
     lines = text.splitlines()
     idx = lines.index("## Decision map")
     assert lines[idx + 1] == "_All pointer paths are relative to the wiki root, not this file._"
+
+
+def test_ingest_blocked_without_backup_on_populated_wiki(wiki, monkeypatch):
+    """0.6.0 Task 4, issue #11 §2: through the REAL skill entry point (no
+    mocking of `ingest` itself, only the backup-check it delegates to), an
+    ingest on an already-populated wiki with no configured backup must be
+    refused rather than silently risking grown content."""
+    (wiki / "maps").mkdir(parents=True)
+    (wiki / "maps" / "l2-map.md").write_text("grown content", encoding="utf-8")
+    monkeypatch.setattr("lib.governance.backup_gate.backup_configured", lambda root: False)
+
+    with pytest.raises(BackupRequired):
+        ingest("some-project", ["a fact"], [], session="sess-1")

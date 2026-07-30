@@ -78,7 +78,7 @@ def _snapshot(root: Path) -> set[str]:
     return {str(p.relative_to(root)) for p in root.rglob("*") if p.is_file()}
 
 
-def test_friend_week_end_to_end(sandbox, tmp_path):
+def test_friend_week_end_to_end(sandbox, tmp_path, monkeypatch):
     wiki = sandbox
 
     # A separate "outside the wiki" area — a fake repo the friend is working

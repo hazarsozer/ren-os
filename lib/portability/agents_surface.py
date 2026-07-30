@@ -15,6 +15,9 @@ This module owns two things:
      — it's a short orientation doc plus links into the real wiki pages.
      Written directly to `repo_root/AGENTS.md` (bypassing the memory write
      path): it's a repo-side, regenerable pointer file, not durable memory.
+     The write is marker-scoped (`lib.adapter.claude_md.apply_block`), so a
+     repo's pre-existing hand-authored AGENTS.md survives — see
+     `docs/audits/2026-07-destructive-writes.md` VIOLATION 1.
   2. `lint_harness_neutral`/`lint_generated_surfaces` — the enforcement half
      of A-9. Any text WE generate for a foreign harness to read must contain
      zero Claude-Code-specific tokens. Human-authored wiki prose is exempt
@@ -28,6 +31,8 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+
+from lib.adapter.claude_md import apply_block
 
 # Harness-coupling markers. Any of these appearing (case-insensitively) in a
 # GENERATED surface (AGENTS.md, l2-map pages) is a portability violation —
@@ -115,12 +120,21 @@ def render_agents_md(wiki_root: Path, project_slug: str | None = None) -> str:
 def write_agents_md(repo_root: Path, wiki_root: Path, project_slug: str | None = None) -> Path:
     """Write the rendered AGENTS.md at `repo_root/AGENTS.md` (direct write —
     this is a repo-side, regenerable pointer file, not wiki memory, so it
-    bypasses the memory write path). Idempotent: re-running overwrites
-    the prior content rather than appending or erroring."""
+    bypasses the memory write path). Idempotent: re-running rewrites OUR
+    managed block rather than appending or erroring.
+
+    Destructive-write audit (issue #11 §2) fix: the write goes through
+    `lib.adapter.claude_md.apply_block`, the same marker-scoped splice the
+    CLAUDE.md pointer layer uses. AGENTS.md is a shared cross-agent
+    convention — a repo may well already have a hand-authored one — and the
+    previous unconditional `write_text` truncated it, exactly the bug class
+    0.5.6 fixed for the L2 map. Now: no file -> our block; existing file
+    without markers -> our block appended, their content byte-preserved;
+    existing markers -> only the block between them is replaced."""
     repo_root = Path(repo_root)
     content = render_agents_md(wiki_root, project_slug)
     path = repo_root / "AGENTS.md"
-    path.write_text(content, encoding="utf-8")
+    apply_block(path, content)
     return path
 
 

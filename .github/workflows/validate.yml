@@ -62,3 +62,45 @@ jobs:
 
       - name: Run shell-touching test clusters
         run: uv run pytest tests/skills/update/test_update_scripts.py tests/migrations/ tests/skills/wiki_migration/ -q
+
+  # ──────────────────────────────────────────────────────────────────
+  # Cold machine: stock python3, no uv, no deps, no cache. Asserts the
+  # wake-up hook's observable contract (self-heal or loud-degrade, never
+  # silent-empty) on a machine that looks nothing like the dev box —
+  # issue #11 §1 item 1.
+  # ──────────────────────────────────────────────────────────────────
+  cold-machine:
+    name: cold machine seam (py3.9, no uv cache)
+    runs-on: ubuntu-latest
+    container: python:3.9-slim
+    steps:
+      - uses: actions/checkout@v4
+      - name: run wake-up hook under stock python3, assert contract
+        env:
+          UV_CACHE_DIR: /tmp/definitely-empty-uv-cache
+        run: |
+          python3 scripts/seam/hook_contract_check.py \
+            --hook-cmd "python3 hooks/wake-up/ren-wake-up.py"
+
+  # ──────────────────────────────────────────────────────────────────
+  # Installed-plugin smoke: copies the git-tracked (shipped) file set
+  # into a scratch dir laid out like an installed plugin, points
+  # CLAUDE_PLUGIN_ROOT at it, and runs the hook contract check from
+  # there (NOT the git clone) — issue #11 §1 item 2.
+  # ──────────────────────────────────────────────────────────────────
+  installed-plugin-smoke:
+    name: installed-plugin smoke (CLAUDE_PLUGIN_ROOT layout)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run installed-plugin smoke script
+        run: bash scripts/seam/installed_plugin_smoke.sh

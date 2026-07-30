@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.6.0] - 2026-07-30 — "seam & safety"
+
+Closes [issue #11](https://github.com/hazarsozer/ren-os/issues/11) — CI now
+proves the framework works on the seams it previously only assumed (cold
+machines, real installed layouts), and destructive writes are audited and
+guarded instead of trusted by convention.
+
+- **Cold-machine CI job** — the wake-up hook contract (valid JSON, exit 0,
+  inject-or-loud-degrade) is now asserted on a bare `python:3.9` machine with
+  no deps, closing the gap where CI only ever ran with the framework's own
+  dependencies already present.
+- **Installed-plugin CI smoke** — the hook contract is also asserted from a
+  real `CLAUDE_PLUGIN_ROOT` installed layout, not just the dev repo. This
+  caught and fixed a real bug: a session on a machine with no wiki
+  initialized now gets a loud "memory not initialized — run `/ren:install`"
+  notice instead of silently injecting nothing.
+- **Destructive-write audit** — all 21 write sites are now classified in
+  `docs/audits/2026-07-destructive-writes.md`, with CI-pinned coverage so the
+  classification can't silently drift. The audit caught and fixed a
+  data-loss bug where `/ren:bootstrap-project` overwrote a hand-authored
+  `AGENTS.md`; it's now marker-spliced, preserving user content.
+- **Backup precondition** — `/ren:ingest-project` and `/ren:bootstrap-project`
+  now require a configured backup before running on a wiki with grown
+  content (override: `RENOS_ALLOW_NO_BACKUP=1`); fresh/skeleton wikis are
+  unaffected.
+- **Cold-start fix** — `/ren:install` now warms the venv and records a
+  machine-scoped interpreter; wake-up prefers it, so the first session after
+  install runs the fast path instead of the ~7s degraded one.
+
 ## [0.5.7] - 2026-07-18 — "runs on Macs"
 
 Portability hotfix closing [issue #9](https://github.com/hazarsozer/ren-os/issues/9) —
