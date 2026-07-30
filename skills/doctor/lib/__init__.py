@@ -49,6 +49,7 @@ import shutil
 import subprocess
 import sys
 from dataclasses import dataclass
+from datetime import date, datetime
 from pathlib import Path
 
 from lib import ren_paths
@@ -528,6 +529,103 @@ def check_archive_integrity(wiki_root: Path | None = None) -> CheckResult:
     return CheckResult("archive_integrity", "ok", "every archive page has frontmatter and a matching journal entry")
 
 
+_MODEL_CLASSES_PATH = _REPO_ROOT / "doctrine" / "model-classes.md"
+_MODEL_CLASS_ROW_RE = re.compile(r"^\|\s*([^|\s]+)\s*\|\s*([^|]*)\|", re.MULTILINE)
+_MODEL_MAP_STAMP_RE = re.compile(r"<!--\s*renos:model-map-updated:\s*(\d{4}-\d{2}-\d{2})\s*-->")
+_STALE_DAYS_THRESHOLD = 180
+_ORCHESTRATOR_WARN_PCT = 0.30
+_PARALLEL_PEAK_WARN_THRESHOLD = 5
+
+
+def _model_class(model: str | None, table_text: str) -> str:
+    """Classify `model` against `doctrine/model-classes.md`'s table:
+    substring-match the model id against each row's "current models" cell.
+    No match (including `model is None`, e.g. a spawn with no recorded
+    override) → "unknown" — unknown models never count toward the
+    orchestrator-percentage warn threshold and never independently warn."""
+    if not model:
+        return "unknown"
+    for cls, models_cell in _MODEL_CLASS_ROW_RE.findall(table_text):
+        if cls in ("class", "---"):
+            continue
+        if model in models_cell:
+            return cls
+    return "unknown"
+
+
+def check_routing_audit() -> CheckResult:
+    """0.6.1 E4, advisory-only: audits model-routing economics from harvested
+    `subagent_spawn` metrics against `doctrine/model-classes.md`'s class
+    table. `warn` when >30% of spawns used orchestrator-class models, OR any
+    spawn recorded a `parallel_peak` > 5 (a fan-out wide enough to be worth a
+    second look). Otherwise `info` with per-class counts. Never blocks —
+    unknown models are excluded from the orchestrator-percentage denominator
+    logic entirely (counted, but never trigger a warn on their own)."""
+    spawns = collect.read(kind=collect.KIND_SUBAGENT_SPAWN)
+    if not spawns:
+        return CheckResult("routing_audit", "info", "no spawn data yet")
+
+    table_text = ""
+    if _MODEL_CLASSES_PATH.is_file():
+        table_text = _MODEL_CLASSES_PATH.read_text(encoding="utf-8", errors="replace")
+
+    counts: dict[str, int] = {}
+    max_parallel_peak = 0
+    for entry in spawns:
+        cls = _model_class(entry.get("model"), table_text)
+        counts[cls] = counts.get(cls, 0) + 1
+        peak = entry.get("parallel_peak")
+        if isinstance(peak, (int, float)) and peak > max_parallel_peak:
+            max_parallel_peak = peak
+
+    total = len(spawns)
+    orchestrator_pct = counts.get("orchestrator", 0) / total
+    summary = ", ".join(f"{n} {cls}" for cls, n in sorted(counts.items()))
+
+    if max_parallel_peak > _PARALLEL_PEAK_WARN_THRESHOLD:
+        return CheckResult(
+            "routing_audit", "warn",
+            f"parallel_peak {max_parallel_peak} exceeds {_PARALLEL_PEAK_WARN_THRESHOLD} "
+            f"({total} spawn(s): {summary})",
+        )
+    if orchestrator_pct > _ORCHESTRATOR_WARN_PCT:
+        return CheckResult(
+            "routing_audit", "warn",
+            f"{orchestrator_pct:.0%} of {total} spawn(s) used orchestrator-class models "
+            f"(> {_ORCHESTRATOR_WARN_PCT:.0%} threshold): {summary}",
+        )
+    return CheckResult("routing_audit", "info", f"{total} spawn(s): {summary}")
+
+
+def check_model_map_staleness() -> CheckResult:
+    """0.6.1 E4, advisory-only: always `info` unless the `renos:model-map-
+    updated` stamp in `doctrine/model-classes.md` is older than 180 days —
+    then `warn` (the doctrine table may no longer reflect current model
+    names). Missing file or missing/unparsable stamp is reported `info`
+    (nothing to grade staleness against, not itself an error)."""
+    if not _MODEL_CLASSES_PATH.is_file():
+        return CheckResult("model_map_staleness", "info", f"no model-classes.md at {_MODEL_CLASSES_PATH}")
+
+    text = _MODEL_CLASSES_PATH.read_text(encoding="utf-8", errors="replace")
+    m = _MODEL_MAP_STAMP_RE.search(text)
+    if not m:
+        return CheckResult("model_map_staleness", "info", "no renos:model-map-updated stamp found")
+
+    try:
+        stamp_date = datetime.strptime(m.group(1), "%Y-%m-%d").date()
+    except ValueError:
+        return CheckResult("model_map_staleness", "info", f"unparsable stamp: {m.group(1)}")
+
+    age_days = (date.today() - stamp_date).days
+    if age_days > _STALE_DAYS_THRESHOLD:
+        return CheckResult(
+            "model_map_staleness", "warn",
+            f"model-classes.md stamp is {age_days} days old (> {_STALE_DAYS_THRESHOLD}) — "
+            "review model names against current routing",
+        )
+    return CheckResult("model_map_staleness", "info", f"model-classes.md stamp is {age_days} days old")
+
+
 _ALL_CHECK_NAMES: tuple[str, ...] = (
     "check_env",
     "check_wiki_structure",
@@ -546,6 +644,8 @@ _ALL_CHECK_NAMES: tuple[str, ...] = (
     "check_apply_integrity",
     "check_judge_health",
     "check_archive_integrity",
+    "check_routing_audit",
+    "check_model_map_staleness",
 )
 
 
@@ -584,5 +684,7 @@ __all__ = [
     "check_apply_integrity",
     "check_judge_health",
     "check_archive_integrity",
+    "check_routing_audit",
+    "check_model_map_staleness",
     "run_checks",
 ]
