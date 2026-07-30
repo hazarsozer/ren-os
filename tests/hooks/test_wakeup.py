@@ -1095,12 +1095,37 @@ def test_hook_handles_malformed_stdin_gracefully(monkeypatch, capsys, tmp_path):
     assert "hookSpecificOutput" in data
 
 
-def test_hook_missing_wiki_emits_empty_context(monkeypatch, capsys, tmp_path):
+def test_hook_missing_wiki_emits_loud_uninitialized_notice(monkeypatch, capsys, tmp_path):
+    """Seam catch (issue #11 §1, first real CI run of the installed-plugin smoke):
+    a healthy environment with NO wiki configured — exactly a brand-new user's
+    first session — used to emit silent-empty additionalContext, violating the
+    "either inject or say so loudly" contract. It must now say so loudly."""
     monkeypatch.setenv("REN_WIKI_ROOT", str(tmp_path / "definitely-absent"))
     rc, stdout = _run_hook_direct(monkeypatch, capsys, "{}")
 
+    assert rc == 0
     data = json.loads(stdout)
-    assert data["hookSpecificOutput"]["additionalContext"] == ""
+    ctx = data["hookSpecificOutput"]["additionalContext"]
+    assert ctx.strip()  # never silent-empty
+    assert "not initialized" in ctx
+    assert "/ren:install" in ctx
+
+
+def test_uninitialized_message_is_loud_and_actionable():
+    msg = _ENTRY._uninitialized_message()
+    assert msg
+    assert "not initialized" in msg
+    assert "/ren:install" in msg
+
+
+def test_hook_with_wiki_present_does_not_emit_uninitialized_notice(monkeypatch, capsys, wiki):
+    """Healthy path is untouched: a resolvable wiki still injects real context."""
+    rc, stdout = _run_hook_direct(monkeypatch, capsys, "{}", wiki_root_path=wiki)
+
+    assert rc == 0
+    ctx = json.loads(stdout)["hookSpecificOutput"]["additionalContext"]
+    assert "not initialized" not in ctx
+    assert "RenOS wake-up context" in ctx
 
 
 def test_hook_accepts_all_documented_source_values(monkeypatch, capsys, tmp_path):

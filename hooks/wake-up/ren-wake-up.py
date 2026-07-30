@@ -69,6 +69,21 @@ def _degrade_message() -> str:
     )
 
 
+def _uninitialized_message() -> str:
+    """Loud additionalContext emitted when the environment is HEALTHY but no wiki
+    exists at the resolved root — i.e. the plugin is installed but `/ren:install`
+    was never run on this machine. Caught by the first real CI run of the
+    installed-plugin smoke test (issue #11 §1): this is the very first session a
+    brand-new user has, and it used to emit silent-empty, violating the "either
+    inject or emit a loud degrade notice — never silent-empty" contract."""
+    return (
+        "## RenOS wake-up: memory not initialized on this machine\n\n"
+        "No wiki was found at the resolved wiki root, so there is nothing to "
+        "inject — run `/ren:install` to set up the wiki (memory injection "
+        "skipped this session)."
+    )
+
+
 def _reexec_under_uv(raw_stdin: str) -> str | None:
     """Re-run THIS script under `uv run --project <root> python …` (which has the
     project deps) and return the additionalContext it computed. Returns None —
@@ -210,6 +225,13 @@ def main() -> int:
     except Exception:  # noqa: BLE001 — load-bearing graceful failure
         logger.error("compose failed:\n%s", traceback.format_exc())
         context_text = ""
+
+    # Seam catch (issue #11 §1): healthy env + no wiki => compose returns "".
+    # Say so loudly instead. Scoped to the no-wiki case only; every other
+    # degrade path above keeps its own message untouched.
+    if not context_text.strip() and not wiki_root.is_dir():
+        logger.info("no wiki at %s; emitting uninitialized notice", wiki_root)
+        context_text = _uninitialized_message()
 
     output = {
         "hookSpecificOutput": {
