@@ -52,7 +52,8 @@ def test_sweep_returns_all_dict_keys(wiki):
     assert set(result.keys()) == {
         "dangling_pointers", "contradiction_pairs", "duplicate_pairs",
         "numeric_drift_pairs", "contradiction_scan_note",
-        "mass_deletions", "quarantined_pages", "judge_dismissed", "judge_supersedes", "generated_at",
+        "mass_deletions", "quarantined_pages", "judge_dismissed", "judge_supersedes",
+        "retrieval_eval", "generated_at",
     }
     assert result["generated_at"]
     assert result["contradiction_scan_note"] is None
@@ -553,6 +554,45 @@ def test_sweep_judge_exception_fails_closed_to_no_llm_result(wiki, monkeypatch):
     assert result["duplicate_pairs"] == no_llm_result["duplicate_pairs"]
     assert result["numeric_drift_pairs"] == no_llm_result["numeric_drift_pairs"]
     assert result["judge_dismissed"] == []
+
+
+# --------------------------------------------- retrieval_eval (Task 11) --
+#
+# `sweep()` scores the shipped `lib.recall.lib.rank` ranker against the
+# frozen `lib/evalkit/fixtures/retrieval_fixture.json` fixture (its own
+# `mini_wiki`, NOT the friend's live `wiki_root`) and reports the hit rate.
+# This is exit criterion 2's instrument, so it must never crash the sweep
+# and must always record a metric.
+
+
+def test_sweep_reports_retrieval_eval_hit_rate_in_bounds(wiki):
+    result = wiki_health.sweep()
+    retrieval_eval = result["retrieval_eval"]
+    assert 0.0 <= retrieval_eval["hit_rate"] <= 1.0
+    assert retrieval_eval["cases"] > 0
+
+
+def test_sweep_retrieval_eval_degrades_on_exploding_runner(wiki, monkeypatch):
+    def exploding_runner(*args, **kwargs):
+        raise RuntimeError("eval backend down")
+
+    monkeypatch.setattr(wiki_health, "run_retrieval_eval", exploding_runner)
+
+    result = wiki_health.sweep()
+    retrieval_eval = result["retrieval_eval"]
+    assert retrieval_eval["hit_rate"] is None
+    assert "eval backend down" in retrieval_eval["error"]
+
+
+def test_sweep_records_retrieval_eval_to_metrics(wiki):
+    from lib.instrument import collect
+
+    before = len(collect.read(kind=collect.KIND_RETRIEVAL_EVAL))
+    wiki_health.sweep()
+    after = collect.read(kind=collect.KIND_RETRIEVAL_EVAL)
+    assert len(after) == before + 1
+    assert "hit_rate" in after[-1]
+    assert "cases" in after[-1]
 
 
 def test_wiki_health_critical_still_emits_for_unjudged_global_contradiction(wiki):

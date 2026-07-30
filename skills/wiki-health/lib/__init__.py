@@ -54,9 +54,12 @@ from pathlib import Path
 from typing import Callable
 
 from lib import ren_paths
+from lib.evalkit.runner import run_retrieval_eval
+from lib.instrument import collect
 from lib.memory import journal, quarantine, semantics
 from lib.memory.judge import JUDGE_MIN_CONFIDENCE, JUDGE_PAIR_CAP, judge_pairs
 from lib.ren_paths import PathTraversalError
+from skills.recall.lib import rank as _recall_rank
 
 _FRONTMATTER_RE = re.compile(r"\A---\n(.*?)\n---\n?", re.DOTALL)
 _FM_TYPE_RE = re.compile(r"^type:\s*(.+)$", re.MULTILINE)
@@ -246,6 +249,35 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+# Frozen retrieval-eval fixture + its own mini wiki (ships with the plugin
+# under `lib/evalkit/fixtures/` — NOT `tests/`, which is never shipped).
+# Scored against the shipped ranker (`skills.recall.lib.rank`), independent
+# of whatever `wiki_root` this sweep was run against — this measures the
+# ranker's fixed quality against known-answerable queries, not the friend's
+# live wiki content.
+_RETRIEVAL_FIXTURE_DIR = Path(__file__).resolve().parent.parent.parent.parent / "lib" / "evalkit" / "fixtures"
+_RETRIEVAL_FIXTURE_PATH = _RETRIEVAL_FIXTURE_DIR / "retrieval_fixture.json"
+_RETRIEVAL_MINI_WIKI = _RETRIEVAL_FIXTURE_DIR / "mini_wiki"
+
+
+def _retrieval_eval() -> dict:
+    """Score the shipped ranker against the frozen retrieval fixture and
+    record the result to monthly metrics (`KIND_RETRIEVAL_EVAL`).
+
+    Fail-closed like every other eval consumer in the sweep: any exception
+    (missing fixture, ranker crash, malformed fixture) degrades to
+    `{"hit_rate": None, "error": "<msg>"}` — the sweep itself never crashes
+    because of this eval."""
+    try:
+        report = run_retrieval_eval(_recall_rank, _RETRIEVAL_FIXTURE_PATH, _RETRIEVAL_MINI_WIKI)
+        result = {"hit_rate": report.hit_rate, "cases": report.total}
+    except Exception as exc:  # noqa: BLE001 - deliberately broad: eval failures never crash the sweep
+        result = {"hit_rate": None, "error": f"{type(exc).__name__}: {exc}"}
+
+    collect.record(collect.KIND_RETRIEVAL_EVAL, dict(result))
+    return result
+
+
 def _judge_annotate(
     wiki_root: Path,
     contradiction_pairs: list[dict],
@@ -394,7 +426,14 @@ def sweep(wiki_root: Path | None = None, llm_call: Callable[[str], str] | None =
     judging (shortlist scan, page read, `judge_pairs`) leaves the result
     exactly as the no-llm sweep would have produced it. Without `llm_call`
     (the default), behavior is byte-identical to before Task 13 plus the
-    always-present empty `judge_dismissed`/`judge_supersedes` keys."""
+    always-present empty `judge_dismissed`/`judge_supersedes` keys.
+
+    A 10th key, `retrieval_eval` (Task 11, 0.6.1 E5b): `{"hit_rate", "cases"}`
+    from scoring the shipped ranker against the frozen retrieval-eval
+    fixture (independent of this call's `wiki_root`), or
+    `{"hit_rate": None, "error": "<msg>"}` if the eval itself fails —
+    fail-closed, never crashes the sweep. Also recorded to monthly metrics
+    via `KIND_RETRIEVAL_EVAL`. This is exit criterion 2's instrument."""
     wiki_root = wiki_root or ren_paths.wiki_root()
     if not wiki_root.is_dir():
         return {
@@ -407,6 +446,7 @@ def sweep(wiki_root: Path | None = None, llm_call: Callable[[str], str] | None =
             "quarantined_pages": {"count": 0, "pages": []},
             "judge_dismissed": [],
             "judge_supersedes": [],
+            "retrieval_eval": _retrieval_eval(),
             "generated_at": _now_iso(),
         }
     contradiction_pairs, duplicate_pairs, numeric_drift_pairs, contradiction_scan_note = _pair_findings(wiki_root)
@@ -435,6 +475,7 @@ def sweep(wiki_root: Path | None = None, llm_call: Callable[[str], str] | None =
         "quarantined_pages": _quarantined_pages(wiki_root),
         "judge_dismissed": judge_dismissed,
         "judge_supersedes": judge_supersedes,
+        "retrieval_eval": _retrieval_eval(),
         "generated_at": _now_iso(),
     }
 

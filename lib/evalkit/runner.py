@@ -10,9 +10,11 @@ Three scorers:
   - `run_retrieval_eval` — hit-rate of a ranker against a frozen fixture of
     query -> expected-page pairs. This is what Phase 5's real wake-up ranker
     (and any future retrieval component) gets scored against; the fixture at
-    `tests/fixtures/retrieval_fixture.json` + `tests/fixtures/mini_wiki/` is the
-    frozen substrate, versioned so a schema change is a deliberate bump, not a
-    silent drift.
+    `lib/evalkit/fixtures/retrieval_fixture.json` + `lib/evalkit/fixtures/mini_wiki/`
+    is the frozen substrate, versioned so a schema change is a deliberate
+    bump, not a silent drift. Ships with the plugin (under `lib/`, unlike
+    `tests/`), since Task 11 (0.6.1 E5b) wires this as a production caller
+    from `skills.wiki-health.lib.sweep()`.
   - `run_gate_eval` — pass/fail scoring for any LLM-gated accept/refuse path
     (the wrap classifier being the first). FAIL-CLOSED is the scored contract:
     a gate that raises, or returns anything other than the literal strings

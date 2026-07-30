@@ -58,6 +58,12 @@ used to catch, by sweeping periodically instead of gating continuously.
 1. Call `skills.wiki-health.lib.sweep()` — read-only, six findings:
    `dangling_pointers`, `contradiction_pairs`, `duplicate_pairs`,
    `numeric_drift_pairs`, `mass_deletions`, `quarantined_pages`, plus
+   `retrieval_eval` (0.6.1: `{"hit_rate", "cases"}` from scoring the shipped
+   ranker against the frozen retrieval-eval fixture, independent of this
+   sweep's `wiki_root` — degrades to `{"hit_rate": None, "error": "<msg>"}`
+   on failure, never crashes the sweep, and is also recorded to monthly
+   metrics as `KIND_RETRIEVAL_EVAL`; this is exit criterion 2's instrument,
+   not a repair target — nothing in this skill acts on it) and
    `generated_at`.
 2. Call `render_report(findings)` and show the friend the full report
    **before** touching anything — the friend sees what was found even if

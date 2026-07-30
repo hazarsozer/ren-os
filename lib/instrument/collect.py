@@ -69,6 +69,11 @@ KIND_JUDGE_EVENT = "judge_event"
 KIND_OVERVIEW_EVENT = "overview_event"
 KIND_PAGE_READ = "page_read"
 KIND_SUBAGENT_SPAWN = "subagent_spawn"
+#: One per-sweep retrieval-eval hit rate, written by `skills.wiki-health.lib
+#: .sweep()` scoring the shipped ranker against the frozen
+#: `lib/evalkit/fixtures/retrieval_fixture.json` fixture (Task 11, 0.6.1
+#: E5b) — exit criterion 2's instrument.
+KIND_RETRIEVAL_EVAL = "retrieval_eval"
 #: One per-session whole-session token summary, written by `/ren:wrap`'s
 #: calibration harvest (`lib.instrument.calibration`). Deliberately NOT
 #: `KIND_CACHE_READ`: that kind carries wake-up-era per-injection semantics,
@@ -251,6 +256,7 @@ __all__ = [
     "KIND_PAGE_READ",
     "KIND_SUBAGENT_SPAWN",
     "KIND_SESSION_USAGE",
+    "KIND_RETRIEVAL_EVAL",
     "record",
     "read",
     "harvest_session_usage",
