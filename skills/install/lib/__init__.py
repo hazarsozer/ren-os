@@ -25,8 +25,10 @@ from __future__ import annotations
 
 import json
 import os
+import platform
 import re
 import subprocess
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -189,24 +191,39 @@ def warm_environment() -> dict:
     cost — on a fresh machine that cold path is ~7s, which trips the hook's
     `_REEXEC_TIMEOUT_S` and degrades the very first session (issue #11 §4).
 
-    Returns `{"interpreter": <abs path>, "warmed_at": <ISO 8601 UTC>}`.
+    Returns `{"interpreter": <abs path>, "warmed_at": <ISO 8601 UTC>,
+    "machine": <platform.node()>, "platform": <sys.platform>}`. The
+    `machine`/`platform` fields let the wake-up hook's
+    `_recorded_interpreter_path()` reject a foreign record: `state_dir()`
+    lives under the wiki root, which may be synced/backed up across
+    machines, so two machines sharing a username could otherwise collide on
+    an existing-but-foreign interpreter path (fix round 1, reviewer
+    IMPORTANT).
+
     Raises `subprocess.CalledProcessError` if `uv sync`/`uv run` fail — stage
-    1 of install is expected to surface that, not swallow it.
+    1 of install is expected to surface that, not swallow it. Both
+    subprocess calls carry generous timeouts (raises
+    `subprocess.TimeoutExpired` rather than hanging install forever) —
+    `uv sync` resolves+installs the full dependency set (slower, network-
+    bound), `uv run`'s one-liner just needs the already-synced venv to spin
+    up.
     """
     root = str(_repo_root())
     subprocess.run(
         ["uv", "sync", "--frozen", "--project", root],
-        check=True, capture_output=True, text=True,
+        check=True, capture_output=True, text=True, timeout=120,
     )
     proc = subprocess.run(
         ["uv", "run", "--project", root, "python", "-c",
          "import sys; print(sys.executable)"],
-        check=True, capture_output=True, text=True,
+        check=True, capture_output=True, text=True, timeout=30,
     )
     interpreter = proc.stdout.strip()
     info = {
         "interpreter": interpreter,
         "warmed_at": datetime.now(timezone.utc).isoformat(),
+        "machine": platform.node(),
+        "platform": sys.platform,
     }
     path = _interpreter_state_path()
     path.parent.mkdir(parents=True, exist_ok=True)

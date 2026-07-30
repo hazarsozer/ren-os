@@ -1312,7 +1312,7 @@ def test_missing_deps_degrades_loudly_when_reexec_unavailable(monkeypatch, capsy
         raise ModuleNotFoundError("No module named 'ulid'")
 
     monkeypatch.setattr(wakeup, "compose_wake_up_context", _boom)
-    monkeypatch.setattr(_ENTRY, "_reexec_under_uv", lambda raw: None)
+    monkeypatch.setattr(_ENTRY, "_reexec_under_uv", lambda raw, timeout=None: None)
     monkeypatch.setenv("REN_WIKI_ROOT", str(tmp_path / "wiki"))
 
     rc, stdout = _run_hook_direct(monkeypatch, capsys, "{}")
@@ -1327,7 +1327,7 @@ def test_missing_deps_reexec_relays_child_context(monkeypatch, capsys, tmp_path)
         raise ModuleNotFoundError("No module named 'ulid'")
 
     monkeypatch.setattr(wakeup, "compose_wake_up_context", _boom)
-    monkeypatch.setattr(_ENTRY, "_reexec_under_uv", lambda raw: "RELAYED FROM CHILD")
+    monkeypatch.setattr(_ENTRY, "_reexec_under_uv", lambda raw, timeout=None: "RELAYED FROM CHILD")
     monkeypatch.setenv("REN_WIKI_ROOT", str(tmp_path / "wiki"))
 
     rc, stdout = _run_hook_direct(monkeypatch, capsys, "{}")
@@ -1367,11 +1367,23 @@ def test_clean_python_hook_degrades_loudly_subprocess(tmp_path):
 # =============================================================================
 
 
-def _write_interpreter_record(wiki_root_path: Path, interpreter: str) -> Path:
+def _write_interpreter_record(
+    wiki_root_path: Path,
+    interpreter: str,
+    machine: str | None = None,
+    platform_: str | None = None,
+) -> Path:
+    import platform as _platform
+
     info_path = state_dir() / "interpreter.json"
     info_path.parent.mkdir(parents=True, exist_ok=True)
     info_path.write_text(
-        json.dumps({"interpreter": interpreter, "warmed_at": "2026-07-30T00:00:00+00:00"}),
+        json.dumps({
+            "interpreter": interpreter,
+            "warmed_at": "2026-07-30T00:00:00+00:00",
+            "machine": machine if machine is not None else _platform.node(),
+            "platform": platform_ if platform_ is not None else sys.platform,
+        }),
         encoding="utf-8",
     )
     return info_path
@@ -1401,13 +1413,30 @@ def test_recorded_interpreter_used_when_present_and_valid(wiki, monkeypatch):
     assert "uv" not in calls[0]
 
 
-def test_recorded_interpreter_missing_file_falls_through(wiki, monkeypatch):
+def test_recorded_interpreter_missing_file_falls_through(wiki):
     # No interpreter.json written at all.
     assert _ENTRY._reexec_under_recorded_interpreter("{}") is None
 
 
-def test_recorded_interpreter_stale_path_falls_through(wiki, monkeypatch):
+def test_recorded_interpreter_stale_path_falls_through(wiki):
     _write_interpreter_record(wiki, "/nonexistent/path/to/python")
+
+    assert _ENTRY._reexec_under_recorded_interpreter("{}") is None
+
+
+def test_recorded_interpreter_foreign_machine_falls_through(wiki):
+    # Fix round 1 (reviewer IMPORTANT): interpreter.json lives under
+    # state_dir() (inside the wiki root), which may be synced/backed up
+    # across machines. A record stamped by a DIFFERENT machine (same
+    # username, different host) must not be trusted even if the path
+    # happens to exist on this one — that's the sticky-degrade collision.
+    _write_interpreter_record(wiki, sys.executable, machine="some-other-host")
+
+    assert _ENTRY._reexec_under_recorded_interpreter("{}") is None
+
+
+def test_recorded_interpreter_foreign_platform_falls_through(wiki):
+    _write_interpreter_record(wiki, sys.executable, platform_="not-a-real-platform")
 
     assert _ENTRY._reexec_under_recorded_interpreter("{}") is None
 
@@ -1426,7 +1455,7 @@ def test_main_prefers_recorded_interpreter_over_uv_run(monkeypatch, capsys, tmp_
     monkeypatch.setattr(wakeup, "compose_wake_up_context", _boom)
     monkeypatch.setattr(_ENTRY, "_reexec_under_recorded_interpreter", lambda raw: "FROM RECORDED")
 
-    def _uv_should_not_be_called(raw):
+    def _uv_should_not_be_called(raw, timeout=None):
         raise AssertionError("uv re-exec must not run when the recorded interpreter succeeds")
 
     monkeypatch.setattr(_ENTRY, "_reexec_under_uv", _uv_should_not_be_called)
@@ -1444,10 +1473,45 @@ def test_main_falls_through_to_uv_when_recorded_interpreter_unavailable(monkeypa
 
     monkeypatch.setattr(wakeup, "compose_wake_up_context", _boom)
     monkeypatch.setattr(_ENTRY, "_reexec_under_recorded_interpreter", lambda raw: None)
-    monkeypatch.setattr(_ENTRY, "_reexec_under_uv", lambda raw: "RELAYED FROM CHILD")
+    monkeypatch.setattr(_ENTRY, "_reexec_under_uv", lambda raw, timeout=None: "RELAYED FROM CHILD")
     monkeypatch.setenv("REN_WIKI_ROOT", str(tmp_path / "wiki"))
 
     rc, stdout = _run_hook_direct(monkeypatch, capsys, "{}")
     assert rc == 0
     ctx = json.loads(stdout)["hookSpecificOutput"]["additionalContext"]
     assert ctx == "RELAYED FROM CHILD"
+
+
+def test_worst_case_stacked_timeout_stays_under_hooks_budget():
+    # Fix round 1 (reviewer CRITICAL): the two self-heal attempts stack in
+    # main() — recorded-interpreter first, then `uv run`. Their worst-case
+    # timeouts summed must stay comfortably under Claude Code's 10s
+    # SessionStart hook budget (hooks.json), or a hanging recorded
+    # interpreter plus a full-budget uv attempt silently blow past it and
+    # the hook gets killed with NO stdout at all (worse than the loud
+    # degrade message it's designed to fall back to).
+    worst_case = _ENTRY._RECORDED_TIMEOUT_S + _ENTRY._REEXEC_BUDGET_S
+    assert worst_case < 10.0
+
+
+def test_main_treats_recorded_degrade_relay_as_a_miss_and_tries_uv(monkeypatch, capsys, tmp_path):
+    # Fix round 1 (reviewer IMPORTANT): a recorded interpreter that exists
+    # but lacks project deps re-runs the hook, hits the same ModuleNotFoundError
+    # branch in ITS OWN process (guarded, so it can't recurse further), and
+    # relays `_degrade_message()` back as if it were a successful compose.
+    # The parent must recognize that relay as a miss and still try `uv run`
+    # rather than sticking with the (avoidable) degrade.
+    def _boom(**kwargs):
+        raise ModuleNotFoundError("No module named 'ulid'")
+
+    monkeypatch.setattr(wakeup, "compose_wake_up_context", _boom)
+    monkeypatch.setattr(
+        _ENTRY, "_reexec_under_recorded_interpreter", lambda raw: _ENTRY._degrade_message()
+    )
+    monkeypatch.setattr(_ENTRY, "_reexec_under_uv", lambda raw, timeout=None: "RELAYED FROM UV")
+    monkeypatch.setenv("REN_WIKI_ROOT", str(tmp_path / "wiki"))
+
+    rc, stdout = _run_hook_direct(monkeypatch, capsys, "{}")
+    assert rc == 0
+    ctx = json.loads(stdout)["hookSpecificOutput"]["additionalContext"]
+    assert ctx == "RELAYED FROM UV"

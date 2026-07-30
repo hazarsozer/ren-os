@@ -14,6 +14,8 @@ from __future__ import annotations
 
 import json
 import os
+import platform
+import sys
 
 import pytest
 
@@ -41,10 +43,14 @@ def test_warm_records_existing_interpreter(wiki):
 
     assert os.path.exists(info["interpreter"])
     assert "warmed_at" in info
+    assert info["machine"] == platform.node()
+    assert info["platform"] == sys.platform
 
     on_disk = json.loads((state_dir() / "interpreter.json").read_text(encoding="utf-8"))
     assert on_disk["interpreter"] == info["interpreter"]
     assert on_disk["warmed_at"] == info["warmed_at"]
+    assert on_disk["machine"] == platform.node()
+    assert on_disk["platform"] == sys.platform
 
 
 def test_warm_overwrites_stale_record(wiki):

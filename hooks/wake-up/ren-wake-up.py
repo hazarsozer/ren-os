@@ -30,9 +30,11 @@ from __future__ import annotations
 import json
 import logging
 import os
+import platform
 import shutil
 import subprocess
 import sys
+import time
 import traceback
 from pathlib import Path
 
@@ -51,6 +53,16 @@ REEXEC_GUARD_ENV = "REN_WAKEUP_REEXEC"
 # a cold one that blows this budget times out here and falls through to the loud
 # degrade message rather than hanging the session start.
 _REEXEC_TIMEOUT_S = 7.0
+# Fix round 1 (reviewer CRITICAL): the two self-heal attempts stack — a hanging
+# recorded interpreter burns its own timeout, then `_reexec_under_uv` starts a
+# fresh `_REEXEC_TIMEOUT_S` window on top, and 7s+7s blows past Claude Code's
+# 10s hook budget entirely (no stdout at all -> silent no-injection, the exact
+# regression loud-degrade exists to prevent). The recorded interpreter is a
+# direct exec with no `uv` resolution — ~0.05s warm — so it gets a small,
+# separate budget, and the uv attempt gets whatever's left of the ORIGINAL
+# `_REEXEC_TIMEOUT_S` window so the worst-case sum stays under 10s.
+_RECORDED_TIMEOUT_S = 2.0
+_REEXEC_BUDGET_S = _REEXEC_TIMEOUT_S
 
 
 def _degrade_message() -> str:
@@ -84,13 +96,18 @@ def _uninitialized_message() -> str:
     )
 
 
-def _reexec_under_uv(raw_stdin: str) -> str | None:
+def _reexec_under_uv(raw_stdin: str, timeout: float = _REEXEC_BUDGET_S) -> str | None:
     """Re-run THIS script under `uv run --project <root> python …` (which has the
     project deps) and return the additionalContext it computed. Returns None —
     signalling the caller to fall back to `_degrade_message` — when uv is
     unavailable, we are already inside a re-exec (guard flag set), or the child
     fails/times out. Passes the original stdin through so the child sees the same
-    SessionStart event. NEVER raises."""
+    SessionStart event. NEVER raises.
+
+    `timeout` defaults to the full `_REEXEC_BUDGET_S` window (unchanged
+    behavior when called on its own), but `main()` passes the budget
+    remaining AFTER the recorded-interpreter attempt so the two stacked
+    self-heal attempts can't together exceed the hooks.json 10s budget."""
     if os.environ.get(REEXEC_GUARD_ENV) == "1":
         return None  # already re-exec'd once; do not recurse
     if shutil.which("uv") is None:
@@ -103,7 +120,7 @@ def _reexec_under_uv(raw_stdin: str) -> str | None:
         proc = subprocess.run(
             ["uv", "run", "--project", root, "python", script],
             input=raw_stdin, capture_output=True, text=True,
-            timeout=_REEXEC_TIMEOUT_S, env=child_env,
+            timeout=timeout, env=child_env,
         )
     except (OSError, subprocess.SubprocessError):
         logger.warning("uv re-exec failed to launch", exc_info=True)
@@ -124,17 +141,31 @@ def _recorded_interpreter_path() -> Path | None:
     (`skills.install.lib.warm_environment`) from `state_dir()/interpreter.json`.
     Cheap and stdlib-only (`json` + `lib.ren_paths`, itself stdlib-only), so it
     is safe to call from bare `python3` before any self-heal has happened.
-    Returns None on any error, missing file, or a recorded path that no
-    longer exists on disk (machine wiped/moved) — the caller then falls
-    through to the existing `uv run` re-exec path."""
+    Returns None on any error, missing file, a recorded path that no longer
+    exists / isn't an executable python file on disk (machine wiped/moved),
+    or a record whose `machine`/`platform` don't match THIS machine — two
+    machines sharing a username could otherwise collide on a foreign,
+    wiki-synced `interpreter.json` (`state_dir()` lives under the wiki root,
+    which may be synced/backed up across machines) and feed the sticky-degrade
+    bug. The caller then falls through to the existing `uv run` re-exec
+    path."""
     try:
         _ensure_plugin_root_on_path()
         from lib.ren_paths import state_dir
         info_path = state_dir() / "interpreter.json"
         data = json.loads(info_path.read_text(encoding="utf-8"))
+        if data.get("machine") != platform.node() or data.get("platform") != sys.platform:
+            return None
         interpreter = data.get("interpreter", "")
-        if interpreter and Path(interpreter).exists():
-            return Path(interpreter)
+        if not interpreter:
+            return None
+        p = Path(interpreter)
+        if (
+            p.is_file()
+            and p.name.startswith("python")
+            and os.access(p, os.X_OK)
+        ):
+            return p
     except Exception:  # noqa: BLE001 - never block the caller's fallback
         pass
     return None
@@ -146,7 +177,10 @@ def _reexec_under_recorded_interpreter(raw_stdin: str) -> str | None:
     `_REEXEC_TIMEOUT_S` on a fresh machine (issue #11 §4). Returns None on any
     failure (no recorded interpreter, launch error, timeout, bad output) so
     the caller falls through to `_reexec_under_uv`, unchanged. Same recursion
-    guard as the uv path: never re-exec twice."""
+    guard as the uv path: never re-exec twice. Budget is `_RECORDED_TIMEOUT_S`
+    (2s, generous — the direct exec is ~0.05s warm) not the full
+    `_REEXEC_TIMEOUT_S`, so a hang here can't by itself blow the hooks.json
+    10s budget once `_reexec_under_uv` is tried afterward."""
     if os.environ.get(REEXEC_GUARD_ENV) == "1":
         return None  # already re-exec'd once; do not recurse
     interpreter = _recorded_interpreter_path()
@@ -159,7 +193,7 @@ def _reexec_under_recorded_interpreter(raw_stdin: str) -> str | None:
         proc = subprocess.run(
             [str(interpreter), script],
             input=raw_stdin, capture_output=True, text=True,
-            timeout=_REEXEC_TIMEOUT_S, env=child_env,
+            timeout=_RECORDED_TIMEOUT_S, env=child_env,
         )
     except (OSError, subprocess.SubprocessError):
         logger.warning("recorded-interpreter re-exec failed to launch", exc_info=True)
@@ -279,9 +313,17 @@ def main() -> int:
         # re-running under `uv run` (which has them); if that isn't possible,
         # degrade LOUDLY instead of the old silent empty payload.
         logger.warning("wakeup deps unavailable (%s); attempting self-heal re-exec", exc)
+        _start = time.monotonic()
         relayed = _reexec_under_recorded_interpreter(raw)
-        if relayed is None:
-            relayed = _reexec_under_uv(raw)
+        # Fix round 1 (reviewer IMPORTANT): a recorded interpreter that exists
+        # but lacks project deps relays its OWN degrade message (its child ran
+        # with REEXEC_GUARD_ENV=1 set, hit this same except-branch, and had no
+        # uv fallback of its own to try) and exits 0 — the parent must treat
+        # that as a miss too, not a successful relay, or `uv run` never gets
+        # tried and the degrade becomes permanently sticky.
+        if relayed is None or relayed == _degrade_message():
+            remaining = max(1.0, _REEXEC_BUDGET_S - (time.monotonic() - _start))
+            relayed = _reexec_under_uv(raw, timeout=remaining)
         context_text = relayed if relayed is not None else _degrade_message()
     except Exception:  # noqa: BLE001 — load-bearing graceful failure
         logger.error("compose failed:\n%s", traceback.format_exc())
