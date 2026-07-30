@@ -1360,3 +1360,94 @@ def test_clean_python_hook_degrades_loudly_subprocess(tmp_path):
     ctx = json.loads(proc.stdout)["hookSpecificOutput"]["additionalContext"]
     assert "DISABLED" in ctx
     assert "/ren:doctor" in ctx
+
+
+# =============================================================================
+# Task 5 (issue #11 §4): recorded-interpreter re-exec, tried before `uv run`
+# =============================================================================
+
+
+def _write_interpreter_record(wiki_root_path: Path, interpreter: str) -> Path:
+    info_path = state_dir() / "interpreter.json"
+    info_path.parent.mkdir(parents=True, exist_ok=True)
+    info_path.write_text(
+        json.dumps({"interpreter": interpreter, "warmed_at": "2026-07-30T00:00:00+00:00"}),
+        encoding="utf-8",
+    )
+    return info_path
+
+
+def test_recorded_interpreter_used_when_present_and_valid(wiki, monkeypatch):
+    _write_interpreter_record(wiki, sys.executable)
+
+    calls = []
+
+    class _FakeProc:
+        returncode = 0
+        stdout = json.dumps({"hookSpecificOutput": {"additionalContext": "FROM RECORDED"}})
+        stderr = ""
+
+    def _fake_run(cmd, **kwargs):
+        calls.append(cmd)
+        return _FakeProc()
+
+    monkeypatch.setattr(_ENTRY.subprocess, "run", _fake_run)
+
+    result = _ENTRY._reexec_under_recorded_interpreter("{}")
+
+    assert result == "FROM RECORDED"
+    assert calls, "expected subprocess.run to be invoked"
+    assert calls[0][0] == sys.executable  # direct exec, no `uv` resolution
+    assert "uv" not in calls[0]
+
+
+def test_recorded_interpreter_missing_file_falls_through(wiki, monkeypatch):
+    # No interpreter.json written at all.
+    assert _ENTRY._reexec_under_recorded_interpreter("{}") is None
+
+
+def test_recorded_interpreter_stale_path_falls_through(wiki, monkeypatch):
+    _write_interpreter_record(wiki, "/nonexistent/path/to/python")
+
+    assert _ENTRY._reexec_under_recorded_interpreter("{}") is None
+
+
+def test_recorded_interpreter_reexec_guard_prevents_recursion(wiki, monkeypatch):
+    _write_interpreter_record(wiki, sys.executable)
+    monkeypatch.setenv(_ENTRY.REEXEC_GUARD_ENV, "1")
+
+    assert _ENTRY._reexec_under_recorded_interpreter("{}") is None
+
+
+def test_main_prefers_recorded_interpreter_over_uv_run(monkeypatch, capsys, tmp_path):
+    def _boom(**kwargs):
+        raise ModuleNotFoundError("No module named 'ulid'")
+
+    monkeypatch.setattr(wakeup, "compose_wake_up_context", _boom)
+    monkeypatch.setattr(_ENTRY, "_reexec_under_recorded_interpreter", lambda raw: "FROM RECORDED")
+
+    def _uv_should_not_be_called(raw):
+        raise AssertionError("uv re-exec must not run when the recorded interpreter succeeds")
+
+    monkeypatch.setattr(_ENTRY, "_reexec_under_uv", _uv_should_not_be_called)
+    monkeypatch.setenv("REN_WIKI_ROOT", str(tmp_path / "wiki"))
+
+    rc, stdout = _run_hook_direct(monkeypatch, capsys, "{}")
+    assert rc == 0
+    ctx = json.loads(stdout)["hookSpecificOutput"]["additionalContext"]
+    assert ctx == "FROM RECORDED"
+
+
+def test_main_falls_through_to_uv_when_recorded_interpreter_unavailable(monkeypatch, capsys, tmp_path):
+    def _boom(**kwargs):
+        raise ModuleNotFoundError("No module named 'ulid'")
+
+    monkeypatch.setattr(wakeup, "compose_wake_up_context", _boom)
+    monkeypatch.setattr(_ENTRY, "_reexec_under_recorded_interpreter", lambda raw: None)
+    monkeypatch.setattr(_ENTRY, "_reexec_under_uv", lambda raw: "RELAYED FROM CHILD")
+    monkeypatch.setenv("REN_WIKI_ROOT", str(tmp_path / "wiki"))
+
+    rc, stdout = _run_hook_direct(monkeypatch, capsys, "{}")
+    assert rc == 0
+    ctx = json.loads(stdout)["hookSpecificOutput"]["additionalContext"]
+    assert ctx == "RELAYED FROM CHILD"

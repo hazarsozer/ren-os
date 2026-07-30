@@ -119,6 +119,65 @@ def _reexec_under_uv(raw_stdin: str) -> str | None:
         return None
 
 
+def _recorded_interpreter_path() -> Path | None:
+    """Read the interpreter recorded by `/ren:install`'s `warm_environment()`
+    (`skills.install.lib.warm_environment`) from `state_dir()/interpreter.json`.
+    Cheap and stdlib-only (`json` + `lib.ren_paths`, itself stdlib-only), so it
+    is safe to call from bare `python3` before any self-heal has happened.
+    Returns None on any error, missing file, or a recorded path that no
+    longer exists on disk (machine wiped/moved) — the caller then falls
+    through to the existing `uv run` re-exec path."""
+    try:
+        _ensure_plugin_root_on_path()
+        from lib.ren_paths import state_dir
+        info_path = state_dir() / "interpreter.json"
+        data = json.loads(info_path.read_text(encoding="utf-8"))
+        interpreter = data.get("interpreter", "")
+        if interpreter and Path(interpreter).exists():
+            return Path(interpreter)
+    except Exception:  # noqa: BLE001 - never block the caller's fallback
+        pass
+    return None
+
+
+def _reexec_under_recorded_interpreter(raw_stdin: str) -> str | None:
+    """Re-run THIS script directly under the interpreter recorded at install
+    time (no `uv` resolution needed) — avoids the cold-uv ~7s cost that trips
+    `_REEXEC_TIMEOUT_S` on a fresh machine (issue #11 §4). Returns None on any
+    failure (no recorded interpreter, launch error, timeout, bad output) so
+    the caller falls through to `_reexec_under_uv`, unchanged. Same recursion
+    guard as the uv path: never re-exec twice."""
+    if os.environ.get(REEXEC_GUARD_ENV) == "1":
+        return None  # already re-exec'd once; do not recurse
+    interpreter = _recorded_interpreter_path()
+    if interpreter is None:
+        return None
+    script = str(Path(__file__).resolve())
+    child_env = dict(os.environ)
+    child_env[REEXEC_GUARD_ENV] = "1"
+    try:
+        proc = subprocess.run(
+            [str(interpreter), script],
+            input=raw_stdin, capture_output=True, text=True,
+            timeout=_REEXEC_TIMEOUT_S, env=child_env,
+        )
+    except (OSError, subprocess.SubprocessError):
+        logger.warning("recorded-interpreter re-exec failed to launch", exc_info=True)
+        return None
+    if proc.returncode != 0:
+        logger.warning(
+            "recorded-interpreter re-exec exited %s: %s",
+            proc.returncode, (proc.stderr or "")[-500:],
+        )
+        return None
+    try:
+        out = json.loads(proc.stdout)
+        return out["hookSpecificOutput"]["additionalContext"]
+    except (json.JSONDecodeError, KeyError, TypeError):
+        logger.warning("recorded-interpreter re-exec produced unparsable output")
+        return None
+
+
 def _setup_logging() -> None:
     """Log to ~/.renos/logs/wake-up-<date>.log (stderr fallback)."""
     log_dir = Path.home() / ".renos" / "logs"
@@ -219,8 +278,10 @@ def main() -> int:
         # B1: bare `python3` lacks the project deps. Try to self-heal by
         # re-running under `uv run` (which has them); if that isn't possible,
         # degrade LOUDLY instead of the old silent empty payload.
-        logger.warning("wakeup deps unavailable (%s); attempting uv re-exec", exc)
-        relayed = _reexec_under_uv(raw)
+        logger.warning("wakeup deps unavailable (%s); attempting self-heal re-exec", exc)
+        relayed = _reexec_under_recorded_interpreter(raw)
+        if relayed is None:
+            relayed = _reexec_under_uv(raw)
         context_text = relayed if relayed is not None else _degrade_message()
     except Exception:  # noqa: BLE001 — load-bearing graceful failure
         logger.error("compose failed:\n%s", traceback.format_exc())

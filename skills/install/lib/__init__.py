@@ -15,7 +15,7 @@ verify, walkthrough) also collapses to 6 stages here — RenOS ships as one
 plugin, not several, so donor's "required/conditional plugins" negotiation
 stages don't apply.
 
-This module owns the state-inspection + two small write primitives the
+This module owns the state-inspection + three small write primitives the
 SKILL.md flow calls; interview and identity-page RENDERING live in
 `skills.interview.lib` (a separate producer, same as pin/wrap/promotion are
 separate from each other).
@@ -26,6 +26,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -164,4 +165,61 @@ def record_install(version: str) -> None:
     os.replace(tmp, path)
 
 
-__all__ = ["QUESTION_BUDGET", "install_state", "stamp_wiki", "record_install"]
+INTERPRETER_STATE_FILENAME = "interpreter.json"
+
+
+def _interpreter_state_path() -> Path:
+    return ren_paths.state_dir() / INTERPRETER_STATE_FILENAME
+
+
+def _repo_root() -> Path:
+    """Resolve the repo/plugin root the same way `hooks/wake-up/ren-wake-up.py`'s
+    `_plugin_root()` does: prefer `$CLAUDE_PLUGIN_ROOT`, else derive it from this
+    file's location (`skills/install/lib/__init__.py` -> repo root)."""
+    val = os.environ.get("CLAUDE_PLUGIN_ROOT", "").strip()
+    if val:
+        return Path(os.path.expanduser(os.path.expandvars(val)))
+    return Path(__file__).resolve().parents[3]
+
+
+def warm_environment() -> dict:
+    """Warm the venv (`uv sync --frozen`) and record its real interpreter path
+    to `state_dir()/interpreter.json`, so the wake-up hook's self-heal can
+    re-exec directly under it instead of paying `uv run`'s cold resolution
+    cost — on a fresh machine that cold path is ~7s, which trips the hook's
+    `_REEXEC_TIMEOUT_S` and degrades the very first session (issue #11 §4).
+
+    Returns `{"interpreter": <abs path>, "warmed_at": <ISO 8601 UTC>}`.
+    Raises `subprocess.CalledProcessError` if `uv sync`/`uv run` fail — stage
+    1 of install is expected to surface that, not swallow it.
+    """
+    root = str(_repo_root())
+    subprocess.run(
+        ["uv", "sync", "--frozen", "--project", root],
+        check=True, capture_output=True, text=True,
+    )
+    proc = subprocess.run(
+        ["uv", "run", "--project", root, "python", "-c",
+         "import sys; print(sys.executable)"],
+        check=True, capture_output=True, text=True,
+    )
+    interpreter = proc.stdout.strip()
+    info = {
+        "interpreter": interpreter,
+        "warmed_at": datetime.now(timezone.utc).isoformat(),
+    }
+    path = _interpreter_state_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(json.dumps(info), encoding="utf-8")
+    os.replace(tmp, path)
+    return info
+
+
+__all__ = [
+    "QUESTION_BUDGET",
+    "install_state",
+    "stamp_wiki",
+    "record_install",
+    "warm_environment",
+]
