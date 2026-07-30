@@ -68,6 +68,19 @@ KIND_CLASSIFIER_EVENT = "classifier_event"
 KIND_JUDGE_EVENT = "judge_event"
 KIND_OVERVIEW_EVENT = "overview_event"
 KIND_PAGE_READ = "page_read"
+KIND_SUBAGENT_SPAWN = "subagent_spawn"
+#: One per-sweep retrieval-eval hit rate, written by `skills.wiki-health.lib
+#: .sweep()` scoring the shipped ranker against the frozen
+#: `lib/evalkit/fixtures/retrieval_fixture.json` fixture (Task 11, 0.6.1
+#: E5b) — exit criterion 2's instrument.
+KIND_RETRIEVAL_EVAL = "retrieval_eval"
+#: One per-session whole-session token summary, written by `/ren:wrap`'s
+#: calibration harvest (`lib.instrument.calibration`). Deliberately NOT
+#: `KIND_CACHE_READ`: that kind carries wake-up-era per-injection semantics,
+#: and a reader aggregating it must not silently mix in whole-session
+#: snapshots. Rows are snapshots, not deltas — the LATEST row for a session
+#: supersedes earlier ones (a second wrap in the same session re-snapshots).
+KIND_SESSION_USAGE = "session_usage"
 
 
 def _now_iso() -> str:
@@ -133,15 +146,30 @@ def harvest_session_usage(transcript_path: Path) -> dict:
     """Parse ONE Claude Code session transcript JSONL and sum its real usage.
 
     Returns `{"session": <sessionId or filename-stem>, "cache_read_input_tokens",
-    "cache_creation_input_tokens", "input_tokens", "output_tokens", "turns"}`,
-    summed across every assistant-message line that carries a `usage` block.
-    `turns` counts those usage-carrying assistant messages.
+    "cache_creation_input_tokens", "input_tokens", "output_tokens", "turns",
+    "spawns"}`, summed across every assistant-message line that carries a
+    `usage` block. `turns` counts those usage-carrying assistant messages.
+    `spawns` is a list of `{"model": ..., "session": ..., "parallel_peak": ...}`
+    records, one per Task-tool subagent spawn found anywhere in the
+    transcript (see below).
 
     Tolerant by design (same discipline as the donor's transcript walker):
     a malformed JSON line, a non-dict line, a non-assistant line, or an
     assistant line with no `usage` block is skipped, never raised on. The
     session id is taken from the first line (of any type) that carries a
     `sessionId` string; if none do, falls back to the transcript file's stem.
+
+    Subagent spawns: Claude Code transcripts represent a subagent launch as a
+    `tool_use` content block (inside an assistant message's `content` list)
+    with `"name": "Task"`; its `input` dict may carry a `model` override
+    (falls back to `None`, i.e. "inherits caller model", when absent —
+    callers classify `None` as `unknown`, never as a false warning). Claude
+    Code emits PARALLEL subagent calls as multiple `tool_use` blocks inside
+    ONE assistant message, so `parallel_peak` for every spawn found in a
+    given message is the count of Task-tool `tool_use` blocks in that same
+    message. Parsing is fully defensive — a missing/non-list `content`, a
+    non-dict `input`, or any other unexpected shape yields zero spawn records
+    for that line rather than raising.
     """
     transcript_path = Path(transcript_path)
     session_id: str | None = None
@@ -150,6 +178,7 @@ def harvest_session_usage(transcript_path: Path) -> dict:
     input_tokens = 0
     output_tokens = 0
     turns = 0
+    spawns: list[dict] = []
 
     with transcript_path.open("r", encoding="utf-8") as fh:
         for raw_line in fh:
@@ -173,6 +202,26 @@ def harvest_session_usage(transcript_path: Path) -> dict:
             message = obj.get("message")
             if not isinstance(message, dict):
                 continue
+
+            content = message.get("content")
+            if isinstance(content, list):
+                task_blocks = [
+                    block for block in content
+                    if isinstance(block, dict)
+                    and block.get("type") == "tool_use"
+                    and block.get("name") == "Task"
+                ]
+                if task_blocks:
+                    parallel_peak = len(task_blocks)
+                    for block in task_blocks:
+                        block_input = block.get("input")
+                        model = block_input.get("model") if isinstance(block_input, dict) else None
+                        spawns.append({
+                            "model": model,
+                            "session": session_id or transcript_path.stem,
+                            "parallel_peak": parallel_peak,
+                        })
+
             usage = message.get("usage")
             if not isinstance(usage, dict):
                 continue
@@ -190,6 +239,7 @@ def harvest_session_usage(transcript_path: Path) -> dict:
         "input_tokens": input_tokens,
         "output_tokens": output_tokens,
         "turns": turns,
+        "spawns": spawns,
     }
 
 
@@ -204,6 +254,9 @@ __all__ = [
     "KIND_JUDGE_EVENT",
     "KIND_OVERVIEW_EVENT",
     "KIND_PAGE_READ",
+    "KIND_SUBAGENT_SPAWN",
+    "KIND_SESSION_USAGE",
+    "KIND_RETRIEVAL_EVAL",
     "record",
     "read",
     "harvest_session_usage",

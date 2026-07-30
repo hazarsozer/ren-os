@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.6.1] - 2026-07-30 — "the economics layer"
+
+RenOS now reasons explicitly about which model tier does which work, and
+closes the loop on whether its own budget estimates are any good.
+
+- **Capability-class routing doctrine** — `doctrine/model-classes.md` is now
+  the single name→class mapping (orchestrator / worker / classifier); every
+  skill and rule speaks in classes, never bare model names, so a model
+  lineup change is a one-file edit instead of a grep-and-pray. Plugin
+  boundary made explicit: RenOS owns economics (what model tier, what
+  budget); complementary plugins own process (how the work gets done).
+- **Agent-economics standing rule, injected** — "cheapest class that fits
+  the task, 3-5 cap on parallel spawns" is now part of the always-on
+  CLAUDE.md layer, not just skill-local guidance.
+- **Two new advisory doctor checks** — a routing audit over harvested
+  sessions (flags work that ran on a pricier class than the task needed),
+  and a model-map staleness check (flags when `model-classes.md` hasn't
+  been touched since a model lineup change).
+- **Calibration loop closed** — wake-up now stamps its own budget payload;
+  `/ren:wrap` harvests the real transcript token counts for that session and
+  calibrates the estimator against them. Wake-up's budget math now runs off
+  the calibrated ratio, with a safety clamp so a bad calibration run can't
+  blow the budget out.
+- **Wrap records subagent spawns** — feeds the routing audit above with
+  real spawn data instead of inference from skill frontmatter alone.
+- **wiki-health retrieval-eval instrument** — reports hit rate against the
+  frozen fixture set, the exit-criterion-2 measurement RenOS has been
+  missing since 0.5.
+
 ## [0.6.0] - 2026-07-30 — "seam & safety"
 
 Closes [issue #11](https://github.com/hazarsozer/ren-os/issues/11) — CI now

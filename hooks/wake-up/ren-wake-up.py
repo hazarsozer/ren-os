@@ -336,6 +336,25 @@ def main() -> int:
         logger.info("no wiki at %s; emitting uninitialized notice", wiki_root)
         context_text = _uninitialized_message()
 
+    # 0.6.1 E5a: persist the harness `session_id` (the ONLY authority
+    # `/ren:wrap` has for naming this session's transcript — a model-invoked
+    # skill cannot know it) together with the EXACT payload emitted under it,
+    # so wrap can calibrate the estimator (`lib.instrument.calibration`).
+    # Best-effort by construction — a failure here degrades to "not written"
+    # and the injection proceeds untouched.
+    #
+    # Degrade payloads are NOT persisted: without a pairing file wrap cannot
+    # resolve the session at all, so "a degraded session never calibrates"
+    # holds by construction rather than by a downstream guard.
+    if context_text and context_text not in (_degrade_message(), _uninitialized_message()):
+        try:
+            _ensure_plugin_root_on_path()
+            from lib.instrument.calibration import persist_last_injection
+
+            persist_last_injection(context_text, session)
+        except Exception:  # noqa: BLE001 - bookkeeping must never break injection
+            logger.debug("could not persist last injection payload", exc_info=True)
+
     output = {
         "hookSpecificOutput": {
             "hookEventName": "SessionStart",

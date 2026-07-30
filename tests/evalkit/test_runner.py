@@ -16,8 +16,9 @@ from lib.evalkit.runner import EvalReport, run_gate_eval, run_judge_eval, run_re
 from lib.memory.judge import VALID_VERDICTS
 
 FIXTURES_DIR = Path(__file__).resolve().parent.parent / "fixtures"
-MINI_WIKI = FIXTURES_DIR / "mini_wiki"
-RETRIEVAL_FIXTURE = FIXTURES_DIR / "retrieval_fixture.json"
+EVALKIT_FIXTURES_DIR = Path(__file__).resolve().parent.parent.parent / "lib" / "evalkit" / "fixtures"
+MINI_WIKI = EVALKIT_FIXTURES_DIR / "mini_wiki"
+RETRIEVAL_FIXTURE = EVALKIT_FIXTURES_DIR / "retrieval_fixture.json"
 JUDGE_PAIRS_FIXTURE = Path(__file__).resolve().parent / "fixtures" / "judge-pairs.json"
 
 _WORD_RE = re.compile(r"[a-z0-9]+")

@@ -8,10 +8,10 @@ description: |
   This is 0.3's replacement for per-write human approval
   (v2.2 removed the queue gate on data-plane writes) — the autonomous
   auditor that runs periodically instead of a human reviewing every diff.
-version: 0.6.0
+version: 0.6.1
 license: MIT
 
-framework_version: "0.6.0"
+framework_version: "0.6.1"
 schema_version: 1
 type: skill
 execution_tier: judgment
@@ -58,6 +58,12 @@ used to catch, by sweeping periodically instead of gating continuously.
 1. Call `skills.wiki-health.lib.sweep()` — read-only, six findings:
    `dangling_pointers`, `contradiction_pairs`, `duplicate_pairs`,
    `numeric_drift_pairs`, `mass_deletions`, `quarantined_pages`, plus
+   `retrieval_eval` (0.6.1: `{"hit_rate", "cases"}` from scoring the shipped
+   ranker against the frozen retrieval-eval fixture, independent of this
+   sweep's `wiki_root` — degrades to `{"hit_rate": None, "error": "<msg>"}`
+   on failure, never crashes the sweep, and is also recorded to monthly
+   metrics as `KIND_RETRIEVAL_EVAL`; this is exit criterion 2's instrument,
+   not a repair target — nothing in this skill acts on it) and
    `generated_at`.
 2. Call `render_report(findings)` and show the friend the full report
    **before** touching anything — the friend sees what was found even if

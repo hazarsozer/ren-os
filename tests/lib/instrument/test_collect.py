@@ -118,6 +118,7 @@ def test_canonical_kind_constants_exist():
     assert collect.KIND_CAPABILITY_TOKENS == "capability_tokens"
     assert collect.KIND_CODEMAP_TOKENS == "codemap_tokens"
     assert collect.KIND_CLASSIFIER_EVENT == "classifier_event"
+    assert collect.KIND_SUBAGENT_SPAWN == "subagent_spawn"
 
 
 def test_record_never_raises_on_unusual_but_serializable_data(isolated_state):
@@ -161,6 +162,76 @@ def test_harvest_session_usage_falls_back_to_filename_stem_when_no_session_id(tm
     result = collect.harvest_session_usage(transcript)
     assert result["session"] == "no-session-id-here"
     assert result["turns"] == 1
+
+
+# --------------------------------------------------------- subagent spawns
+
+
+def test_harvest_session_usage_emits_spawn_records_for_task_tool_calls(tmp_path):
+    transcript = tmp_path / "spawns.jsonl"
+    transcript.write_text(
+        "\n".join(
+            [
+                '{"sessionId": "s1", "type": "assistant", "message": {"model": "claude-sonnet-5", '
+                '"content": [{"type": "tool_use", "name": "Task", '
+                '"input": {"subagent_type": "code-reviewer", "model": "claude-haiku-4-5"}}]}}',
+                '{"sessionId": "s1", "type": "assistant", "message": {"model": "claude-sonnet-5", '
+                '"content": ['
+                '{"type": "tool_use", "name": "Task", "input": {"subagent_type": "a", "model": "claude-haiku-4-5"}}, '
+                '{"type": "tool_use", "name": "Task", "input": {"subagent_type": "b", "model": "claude-haiku-4-5"}}, '
+                '{"type": "tool_use", "name": "Task", "input": {"subagent_type": "c"}}'
+                ']}}',
+                '{"sessionId": "s1", "type": "assistant", "message": {"usage": {"input_tokens": 1, '
+                '"output_tokens": 1, "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0}}}',
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    result = collect.harvest_session_usage(transcript)
+
+    assert "spawns" in result
+    spawns = result["spawns"]
+    assert len(spawns) == 4
+    assert all(s["session"] == "s1" for s in spawns)
+    # First message: single Task call -> parallel_peak 1
+    assert spawns[0]["model"] == "claude-haiku-4-5"
+    assert spawns[0]["parallel_peak"] == 1
+    # Second message: 3 parallel Task calls -> parallel_peak 3 for all three
+    assert [s["parallel_peak"] for s in spawns[1:4]] == [3, 3, 3]
+    # Third spawn has no explicit model override in input
+    assert spawns[3]["model"] is None
+
+
+def test_harvest_session_usage_yields_zero_spawns_when_no_task_calls(tmp_path):
+    transcript = tmp_path / "no-spawns.jsonl"
+    transcript.write_text(
+        '{"sessionId": "s1", "type": "assistant", "message": {"usage": {"input_tokens": 1, '
+        '"output_tokens": 1, "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0}}}\n',
+        encoding="utf-8",
+    )
+
+    result = collect.harvest_session_usage(transcript)
+    assert result["spawns"] == []
+
+
+def test_harvest_session_usage_spawn_parsing_never_raises_on_malformed_content(tmp_path):
+    transcript = tmp_path / "malformed.jsonl"
+    transcript.write_text(
+        "\n".join(
+            [
+                '{"sessionId": "s1", "type": "assistant", "message": {"content": "not a list"}}',
+                '{"sessionId": "s1", "type": "assistant", "message": {"content": [{"type": "tool_use", "name": "Task"}]}}',
+                '{"sessionId": "s1", "type": "assistant", "message": {"content": [{"type": "tool_use", "name": "Task", "input": "not a dict"}]}}',
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    result = collect.harvest_session_usage(transcript)
+    assert len(result["spawns"]) == 2
+    assert all(s["model"] is None for s in result["spawns"])
 
 
 def test_harvest_session_usage_skips_malformed_and_foreign_lines_without_raising(tmp_path):

@@ -185,6 +185,53 @@ def test_global_block_dedup_ignores_our_own_managed_block(tmp_path):
     assert "Think Before Coding" in second
 
 
+def test_global_block_contains_economics_rule(tmp_path):
+    """0.6.1 E2: the agent-economics standing rule must be always-on, placed
+    after the behavioral core and before the doctrine index."""
+    doctrine = _make_doctrine(tmp_path)
+
+    block = render_global_block(doctrine_root=doctrine, wiki_root=tmp_path / "wiki")
+
+    assert "cheapest model class that fits" in block
+    assert block.index("Goal-Driven Execution") < block.index("Agent economics")
+    assert block.index("Agent economics") < block.index("Doctrine index")
+
+
+def test_global_block_economics_rule_present_even_when_core_omitted(tmp_path):
+    """The economics rule is RenOS-specific doctrine, not part of the
+    Karpathy behavioral spine — it must still render when the core is
+    omitted for dedup reasons."""
+    doctrine = _make_doctrine(tmp_path)
+    existing = (
+        "# CLAUDE.md\n\nBehavioral guidelines to reduce common LLM coding "
+        "mistakes.\n\n## 1. Think Before Coding\n...\n"
+    )
+
+    block = render_global_block(
+        existing_text=existing, doctrine_root=doctrine, wiki_root=tmp_path / "wiki"
+    )
+
+    assert "cheapest model class that fits" in block
+
+
+def test_global_block_byte_stable_across_renders(tmp_path):
+    """ADR-008 cache discipline: static content, no timestamps — two
+    consecutive renders must be byte-identical."""
+    doctrine = _make_doctrine(tmp_path)
+
+    first = render_global_block(doctrine_root=doctrine, wiki_root=tmp_path / "wiki")
+    second = render_global_block(doctrine_root=doctrine, wiki_root=tmp_path / "wiki")
+
+    assert first == second
+
+
+def test_economics_rule_within_token_budget():
+    from lib.adapter.claude_md import _ECONOMICS_RULE
+    from lib.instrument.estimator import estimate_tokens
+
+    assert estimate_tokens(_ECONOMICS_RULE) <= 120
+
+
 # --- render_project_block ---------------------------------------------------
 
 

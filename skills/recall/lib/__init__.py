@@ -8,7 +8,7 @@ Public entries:
     the Phase 5 wake-up ranker contract AND the retrieval-eval harness's
     `ranker_fn: (query, candidate_pages, wiki_root) -> ordered list` so the
     exact same function can be scored against
-    `tests/fixtures/retrieval_fixture.json` (builder-0-2, in flight) without
+    `lib/evalkit/fixtures/retrieval_fixture.json` (builder-0-2, in flight) without
     an adapter shim.
   `fetch(query, session, k=3) -> list[dict]` — the L3 fetch verb: ranks every
     `*.md` page under the wiki root, returns the top-k as

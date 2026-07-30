@@ -6,12 +6,12 @@ description: |
   small, isolated checks (env, wiki structure, frontmatter, schema
   versions, budget lint, dangling L2 pointers, graphify status, backup
   configuration, global-tier drift, harness neutrality) — all warn-not-block.
-version: 0.6.0
+version: 0.6.1
 license: MIT
 type: skill
 execution_tier: deterministic
 schema_version: 1
-framework_version: "0.6.0"
+framework_version: "0.6.1"
 
 contract:
   required_outputs:
@@ -66,6 +66,8 @@ Donor's Node/gh/claude-cli checks, activity-feed/RC-channel/fleet checks, and th
 | `check_backup_configured` | `skills.backup.lib.backup_configured()` |
 | `check_global_drift` | `lib.memory.promotion.demote_check()` — non-doctrine/preference pages in `global/` |
 | `check_harness_neutrality` | `lib.portability.agents_surface.lint_generated_surfaces` — **soft-wired**: skips cleanly if that module (Task 7.2, built in parallel) isn't present |
+| `check_routing_audit` | 0.6.1 E4: harvested `subagent_spawn` metrics vs. `doctrine/model-classes.md`'s class table — `warn` when >30% of spawns used orchestrator-class models or any `parallel_peak` > 5; `info` with per-class counts otherwise; `info "no spawn data yet"` when empty |
+| `check_model_map_staleness` | 0.6.1 E4: the `renos:model-map-updated` stamp in `doctrine/model-classes.md` — `warn` if older than 180 days, `info` otherwise |
 
 ## Behavior
 

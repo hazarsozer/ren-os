@@ -57,6 +57,7 @@ def test_run_checks_returns_one_result_per_check(wiki):
         "budget_lint", "dangling_pointers", "graphify_status", "companions",
         "backup_configured", "execution_tiers", "global_drift", "harness_neutrality", "guard_health",
         "suggestion_store", "apply_integrity", "judge_health", "archive_integrity",
+        "routing_audit", "model_map_staleness",
     }
 
 
@@ -548,6 +549,84 @@ def test_check_apply_integrity_ignores_install_provenance_writes(wiki):
 
     result = doctor.check_apply_integrity()
     assert result.status == "ok"
+
+
+# --- Task 9 (0.6.1 E4): routing audit + model-map staleness -----------------
+
+
+def _record_spawn(model, parallel_peak=1):
+    collect.record(collect.KIND_SUBAGENT_SPAWN, {
+        "model": model, "session": "s1", "parallel_peak": parallel_peak,
+    })
+
+
+def test_check_routing_audit_info_when_no_spawn_data(wiki):
+    result = doctor.check_routing_audit()
+    assert result.status == "info"
+    assert "no spawn data yet" in result.message
+
+
+def test_check_routing_audit_warns_over_30_percent_orchestrator(wiki):
+    for _ in range(3):
+        _record_spawn("claude-haiku-4-5")
+    for _ in range(2):
+        _record_spawn("claude-opus-5")
+
+    result = doctor.check_routing_audit()
+    assert result.status == "warn"
+
+
+def test_check_routing_audit_info_when_all_classifier(wiki):
+    for _ in range(5):
+        _record_spawn("claude-haiku-4-5")
+
+    result = doctor.check_routing_audit()
+    assert result.status == "info"
+
+
+def test_check_routing_audit_warns_on_high_parallel_peak_even_with_low_orchestrator_pct(wiki):
+    for _ in range(9):
+        _record_spawn("claude-haiku-4-5")
+    _record_spawn("claude-haiku-4-5", parallel_peak=6)
+
+    result = doctor.check_routing_audit()
+    assert result.status == "warn"
+
+
+def test_check_routing_audit_unknown_model_does_not_trigger_warn(wiki):
+    for _ in range(3):
+        _record_spawn("some-future-model-nobody-mapped-yet")
+    for _ in range(2):
+        _record_spawn("claude-haiku-4-5")
+
+    result = doctor.check_routing_audit()
+    assert result.status == "info"
+
+
+def test_check_model_map_staleness_info_when_fresh(wiki, tmp_path, monkeypatch):
+    fresh_doc = tmp_path / "model-classes.md"
+    fresh_doc.write_text(
+        "---\ntype: doctrine\n---\n# Model classes\n"
+        "<!-- renos:model-map-updated: 2026-07-30 -->\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(doctor, "_MODEL_CLASSES_PATH", fresh_doc)
+
+    result = doctor.check_model_map_staleness()
+    assert result.status == "info"
+
+
+def test_check_model_map_staleness_warns_when_stale(wiki, tmp_path, monkeypatch):
+    stale_doc = tmp_path / "model-classes.md"
+    stale_doc.write_text(
+        "---\ntype: doctrine\n---\n# Model classes\n"
+        "<!-- renos:model-map-updated: 2020-01-01 -->\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(doctor, "_MODEL_CLASSES_PATH", stale_doc)
+
+    result = doctor.check_model_map_staleness()
+    assert result.status == "warn"
 
 
 def test_check_apply_integrity_still_warns_on_non_install_orphan(wiki):

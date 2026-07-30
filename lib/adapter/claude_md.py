@@ -78,7 +78,6 @@ They bias toward caution over speed — for trivial tasks, use judgment.
 
 ### Simplicity First
 - Minimum code that solves the problem. No speculative features, abstractions, or configurability.
-- For recurring or multi-agent work, use the lowest capability rung that fits (quick ask → skill → sub-agent → team → goal) — see the doctrine index below.
 - Ask: "Would a senior engineer call this overcomplicated?" If yes, simplify.
 
 ### Surgical Changes
@@ -98,6 +97,18 @@ _BEHAVIORAL_CORE_OMITTED = """\
 Omitted — behavioral coding guidelines already present in this file outside
 the managed block; RenOS never duplicates them. The sections below carry only
 RenOS-specific doctrine.
+"""
+
+# --- agent economics (standing rule) ----------------------------------------
+# RenOS-specific doctrine (not part of the Karpathy behavioral spine), so it
+# renders in BOTH the full and omitted behavioral-core variants — see
+# render_global_block, which appends it unconditionally after the core.
+
+_ECONOMICS_RULE = """\
+### Agent economics (standing rule)
+- Delegate to the cheapest model class that fits: classifier-class for fan-out/summarize/score, worker-class for coding and exploration, orchestrator-class ONLY for synthesis and judgment (see `doctrine/model-classes.md`).
+- Cap concurrent subagents at 3-5; never fan out sequential work; never spawn orchestrator-class workers by default.
+- Use the lowest capability rung that fits: quick ask -> skill -> sub-agent -> team -> goal.
 """
 
 
@@ -172,6 +183,7 @@ def render_global_block(
         "them is never touched.",
         "",
         _BEHAVIORAL_CORE_OMITTED if already_has_core else _BEHAVIORAL_CORE,
+        _ECONOMICS_RULE,
         _recall_section(wiki),
         _navigation_section(wiki),
         _doctrine_index(load_all(doctrine_root)),

@@ -17,7 +17,7 @@ scope_glob: null
 
 ## Width vs. depth
 
-- "Does this break into many independent pieces running simultaneously?" → dynamic workflow (Haiku workers + one Opus synthesizer).
+- "Does this break into many independent pieces running simultaneously?" → dynamic workflow (classifier-class workers + one orchestrator-class synthesizer).
 - "Do I need to keep checking against a done-criterion until it flips?" → `/goal`.
 - Combining width and depth is very expensive — do it deliberately.
 
