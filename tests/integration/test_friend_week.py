@@ -78,8 +78,13 @@ def _snapshot(root: Path) -> set[str]:
     return {str(p.relative_to(root)) for p in root.rglob("*") if p.is_file()}
 
 
-def test_friend_week_end_to_end(sandbox, tmp_path):
+def test_friend_week_end_to_end(sandbox, tmp_path, monkeypatch):
     wiki = sandbox
+    # 0.6.0 Task 4: this sandbox never sets up a `backup` remote — fake a
+    # configured backup so the day-0 ingest below (a data-plane write onto
+    # what's by then a populated wiki) exercises the story this test pins,
+    # not the (separately tested) backup gate.
+    monkeypatch.setattr("lib.governance.backup_gate.backup_configured", lambda root: True)
 
     # A separate "outside the wiki" area — a fake repo the friend is working
     # in, plus a Dev root for wake-up's cwd-based project detection. Nothing

@@ -40,6 +40,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from lib import ren_paths
+from lib.governance.backup_gate import require_backup
 from lib.memory import quarantine
 from lib.memory.queue import Proposal, QueueEntry, propose_and_apply
 
@@ -125,7 +126,13 @@ def ingest(
     (empty if none); when non-empty, a matching provenance note ("N
     instruction-shaped fragment(s) detected at scan") is appended to `content`
     (and so to both the written page and `artifact`) before queuing.
+
+    Gated on a configured backup once the wiki holds grown content (0.6.0
+    Task 4, issue #11 §2) — see `lib.governance.backup_gate.require_backup`.
+    A fresh/empty wiki always passes.
     """
+    require_backup(ren_paths.wiki_root(), operation="ingest-project")
+
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     content = assemble_l2(project_slug, knowledge, pointers, f"{today}: ingested from existing repository")
 

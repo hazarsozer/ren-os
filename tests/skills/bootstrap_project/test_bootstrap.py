@@ -20,6 +20,7 @@ from datetime import datetime, timezone
 
 import pytest
 
+from lib.governance.backup_gate import BackupRequired
 from lib.memory import journal, quarantine
 from lib.memory.queue import Proposal, propose_and_apply
 from lib.ren_paths import wiki_root
@@ -45,6 +46,18 @@ def wiki(clean_path_env, tmp_path):
     return root
 
 
+@pytest.fixture
+def configured_backup(monkeypatch):
+    """0.6.0 Task 4: `bootstrap` now gates on a configured backup once the
+    wiki holds grown content — tests that call `bootstrap` a SECOND time
+    against an already-populated wiki need a fake configured backup so the
+    gate doesn't trip; the gate's own behavior is covered by
+    `tests/governance/test_backup_gate.py` plus
+    `test_bootstrap_blocked_without_backup_on_populated_wiki` below (the real
+    skill entry point, unpatched)."""
+    monkeypatch.setattr("lib.governance.backup_gate.backup_configured", lambda root: True)
+
+
 def test_bootstrap_auto_applies_add_with_empty_map(wiki):
     # v2.2: bootstrap is a data-plane write (non-global page) — it now
     # auto-applies through propose_and_apply instead of landing pending.
@@ -65,7 +78,7 @@ def test_bootstrap_auto_applies_add_with_empty_map(wiki):
     assert "## Knowledge" in page_text
 
 
-def test_bootstrap_on_existing_map_skips_map_write_entirely(wiki):
+def test_bootstrap_on_existing_map_skips_map_write_entirely(wiki, configured_backup):
     first = bootstrap("existing-idea", session="sess-1")
     assert first.status == "applied"  # v2.2: no separate approve()/apply() step
 
@@ -77,7 +90,7 @@ def test_bootstrap_on_existing_map_skips_map_write_entirely(wiki):
     assert second is None
 
 
-def test_bootstrap_rerun_never_overwrites_populated_map(wiki):
+def test_bootstrap_rerun_never_overwrites_populated_map(wiki, configured_backup):
     """Regression: re-running bootstrap on a project whose map has since
     been grown with real Knowledge/Decision-map content (by ingest, wrap, or
     pin) must leave that real content intact — not wipe it back to the empty
@@ -129,7 +142,7 @@ def test_bootstrap_applies_clean_human_provenance_not_quarantined(wiki):
     assert entries[0]["writer"] == "human"
 
 
-def test_bootstrap_stamps_skeleton_additively_existing_user_file_untouched(wiki):
+def test_bootstrap_stamps_skeleton_additively_existing_user_file_untouched(wiki, configured_backup):
     sentinel_index = wiki / "index.md"
     sentinel_index.write_text("MY OWN CUSTOM INDEX — DO NOT TOUCH", encoding="utf-8")
 
@@ -159,7 +172,7 @@ def test_bootstrap_stamps_project_overview(wiki):
     assert "type: overview" in text
 
 
-def test_bootstrap_rerun_never_overwrites_edited_overview(wiki):
+def test_bootstrap_rerun_never_overwrites_edited_overview(wiki, configured_backup):
     """Re-running bootstrap must leave a user-edited overview.md untouched —
     same additive-never-overwrite contract as the master skeleton files."""
     bootstrap("new-idea", session="sess-1")
@@ -215,3 +228,16 @@ def test_bootstrap_without_repo_root_writes_no_claude_md(wiki, tmp_path):
     bootstrap("falcon", session="sess-1")
 
     assert not (tmp_path / "CLAUDE.md").exists()
+
+
+def test_bootstrap_blocked_without_backup_on_populated_wiki(wiki, monkeypatch):
+    """0.6.0 Task 4, issue #11 §2: through the REAL skill entry point (no
+    mocking of `bootstrap` itself, only the backup-check it delegates to),
+    a bootstrap on an already-populated wiki with no configured backup must
+    be refused rather than silently risking grown content."""
+    (wiki / "maps").mkdir(parents=True)
+    (wiki / "maps" / "l2-map.md").write_text("grown content", encoding="utf-8")
+    monkeypatch.setattr("lib.governance.backup_gate.backup_configured", lambda root: False)
+
+    with pytest.raises(BackupRequired):
+        bootstrap("some-project", session="sess-1")

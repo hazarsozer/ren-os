@@ -74,8 +74,13 @@ def test_stamp_skeleton_rerun_preserves_grown_pages(wiki):
     assert grown.read_text(encoding="utf-8") == before
 
 
-def test_bootstrap_rerun_preserves_grown_l2_map(wiki):
+def test_bootstrap_rerun_preserves_grown_l2_map(wiki, monkeypatch):
     """The exact 0.5.6 bug shape, pinned at the real L2 map path."""
+    # 0.6.0 Task 4: the second bootstrap call below runs against an
+    # already-populated wiki, which the backup gate now covers — fake a
+    # configured backup so this pin keeps testing the ORIGINAL bug shape,
+    # not the (separately tested) gate.
+    monkeypatch.setattr("lib.governance.backup_gate.backup_configured", lambda root: True)
     bootstrap("falcon", session="sess-1")
     grown = wiki / "projects" / "falcon" / "map.md"
     assert grown.is_file()
