@@ -30,7 +30,11 @@ FRAMEWORK_ROOT_ENV = "REN_FRAMEWORK_ROOT"
 """Env-var override for the framework root path. Lets tests + distribution remap."""
 
 DEFAULT_FRAMEWORK_ROOT = Path.home() / ".renos"
-"""Default framework root (renamed from startup-framework's ~/.startup-framework)."""
+"""Default framework root (renamed from startup-framework's ~/.startup-framework).
+
+NOTE: frozen at import time — kept only for back-compat introspection. Resolvers
+must NOT use it (issue #13: import-time freezing bypasses test HOME isolation);
+`framework_root()` re-reads `Path.home()` lazily at call time instead."""
 
 WIKI_ROOT_ENV = "REN_WIKI_ROOT"
 """Explicit env-var override for the wiki path (highest-precedence F1 tier)."""
@@ -108,7 +112,11 @@ def plugin_data_dir() -> Path:
     Honors CLAUDE_PLUGIN_DATA; falls back to the same path the shell scripts use.
     """
     override = os.environ.get(PLUGIN_DATA_ENV, "").strip()
-    return Path(override).expanduser() if override else DEFAULT_PLUGIN_DATA
+    if override:
+        return Path(override).expanduser()
+    # Lazy: re-read Path.home() at call time (issue #13 — the module constant
+    # freezes the real home at import, bypassing test HOME isolation).
+    return Path.home() / ".claude" / "plugins" / "data" / "renos"
 
 
 def code_map_cache_dir() -> Path:
@@ -130,7 +138,9 @@ def framework_root() -> Path:
     override = os.environ.get(FRAMEWORK_ROOT_ENV)
     if override:
         return Path(override).expanduser()
-    return DEFAULT_FRAMEWORK_ROOT
+    # Lazy: re-read Path.home() at call time (issue #13 — the module constant
+    # freezes the real home at import, bypassing test HOME isolation).
+    return Path.home() / ".renos"
 
 
 CLAUDE_DIR_ENV = "REN_CLAUDE_DIR"

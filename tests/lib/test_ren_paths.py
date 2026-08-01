@@ -363,3 +363,20 @@ def test_claude_user_dir_ren_claude_dir_takes_precedence_over_claude_config_dir(
 def test_claude_user_dir_ren_claude_dir_alone_still_works(clean_claude_env, tmp_path):
     clean_claude_env.setenv("REN_CLAUDE_DIR", str(tmp_path))
     assert claude_user_dir() == tmp_path
+
+
+# --- issue #13: lazy home resolution ----------------------------------------
+
+
+def test_framework_root_follows_patched_home(clean_path_env, tmp_path):
+    """framework_root() must re-read HOME at call time, not freeze it at import."""
+    clean_path_env.setenv("HOME", str(tmp_path))
+    assert framework_root() == tmp_path / ".renos"
+
+
+def test_plugin_data_dir_follows_patched_home(clean_path_env, tmp_path):
+    clean_path_env.delenv("CLAUDE_PLUGIN_DATA", raising=False)
+    clean_path_env.setenv("HOME", str(tmp_path))
+    assert ren_paths.plugin_data_dir() == (
+        tmp_path / ".claude" / "plugins" / "data" / "renos"
+    )
