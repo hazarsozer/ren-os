@@ -58,7 +58,12 @@ from lib.ren_paths import wiki_root  # noqa: E402
 
 _NON_HUMAN_WRITERS = ("llm-auto", "retrospective", "routine")
 
-_TRUST_LINE_RE = re.compile(r'^ren_trust: "foreign"$', re.MULTILINE)
+# Tolerant of the YAML spellings `_should_remint`'s yaml.safe_load accepts
+# (unquoted, single-quoted, extra whitespace) — dogfood-2 finding M1: the
+# old exact-match `^ren_trust: "foreign"$` left variant spellings reported
+# "reminted" but unchanged on disk, forever (non-convergent). The rewrite
+# always emits canonical `ren_trust: "model"`.
+_TRUST_LINE_RE = re.compile(r"""^ren_trust:\s*['"]?foreign['"]?\s*$""", re.MULTILINE)
 
 
 def _should_remint(text: str) -> bool:

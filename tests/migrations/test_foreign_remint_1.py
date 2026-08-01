@@ -165,3 +165,42 @@ def test_remint_skips_dot_prefixed_paths(wiki):
 
     prov = provenance.read_frontmatter_provenance(dotfile.read_text(encoding="utf-8"))
     assert prov["trust"] == "foreign"
+
+
+def _foreign_llm_page_text_variant(trust_line: str) -> str:
+    return (
+        '---\n'
+        'ren_write_id: "w-01H0000000000000000000013"\n'
+        'ren_ts: "2026-07-31T00:00:00Z"\n'
+        'ren_writer: "llm-auto"\n'
+        'ren_op: "ADD"\n'
+        f'{trust_line}\n'
+        '---\n'
+        'Body.\n'
+    )
+
+
+@pytest.mark.parametrize(
+    "trust_line",
+    ["ren_trust: foreign", "ren_trust: 'foreign'", 'ren_trust:  "foreign" '],
+    ids=["unquoted", "single-quoted", "extra-spaces"],
+)
+def test_remint_handles_yaml_trust_line_variants_and_converges(wiki, trust_line):
+    # Dogfood-2 M1: _should_remint parses YAML tolerantly, but the rewrite
+    # regex only matched `ren_trust: "foreign"` exactly — variant spellings
+    # were reported "reminted" every run while the file never changed.
+    page = wiki / "projects" / "flux" / "map.md"
+    page.parent.mkdir(parents=True, exist_ok=True)
+    page.write_text(_foreign_llm_page_text_variant(trust_line), encoding="utf-8")
+
+    migrate = _load_migrate()
+    assert migrate.main([]) == 0
+
+    text = page.read_text(encoding="utf-8")
+    assert 'ren_trust: "model"' in text
+    assert "foreign" not in text
+    assert provenance.read_frontmatter_provenance(text)["trust"] == "model"
+
+    # Second run is a no-op (convergent).
+    assert migrate.main([]) == 0
+    assert page.read_text(encoding="utf-8") == text
