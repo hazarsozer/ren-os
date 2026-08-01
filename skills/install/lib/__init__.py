@@ -208,9 +208,18 @@ def warm_environment() -> dict:
     bound), `uv run`'s one-liner just needs the already-synced venv to spin
     up.
     """
-    root = str(_repo_root())
+    root_path = _repo_root()
+    root = str(root_path)
+    # `--frozen` requires a lockfile; an install whose plugin root lacks
+    # uv.lock (issue #14 — it was gitignored, so it never shipped) would
+    # otherwise fail unconditionally with "Unable to find lockfile". uv.lock
+    # is tracked now, but degrade to a resolving sync rather than dying if a
+    # future artifact loses it again.
+    sync_cmd = ["uv", "sync", "--frozen", "--project", root]
+    if not (root_path / "uv.lock").is_file():
+        sync_cmd = ["uv", "sync", "--project", root]
     subprocess.run(
-        ["uv", "sync", "--frozen", "--project", root],
+        sync_cmd,
         check=True, capture_output=True, text=True, timeout=120,
     )
     proc = subprocess.run(

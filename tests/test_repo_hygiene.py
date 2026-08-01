@@ -66,6 +66,21 @@ def test_no_pycache_or_pytest_cache_inside_shippable_dirs():
         assert not tracked_offenders, f"cache files tracked in git: {tracked_offenders}"
 
 
+def test_uv_lock_is_git_tracked():
+    """The shipped plugin must carry uv.lock: install's `warm_environment()`
+    runs `uv sync --frozen` against the plugin root, and a missing lockfile
+    made stage 1 of install fail unconditionally (issue #14). `uv.lock` was
+    gitignored, so it never reached the published repo."""
+    lock = REPO_ROOT / "uv.lock"
+    assert lock.is_file(), "uv.lock missing from repo root"
+
+    proc = subprocess.run(
+        ["git", "-C", str(REPO_ROOT), "ls-files", "--error-unmatch", "uv.lock"],
+        capture_output=True, text=True,
+    )
+    assert proc.returncode == 0, "uv.lock is not tracked by git — it will not ship to friends"
+
+
 def test_every_skill_md_has_required_frontmatter_keys():
     skill_mds = sorted((REPO_ROOT / "skills").glob("*/SKILL.md"))
     assert skill_mds, "expected at least one skills/*/SKILL.md"
