@@ -911,3 +911,19 @@ def test_secret_in_added_lines_still_blocks(git_repo, tmp_path, capsys):
     rc = pre_push_scan.check_push("git push -u origin feature", str(git_repo))
     assert rc == 2
     assert "module.py" in capsys.readouterr().err
+
+
+def test_divergent_push_url_keeps_denylist(git_repo, capsys):
+    """Dogfood-2 M2: `git remote set-url --push origin <elsewhere>` makes the
+    fetch URL match plugin.json's canonical `repository` while the push
+    actually goes somewhere else — the canonical-remote exemption must check
+    the PUSH URL, not the fetch URL, or the denylist stands down while the
+    bytes leave for the divergent remote."""
+    _make_renos_identity_with_repository(git_repo, "https://github.com/hazarsozer/ren-os")
+    _commit_file(git_repo, "tests/test_x.py", "def test_x():\n    assert True\n")
+    _git(git_repo, "remote", "add", "origin", "git@github.com:hazarsozer/ren-os.git")
+    _git(git_repo, "remote", "set-url", "--push", "origin", "git@github.com:someorg/ren-dist.git")
+
+    rc = pre_push_scan.check_push("git push origin main", str(git_repo))
+    assert rc == 2
+    assert "tests/test_x.py" in capsys.readouterr().err

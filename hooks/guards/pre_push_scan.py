@@ -302,7 +302,11 @@ def _is_own_canonical_remote(cwd: str, remote: str) -> bool:
         if not isinstance(repository, str) or not repository.strip():
             return False
         url = subprocess.run(
-            ["git", "-C", cwd, "remote", "get-url", remote],
+            # `--push` (dogfood-2 M2): compare the URL the push actually goes
+            # to — a divergent push URL (`git remote set-url --push`) must not
+            # stand the denylist down. Git falls back to the fetch URL when no
+            # pushurl is set, so the common case is unchanged.
+            ["git", "-C", cwd, "remote", "get-url", "--push", remote],
             capture_output=True, text=True, timeout=5,
         )
         if url.returncode != 0 or not url.stdout.strip():
