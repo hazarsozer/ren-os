@@ -770,7 +770,8 @@ def _is_foreign_stamped(path: Path) -> bool:
     misses a foreign-stamped page whose banner has since been released, so
     this checks the durable stamp (Task 6) independently of banner state.
     Unstamped pages are NOT foreign (deliberate scope decision — see module
-    docstring / Task 9b brief: only the ingest door mints "foreign", and
+    docstring / Task 9b brief: "foreign" only ever arrives via an explicit
+    stamp — post-#22 no producer mints it, ingest drafts are "model" — and
     ordinary hand-written pages carry no `ren_*` stamps at all). Never
     raises: any read/parse failure degrades to "not foreign".
     """

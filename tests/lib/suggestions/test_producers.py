@@ -158,6 +158,9 @@ def test_released_but_foreign_page_never_yields_promotion_spec(wiki):
     # Task 9: even after 3-of-5 reinforcement AND the quarantine banner being
     # released, a page whose own ren_trust stamp is "foreign" must never
     # yield a promotion spec — mirrors the existing is_quarantined skip.
+    # Post-#22 no producer mints "foreign" (ingest now mints "model"), so the
+    # fixture hand-stamps the trust line — the hand-stamped/external page is
+    # exactly the population this check still protects against.
     page = "projects/x/foreign-pref.md"
     sessions = ("s1", "s2", "s3")
     propose_and_apply(
@@ -175,6 +178,12 @@ def test_released_but_foreign_page_never_yields_promotion_spec(wiki):
         )
 
     abs_page = wiki / page
+    abs_page.write_text(
+        abs_page.read_text(encoding="utf-8").replace(
+            'ren_trust: "model"', 'ren_trust: "foreign"', 1
+        ),
+        encoding="utf-8",
+    )
     abs_page.write_text(quarantine.release(abs_page.read_text(encoding="utf-8")), encoding="utf-8")
     assert not quarantine.is_quarantined(abs_page.read_text(encoding="utf-8"))  # banner really released
 

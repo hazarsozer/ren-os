@@ -38,22 +38,25 @@ _OPS: tuple[str, ...] = get_args(Op)
 
 # Trust taxonomy (0.5.1, Task 6): every write's trust class is derived
 # MECHANICALLY from writer/producer at the single door, never classified by a
-# model. "user" = a human wrote it directly; "foreign" = ingested from outside
-# the session (untrusted provenance, e.g. an existing repo scan); "model" =
-# everything else the session itself produced (llm-auto, retrospective, routine).
+# model. "user" = a human wrote it directly; "model" = what the session itself
+# produced (llm-auto, retrospective, routine — including ingest drafts, which
+# are RenOS's own subagents distilling the friend's own repo, issue #22);
+# "foreign" = genuinely external content (someone else's wiki/import). No
+# current producer mints "foreign" — the class stays in the taxonomy for
+# hand-stamped pages and future import doors, and every "foreign" check
+# (wake-up withhold, recall fencing, suggestions) remains in force.
 TRUST_CLASSES: tuple[str, ...] = ("user", "model", "foreign")
 
 
 def trust_class(writer: str, producer: str) -> str:
     """Mechanically derive the trust class for a write from its writer and
     producer. `writer == "human"` always wins (a human-authored write is
-    trusted regardless of producer); otherwise `producer == "ingest"` marks
-    content pulled in from outside the session as `"foreign"`; everything
-    else is `"model"`."""
+    trusted regardless of producer); everything else is `"model"` — including
+    `producer == "ingest"`, whose drafts are the session's own subagents
+    distilling the friend's own repo (issue #22; they still carry the
+    quarantine banner until released). No producer mints `"foreign"`."""
     if writer == "human":
         return "user"
-    if producer == "ingest":
-        return "foreign"
     return "model"
 
 
@@ -107,8 +110,9 @@ def new_provenance(
 
     When `trust` is not given it derives from the writer alone
     (`trust_class(writer, producer="")`): human → "user", else "model".
-    Callers that know the producer (the queue) pass trust explicitly — the
-    only path that can yield "foreign". This default closes the rev-t6 gap
+    Callers that know the producer (the queue) pass trust explicitly.
+    "foreign" is never minted by `trust_class` (issue #22) — it can only
+    arrive via an explicit `trust` argument. This default closes the rev-t6 gap
     where human-driven paths with no producer in scope (revert, install
     founding pages) were silently stamped "model".
 

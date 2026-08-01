@@ -863,7 +863,8 @@ def test_own_project_knowledge_page_still_held_while_banner_is_intact(wiki):
 def test_rank_extras_includes_unstamped_bannerless_ordinary_page(wiki):
     # Deliberate scope decision (Task 9b brief): unstamped pages REMAIN
     # included — they're the user's own hand-written Obsidian-invariant
-    # pages, not foreign content. Only ingest mints "foreign".
+    # pages, not foreign content. "foreign" only arrives via an explicit
+    # stamp (post-#22 no producer mints it).
     _write(wiki / "notes.md", "# Notes\n\nhand-written, no frontmatter at all")
 
     ranked, held_count = wakeup.rank_extras("", wiki, exclude=set())

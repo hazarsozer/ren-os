@@ -206,8 +206,11 @@ def test_trust_class_human_writer_is_user():
     assert trust_class("human", "wrap") == "user"
 
 
-def test_trust_class_ingest_producer_is_foreign():
-    assert trust_class("llm-auto", "ingest") == "foreign"
+def test_trust_class_ingest_producer_is_model():
+    # Issue #22: ingest drafts are RenOS's own subagents distilling the
+    # friend's own repo, applied through the queue — "model", not "foreign".
+    # "foreign" stays in the taxonomy, reserved for genuinely external content.
+    assert trust_class("llm-auto", "ingest") == "model"
 
 
 def test_trust_class_otherwise_is_model():

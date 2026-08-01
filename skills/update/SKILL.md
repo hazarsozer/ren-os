@@ -127,6 +127,23 @@ Carried near-verbatim from donor `skills/update/` (Task 7.3) — the migration s
   a follow-up session per project (or a re-run of `/ren:ingest-project`,
   which now produces the hierarchical shape natively).
 
+## 0.6.3 update notes
+
+- **foreign-remint-1 (issue #22):** a friend upgrading from before 0.6.3 may
+  have ingest-drafted knowledge pages mis-stamped `ren_trust: "foreign"`
+  (pre-#22 `trust_class` minted "foreign" for every `producer="ingest"`
+  write, which held the ingested project's L2 map out of wake-up
+  unconditionally). Run `migrations/foreign-remint-1/migrate.py` once as a
+  post-update step after the version bump lands, gated by
+  `skills.update.lib.should_run_foreign_remint_1(<old-version>,
+  <new-version>)` — `True` when the update crosses the 0.6.3 boundary.
+  Standalone global migration (walks the whole wiki tree, restamps only
+  foreign pages with a known non-human `ren_writer`; quarantine banners are
+  untouched) — see `skills/wiki-migration/schemas.json`'s
+  `global_migrations` note and that migration's README.md. `--check`
+  previews what would be reminted with zero writes. Idempotent — safe to
+  (re-)run even if a friend already updated once without it.
+
 ## Overlap note: snapshot substrate vs. Task 1.2's per-write snapshots
 
 `lib/memory/snapshot.py` (Task 1.2, G9) is a DIFFERENT snapshot mechanism: per-write-id, page-granularity snapshots for the write-safety substrate (revert a single memory write in one step). `scripts/snapshot.sh` here is whole-wiki, version-bump-granularity, for migration rollback. They serve genuinely different purposes at different granularities — this skill's carried snapshot logic is NOT rewritten to unify with Task 1.2's substrate; that unification (if it's ever worth doing) is a 0.3-scoped ADR decision, not something to improvise here. Noted per the task brief's explicit instruction not to rewrite working carried code.
