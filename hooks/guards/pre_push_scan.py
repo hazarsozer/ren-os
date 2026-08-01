@@ -35,11 +35,14 @@ Checks, in order:
      the plugin "ren"); a user's own repo that tracks tests/ etc. is never
      denylisted (B2). Scans `git ls-files` (not `git diff --stat`, which
      misses already-tracked-but-newly-pushed history) against `PATH_DENYLIST`.
-  4. SECRETS SCAN — `lib.memory.scrub.scan` over the OUTGOING file set only
-     (`@{u}..HEAD`, or the full tree on a first push with no upstream),
-     skipping files >1MB or non-UTF-8 (treated as binary). A secret in a file
-     not part of this push does not block (B2). A finding blocks, naming
-     KINDS and PATHS — never the secret content itself.
+  4. SECRETS SCAN — `lib.memory.scrub.scan` over the OUTGOING ADDED LINES
+     only (`git diff --unified=0` against `@{u}`, or the remote default
+     branch's merge-base on a first branch push — issues #27/#28; full file
+     contents only on a genuinely first publish with no remote refs),
+     skipping blobs >1MB or non-UTF-8 (treated as binary). Secret-shaped
+     content not added by this push does not block (B2, content
+     granularity). A finding blocks, naming KINDS and PATHS — never the
+     secret content itself.
 """
 
 from __future__ import annotations
@@ -155,45 +158,71 @@ def _remote_base_ref(cwd: str, remote: str) -> str:
     return ""
 
 
-def _outgoing_files(cwd: str, remote: str = "") -> list[str]:
-    """Files to run the secrets scan over: only those touched by commits not
-    yet on the upstream (`@{u}..HEAD`) — a secret-shaped string in a file that
-    is NOT part of this push must not block. When there is no upstream (first
-    push of a branch), diff against the push target's default branch instead
-    (`<base>...HEAD`, i.e. since the merge-base — issue #27: the full-tree
-    fallback blocked every new branch of a repo whose tree legitimately
-    carries secret-shaped fixtures already on the remote). Only when the
-    remote has no known refs at all (genuinely first publish) is everything
-    tracked outgoing, via the full `git ls-files` tree. Never raises —
-    degrades to [] on diff failure with a base present (fail toward
-    not-scanning that file set rather than crashing the guard)."""
+def _scan_base(cwd: str, remote: str) -> str | None:
+    """Diff base for the outgoing secrets scan: `"@{u}.."` when an upstream
+    exists; else the push target's default branch as `"<ref>..."` (since the
+    merge-base — issue #27: the full-tree fallback blocked every new branch
+    of a repo whose tree legitimately carries secret-shaped fixtures already
+    on the remote); `None` only when the remote has no known refs at all
+    (genuinely first publish — everything tracked really is outgoing)."""
     try:
         rev = subprocess.run(
             ["git", "-C", cwd, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"],
             capture_output=True, text=True, timeout=5,
         )
-        has_upstream = rev.returncode == 0 and bool(rev.stdout.strip())
+        if rev.returncode == 0 and rev.stdout.strip():
+            return "@{u}.."
     except (OSError, subprocess.TimeoutExpired):
-        has_upstream = False
+        pass
+    base_ref = _remote_base_ref(cwd, remote)
+    return f"{base_ref}..." if base_ref else None  # three-dot: since merge-base
 
-    if has_upstream:
-        base = "@{u}.."
-    else:
-        base_ref = _remote_base_ref(cwd, remote)
-        if not base_ref:
-            return _ls_files(cwd)
-        base = f"{base_ref}..."  # three-dot: diff since the merge-base
+
+def _outgoing_blobs(cwd: str, remote: str = "") -> dict[str, str]:
+    """Text to run the secrets scan over, keyed by file path. B2, applied at
+    CONTENT granularity (issue #28): only the push's ADDED lines are scanned
+    (`git diff --unified=0 <base>HEAD`, `+` lines per file) — pre-existing
+    secret-shaped text in a file the push happens to edit is not part of this
+    push and must not block, while a real secret introduced by the push's own
+    added lines is still caught. Only with no scan base at all (first publish
+    of the repo) does the scan cover full tracked-file contents. Never raises
+    — degrades to {} on diff failure (fail toward not-scanning rather than
+    crashing the guard); files/blobs over 1MB are skipped as in `_scan_secrets`.
+    """
+    base = _scan_base(cwd, remote)
+    root = Path(cwd)
+
+    if base is None:
+        blobs: dict[str, str] = {}
+        for rel in _ls_files(cwd):
+            path = root / rel
+            try:
+                if not path.is_file() or path.stat().st_size > _MAX_SCAN_BYTES:
+                    continue
+                blobs[rel] = path.read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError):
+                continue
+        return blobs
 
     try:
         diff = subprocess.run(
-            ["git", "-C", cwd, "diff", "--name-only", f"{base}HEAD"],
+            ["git", "-C", cwd, "diff", "--unified=0", f"{base}HEAD"],
             capture_output=True, text=True, timeout=15,
         )
         if diff.returncode != 0:
-            return []
-        return [line for line in diff.stdout.splitlines() if line.strip()]
+            return {}
     except (OSError, subprocess.TimeoutExpired):
-        return []
+        return {}
+
+    blobs = {}
+    current: str | None = None
+    for line in diff.stdout.splitlines():
+        if line.startswith("+++ "):
+            target = line[4:].strip()
+            current = None if target == "/dev/null" else target.removeprefix("b/")
+        elif current and line.startswith("+") and not line.startswith("+++"):
+            blobs[current] = blobs.get(current, "") + line[1:] + "\n"
+    return blobs
 
 
 def _has_force_refspec(command: str) -> bool:
@@ -299,22 +328,17 @@ def _denylisted_paths(files: list[str]) -> list[str]:
     return [f for f in files if any(f.startswith(prefix) for prefix in PATH_DENYLIST)]
 
 
-def _scan_secrets(cwd: str, files: list[str]) -> list[tuple[str, str]]:
-    """Return `[(path, kind), ...]` for every file matching
-    `lib.memory.scrub.PATTERNS`. Skips files over 1MB or that fail to decode
-    as UTF-8 (treated as binary) — bounded scan, not a full repo audit."""
+def _scan_secrets(blobs: dict[str, str]) -> list[tuple[str, str]]:
+    """Return `[(path, kind), ...]` for every blob matching
+    `lib.memory.scrub.PATTERNS`. Blobs are the ADDED-LINES text per outgoing
+    file (or full file contents on a first publish) — see `_outgoing_blobs`.
+    Skips blobs over 1MB — bounded scan, not a full repo audit."""
     _ensure_plugin_root_on_path()
     from lib.memory import scrub as _scrub
 
     findings: list[tuple[str, str]] = []
-    root = Path(cwd)
-    for rel in files:
-        path = root / rel
-        try:
-            if not path.is_file() or path.stat().st_size > _MAX_SCAN_BYTES:
-                continue
-            text = path.read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError):
+    for rel, text in blobs.items():
+        if len(text.encode("utf-8", errors="replace")) > _MAX_SCAN_BYTES:
             continue
         for finding in _scrub.scan(text):
             findings.append((rel, finding.kind))
@@ -373,9 +397,10 @@ def check_push(command: str, cwd: str) -> int:
                 f"remote: {', '.join(denylisted[:10])}"
             )
 
-    # B2: scan only the OUTGOING changes, not the whole tracked tree — a
-    # secret-shaped string in a file that isn't part of this push must not block.
-    findings = _scan_secrets(cwd, _outgoing_files(cwd, next((r for r in remotes if r), "")))
+    # B2: scan only the OUTGOING changes — the push's added lines, not whole
+    # touched files or the tracked tree (issues #27/#28) — a secret-shaped
+    # string in content that isn't part of this push must not block.
+    findings = _scan_secrets(_outgoing_blobs(cwd, next((r for r in remotes if r), "")))
     if findings:
         kinds = sorted({kind for _, kind in findings})
         paths = sorted({path for path, _ in findings})

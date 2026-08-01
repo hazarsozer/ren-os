@@ -840,8 +840,8 @@ def test_first_push_of_branch_scans_only_outgoing_not_full_tree(git_repo, tmp_pa
     against the remote default branch's merge-base, not fall back to the
     full tracked tree (which legitimately contains secret-SHAPED fixtures
     already on the remote)."""
-    secret = "AKIA" + "IOSFODNN7EXAMPLE"
-    _commit_file(git_repo, "fixtures/fake.env", f"AWS_KEY = '{secret}'\n")
+    aws_id = "AKIA" "IOSFODNN7EXAMPLE"  # split so the fixture line itself is not secret-shaped
+    _commit_file(git_repo, "fixtures/fake.env", f"AWS_KEY = '{aws_id}'\n")
 
     remote = tmp_path / "remote.git"
     subprocess.run(["git", "init", "-q", "--bare", str(remote)], check=True)
@@ -858,8 +858,8 @@ def test_first_push_of_branch_scans_only_outgoing_not_full_tree(git_repo, tmp_pa
 def test_first_push_of_whole_repo_still_scans_full_tree(git_repo, tmp_path, capsys):
     """When the remote has no refs at all (genuinely first publish),
     EVERYTHING is outgoing — the full-tree scan stays."""
-    secret = "AKIA" + "IOSFODNN7EXAMPLE"
-    _commit_file(git_repo, "fixtures/fake.env", f"AWS_KEY = '{secret}'\n")
+    aws_id = "AKIA" "IOSFODNN7EXAMPLE"  # split so the fixture line itself is not secret-shaped
+    _commit_file(git_repo, "fixtures/fake.env", f"AWS_KEY = '{aws_id}'\n")
 
     remote = tmp_path / "remote.git"
     subprocess.run(["git", "init", "-q", "--bare", str(remote)], check=True)
@@ -868,3 +868,46 @@ def test_first_push_of_whole_repo_still_scans_full_tree(git_repo, tmp_path, caps
     rc = pre_push_scan.check_push("git push -u origin HEAD", str(git_repo))
     assert rc == 2
     assert "fixtures/fake.env" in capsys.readouterr().err
+
+
+# --- issue #28: secrets scan covers ADDED LINES only, not whole touched files
+
+
+def test_editing_file_with_preexisting_secret_shaped_text_does_not_block(git_repo, tmp_path):
+    """Issue #28: pre-existing secret-shaped content in a file the push
+    happens to edit must not block — only the push's ADDED lines are scanned
+    (the guard's own B2 doctrine, applied at content granularity)."""
+    aws_id = "AKIA" "IOSFODNN7EXAMPLE"  # split so the fixture line itself is not secret-shaped
+    _commit_file(git_repo, "module.py", f"OLD_FIXTURE = '{aws_id}'\nx = 1\n")
+
+    remote = tmp_path / "remote.git"
+    subprocess.run(["git", "init", "-q", "--bare", str(remote)], check=True)
+    _git(git_repo, "remote", "add", "origin", str(remote))
+    _git(git_repo, "push", "-q", "origin", "HEAD")
+
+    _git(git_repo, "checkout", "-q", "-b", "feature")
+    path = git_repo / "module.py"
+    path.write_text(path.read_text(encoding="utf-8") + "y = 2\n", encoding="utf-8")
+    _git(git_repo, "add", "module.py")
+    _git(git_repo, "commit", "-q", "-m", "clean edit")
+
+    rc = pre_push_scan.check_push("git push -u origin feature", str(git_repo))
+    assert rc == 0
+
+
+def test_secret_in_added_lines_still_blocks(git_repo, tmp_path, capsys):
+    """A REAL secret introduced by the push's own added lines is still caught."""
+    _commit_file(git_repo, "module.py", "x = 1\n")
+
+    remote = tmp_path / "remote.git"
+    subprocess.run(["git", "init", "-q", "--bare", str(remote)], check=True)
+    _git(git_repo, "remote", "add", "origin", str(remote))
+    _git(git_repo, "push", "-q", "origin", "HEAD")
+
+    _git(git_repo, "checkout", "-q", "-b", "feature")
+    aws_id = "AKIA" "IOSFODNN7EXAMPLE"  # split so the fixture line itself is not secret-shaped
+    _commit_file(git_repo, "module.py", f"x = 1\nNEW_KEY = '{aws_id}'\n")
+
+    rc = pre_push_scan.check_push("git push -u origin feature", str(git_repo))
+    assert rc == 2
+    assert "module.py" in capsys.readouterr().err

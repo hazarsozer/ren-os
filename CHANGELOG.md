@@ -2,9 +2,9 @@
 
 ## [0.6.3] - 2026-08-01 — "wake-up actually remembers"
 
-Seven fixes from the second dogfood pass (issues #21–#27): last-session
+Eight fixes from the second dogfood pass (issues #21–#28): last-session
 continuity, trust minting, the two lifecycle loops that never closed, and
-the two push-guard defects that blocked publishing this very train.
+the three push-guard defects that blocked publishing this very train.
 
 - **L1 continuity is global, not project-gated** (#21) — the "What
   happened last session" read (project-local `l1/` first, global `l1/`
@@ -44,6 +44,12 @@ the two push-guard defects that blocked publishing this very train.
   carries secret-shaped scrub patterns and test fixtures already on the
   remote). Full-tree scan remains only for a genuinely first publish
   (remote with no refs).
+- **Push secrets scan at content granularity** (#28) — only the push's
+  ADDED lines are scanned, so pre-existing secret-shaped text in a file
+  the push happens to edit (scrub's own patterns, test fixtures,
+  `*_token` identifiers) no longer blocks; a real secret introduced by
+  the push is still caught. The overbroad `password-pair` scrub pattern
+  itself is tracked separately (#29).
 
 ## [0.6.2] - 2026-08-01 — "the dogfood train"
 
