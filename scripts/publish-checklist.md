@@ -14,10 +14,10 @@
 7. Create the GitHub Release from the CHANGELOG section (friends watch
    Releases for update notifications):
    `gh release create vX.Y.Z -R hazarsozer/ren-os --verify-tag --title "vX.Y.Z — <codename>" --notes-file <changelog-section>`
-8. Sync the dev backup remote — the dev environment must stay as current as
-   the product (a stale backup blocks working from another machine):
-   `git push backup main --follow-tags && git push backup --tags`
-   (plus any active feature branch: `git push backup <branch>`)
+8. Push any active feature branch to origin too (`git push origin <branch>`)
+   so other machines can pick up in-flight work — `ren-os` is the single
+   remote for this repo (the separate dev-backup mirror was retired
+   2026-08-01; it never diverged from origin).
 9. Update dev-repo memory/session notes
 
 ---
