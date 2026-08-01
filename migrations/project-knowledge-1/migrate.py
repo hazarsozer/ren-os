@@ -108,7 +108,11 @@ def normalize_frontmatter(text: str, slug: str) -> str:
     out: list[str] = []
     seen: set[str] = set()
     for line in lines:
-        key = line.split(":", 1)[0].strip() if ":" in line else None
+        # Only a key at column 0 is top-level (0.6.2 review finding L2):
+        # an indented `  type: x` is a nested YAML value and must be
+        # preserved byte-for-byte, not rewritten.
+        top_level = ":" in line and not line[:1].isspace()
+        key = line.split(":", 1)[0].strip() if top_level else None
         if key in fields:
             if key in seen:
                 continue  # drop a duplicate key rather than emit it twice
@@ -215,7 +219,13 @@ def main(argv: list[str] | None = None) -> int:
                 target.write_text(normalize_frontmatter(text, slug), encoding="utf-8")
                 page.unlink()
                 print(f"{rel_from}: moved -> {rel_to}")
-                records.append({"ts": ts, "slug": slug, "from": rel_from, "to": rel_to})
+                # 0.6.2 review finding M2: journal each move IMMEDIATELY, not
+                # in one batch at the end — a mid-run failure (e.g. a later
+                # unlink raising) must not lose the record of files already
+                # moved.
+                record = {"ts": ts, "slug": slug, "from": rel_from, "to": rel_to}
+                _journal([record])
+                records.append(record)
             else:
                 print(f"{rel_from}: WOULD MOVE -> {rel_to}")
 
@@ -225,9 +235,6 @@ def main(argv: list[str] | None = None) -> int:
     rewritten = rewrite_pointers(wiki, path_moves, apply=apply)
     for line in rewritten:
         print(("pointer rewritten " if apply else "pointer WOULD BE rewritten ") + line)
-
-    if apply and records:
-        _journal(records)
 
     verb = "moved" if apply else "would move"
     print(

@@ -94,7 +94,14 @@ _MIN_SIGNIFICANT_TOKENS_TO_CONSIDER = 3
 # merely TALKED about the same topic. A contradiction requires the SAME CLAIM,
 # negated on one side: the negation-stripped line and the affirmative line must
 # overlap on most of their significant tokens, not just three of them.
-_MIN_NEGATED_CLAIM_JACCARD = 0.6
+#
+# 0.6.2 review finding H2: this gate is CONTAINMENT (shared / min side), not
+# symmetric Jaccard. A genuine contradiction whose negated side carries an
+# explanation ("Migrations do not run automatically on deploy; run them
+# manually first." vs "Migrations run automatically on deploy.") dilutes a
+# symmetric union below the threshold while fully containing the short
+# side's claim — containment keeps it.
+_MIN_NEGATED_CLAIM_OVERLAP = 0.6
 
 _FRONTMATTER_RE = re.compile(r"\A---\n(.*?)\n---\n?", re.DOTALL)
 
@@ -168,20 +175,22 @@ def _same_claim(negated_toks: set[str], affirmative: str) -> bool:
 
     Two gates, both required (issue #16): at least
     `_MIN_SHARED_TOKENS_FOR_CONTRADICTION` significant tokens in common (the
-    original topic gate), AND a significant-token Jaccard of at least
-    `_MIN_NEGATED_CLAIM_JACCARD` between the negation-stripped line and the
-    affirmative one. The second gate is what separates "X is bad" vs "X is
-    good" (same claim, one negated → contradiction) from "don't do X" vs "here
-    is a long paragraph that also mentions X" (topic overlap only →
-    restatement, NOT a contradiction)."""
+    original topic gate), AND a significant-token CONTAINMENT — shared over
+    the SMALLER side — of at least `_MIN_NEGATED_CLAIM_OVERLAP` between the
+    negation-stripped line and the affirmative one (0.6.2 H2: containment,
+    not symmetric Jaccard, so a negated side that also carries an
+    explanation doesn't dilute a genuine same-claim match). The second gate
+    is what separates "X is bad" vs "X is good" (same claim, one negated →
+    contradiction) from "don't do X" vs "here is a long paragraph that also
+    mentions X" (topic overlap only → restatement, NOT a contradiction)."""
     affirmative_toks = _significant_tokens(affirmative)
     shared = negated_toks & affirmative_toks
     if len(shared) < _MIN_SHARED_TOKENS_FOR_CONTRADICTION:
         return False
-    union = negated_toks | affirmative_toks
-    if not union:
+    smaller = min(len(negated_toks), len(affirmative_toks))
+    if smaller == 0:
         return False
-    return len(shared) / len(union) >= _MIN_NEGATED_CLAIM_JACCARD
+    return len(shared) / smaller >= _MIN_NEGATED_CLAIM_OVERLAP
 
 
 def _detect_contradictions(
@@ -386,13 +395,19 @@ def _contradicts_exempt(
     2. L2 MAP — either side is the subtree's map and the other side lives in
        that same subtree. A map summarizes the pages it points to; overlap
        with its own children is its job.
+
+    0.6.2 review finding H1: for the PROPOSED side, map detection is
+    PATH-ONLY (`projects/<slug>/map.md`) — a proposal must not be able to
+    self-exempt from contradiction checks by declaring `type: l2-map` in its
+    own frontmatter. Frontmatter-based detection stays for the EXISTING
+    candidate side, whose content is already on disk and trusted.
     """
     if candidate_rel in exempt_pages:
         return True
     subtree = project_subtree(page)
     if subtree is None or project_subtree(candidate_rel) != subtree:
         return False
-    return is_l2_map(page, content) or is_l2_map(candidate_rel, candidate_text)
+    return is_l2_map(page) or is_l2_map(candidate_rel, candidate_text)
 
 
 def detect(

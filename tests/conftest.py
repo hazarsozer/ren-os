@@ -26,9 +26,12 @@ from pathlib import Path
 
 import pytest
 
-# Captured at import time, BEFORE any HOME monkeypatching — this is the
-# developer's real ~/.renos that the suite must never touch.
+# Captured at import time, BEFORE any HOME monkeypatching — these are the
+# developer's real ~/.renos and ~/.claude that the suite must never touch
+# (~/.claude added 0.6.2 review finding L3: hooks and plugin-data paths can
+# resolve there too).
 _REAL_RENOS = Path(os.environ.get("HOME", "/nonexistent")) / ".renos"
+_REAL_CLAUDE = Path(os.environ.get("HOME", "/nonexistent")) / ".claude"
 
 # Every env var the path resolvers in lib/ren_paths.py (and the hooks'
 # defensive inline fallbacks) consult. Cleared per-test so ambient shell
@@ -68,20 +71,21 @@ def _isolate_home(tmp_path, monkeypatch):
 
 @pytest.fixture(scope="session", autouse=True)
 def _real_renos_untouched():
-    """Fail the run loudly if the suite modified the real ~/.renos."""
+    """Fail the run loudly if the suite modified the real ~/.renos or ~/.claude."""
     start = time.time()
     yield
-    if not _REAL_RENOS.exists():
-        return
     touched: list[str] = []
-    for path in _REAL_RENOS.rglob("*"):
-        try:
-            if path.lstat().st_mtime > start:
-                touched.append(str(path))
-        except OSError:
+    for root in (_REAL_RENOS, _REAL_CLAUDE):
+        if not root.exists():
             continue
+        for path in root.rglob("*"):
+            try:
+                if path.lstat().st_mtime > start:
+                    touched.append(str(path))
+            except OSError:
+                continue
     if touched:
         raise AssertionError(
-            "test suite wrote into the real ~/.renos (isolation breach, "
-            f"issue #13): {touched[:20]}"
+            "test suite wrote into the real ~/.renos or ~/.claude (isolation "
+            f"breach, issue #13/L3): {touched[:20]}"
         )

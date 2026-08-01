@@ -46,7 +46,7 @@ import sys
 import os
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import get_args
 
 from ulid import ULID
@@ -79,6 +79,30 @@ class QueueStateError(Exception):
     """Raised on an illegal status transition (e.g. apply before approve)."""
 
 
+def _normalized_page(page: str) -> str:
+    """Normalize a wiki-relative page path at the queue door (0.6.2 review
+    finding C1): collapse `.` segments and REJECT anything that could dodge
+    the prefix-based instruction-plane gate downstream — `..` segments,
+    absolute paths, backslashes. No legitimate producer proposes any of
+    those, so rejection (ValueError) is safe; `write_apply` resolves via
+    `safe_join`, which meant a non-normalized string like
+    `projects/x/../../global/doctrine2.md` previously auto-applied INTO
+    `global/` while reading as a data-plane page to the gate."""
+    if not isinstance(page, str) or not page.strip():
+        raise ValueError(f"page {page!r} is invalid: must be a non-empty string")
+    if "\\" in page:
+        raise ValueError(f"page {page!r} is invalid: backslashes are not allowed")
+    posix = PurePosixPath(page)
+    if posix.is_absolute():
+        raise ValueError(f"page {page!r} is invalid: must be wiki-relative, not absolute")
+    parts = [part for part in posix.parts if part != "."]
+    if ".." in parts:
+        raise ValueError(f"page {page!r} is invalid: '..' segments are not allowed")
+    if not parts:
+        raise ValueError(f"page {page!r} is invalid: no path segments")
+    return "/".join(parts)
+
+
 @dataclass(frozen=True)
 class Proposal:
     op: str                  # "ADD"|"UPDATE"|"DELETE"|"NOOP" — validated against provenance.Op
@@ -97,6 +121,9 @@ class Proposal:
             raise ValueError(f"producer {self.producer!r} is invalid; must be one of {_PRODUCERS}")
         if self.writer not in _WRITER_CLASSES:
             raise ValueError(f"writer {self.writer!r} is invalid; must be one of {_WRITER_CLASSES}")
+        # C1: normalize the page path at the door (frozen dataclass, so
+        # object.__setattr__). Raises ValueError on `..`/absolute/backslash.
+        object.__setattr__(self, "page", _normalized_page(self.page))
 
 
 @dataclass
@@ -247,9 +274,17 @@ def _project_subtree(page: str) -> str | None:
     return None
 
 
+_BATCH_WINDOW_SECONDS = 15 * 60
+"""How far back a same-session/same-producer APPLIED entry still counts as
+"this batch" (0.6.2 review finding M1). Long-lived sessions accumulate
+entries; without a recency bound, a page written hours ago exempted every
+later write in the subtree from contradiction checks."""
+
+
 def _same_batch_pages(p: Proposal) -> set[str]:
-    """Pages this same session already put through the door in the SAME
-    `projects/<slug>/` subtree as `p.page` (issue #16).
+    """Pages this same session AND same producer already APPLIED through the
+    door, within the last `_BATCH_WINDOW_SECONDS`, in the SAME
+    `projects/<slug>/` subtree as `p.page` (issue #16, narrowed 0.6.2 M1).
 
     Batch-ingesting one source produces a fan of sibling pages that restate
     each other's topics by construction; the first one to land must not turn
@@ -257,22 +292,37 @@ def _same_batch_pages(p: Proposal) -> set[str]:
     skips `contradicts` (only) against these pages — duplicate and supersedes
     detection still see them.
 
-    The target page itself counts as part of the batch when THIS session
-    already wrote it (a session revising its own page in the same pass — that
-    lineage is what `supersedes` records, not a contradiction).
+    The target page itself counts as part of the batch when THIS batch
+    already wrote it (a producer revising its own page in the same pass —
+    that lineage is what `supersedes` records, not a contradiction).
 
-    Session-scoped and subtree-scoped, both required: a different session's
-    write, or the same session writing outside this project's subtree, is not
-    part of this batch and stays fully checked."""
+    Scoping (all required — each drops entries that are NOT this batch):
+    same session, same producer (a pin mid-ingest is not part of the ingest's
+    fan), status "applied" (a rejected or still-held entry never landed, so
+    nothing on disk restates it), created within the batch window, and same
+    project subtree."""
     subtree = _project_subtree(p.page)
     if subtree is None:
         return set()
-    return {
-        entry.proposal.page
-        for entry in all_entries()
-        if entry.proposal.session == p.session
-        and _project_subtree(entry.proposal.page) == subtree
-    }
+    now = datetime.now(timezone.utc)
+    pages: set[str] = set()
+    for entry in all_entries():
+        if entry.proposal.session != p.session:
+            continue
+        if entry.proposal.producer != p.producer:
+            continue
+        if entry.status != _APPLIED:
+            continue
+        if _project_subtree(entry.proposal.page) != subtree:
+            continue
+        try:
+            ts = datetime.strptime(entry.ts, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+        except ValueError:
+            continue
+        if (now - ts).total_seconds() > _BATCH_WINDOW_SECONDS:
+            continue
+        pages.add(entry.proposal.page)
+    return pages
 
 
 def propose(p: Proposal) -> QueueEntry:

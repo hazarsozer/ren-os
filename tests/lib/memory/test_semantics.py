@@ -615,10 +615,27 @@ def test_page_does_not_contradict_the_map_of_its_own_subtree(tmp_path):
     assert [c for c in conflicts if c.kind == "contradicts"] == []
 
 
-def test_map_by_frontmatter_type_is_exempt_even_off_the_map_path(tmp_path):
+def test_proposed_frontmatter_l2_map_no_longer_self_exempts(tmp_path):
+    # 0.6.2 review finding H1: the PROPOSED side is detected as a map by
+    # PATH ONLY — declaring `type: l2-map` in the proposal's own frontmatter
+    # must not exempt it from contradiction checks.
     _write(tmp_path, "projects/acme/style.md", "Always use spaces for indentation in Python files.\n")
 
     proposed = "---\ntype: l2-map\n---\nDo not use spaces for indentation in Python files.\n"
+    conflicts = detect("ADD", "projects/acme/overview.md", proposed, tmp_path)
+
+    assert [c for c in conflicts if c.kind == "contradicts"] != []
+
+
+def test_existing_map_by_frontmatter_type_still_exempt(tmp_path):
+    # The EXISTING candidate side keeps frontmatter-based map detection: its
+    # content is already on disk, not attacker-suppliable at propose time.
+    _write(
+        tmp_path, "projects/acme/legacy-map.md",
+        "---\ntype: l2-map\n---\nAlways use spaces for indentation in Python files.\n",
+    )
+
+    proposed = "Do not use spaces for indentation in Python files.\n"
     conflicts = detect("ADD", "projects/acme/overview.md", proposed, tmp_path)
 
     assert [c for c in conflicts if c.kind == "contradicts"] == []

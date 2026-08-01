@@ -79,6 +79,19 @@ Honors whatever `lib.ren_paths.wiki_root()` resolves (`REN_WIKI_ROOT` /
 Exit code is always 0 — anything the script cannot classify is left in place,
 which is always the safe outcome.
 
+Each move is journaled to `state_dir()/migrations/project-knowledge-1.jsonl`
+immediately after it happens, so a mid-run failure never loses the record of
+files already moved.
+
+## Documented limitation
+
+Only `## Decision map` pointer lines in `type: l2-map` pages are rewritten to
+the new `knowledge/` paths. Any OTHER page that references an old flat path
+(prose links, non-map pointers) is **not** rewritten — those references go
+stale and must be fixed by hand (or surfaced by a wiki-health sweep). This is
+deliberate scope: rewriting arbitrary prose links safely is not this
+migration's job.
+
 ## Tests
 
 `tests/migrations/test_project_knowledge_1.py`.

@@ -107,14 +107,27 @@ def is_instruction_plane_page(page: str | None) -> bool:
     root-level global-tier dirs (`decisions/`, `patterns/`, `research/`).
     Path-prefix only; never reads page bodies. This is the single source of
     truth for the plane split (issue #18) — callers must not re-spell the
-    prefix list."""
+    prefix list.
+
+    Defense in depth (0.6.2 review finding C1): the check runs on a
+    NORMALIZED form of `page` — `.` segments collapsed, backslashes treated
+    as separators — so `./global/x.md` can't read as data-plane. The queue
+    door (`lib.memory.queue.Proposal`) already rejects `..`/absolute pages
+    with ValueError; if one still reaches here, it is treated as
+    instruction-plane (gated), never auto-applied."""
     if not page:
         return False
-    if any(page.startswith(prefix) for prefix in INSTRUCTION_PLANE_PREFIXES):
+    parts = [p for p in str(page).replace("\\", "/").split("/") if p not in ("", ".")]
+    if not parts:
+        return False
+    if ".." in parts:
+        return True  # fail closed: a traversal path never auto-applies
+    normalized = "/".join(parts)
+    if any(normalized.startswith(prefix) for prefix in INSTRUCTION_PLANE_PREFIXES):
         return True
     # A bare dir name with no trailing slash ("global", "decisions") is the
     # tier page itself, not a data-plane page that merely starts with it.
-    return f"{page}/" in INSTRUCTION_PLANE_PREFIXES
+    return f"{normalized}/" in INSTRUCTION_PLANE_PREFIXES
 
 
 def tier_of(action: Action) -> Tier:

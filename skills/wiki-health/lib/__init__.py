@@ -649,17 +649,23 @@ def release_page(page: str, session: str) -> tuple:
     the live session calls this only after the friend explicitly says the
     page is fine (see SKILL.md; never auto-release from a sweep).
 
-    Routes through the normal write substrate (`propose_and_apply`,
-    writer="human", producer="retrospective" — this module isn't its own
-    producer class, see SKILL.md "What this skill does NOT do") so the
-    release is journaled, snapshotted, and revertible like every other
-    write. Returns `(QueueEntry, Provenance | None)` — `Provenance` is None
-    only if the proposal was held (e.g. a contradiction conflict), in which
-    case the session resolves it like any other hold.
+    Routes through the normal write substrate (writer="human",
+    producer="retrospective" — this module isn't its own producer class, see
+    SKILL.md "What this skill does NOT do") so the release is journaled,
+    snapshotted, and revertible like every other write. Because release IS
+    the human review, the write goes `propose` → `approve_and_apply`
+    (0.6.2 review finding H3) rather than `propose_and_apply` — a
+    quarantined instruction-plane page (`decisions/*` etc.) would otherwise
+    pend forever, since `propose_and_apply` holds instruction-plane targets
+    for exactly the human approval this call already represents.
+
+    Returns `(QueueEntry, Provenance | None)` — `Provenance` is None only if
+    the proposal was held on a `contradicts` conflict (the session resolves
+    it like any other hold) or was a no-op.
 
     Raises `FileNotFoundError` if the page doesn't exist, `ValueError` if it
     isn't quarantined."""
-    from lib.memory.queue import Proposal, propose_and_apply
+    from lib.memory.queue import Proposal, approve_and_apply, get, propose
 
     path = ren_paths.safe_join(ren_paths.wiki_root(), page)
     if not path.is_file():
@@ -668,7 +674,7 @@ def release_page(page: str, session: str) -> tuple:
     if not quarantine.is_quarantined(text):
         raise ValueError(f"{page!r} is not quarantined — nothing to release")
 
-    return propose_and_apply(
+    entry = propose(
         Proposal(
             op="UPDATE",
             page=page,
@@ -679,6 +685,12 @@ def release_page(page: str, session: str) -> tuple:
             session=session,
         )
     )
+    if entry.status != "pending":
+        return entry, None
+    if any(c.get("kind") == "contradicts" for c in entry.conflicts):
+        return entry, None
+    prov = approve_and_apply(entry.qid, who="human:quarantine-release")
+    return get(entry.qid), prov
 
 
 __all__ = ["sweep", "render_report", "release_page"]

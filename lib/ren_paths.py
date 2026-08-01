@@ -253,10 +253,17 @@ def load_project_registry() -> dict[str, dict]:
     projects = data.get("projects") if isinstance(data, dict) else None
     if not isinstance(projects, dict):
         return {}
+    # 0.6.2 review finding L1: slugs flow into filesystem paths
+    # (`wiki_root()/projects/<slug>`), so a corrupt/hand-edited projects.json
+    # must not be able to smuggle a traversal value like "../..". Validate
+    # against the same safe-handle pattern handles are held to.
     return {
         slug: entry
         for slug, entry in projects.items()
-        if isinstance(slug, str) and isinstance(entry, dict) and isinstance(entry.get("repo_path"), str)
+        if isinstance(slug, str)
+        and HANDLE_RE.match(slug)
+        and isinstance(entry, dict)
+        and isinstance(entry.get("repo_path"), str)
     }
 
 
