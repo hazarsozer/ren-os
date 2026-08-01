@@ -48,6 +48,14 @@ def clean_path_env(monkeypatch):
 def isolated_state(clean_path_env, tmp_path):
     clean_path_env.setenv("REN_FRAMEWORK_ROOT", str(tmp_path))
     wiki_root().mkdir(parents=True, exist_ok=True)
+    # A REAL wiki is always stamped (index.md) — an unstamped directory is
+    # deliberately "no wiki" as of issue #12.
+    (wiki_root() / "index.md").write_text("---\ntype: l2-map\n---\n# Wiki index\n", encoding="utf-8")
+    # Real content so the wake-up hook emits a genuine payload (the thing
+    # calibration pairs against) rather than a "nothing to inject" notice.
+    decision = wiki_root() / "decisions" / "d1.md"
+    decision.parent.mkdir(parents=True, exist_ok=True)
+    decision.write_text("# Decision one\n\nWe chose FastAPI for the backend.\n", encoding="utf-8")
     return tmp_path
 
 

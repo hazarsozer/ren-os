@@ -70,6 +70,10 @@ def wiki(clean_path_env, tmp_path):
     clean_path_env.setenv("REN_FRAMEWORK_ROOT", str(tmp_path))
     root = wiki_root()
     root.mkdir(parents=True, exist_ok=True)
+    # A REAL wiki is always stamped — `/ren:install` writes index.md, and as of
+    # issue #12 an unstamped directory is deliberately treated as "no wiki".
+    # The fixture must therefore look like what install produces.
+    (root / "index.md").write_text("---\ntype: l2-map\n---\n# Wiki index\n", encoding="utf-8")
     return root
 
 
@@ -1172,6 +1176,7 @@ def test_uninitialized_message_is_loud_and_actionable():
 
 def test_hook_with_wiki_present_does_not_emit_uninitialized_notice(monkeypatch, capsys, wiki):
     """Healthy path is untouched: a resolvable wiki still injects real context."""
+    _write(wiki / "decisions" / "d1.md", "# Decision one\n\nWe chose FastAPI for the backend.\n")
     rc, stdout = _run_hook_direct(monkeypatch, capsys, "{}", wiki_root_path=wiki)
 
     assert rc == 0
@@ -1307,6 +1312,11 @@ def test_f1_master_skeleton_placeholder_lines_do_not_leak_via_extras(wiki, tmp_p
     regardless of ranking; this isn't a "candidates got ranked out" false
     pass."""
     from lib.skeleton import stamp_skeleton
+
+    # The `wiki` fixture pre-writes a minimal index.md (a real wiki is always
+    # stamped — issue #12) and stamp_skeleton never overwrites; drop it so the
+    # REAL shipped index.md lands here, which is exactly what this test reads.
+    (wiki_root() / "index.md").unlink()
 
     skeleton_root = Path(__file__).resolve().parents[2] / "wiki-skeleton"
     stamp_skeleton(
@@ -1567,3 +1577,101 @@ def test_main_treats_recorded_degrade_relay_as_a_miss_and_tries_uv(monkeypatch, 
     assert rc == 0
     ctx = json.loads(stdout)["hookSpecificOutput"]["additionalContext"]
     assert ctx == "RELAYED FROM UV"
+
+
+# =============================================================================
+# Issue #12: unstamped-but-existing wiki root must fire the uninitialized notice
+# =============================================================================
+
+
+def _make_wiki_state(root: Path, state: str) -> Path:
+    """Materialize one of the four wiki-root states under `root`."""
+    wiki = root / "wiki"
+    if state == "missing":
+        return wiki
+    wiki.mkdir(parents=True)
+    if state == "existing-empty":
+        return wiki
+    if state == "existing-unrelated":
+        _write(wiki / "notes.txt", "some unrelated file\n")
+        _write(wiki / "readme.md", "# not a RenOS wiki\n")
+        return wiki
+    if state == "stamped":
+        _write(wiki / "index.md", "---\ntype: l2-map\n---\n# Wiki index\n\nchronological event log for this wiki\n")
+        _write(wiki / "log.md", "# Log\n\n- init\n")
+        return wiki
+    raise AssertionError(f"unknown state {state}")
+
+
+@pytest.mark.parametrize("state", ["missing", "existing-empty", "existing-unrelated"])
+def test_compose_returns_empty_for_unstamped_wiki_root(clean_path_env, tmp_path, state):
+    clean_path_env.setenv("REN_FRAMEWORK_ROOT", str(tmp_path))
+    wiki = _make_wiki_state(tmp_path, state)
+
+    payload = wakeup.compose_wake_up_context(cwd=tmp_path, wiki_root=wiki, session="sess-1")
+
+    assert payload == "", f"state={state} produced a payload: {payload!r}"
+
+
+def test_compose_injects_for_stamped_wiki_root(clean_path_env, tmp_path):
+    clean_path_env.setenv("REN_FRAMEWORK_ROOT", str(tmp_path))
+    wiki = _make_wiki_state(tmp_path, "stamped")
+
+    payload = wakeup.compose_wake_up_context(cwd=tmp_path, wiki_root=wiki, session="sess-1")
+
+    assert "RenOS wake-up context" in payload
+    assert payload.strip() != "## RenOS wake-up context (source=startup)"
+
+
+def test_compose_never_returns_header_only(clean_path_env, tmp_path):
+    """A stamped root whose only page is empty has nothing real to say —
+    the header alone is silent-empty dressed up as content (issue #12)."""
+    clean_path_env.setenv("REN_FRAMEWORK_ROOT", str(tmp_path))
+    wiki = tmp_path / "wiki"
+    wiki.mkdir()
+    _write(wiki / "index.md", "")
+
+    payload = wakeup.compose_wake_up_context(cwd=tmp_path, wiki_root=wiki, session="sess-1")
+
+    assert payload == ""
+
+
+@pytest.mark.parametrize("state", ["missing", "existing-empty", "existing-unrelated"])
+def test_hook_unstamped_wiki_root_emits_uninitialized_notice(monkeypatch, capsys, tmp_path, state):
+    """The wikiRoot plugin option is set with a DIRECTORY PICKER, so it can only
+    ever point at a directory that already exists — `is_dir()` was therefore
+    always True for those users and the notice never fired (issue #12)."""
+    wiki = _make_wiki_state(tmp_path, state)
+    rc, stdout = _run_hook_direct(monkeypatch, capsys, "{}", wiki_root_path=wiki)
+
+    assert rc == 0
+    ctx = json.loads(stdout)["hookSpecificOutput"]["additionalContext"]
+    assert ctx.strip(), f"state={state} emitted silent-empty"
+    assert "not initialized" in ctx
+    assert "/ren:install" in ctx
+
+
+def test_hook_stamped_wiki_root_injects_normally(monkeypatch, capsys, tmp_path):
+    wiki = _make_wiki_state(tmp_path, "stamped")
+    rc, stdout = _run_hook_direct(monkeypatch, capsys, "{}", wiki_root_path=wiki)
+
+    assert rc == 0
+    ctx = json.loads(stdout)["hookSpecificOutput"]["additionalContext"]
+    assert "not initialized" not in ctx
+    assert "RenOS wake-up context" in ctx
+
+
+def test_hook_stamped_but_empty_wiki_still_says_something(monkeypatch, capsys, tmp_path):
+    """The other half of the never-silent-empty contract: a stamped wiki with
+    nothing to inject yet (the session right after /ren:install)."""
+    wiki = tmp_path / "wiki"
+    wiki.mkdir()
+    _write(wiki / "index.md", "")
+
+    rc, stdout = _run_hook_direct(monkeypatch, capsys, "{}", wiki_root_path=wiki)
+
+    assert rc == 0
+    ctx = json.loads(stdout)["hookSpecificOutput"]["additionalContext"]
+    assert ctx.strip()
+    assert "initialized but empty" in ctx
+    assert "not initialized" not in ctx  # NOT the uninstalled notice

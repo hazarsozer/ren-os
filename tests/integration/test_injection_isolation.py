@@ -54,6 +54,9 @@ def wiki(clean_path_env, tmp_path):
     clean_path_env.setenv("REN_FRAMEWORK_ROOT", str(tmp_path))
     root = wiki_root()
     root.mkdir(parents=True, exist_ok=True)
+    # A REAL wiki is always stamped (index.md) — an unstamped directory is
+    # deliberately "no wiki" as of issue #12.
+    (root / "index.md").write_text("---\ntype: l2-map\n---\n# Wiki index\n", encoding="utf-8")
     return root
 
 

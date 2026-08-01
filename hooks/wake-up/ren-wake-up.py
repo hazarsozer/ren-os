@@ -96,6 +96,19 @@ def _uninitialized_message() -> str:
     )
 
 
+def _empty_wiki_message() -> str:
+    """Loud additionalContext for a wiki that IS stamped but holds nothing to
+    inject yet (issue #12) — e.g. the session right after `/ren:install`. The
+    contract is "either inject or say so loudly", so this case gets a notice
+    rather than the empty payload it used to emit."""
+    return (
+        "## RenOS wake-up: wiki is initialized but empty\n\n"
+        "The wiki was found, but there is no content to inject yet — run "
+        "`/ren:wrap` at the end of a session (or `/ren:bootstrap-project` in a "
+        "project) to start building memory."
+    )
+
+
 def _reexec_under_uv(raw_stdin: str, timeout: float = _REEXEC_BUDGET_S) -> str | None:
     """Re-run THIS script under `uv run --project <root> python …` (which has the
     project deps) and return the additionalContext it computed. Returns None —
@@ -267,6 +280,19 @@ def _resolve_wiki_root() -> Path:
         return Path.home() / ".renos" / "wiki"
 
 
+def _wiki_stamped(root: Path) -> bool:
+    """Is `root` a stamped RenOS wiki (issue #12)? Delegates to the single
+    shared predicate in `lib.skeleton`; same defensive-fallback shape as
+    `_resolve_wiki_root` so an unimportable lib never breaks the hook."""
+    _ensure_plugin_root_on_path()
+    try:
+        from lib.skeleton import wiki_stamped
+        return wiki_stamped(root)
+    except ImportError:
+        logger.warning("lib.skeleton unavailable; checking wiki stamp inline", exc_info=True)
+        return (root / "index.md").is_file()
+
+
 def main() -> int:
     """Entry point. Reads stdin JSON; emits stdout JSON. Always returns 0."""
     _setup_logging()
@@ -332,9 +358,19 @@ def main() -> int:
     # Seam catch (issue #11 §1): healthy env + no wiki => compose returns "".
     # Say so loudly instead. Scoped to the no-wiki case only; every other
     # degrade path above keeps its own message untouched.
-    if not context_text.strip() and not wiki_root.is_dir():
-        logger.info("no wiki at %s; emitting uninitialized notice", wiki_root)
+    #
+    # Issue #12: the test is stamped-ness, NOT `is_dir()`. `wikiRoot` is set
+    # with a directory picker, so a customized root always exists — gating on
+    # existence meant every such user got silent-empty forever.
+    if not context_text.strip() and not _wiki_stamped(wiki_root):
+        logger.info("no stamped wiki at %s; emitting uninitialized notice", wiki_root)
         context_text = _uninitialized_message()
+    elif not context_text.strip():
+        # Issue #12, other half of the same contract: a stamped wiki with
+        # nothing worth injecting yet (fresh install) previously emitted
+        # silent-empty too. Say so instead — never silent-empty, ever.
+        logger.info("stamped wiki at %s has nothing to inject", wiki_root)
+        context_text = _empty_wiki_message()
 
     # 0.6.1 E5a: persist the harness `session_id` (the ONLY authority
     # `/ren:wrap` has for naming this session's transcript — a model-invoked
@@ -346,7 +382,11 @@ def main() -> int:
     # Degrade payloads are NOT persisted: without a pairing file wrap cannot
     # resolve the session at all, so "a degraded session never calibrates"
     # holds by construction rather than by a downstream guard.
-    if context_text and context_text not in (_degrade_message(), _uninitialized_message()):
+    if context_text and context_text not in (
+        _degrade_message(),
+        _uninitialized_message(),
+        _empty_wiki_message(),
+    ):
         try:
             _ensure_plugin_root_on_path()
             from lib.instrument.calibration import persist_last_injection

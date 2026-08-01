@@ -183,4 +183,23 @@ def stamp_skeleton(
     return result
 
 
-__all__ = ["StampResult", "stamp_skeleton"]
+WIKI_STAMP_MARKER = "index.md"
+"""The page whose presence means "this directory is a stamped RenOS wiki".
+`stamp_skeleton` always writes it, so it is the cheapest honest marker."""
+
+
+def wiki_stamped(wiki_root: Path) -> bool:
+    """True when `wiki_root` holds a stamped RenOS wiki.
+
+    Directory existence alone is NOT the same question (issue #12): the
+    `wikiRoot` plugin option is set with a DIRECTORY PICKER, which can only
+    ever select a directory that already exists — so `is_dir()` is True from
+    the very first session for everyone who customizes it, and any check
+    built on it silently treats an empty/unrelated folder as an initialized
+    wiki. This is the single predicate every caller (wake-up hook, compose,
+    install state) must share.
+    """
+    return (Path(wiki_root) / WIKI_STAMP_MARKER).is_file()
+
+
+__all__ = ["StampResult", "stamp_skeleton", "WIKI_STAMP_MARKER", "wiki_stamped"]

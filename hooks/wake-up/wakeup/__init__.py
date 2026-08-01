@@ -119,6 +119,7 @@ from lib.instrument.calibration import PLAUSIBLE_RATIO_BAND
 from lib.memory import archive, queue, quarantine
 from lib.memory.provenance import read_frontmatter_provenance
 from lib.ren_paths import DEFAULT_DEV_ROOT_REL, detect_project, resolve_dev_root, state_dir
+from lib.skeleton import wiki_stamped
 
 logger = logging.getLogger(__name__)
 
@@ -955,12 +956,16 @@ def compose_wake_up_context(
     `collect.record(KIND_INJECTED_BYTES, ...)` — this instrumentation is
     unconditional, not optional.
 
-    Returns "" if the wiki is inaccessible (graceful degradation; the hook
-    still exits 0). NEVER raises — any per-section failure degrades that
+    Returns "" if the wiki is inaccessible OR not stamped (`index.md` absent
+    — an existing but empty/unrelated directory is NOT a wiki, issue #12), and
+    also when nothing real was gathered: a payload consisting only of the
+    "## RenOS wake-up context" header is silent-empty in disguise, and the
+    hook's caller relies on "" to fire the loud uninitialized notice. Graceful
+    degradation; the hook still exits 0. NEVER raises — any per-section failure degrades that
     section to empty rather than aborting the whole payload.
     """
-    if not wiki_root.is_dir():
-        logger.info("wiki not found at %s; emitting empty context", wiki_root)
+    if not wiki_stamped(wiki_root):
+        logger.info("no stamped wiki at %s; emitting empty context", wiki_root)
         return ""
 
     # ONE ratio for this entire compose: read the calibrated chars-per-token
@@ -1088,21 +1093,33 @@ def compose_wake_up_context(
     held_count += extras_held_count
 
     if extras:
-        sections.append(SECTION_EXTRAS)
         per_page_budget = max(EXTRA_PAGE_BUDGET, EXTRAS_BUDGET // max(len(extras), 1))
+        extra_blocks: list[str] = []
         for rel in extras:
             text = _read_text_safe(wiki_root / rel)
             if not text:
                 continue
-            sections.append(f"#### {rel}")
-            sections.append(truncate_text_to_tokens(_strip_extras_placeholder_lines(text), per_page_budget, chars_per_token))
+            extra_blocks.append(f"#### {rel}")
+            extra_blocks.append(truncate_text_to_tokens(_strip_extras_placeholder_lines(text), per_page_budget, chars_per_token))
             surfaced_pages.append(rel)
+        # Same no-bare-header rule as every other section: when every ranked
+        # extra reads empty, the header alone must not be emitted.
+        if extra_blocks:
+            sections.append(SECTION_EXTRAS)
+            sections.extend(extra_blocks)
 
     if held_count > 0:
         sections.append(
             f"{held_count} quarantined page(s) held out of this context — "
             "ask to see them explicitly."
         )
+
+    # `sections[0]` is the seed header; anything after it is real content.
+    # With nothing real gathered, return "" rather than a header-only payload
+    # (issue #12) so the hook emits its loud uninitialized notice instead.
+    if not [s for s in sections[1:] if s.strip()]:
+        logger.info("nothing to inject from %s; emitting empty context", wiki_root)
+        return ""
 
     composed = "\n\n".join(s for s in sections if s.strip())
 

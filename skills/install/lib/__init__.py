@@ -36,7 +36,7 @@ from lib import ren_paths
 from lib.adapter.claude_md import MARKER_BEGIN, MARKER_END
 from lib.companions import CHOICES_FILENAME
 from lib.ren_paths import claude_user_dir
-from lib.skeleton import StampResult, stamp_skeleton
+from lib.skeleton import StampResult, stamp_skeleton, wiki_stamped as _wiki_stamped
 from skills.backup.lib import backup_configured
 
 QUESTION_BUDGET = 10
@@ -84,7 +84,7 @@ def install_state(wiki_root: Path | None = None) -> dict:
     """
     root = Path(wiki_root) if wiki_root is not None else ren_paths.wiki_root()
 
-    wiki_stamped = (root / "index.md").is_file()
+    wiki_stamped = _wiki_stamped(root)
     identity_present = (root / "identity.md").is_file()
 
     try:
