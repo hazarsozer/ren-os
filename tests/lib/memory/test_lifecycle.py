@@ -112,14 +112,15 @@ def test_page_with_old_fetch_decays_on_journal_age(wiki_root):
     assert lifecycle.decay_candidates(NOW) == ["notes.md"]
 
 
-def test_surfaced_page_survives_decay(wiki_root):
-    """A page wake-up injected (KIND_WAKEUP_SURFACE), never fetched, still
-    counts as a usage touch and is protected."""
+def test_surfaced_only_page_decays(wiki_root):
+    """Issue #24: a wake-up surface (KIND_WAKEUP_SURFACE) is the framework's
+    OWN output, not demand — a page that is only ever injected, never fetched
+    or read, no longer refreshes its own decay clock and decays on schedule."""
     _add("notes.md", "stale write, but wake-up surfaced it\n")
     _backdate_journal("notes.md", OLD_TS)
     miss_log.log_surface(["notes.md"], session="s1")  # real clock: fresh relative to NOW
 
-    assert lifecycle.decay_candidates(NOW) == []
+    assert lifecycle.decay_candidates(NOW) == ["notes.md"]
 
 
 def test_read_page_survives_decay(wiki_root):
@@ -142,8 +143,9 @@ def test_untouched_page_still_decays(wiki_root):
 
 
 def test_stale_events_do_not_protect(wiki_root):
-    """A 100-day-old wake-up surface event does not protect — only a RECENT
-    one does (mirrors test_page_with_old_fetch_decays_on_journal_age)."""
+    """A 100-day-old fetch event does not protect — only a RECENT one does
+    (mirrors test_page_with_old_fetch_decays_on_journal_age; surface events
+    no longer protect at ANY age, per issue #24)."""
     _add("notes.md", "stale write, stale surface\n")
     _backdate_journal("notes.md", OLD_TS)
     _record_surface(["notes.md"], OLD_TS)
@@ -152,10 +154,10 @@ def test_stale_events_do_not_protect(wiki_root):
 
 
 @pytest.mark.parametrize(
-    "raising_kind", [collect.KIND_L3_FETCH, collect.KIND_WAKEUP_SURFACE, collect.KIND_PAGE_READ]
+    "raising_kind", [collect.KIND_L3_FETCH, collect.KIND_PAGE_READ]
 )
 def test_unreadable_usage_log_skips_decay(wiki_root, monkeypatch, raising_kind):
-    """If ANY of the three consumed kinds is unreadable, decay is skipped
+    """If EITHER of the two consumed kinds is unreadable, decay is skipped
     entirely (conservative all-or-nothing), not just for that kind."""
     _add("notes.md", "stale content\n")
     _backdate_journal("notes.md", OLD_TS)
@@ -170,6 +172,25 @@ def test_unreadable_usage_log_skips_decay(wiki_root, monkeypatch, raising_kind):
     monkeypatch.setattr(lifecycle.collect, "read", selective_raiser)
 
     assert lifecycle.decay_candidates(NOW) == []
+
+
+def test_unreadable_surface_log_no_longer_blocks_decay(wiki_root, monkeypatch):
+    """Issue #24: KIND_WAKEUP_SURFACE is no longer consumed by decay at all,
+    so an unreadable surface log must not skip decay (the fail-closed gate
+    covers only the two signals that still count as demand)."""
+    _add("notes.md", "stale content\n")
+    _backdate_journal("notes.md", OLD_TS)
+
+    real_read = collect.read
+
+    def selective_raiser(kind=None, since=None):
+        if kind == collect.KIND_WAKEUP_SURFACE:
+            raise OSError("surface log unreadable")
+        return real_read(kind=kind, since=since)
+
+    monkeypatch.setattr(lifecycle.collect, "read", selective_raiser)
+
+    assert lifecycle.decay_candidates(NOW) == ["notes.md"]
 
 
 def test_recently_written_page_is_not_a_candidate(wiki_root):
