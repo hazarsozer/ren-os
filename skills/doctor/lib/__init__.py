@@ -303,6 +303,43 @@ def check_backup_configured(wiki_root: Path | None = None) -> CheckResult:
     )
 
 
+def check_orphaned_projects(wiki_root: Path | None = None) -> CheckResult:
+    """Issue #19: every `projects/<slug>/` in the wiki should be reachable
+    from a repo — either through a recorded repo-path↔slug mapping
+    (`state_dir()/projects.json`, written at ingest/bootstrap time) or through
+    a matching `<dev_root>/<slug>/` directory (the dir-name fallback
+    `ren_paths.detect_project` uses).
+
+    A slug with neither is memory nothing can ever inject: wake-up will never
+    detect it from any cwd. Warn, naming the offenders."""
+    root = Path(wiki_root) if wiki_root is not None else ren_paths.wiki_root()
+    projects_dir = root / "projects"
+    if not projects_dir.is_dir():
+        return CheckResult("orphaned_projects", "skip", "no projects/ dir in the wiki yet")
+
+    slugs = sorted(p.name for p in projects_dir.iterdir() if p.is_dir())
+    if not slugs:
+        return CheckResult("orphaned_projects", "skip", "no project subtrees yet")
+
+    registry = ren_paths.load_project_registry()
+    dev_root = ren_paths.resolve_dev_root()
+    orphans = [
+        slug for slug in slugs
+        if slug not in registry and not (dev_root / slug).is_dir()
+    ]
+    if not orphans:
+        return CheckResult(
+            "orphaned_projects", "ok", f"{len(slugs)} project subtree(s) reachable from a repo"
+        )
+    return CheckResult(
+        "orphaned_projects",
+        "warn",
+        f"{len(orphans)} project subtree(s) with no repo mapping and no {dev_root}/<slug> dir "
+        f"(likely orphaned memory — re-run /ren:ingest-project from the repo to re-link): "
+        + ", ".join(orphans),
+    )
+
+
 _VALID_EXECUTION_TIERS = frozenset({"deterministic", "worker", "judgment"})
 
 
@@ -646,6 +683,7 @@ _ALL_CHECK_NAMES: tuple[str, ...] = (
     "check_archive_integrity",
     "check_routing_audit",
     "check_model_map_staleness",
+    "check_orphaned_projects",
 )
 
 
@@ -686,5 +724,6 @@ __all__ = [
     "check_archive_integrity",
     "check_routing_audit",
     "check_model_map_staleness",
+    "check_orphaned_projects",
     "run_checks",
 ]

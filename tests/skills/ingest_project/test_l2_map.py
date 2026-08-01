@@ -25,6 +25,7 @@ import pytest
 
 from lib.governance.backup_gate import BackupRequired
 from lib.memory import journal, quarantine, queue
+from lib.adapter import claude_md as claude_md_lib
 from lib.ren_paths import wiki_root
 
 ingest_lib = importlib.import_module("skills.ingest-project.lib")
@@ -303,3 +304,67 @@ def test_ingest_blocked_without_backup_on_populated_wiki(wiki, monkeypatch):
 
     with pytest.raises(BackupRequired):
         ingest("some-project", ["a fact"], [], session="sess-1")
+
+
+# --- issues #15 + #19: repo-side CLAUDE.md pointer + repo-path↔slug mapping ---
+
+
+def test_ingest_writes_project_claude_md_pointer_block(wiki, tmp_path):
+    repo = tmp_path / "widget-repo"
+    repo.mkdir()
+
+    result = ingest("fixture-widget", ["a fact"], [], session="sess-1", repo_root=repo)
+
+    claude_md = repo / "CLAUDE.md"
+    assert claude_md.exists()
+    text = claude_md.read_text(encoding="utf-8")
+    assert claude_md_lib.MARKER_BEGIN in text and claude_md_lib.MARKER_END in text
+    assert "projects/fixture-widget/map.md" in text
+    assert result["claude_md"] == "added"
+
+
+def test_ingest_claude_md_is_additive_and_idempotent(wiki, tmp_path, configured_backup):
+    repo = tmp_path / "widget-repo"
+    repo.mkdir()
+    (repo / "CLAUDE.md").write_text("# My project\n\nHand-written notes.\n", encoding="utf-8")
+
+    ingest("fixture-widget", ["a fact"], [], session="sess-1", repo_root=repo)
+    first = (repo / "CLAUDE.md").read_text(encoding="utf-8")
+    assert "Hand-written notes." in first
+
+    result = ingest("fixture-widget", ["a fact"], [], session="sess-2", repo_root=repo)
+    assert (repo / "CLAUDE.md").read_text(encoding="utf-8") == first
+    assert result["claude_md"] == "unchanged"
+
+
+def test_ingest_without_repo_root_writes_no_claude_md(wiki, tmp_path):
+    result = ingest("fixture-widget", ["a fact"], [], session="sess-1")
+    assert result["claude_md"] is None
+
+
+def test_ingest_records_repo_path_mapping(wiki, tmp_path):
+    from lib import ren_paths
+
+    repo = tmp_path / "genshin-calculator-dev"
+    repo.mkdir()
+
+    ingest("genshin-calculator", ["a fact"], [], session="sess-1", repo_root=repo)
+
+    registry = ren_paths.load_project_registry()
+    assert registry["genshin-calculator"]["repo_path"] == str(repo.resolve())
+    # ... and detect_project now finds it from inside the differently-named clone.
+    assert ren_paths.detect_project(repo, wiki, dev_root=tmp_path / "Dev") == "genshin-calculator"
+
+
+def test_ingest_survives_unwritable_repo_root(wiki, tmp_path, monkeypatch):
+    """A CLAUDE.md/mapping failure must never break the ingest itself."""
+    repo = tmp_path / "widget-repo"
+    repo.mkdir()
+
+    def _boom(*_args, **_kwargs):
+        raise OSError("simulated failure")
+
+    monkeypatch.setattr(ingest_lib, "write_project_claude_md", _boom)
+    result = ingest("fixture-widget", ["a fact"], [], session="sess-1", repo_root=repo)
+    assert result["write_id"] is not None
+    assert result["claude_md"] == "error"

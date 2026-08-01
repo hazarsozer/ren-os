@@ -151,3 +151,4 @@ Pinned by `tests/audit/test_destructive_write_paths.py::test_write_agents_md_pre
 - **`skills/backup` unlinks (#17, #18)** delete user-facing artifacts
   (tarballs), but both are bounded retention/cleanup of files the skill itself
   created, with the live wiki untouched.
+| 23 | `lib/ren_paths.py::record_project_repo` | `write_text` + `os.replace` | scratch/state | `state_dir()/projects.json` — the repo-path↔slug registry (issue #19), written at ingest/bootstrap time. Merge-then-atomic-replace: the existing registry is loaded and only the one slug's entry is set, so other projects' mappings survive; a corrupt/unreadable file degrades to `{}` (rebuilt on the next ingest) rather than raising. Nothing user-authored lives at that path, and losing it only falls detection back to dir-name matching. |

@@ -57,7 +57,7 @@ def test_run_checks_returns_one_result_per_check(wiki):
         "budget_lint", "dangling_pointers", "graphify_status", "companions",
         "backup_configured", "execution_tiers", "global_drift", "harness_neutrality", "guard_health",
         "suggestion_store", "apply_integrity", "judge_health", "archive_integrity",
-        "routing_audit", "model_map_staleness",
+        "routing_audit", "model_map_staleness", "orphaned_projects",
     }
 
 
@@ -655,3 +655,42 @@ def test_check_apply_integrity_ignores_noop_revert_entries(wiki):
 
     result = doctor.check_apply_integrity()
     assert result.status == "ok"
+
+
+# ------------------------------------------------------- check_orphaned_projects
+
+
+def test_check_orphaned_projects_ok_when_mapping_recorded(wiki, tmp_path, clean_path_env):
+    from lib import ren_paths
+
+    (wiki / "projects" / "genshin-calculator").mkdir(parents=True)
+    repo = tmp_path / "genshin-calculator-dev"
+    repo.mkdir()
+    ren_paths.record_project_repo("genshin-calculator", repo)
+
+    result = doctor.check_orphaned_projects(wiki)
+    assert result.status == "ok"
+
+
+def test_check_orphaned_projects_ok_when_dev_root_dir_matches(wiki, tmp_path, clean_path_env):
+    (wiki / "projects" / "sidecar").mkdir(parents=True)
+    dev_root = tmp_path / "Dev"
+    (dev_root / "sidecar").mkdir(parents=True)
+    clean_path_env.setenv("CLAUDE_PLUGIN_OPTION_DEVROOT", str(dev_root))
+
+    result = doctor.check_orphaned_projects(wiki)
+    assert result.status == "ok"
+
+
+def test_check_orphaned_projects_warns_on_orphan(wiki, tmp_path, clean_path_env):
+    (wiki / "projects" / "lost-project").mkdir(parents=True)
+    clean_path_env.setenv("CLAUDE_PLUGIN_OPTION_DEVROOT", str(tmp_path / "Dev"))
+
+    result = doctor.check_orphaned_projects(wiki)
+    assert result.status == "warn"
+    assert "lost-project" in result.message
+
+
+def test_check_orphaned_projects_skips_without_projects_dir(wiki):
+    result = doctor.check_orphaned_projects(wiki)
+    assert result.status == "skip"

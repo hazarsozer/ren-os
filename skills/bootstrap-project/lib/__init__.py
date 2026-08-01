@@ -147,6 +147,17 @@ def bootstrap(project_slug: str, session: str, repo_root: Path | None = None) ->
         except OSError:
             _LOGGER.exception("bootstrap-project: failed to write CLAUDE.md at %s", repo_root)
 
+        # Issue #19: record repo-path↔slug so `ren_paths.detect_project` finds
+        # this project even when the checkout dir is named differently.
+        try:
+            ren_paths.record_project_repo(project_slug, Path(repo_root))
+        except OSError:
+            _LOGGER.exception(
+                "bootstrap-project: failed to record repo mapping for %s at %s",
+                project_slug,
+                repo_root,
+            )
+
     return entry
 
 
