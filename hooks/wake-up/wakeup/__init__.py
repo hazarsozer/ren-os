@@ -1140,7 +1140,14 @@ def compose_wake_up_context(
             # Issue #23: no project and no git signal — the query is empty,
             # so ranking would just surface whatever happens to be released,
             # presented with unearned confidence. Inject nothing, not noise.
+            # Dogfood-2 M3: still run the cheap candidate discovery so the
+            # "N quarantined page(s) held out" transparency line survives —
+            # suppressing ranking must not also suppress the withheld-trust
+            # signal (no-project sessions are exactly where it matters).
             logger.info("empty rank query; suppressing extras")
+            _, extras_held_count = _discover_extra_candidates(
+                wiki_root, set(surfaced_pages) | dedicated_paths, project
+            )
     except Exception:  # noqa: BLE001 - ranking failure degrades to no extras
         logger.debug("rank_extras failed", exc_info=True)
         extras, extras_held_count = [], 0
