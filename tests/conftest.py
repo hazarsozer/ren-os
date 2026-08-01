@@ -79,6 +79,10 @@ def _real_renos_untouched():
         if not root.exists():
             continue
         for path in root.rglob("*"):
+            # A live Claude Code session writes its own transcript/state under
+            # ~/.claude/projects/ while the suite runs — not a suite leak.
+            if root == _REAL_CLAUDE and path.is_relative_to(_REAL_CLAUDE / "projects"):
+                continue
             try:
                 if path.lstat().st_mtime > start:
                     touched.append(str(path))
