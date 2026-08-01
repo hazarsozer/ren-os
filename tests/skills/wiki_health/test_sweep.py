@@ -815,6 +815,68 @@ def test_hub_pages_themselves_are_not_unlinked_findings(wiki):
     assert result["unlinked_knowledge_pages"] == []
 
 
+def test_short_leaf_name_inside_longer_filename_is_not_a_link(wiki):
+    # L2 (0.6.2 review): a substring check let `a.md` count as linked because
+    # `schema.md` ends in "a.md" — a systematic false negative. The match
+    # must be word-bounded on the filename.
+    _write(
+        wiki,
+        "projects/flux/knowledge/mechanics/index.md",
+        "---\nhub: true\n---\n# Mechanics\n\nSee schema.md for conventions.\n",
+    )
+    _write(wiki, "projects/flux/knowledge/mechanics/a.md", "# A\n")
+
+    result = wiki_health.sweep()
+
+    assert result["unlinked_knowledge_pages"] == ["projects/flux/knowledge/mechanics/a.md"]
+
+
+def test_leaf_name_as_suffix_of_hyphenated_filename_is_not_a_link(wiki):
+    # `map.md` must not count as linked via a mention of `combat-map.md`.
+    _write(
+        wiki,
+        "projects/flux/knowledge/mechanics/index.md",
+        "---\nhub: true\n---\n# Mechanics\n\n- [combat map](combat-map.md)\n",
+    )
+    _write(wiki, "projects/flux/knowledge/mechanics/combat-map.md", "# Combat map\n")
+    _write(wiki, "projects/flux/knowledge/mechanics/map.md", "# Map\n")
+
+    result = wiki_health.sweep()
+
+    assert result["unlinked_knowledge_pages"] == ["projects/flux/knowledge/mechanics/map.md"]
+
+
+def test_empty_knowledge_subdir_is_not_hubless(wiki):
+    # L3 (0.6.2 review): "add a hub summarizing children" is nonsense for a
+    # dir with no markdown children — empty scaffold dirs are not findings.
+    (wiki / "projects" / "flux" / "knowledge" / "empty").mkdir(parents=True)
+
+    result = wiki_health.sweep()
+
+    assert result["hubless_knowledge_dirs"] == []
+
+
+def test_asset_only_knowledge_subdir_is_not_hubless(wiki):
+    _write(wiki, "projects/flux/knowledge/img/logo.svg", "<svg/>\n")
+
+    result = wiki_health.sweep()
+
+    assert result["hubless_knowledge_dirs"] == []
+
+
+def test_subdir_with_md_only_in_descendant_is_still_hubless(wiki):
+    # A dir whose only markdown lives deeper still organizes markdown — both
+    # it and the descendant dir need hubs.
+    _write(wiki, "projects/flux/knowledge/entities/characters/amber.md", "# Amber\n")
+
+    result = wiki_health.sweep()
+
+    assert result["hubless_knowledge_dirs"] == [
+        "projects/flux/knowledge/entities",
+        "projects/flux/knowledge/entities/characters",
+    ]
+
+
 def test_raw_pages_are_skipped_by_pair_scans(wiki):
     # raw/ is source material, not claims — a source that "contradicts" the
     # page distilling it must never be a contradiction finding.

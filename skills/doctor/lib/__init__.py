@@ -142,6 +142,10 @@ def check_schema_versions(wiki_root: Path | None = None) -> CheckResult:
     behind: list[str] = []
 
     for md_path in sorted(wiki_root.rglob("*.md")):
+        # projects/<slug>/raw/ is write-once source material — a source file
+        # carrying registered-type frontmatter is not a page to migrate.
+        if ren_paths.in_project_raw(md_path.relative_to(wiki_root).parts):
+            continue
         text = md_path.read_text(encoding="utf-8", errors="replace")
         page_type = _frontmatter_field(text, "type")
         version_str = _frontmatter_field(text, "schema_version")
