@@ -53,9 +53,17 @@ def isolated_state(clean_path_env, tmp_path):
     (wiki_root() / "index.md").write_text("---\ntype: l2-map\n---\n# Wiki index\n", encoding="utf-8")
     # Real content so the wake-up hook emits a genuine payload (the thing
     # calibration pairs against) rather than a "nothing to inject" notice.
-    decision = wiki_root() / "decisions" / "d1.md"
-    decision.parent.mkdir(parents=True, exist_ok=True)
-    decision.write_text("# Decision one\n\nWe chose FastAPI for the backend.\n", encoding="utf-8")
+    # Post-#23 an empty rank query (no project, no git signal — exactly this
+    # fixture's shape) suppresses the extras channel, so the content must
+    # arrive via a channel that doesn't need a query: a model-stamped global
+    # L1 page, which injects regardless of project detection (#21).
+    l1 = wiki_root() / "l1" / "session-cal.md"
+    l1.parent.mkdir(parents=True, exist_ok=True)
+    l1.write_text(
+        '---\nren_write_id: "w-test"\nren_writer: "llm-auto"\nren_trust: "model"\n---\n'
+        "# Session\n\nWe chose FastAPI for the backend.\n",
+        encoding="utf-8",
+    )
     return tmp_path
 
 

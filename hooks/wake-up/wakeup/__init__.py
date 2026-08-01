@@ -1129,11 +1129,18 @@ def compose_wake_up_context(
         sections.append(suggestion)
 
     extras: list[str] = []
+    extras_held_count = 0
     try:
         query = _build_rank_query(project, cwd)
-        extras, extras_held_count = rank_extras(
-            query, wiki_root, exclude=set(surfaced_pages) | dedicated_paths, project=project
-        )
+        if query:
+            extras, extras_held_count = rank_extras(
+                query, wiki_root, exclude=set(surfaced_pages) | dedicated_paths, project=project
+            )
+        else:
+            # Issue #23: no project and no git signal — the query is empty,
+            # so ranking would just surface whatever happens to be released,
+            # presented with unearned confidence. Inject nothing, not noise.
+            logger.info("empty rank query; suppressing extras")
     except Exception:  # noqa: BLE001 - ranking failure degrades to no extras
         logger.debug("rank_extras failed", exc_info=True)
         extras, extras_held_count = [], 0

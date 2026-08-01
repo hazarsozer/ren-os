@@ -490,6 +490,37 @@ def test_hostile_unstamped_global_l1_not_injected_raw_without_project(wiki, clea
     assert "Legitimate session summary." in payload
 
 
+def test_empty_rank_query_suppresses_extras_entirely(wiki, clean_path_env, tmp_path):
+    """Issue #23: with no project and no git signal the rank query is empty —
+    "Possibly relevant now" must be suppressed entirely rather than filled
+    with whatever happens to be released (inject nothing, not noise)."""
+    dev_root = tmp_path / "Dev"
+    dev_root.mkdir()
+    clean_path_env.setenv("CLAUDE_PLUGIN_OPTION_DEVROOT", str(dev_root))
+    _write(wiki / "projects" / "genshin-calculator" / "map.md",
+           "# genshin — knowledge map\n\n- damage formula uses crit ratio\n")
+    # Something else real so the payload isn't empty for lack of ANY content.
+    _write(wiki / "l1" / "session-recent.md", _model_stamped("Recent session summary."))
+
+    payload = wakeup.compose_wake_up_context(cwd=dev_root, wiki_root=wiki_root(), session="sess-1")
+
+    assert wakeup.SECTION_EXTRAS not in payload
+    assert "crit ratio" not in payload
+    assert "Recent session summary." in payload
+
+
+def test_nonempty_rank_query_still_surfaces_extras(project):
+    """Issue #23 companion: a detected project yields a non-empty query, so
+    the extras channel keeps working exactly as before."""
+    _write(project["project_dir"].parent / "sibling" / "notes.md",
+           "# Sibling notes\n\nreusable deploy checklist")
+
+    payload = wakeup.compose_wake_up_context(cwd=project["cwd"], wiki_root=wiki_root(), session="sess-1")
+
+    assert wakeup.SECTION_EXTRAS in payload
+    assert "reusable deploy checklist" in payload
+
+
 def test_missing_wiki_root_returns_empty_string(clean_path_env, tmp_path):
     clean_path_env.setenv("REN_FRAMEWORK_ROOT", str(tmp_path))
     nonexistent_wiki = wiki_root()
@@ -1427,7 +1458,7 @@ def test_real_sibling_page_still_appears_in_extras_after_f1_fix(project):
 # install; a live drill reproduced this AFTER 219f9d3 shipped.
 
 
-def test_f1_master_skeleton_placeholder_lines_do_not_leak_via_extras(wiki, tmp_path):
+def test_f1_master_skeleton_placeholder_lines_do_not_leak_via_extras(wiki, clean_path_env, tmp_path):
     """RED against 219f9d3, GREEN after the follow-up fix: stamp the REAL
     master-profile skeleton via `stamp_skeleton` (not a hand-written
     fixture) so `index.md` and `LICENSES.md` are their actual shipped
@@ -1452,8 +1483,15 @@ def test_f1_master_skeleton_placeholder_lines_do_not_leak_via_extras(wiki, tmp_p
         placeholders={"name": "Friend", "handle": "friend", "framework_version": "0.5.5"},
     )
 
-    cwd = tmp_path / "somewhere"
+    # Post-#23 an empty rank query suppresses extras entirely, so this test
+    # needs a detected project to keep the extras channel (the thing under
+    # test) alive — the candidate pool below is unchanged by this.
+    dev_root = tmp_path / "Dev"
+    dev_root.mkdir()
+    clean_path_env.setenv("CLAUDE_PLUGIN_OPTION_DEVROOT", str(dev_root))
+    cwd = dev_root / "somewhere"
     cwd.mkdir()
+    (wiki_root() / "projects" / "somewhere").mkdir(parents=True, exist_ok=True)
     payload = wakeup.compose_wake_up_context(cwd=cwd, wiki_root=wiki_root(), session="sess-1")
 
     assert wakeup.SECTION_EXTRAS in payload
@@ -1742,6 +1780,11 @@ def test_compose_returns_empty_for_unstamped_wiki_root(clean_path_env, tmp_path,
 def test_compose_injects_for_stamped_wiki_root(clean_path_env, tmp_path):
     clean_path_env.setenv("REN_FRAMEWORK_ROOT", str(tmp_path))
     wiki = _make_wiki_state(tmp_path, "stamped")
+    # Post-#23 the boilerplate index/log can no longer reach the payload via
+    # the degenerate empty-query extras channel (that WAS issue #23's noise),
+    # so give the stamped wiki content on a query-independent channel: a
+    # model-stamped global L1 (#21 injects it with or without a project).
+    _write(wiki / "l1" / "session-001.md", _model_stamped("Real session content."))
 
     payload = wakeup.compose_wake_up_context(cwd=tmp_path, wiki_root=wiki, session="sess-1")
 
