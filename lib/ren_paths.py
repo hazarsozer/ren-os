@@ -19,6 +19,7 @@ under the key `handle:` (ADR-022). We read that.
 
 from __future__ import annotations
 
+import json
 import os
 import re
 from pathlib import Path
@@ -30,7 +31,11 @@ FRAMEWORK_ROOT_ENV = "REN_FRAMEWORK_ROOT"
 """Env-var override for the framework root path. Lets tests + distribution remap."""
 
 DEFAULT_FRAMEWORK_ROOT = Path.home() / ".renos"
-"""Default framework root (renamed from startup-framework's ~/.startup-framework)."""
+"""Default framework root (renamed from startup-framework's ~/.startup-framework).
+
+NOTE: frozen at import time — kept only for back-compat introspection. Resolvers
+must NOT use it (issue #13: import-time freezing bypasses test HOME isolation);
+`framework_root()` re-reads `Path.home()` lazily at call time instead."""
 
 WIKI_ROOT_ENV = "REN_WIKI_ROOT"
 """Explicit env-var override for the wiki path (highest-precedence F1 tier)."""
@@ -40,7 +45,7 @@ WIKI_ROOT_PLUGIN_OPTION = "CLAUDE_PLUGIN_OPTION_WIKIROOT"
 Honored on its own — independent of `REN_FRAMEWORK_ROOT` — so a friend who configures
 only `wikiRoot` reads/writes the path they advertised (Codex F1)."""
 
-FALLBACK_FRAMEWORK_VERSION = "0.6.1"
+FALLBACK_FRAMEWORK_VERSION = "0.6.2"
 """Fallback used when no installed-plugin metadata is reachable. Matches
 plugin.json#version (the SSOT). Tests pinned to this. In a real install Layer 2
 (plugin.json) wins, so this only stamps in bare-checkout/test contexts."""
@@ -108,7 +113,11 @@ def plugin_data_dir() -> Path:
     Honors CLAUDE_PLUGIN_DATA; falls back to the same path the shell scripts use.
     """
     override = os.environ.get(PLUGIN_DATA_ENV, "").strip()
-    return Path(override).expanduser() if override else DEFAULT_PLUGIN_DATA
+    if override:
+        return Path(override).expanduser()
+    # Lazy: re-read Path.home() at call time (issue #13 — the module constant
+    # freezes the real home at import, bypassing test HOME isolation).
+    return Path.home() / ".claude" / "plugins" / "data" / "renos"
 
 
 def code_map_cache_dir() -> Path:
@@ -130,7 +139,9 @@ def framework_root() -> Path:
     override = os.environ.get(FRAMEWORK_ROOT_ENV)
     if override:
         return Path(override).expanduser()
-    return DEFAULT_FRAMEWORK_ROOT
+    # Lazy: re-read Path.home() at call time (issue #13 — the module constant
+    # freezes the real home at import, bypassing test HOME isolation).
+    return Path.home() / ".renos"
 
 
 CLAUDE_DIR_ENV = "REN_CLAUDE_DIR"
@@ -212,12 +223,108 @@ def resolve_dev_root() -> Path:
     return Path.home() / DEFAULT_DEV_ROOT_REL
 
 
+PROJECTS_REGISTRY_FILENAME = "projects.json"
+"""State file recording repo-path ↔ project-slug mappings (issue #19).
+
+Layout: `state_dir()/projects.json`, shaped
+`{"version": 1, "projects": {"<slug>": {"repo_path": "<abs path>"}}}`.
+Written at ingest/bootstrap time, when the repo root is actually known —
+`detect_project` consults it BEFORE dir-name matching so a clone directory
+named differently from its slug (`~/Dev/genshin-calculator-dev` vs. slug
+`genshin-calculator`) is still wired into wake-up injection."""
+
+PROJECTS_REGISTRY_VERSION = 1
+
+
+def projects_registry_path() -> Path:
+    """Path of the repo-path↔slug registry (`state_dir()/projects.json`)."""
+    return state_dir() / PROJECTS_REGISTRY_FILENAME
+
+
+def load_project_registry() -> dict[str, dict]:
+    """Return the `{slug: {"repo_path": ...}}` mapping; `{}` when the file is
+    missing, unreadable, or malformed. Never raises — a corrupt registry must
+    degrade to the dir-name fallback, not break project detection."""
+    path = projects_registry_path()
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, ValueError):
+        return {}
+    projects = data.get("projects") if isinstance(data, dict) else None
+    if not isinstance(projects, dict):
+        return {}
+    # 0.6.2 review finding L1: slugs flow into filesystem paths
+    # (`wiki_root()/projects/<slug>`), so a corrupt/hand-edited projects.json
+    # must not be able to smuggle a traversal value like "../..". Validate
+    # against the same safe-handle pattern handles are held to.
+    return {
+        slug: entry
+        for slug, entry in projects.items()
+        if isinstance(slug, str)
+        and HANDLE_RE.match(slug)
+        and isinstance(entry, dict)
+        and isinstance(entry.get("repo_path"), str)
+    }
+
+
+def record_project_repo(project_slug: str, repo_path: Path | str) -> Path:
+    """Record `project_slug` ↔ `repo_path` in the registry (merge + atomic
+    write) and return the registry path.
+
+    Re-recording the same pair is a no-op in effect (idempotent); recording a
+    new path for an existing slug replaces that slug's entry — a project can
+    only live in one place at a time.
+    """
+    resolved = Path(repo_path).expanduser().resolve()
+    projects = load_project_registry()
+    projects[project_slug] = {**projects.get(project_slug, {}), "repo_path": str(resolved)}
+
+    path = projects_registry_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {"version": PROJECTS_REGISTRY_VERSION, "projects": projects}
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+    os.replace(tmp, path)
+    return path
+
+
+def _detect_project_from_registry(cwd: Path, wiki_root_: Path) -> str | None:
+    """Longest recorded `repo_path` containing `cwd` whose wiki project dir
+    exists → its slug. Longest-match so a nested package inside a monorepo
+    beats the enclosing repo."""
+    try:
+        resolved = cwd.resolve()
+    except OSError:
+        return None
+    best: tuple[int, str] | None = None
+    for slug, entry in load_project_registry().items():
+        repo = Path(entry["repo_path"])
+        if resolved != repo and repo not in resolved.parents:
+            continue
+        if not (wiki_root_ / "projects" / slug).is_dir():
+            continue
+        depth = len(repo.parts)
+        if best is None or depth > best[0]:
+            best = (depth, slug)
+    return best[1] if best else None
+
+
 def detect_project(cwd: Path, wiki_root_: Path, dev_root: Path | None = None) -> str | None:
-    """cwd matches `<dev_root>/<X>/...` AND `wiki_root_/projects/<X>/` exists → X.
+    """Project slug for `cwd`, or None.
+
+    Two tiers (issue #19):
+      1. The repo-path↔slug registry (`projects.json`), recorded at
+         ingest/bootstrap time — authoritative, and works regardless of what
+         the checkout directory is named or where it lives.
+      2. Fallback: cwd matches `<dev_root>/<X>/...` AND
+         `wiki_root_/projects/<X>/` exists → X.
 
     Shared by the wake-up hook (project-scoped read) and the wrap skill
     (project-scoped write) so the two can never drift onto different paths
     for the "same" project (codex D4 wiring)."""
+    mapped = _detect_project_from_registry(cwd, wiki_root_)
+    if mapped is not None:
+        return mapped
     if dev_root is None:
         dev_root = resolve_dev_root()
     try:
@@ -452,6 +559,11 @@ __all__ = [
     "DEFAULT_DEV_ROOT_REL",
     "resolve_dev_root",
     "detect_project",
+    "PROJECTS_REGISTRY_FILENAME",
+    "PROJECTS_REGISTRY_VERSION",
+    "projects_registry_path",
+    "load_project_registry",
+    "record_project_repo",
     "wiki_root",
     "state_dir",
     "PathTraversalError",

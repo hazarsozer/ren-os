@@ -239,3 +239,100 @@ def test_reverting_an_auto_applied_write_works_one_step(wiki):
 
     assert result.restored is True
     assert not page_abs.exists()  # it was an ADD, so revert deletes it
+
+
+# ------------------- instruction plane = the whole global tier (issue #18)
+
+
+@pytest.mark.parametrize(
+    "page",
+    ["global/policy.md", "global", "decisions/x.md", "decisions", "patterns/y.md", "research/z.md"],
+)
+def test_global_tier_pages_are_instruction_plane(page):
+    from lib.governance.tiers import is_instruction_plane_page
+
+    assert is_instruction_plane_page(page) is True
+    for writer in ("human", "llm-auto", "retrospective", "routine"):
+        assert tier_of(Action(kind="memory_write", writer=writer, page=page)) == "diff_approved"
+
+
+@pytest.mark.parametrize(
+    "page",
+    ["projects/flux/map.md", "log.md", "identity.md", "alternatives/a.md", "decisions-draft.md", ""],
+)
+def test_data_plane_pages_stay_auto(page):
+    from lib.governance.tiers import is_instruction_plane_page
+
+    assert is_instruction_plane_page(page) is False
+    if page:
+        assert tier_of(Action(kind="memory_write", writer="llm-auto", page=page)) == "auto"
+
+
+def test_prefix_encodings_do_not_drift():
+    """The three encodings of the instruction plane must agree — all
+    delegate to `tiers.is_instruction_plane_page` (issue #18)."""
+    from lib.governance.tiers import INSTRUCTION_PLANE_PREFIXES, is_instruction_plane_page
+    from lib.suggestions.gate import is_critical_page
+
+    probes = [f"{prefix}page.md" for prefix in INSTRUCTION_PLANE_PREFIXES]
+    probes += [prefix.rstrip("/") for prefix in INSTRUCTION_PLANE_PREFIXES]
+    probes += ["projects/flux/map.md", "log.md", "notes/a.md"]
+
+    for page in probes:
+        assert is_critical_page(page) == is_instruction_plane_page(page), page
+
+
+def test_lifecycle_data_plane_pages_excludes_instruction_plane(wiki, tmp_path):
+    from lib.governance.tiers import INSTRUCTION_PLANE_PREFIXES
+    from lib.memory.lifecycle import _data_plane_pages
+
+    for prefix in INSTRUCTION_PLANE_PREFIXES:
+        target = wiki / prefix.rstrip("/") / "p.md"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("x", encoding="utf-8")
+    (wiki / "projects" / "flux").mkdir(parents=True, exist_ok=True)
+    (wiki / "projects" / "flux" / "map.md").write_text("x", encoding="utf-8")
+
+    assert _data_plane_pages(wiki) == ["projects/flux/map.md"]
+
+
+def test_ingest_producer_write_to_decisions_holds_pending(wiki):
+    """The live issue-#18 bug: a producer="ingest", writer="llm-auto"
+    proposal targeting decisions/<x>.md auto-applied. It must hold."""
+    entry, prov = queue.propose_and_apply(
+        Proposal(
+            op="ADD",
+            page="decisions/flux-stack.md",
+            content="# Flux stack\n",
+            reason="ingest-project",
+            producer="ingest",
+            writer="llm-auto",
+            session="sess-18",
+        )
+    )
+
+    assert prov is None
+    assert entry.status == "pending"
+    assert entry.write_id is None
+    assert not (wiki / "decisions" / "flux-stack.md").exists()
+    with pytest.raises(QueueStateError):
+        queue.apply_auto(entry.qid)
+
+
+def test_promotion_to_global_tier_still_reaches_the_page_via_human_approval(wiki):
+    entry, prov = queue.propose_and_apply(
+        Proposal(
+            op="ADD",
+            page="decisions/tdd-everywhere.md",
+            content="# TDD everywhere\n",
+            reason="promotion",
+            producer="promotion",
+            writer="human",
+            session="sess-18",
+        )
+    )
+    assert prov is None and entry.status == "pending"
+
+    queue.approve_and_apply(entry.qid, who="hazar")
+
+    assert (wiki / "decisions" / "tdd-everywhere.md").is_file()

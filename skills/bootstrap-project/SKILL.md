@@ -6,10 +6,10 @@ description: |
   command. Stamps the shared wiki skeleton (additive) and queues an empty L2
   pointer-map for the project. For an EXISTING repo with real code/git
   history, use /ren:ingest-project instead.
-version: 0.6.1
+version: 0.6.2
 license: MIT
 
-framework_version: "0.6.1"
+framework_version: "0.6.2"
 schema_version: 1
 type: skill
 execution_tier: deterministic
@@ -57,13 +57,14 @@ The fresh-project half of the L2 pair. `/ren:ingest-project` scans an existing r
 ## Behavior
 
 1. Resolve `project_slug` (kebab-case) and the active `session` id. If bootstrapping inside a project repo (the common case), resolve `repo_root=Path.cwd()`.
-2. Call `skills.bootstrap-project.lib.bootstrap(project_slug, session, repo_root=repo_root)`:
+2. Call `importlib.import_module("skills.bootstrap-project.lib").bootstrap(project_slug, session, repo_root=repo_root)`:
    - Stamps the shared skeleton (`lib/skeleton.py` against `wiki-skeleton/manifest.yaml`'s `master` profile) into the wiki root — additive only; an already-onboarded wiki is untouched.
-   - Only when `projects/<slug>/map.md` does NOT exist yet: assembles an empty L2 map (`skills.ingest-project.lib.assemble_l2` — same frozen schema `ingest` uses, just with empty `knowledge`/`pointers` and a single "project bootstrapped" log line) and proposes it (`ADD`) at `lib.memory.queue`. If the map already exists, this step is skipped entirely — no proposal, no write — and `bootstrap()` returns `None`. The map is only ever SEEDED once; its real content is grown over time by other writers (`/ren:ingest-project`, `/ren:wrap`, `/ren:pin`), and bootstrap must never re-run over that growth.
+   - Only when `projects/<slug>/map.md` does NOT exist yet: assembles an empty L2 map (`importlib.import_module("skills.ingest-project.lib").assemble_l2` — same frozen schema `ingest` uses, just with empty `knowledge`/`pointers` and a single "project bootstrapped" log line) and proposes it (`ADD`) at `lib.memory.queue`. If the map already exists, this step is skipped entirely — no proposal, no write — and `bootstrap()` returns `None`. The map is only ever SEEDED once; its real content is grown over time by other writers (`/ren:ingest-project`, `/ren:wrap`, `/ren:pin`), and bootstrap must never re-run over that growth.
+   - Stamps the manifest's `project` profile under `projects/<slug>/`: `overview.md` (the guaranteed wake-up orientation page) and, as of 0.6.2, the project-wiki skeleton — the empty `knowledge/` tree (the sanctioned home for this project's durable distilled pages, `type: project-knowledge`, `schema_version: 1`, `project: <slug>`; arbitrary-depth subdirectories, each with a hub `index.md`), a `schema.md` template stub (`type: project-schema` — the project's own SCHEMA document: taxonomy tree, naming conventions, what `raw/` holds; the ingest worker drafts the real taxonomy, bootstrap only marks the slot), and the empty `raw/` directory for immutable source material. Bootstrap only *creates* the skeleton; `/ren:ingest-project` and later sessions fill it, and the L2 map's Decision-map pointers index it (hubs and top-level pages, not deep leaves). Project-specific pages must NOT go in root-level `decisions/`·`patterns/`·`research/` — that's the promotion-gated instruction plane (`docs/decisions/2026-08-01-project-knowledge-subtree.md`, amended by `2026-08-01-hierarchical-project-wiki.md`).
    - Always `producer="promotion"`, `writer="human"` — a human directly asked for this, so it's never quarantined on apply.
    - When `repo_root` is given, also writes `<repo_root>/AGENTS.md` via `lib.portability.agents_surface.write_agents_md` — the thin, harness-neutral pointer file foreign coding agents (e.g. Codex) read to find this project's wiki map (Codex D5: the surface existed but had zero production callers before this wiring). A failure writing AGENTS.md never breaks bootstrap itself; omit `repo_root` (default `None`) to skip it entirely.
    - Also writes `<repo_root>/CLAUDE.md` via `lib.adapter.claude_md.write_project_claude_md(repo_root, project_slug)` — stamps the thin RenOS pointer block (managed `ren:` markers) pointing at the project's L2 map, preserving any surrounding user content. Wired as of 0.4.3 (closes a 0.2 finalize claim that had zero production callers). Same failure isolation as `AGENTS.md`: a failure never breaks bootstrap itself.
-3. `ingest-project`'s `lib.ingest()` still does not call `write_project_claude_md` — `bootstrap-project` owns the `CLAUDE.md` stamp; `ingest` only writes the wiki map.
+3. `ingest-project`'s `lib.ingest()` also stamps `CLAUDE.md` now (issue #15) when given `repo_root=` — same additive marker-block contract. Both skills additionally record the repo-path↔slug pair in `state_dir()/projects.json` via `ren_paths.record_project_repo` (issue #19), so `detect_project` finds the project even when the checkout dir is named differently from the slug.
 4. Confirm to the user: `Queued <qid> — bootstrapped projects/<slug>/map.md`. On the skip path (map already existed, `bootstrap()` returned `None`), instead confirm: `projects/<slug>/map.md already exists — left untouched.`
 
 ## Why this reuses `ingest-project`'s `assemble_l2`

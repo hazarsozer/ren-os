@@ -36,7 +36,7 @@ from lib import ren_paths
 from lib.adapter.claude_md import MARKER_BEGIN, MARKER_END
 from lib.companions import CHOICES_FILENAME
 from lib.ren_paths import claude_user_dir
-from lib.skeleton import StampResult, stamp_skeleton
+from lib.skeleton import StampResult, stamp_skeleton, wiki_stamped as _wiki_stamped
 from skills.backup.lib import backup_configured
 
 QUESTION_BUDGET = 10
@@ -84,7 +84,7 @@ def install_state(wiki_root: Path | None = None) -> dict:
     """
     root = Path(wiki_root) if wiki_root is not None else ren_paths.wiki_root()
 
-    wiki_stamped = (root / "index.md").is_file()
+    wiki_stamped = _wiki_stamped(root)
     identity_present = (root / "identity.md").is_file()
 
     try:
@@ -208,9 +208,18 @@ def warm_environment() -> dict:
     bound), `uv run`'s one-liner just needs the already-synced venv to spin
     up.
     """
-    root = str(_repo_root())
+    root_path = _repo_root()
+    root = str(root_path)
+    # `--frozen` requires a lockfile; an install whose plugin root lacks
+    # uv.lock (issue #14 — it was gitignored, so it never shipped) would
+    # otherwise fail unconditionally with "Unable to find lockfile". uv.lock
+    # is tracked now, but degrade to a resolving sync rather than dying if a
+    # future artifact loses it again.
+    sync_cmd = ["uv", "sync", "--frozen", "--project", root]
+    if not (root_path / "uv.lock").is_file():
+        sync_cmd = ["uv", "sync", "--project", root]
     subprocess.run(
-        ["uv", "sync", "--frozen", "--project", root],
+        sync_cmd,
         check=True, capture_output=True, text=True, timeout=120,
     )
     proc = subprocess.run(

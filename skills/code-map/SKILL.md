@@ -6,10 +6,10 @@ description: |
   surface from the wiki. Triggers on /ren:code-map [build|status]. A thin
   wrapper over Graphify (pinned 0.9.x), never a second hand-rolled engine;
   gracefully absent if Graphify isn't installed.
-version: 0.6.1
+version: 0.6.2
 license: MIT
 
-framework_version: "0.6.1"
+framework_version: "0.6.2"
 schema_version: 1
 type: skill
 execution_tier: deterministic
@@ -52,7 +52,7 @@ A structural map of a codebase — symbols, call graphs, cross-file references �
 
 - Friend invokes `/ren:code-map status` — report whether Graphify is installed, its version, whether that version is within the pinned range, and whether the derived graph exists and is fresh.
 - Friend invokes `/ren:code-map build` — (re)generate the derived graph for the active repo.
-- Another capability (not the friend directly) calls `skills.code_map.lib.consume()` to load the graph mid-session.
+- Another capability (not the friend directly) calls `importlib.import_module("skills.code-map.lib").consume()` to load the graph mid-session.
 
 ## When NOT to use this skill
 
@@ -61,8 +61,8 @@ A structural map of a codebase — symbols, call graphs, cross-file references �
 
 ## Behavior
 
-1. **status**: call `skills.code_map.lib.status(repo_root)`. Never raises — reports `installed=False` plainly when Graphify is absent, with a pointer to install it (`uv tool install graphifyy`; see `doctrine/companions.md`).
-2. **build**: call `skills.code_map.lib.build(repo_root, session)`. Runs Graphify headlessly (`graphify <repo_root> --output <state_dir()/derived/codemap>`), records a `codemap_tokens` "build" metric (real byte size, not an estimate), and returns the `graph.json` path. Raises `CodeMapUnavailable` (with the install pointer) if the binary is missing, or if Graphify exits nonzero.
+1. **status**: call `importlib.import_module("skills.code-map.lib").status(repo_root)`. Never raises — reports `installed=False` plainly when Graphify is absent, with a pointer to install it (`uv tool install graphifyy`; see `doctrine/companions.md`).
+2. **build**: call `importlib.import_module("skills.code-map.lib").build(repo_root, session)`. Runs Graphify headlessly (`graphify <repo_root> --output <state_dir()/derived/codemap>`), records a `codemap_tokens` "build" metric (real byte size, not an estimate), and returns the `graph.json` path. Raises `CodeMapUnavailable` (with the install pointer) if the binary is missing, or if Graphify exits nonzero.
 3. **consume** (internal use by other capabilities, not a direct user command): loads the graph and records BOTH `tokens_loaded` (the graph itself) and `tokens_baseline` (the raw source it summarizes) via `lib.instrument.estimator` — this is the chairman-ruling instrumentation: Graphify's token-savings claim must show up in these two numbers, not just be asserted. Raises `CodeMapUnavailable` if the graph is absent or stale (a source file changed since the last build) — it never rebuilds silently; the caller decides.
 
 ## Boundaries (load-bearing)

@@ -117,7 +117,7 @@ class _FakeConflict:
 def test_conflicts_attached_when_semantics_detect_returns_one(wiki, monkeypatch):
     class _FakeSemantics:
         @staticmethod
-        def detect(op, page, content, wiki_root):
+        def detect(op, page, content, wiki_root, exempt_pages=None):
             return [_FakeConflict(kind="contradicts", page=page, write_id="w-old-1", evidence="stub")]
 
     monkeypatch.setattr(queue, "_semantics", _FakeSemantics)
@@ -132,7 +132,7 @@ def test_conflicts_attached_when_semantics_detect_returns_one(wiki, monkeypatch)
 def test_conflicts_empty_when_semantics_detect_returns_empty_list(wiki, monkeypatch):
     class _FakeSemantics:
         @staticmethod
-        def detect(op, page, content, wiki_root):
+        def detect(op, page, content, wiki_root, exempt_pages=None):
             return []
 
     monkeypatch.setattr(queue, "_semantics", _FakeSemantics)
@@ -204,7 +204,7 @@ def test_approve_then_apply_happy_path_writes_page_and_journal(wiki):
 def test_apply_fills_supersedes_from_supersedes_conflict(wiki, monkeypatch):
     class _FakeSemantics:
         @staticmethod
-        def detect(op, page, content, wiki_root):
+        def detect(op, page, content, wiki_root, exempt_pages=None):
             return [_FakeConflict(kind="supersedes", page=page, write_id="w-original-write-id", evidence="stub")]
 
     monkeypatch.setattr(queue, "_semantics", _FakeSemantics)
@@ -415,7 +415,7 @@ def test_auto_apply_eligible_false_for_global_page(wiki):
 def test_auto_apply_eligible_false_for_contradicts_conflict(wiki, monkeypatch):
     class _FakeSemantics:
         @staticmethod
-        def detect(op, page, content, wiki_root):
+        def detect(op, page, content, wiki_root, exempt_pages=None):
             return [_FakeConflict(kind="contradicts", page=page, write_id=None, evidence="opposite claim")]
 
     monkeypatch.setattr(queue, "_semantics", _FakeSemantics)
@@ -446,7 +446,7 @@ def test_propose_and_apply_global_page_stays_pending(wiki):
 def test_propose_and_apply_contradiction_holds_for_reasoning(wiki, monkeypatch):
     class _FakeSemantics:
         @staticmethod
-        def detect(op, page, content, wiki_root):
+        def detect(op, page, content, wiki_root, exempt_pages=None):
             return [_FakeConflict(kind="contradicts", page=page, write_id=None, evidence="opposite claim")]
 
     monkeypatch.setattr(queue, "_semantics", _FakeSemantics)
@@ -634,3 +634,84 @@ class TestAppliedDedup:
             )
         )
         assert e.status == "pending"
+
+
+# --- issue #16: batch ingest must not hold its own siblings -----------------
+
+
+_BATCH = {
+    "projects/acme/architecture.md": (
+        "The service layer owns all database access for the acme platform.\n"
+        "Avoid calling the ORM directly from route handlers in the acme platform.\n"
+        "Background jobs run through the queue worker pool.\n"
+    ),
+    "projects/acme/conventions.md": (
+        "Route handlers in the acme platform delegate database access to the "
+        "service layer, which owns it.\n"
+        "The queue worker pool is where background jobs run.\n"
+        "Tests live beside the module they cover.\n"
+    ),
+    "projects/acme/testing.md": (
+        "Tests for the acme platform live beside the module they cover.\n"
+        "Do not stub the service layer in integration tests for the platform.\n"
+        "The queue worker pool has its own integration test suite.\n"
+    ),
+    "projects/acme/map.md": (
+        "---\ntype: l2-map\n---\n"
+        "The service layer owns all database access for the acme platform.\n"
+        "Background jobs run through the queue worker pool.\n"
+        "Tests live beside the module they cover.\n"
+    ),
+}
+
+
+def _ingest_proposal(page, content, session="sess-batch"):
+    return _proposal(
+        op="ADD", page=page, content=content, reason="batch ingest",
+        producer="ingest", writer="llm-auto", session=session,
+    )
+
+
+def test_batch_ingest_of_sibling_pages_holds_nothing_on_contradicts(wiki):
+    """Reproduces issue #16: 7 distilled pages + an L2 map ingested in one
+    session all targeting projects/<slug>/ — every page after the first was
+    held on `contradicts` against the first. Now: zero contradicts."""
+    for page, content in _BATCH.items():
+        entry, _ = queue.propose_and_apply(_ingest_proposal(page, content))
+        assert [c for c in entry.conflicts if c["kind"] == "contradicts"] == [], page
+
+
+def test_batch_exemption_is_session_scoped(wiki):
+    queue.propose_and_apply(
+        _ingest_proposal(
+            "projects/acme/style.md",
+            "Always use spaces for indentation in Python files.\n",
+        )
+    )
+
+    entry, prov = queue.propose_and_apply(
+        _ingest_proposal(
+            "projects/acme/other.md",
+            "Do not use spaces for indentation in Python files.\n",
+            session="a-different-session",
+        )
+    )
+
+    assert [c["kind"] for c in entry.conflicts if c["kind"] == "contradicts"] == ["contradicts"]
+    assert prov is None  # held for the live session to reason about
+
+
+def test_session_revising_its_own_page_in_batch_is_not_held(wiki):
+    """A session correcting a numeric fact on a page it wrote moments ago is
+    supersede lineage, not a contradiction (issue #16)."""
+    first, _ = queue.propose_and_apply(
+        _ingest_proposal("projects/acme/config.md", "The request timeout is 30 seconds.\n")
+    )
+    assert first.status == "applied"
+
+    second, prov = queue.propose_and_apply(
+        _ingest_proposal("projects/acme/config.md", "The request timeout is 60 seconds.\n")
+    )
+
+    assert [c for c in second.conflicts if c["kind"] == "contradicts"] == []
+    assert prov is not None

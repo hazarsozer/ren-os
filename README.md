@@ -3,7 +3,7 @@
 **An agentic OS for Claude Code** — memory that compounds, tokens that aren't wasted, autonomy you can trust.
 
 [![validate](https://github.com/hazarsozer/ren-os/actions/workflows/validate.yml/badge.svg)](https://github.com/hazarsozer/ren-os/actions/workflows/validate.yml)
-![version](https://img.shields.io/badge/version-0.6.1-e34234)
+![version](https://img.shields.io/badge/version-0.6.2-e34234)
 ![python](https://img.shields.io/badge/python-%E2%89%A53.11-blue)
 ![license](https://img.shields.io/badge/license-MIT-green)
 
@@ -72,7 +72,10 @@ for where each exit criterion actually stands.
                  (foreign-stamped
                  pages held out)
                  projects/<slug>/
-                 map.md
+                 map.md + schema.md
+                 + knowledge/ (nested,
+                 hub index.md per dir)
+                 + raw/ (sources)
    │                │                  │
    └────────────────┴──────────────────┘
                     │  promotion (gated, never automatic)
@@ -219,7 +222,14 @@ scripts, worker-shaped drafting delegates to cheap subagent models, and judgment
 ├── index.md            # the wiki's own map
 ├── identity.md         # who you are, how you work
 ├── log.md              # chronological session log
-├── projects/<slug>/    # one L2 pointer-map per project
+├── projects/<slug>/    # per-project subtree
+│   ├── map.md          #   L2 pointer-map (the index — points at hubs)
+│   ├── overview.md     #   orientation page
+│   ├── schema.md       #   the project's own wiki taxonomy + conventions
+│   ├── knowledge/      #   durable project pages, project-determined depth
+│   │   └── <topic>/    #     every subdirectory carries a hub index.md
+│   ├── raw/            #   immutable source material (write-once)
+│   └── l1/             #   session notes
 ├── decisions/          # durable decisions (promotion-gated)
 ├── patterns/           # recurring approaches worth naming
 ├── research/           # ingested sources, distilled

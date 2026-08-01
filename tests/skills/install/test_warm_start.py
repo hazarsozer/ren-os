@@ -15,10 +15,12 @@ from __future__ import annotations
 import json
 import os
 import platform
+import subprocess
 import sys
 
 import pytest
 
+import skills.install.lib as install_lib
 from lib.ren_paths import state_dir, wiki_root
 from skills.install.lib import warm_environment
 
@@ -66,3 +68,53 @@ def test_warm_overwrites_stale_record(wiki):
     on_disk = json.loads(stale_path.read_text(encoding="utf-8"))
     assert on_disk["interpreter"] == info["interpreter"]
     assert on_disk["interpreter"] != "/nonexistent/python"
+
+
+# --- lockfile fallback (issue #14) -------------------------------------
+# The published plugin shipped without uv.lock, so `uv sync --frozen` failed
+# unconditionally ("Unable to find lockfile"). uv.lock is now tracked (see
+# tests/test_repo_hygiene.py), and warm_environment degrades to a non-frozen
+# sync when the lockfile is missing at the project root instead of dying.
+
+
+@pytest.fixture
+def fake_uv(wiki, tmp_path, monkeypatch):
+    """Point `_repo_root()` at an empty project dir and stub subprocess.run,
+    so both sync paths can be asserted without invoking real uv."""
+    project = tmp_path / "plugin-root"
+    project.mkdir()
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(project))
+
+    calls: list[list[str]] = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append(list(cmd))
+        return subprocess.CompletedProcess(cmd, 0, stdout="/fake/venv/bin/python\n", stderr="")
+
+    monkeypatch.setattr(install_lib.subprocess, "run", fake_run)
+    return project, calls
+
+
+def test_warm_uses_frozen_sync_when_lockfile_present(fake_uv):
+    project, calls = fake_uv
+    (project / "uv.lock").write_text("# lock\n", encoding="utf-8")
+
+    info = warm_environment()
+
+    assert calls[0] == ["uv", "sync", "--frozen", "--project", str(project)]
+    assert info["interpreter"] == "/fake/venv/bin/python"
+
+
+def test_warm_falls_back_to_unfrozen_sync_when_lockfile_absent(fake_uv):
+    project, calls = fake_uv
+    assert not (project / "uv.lock").exists()
+
+    info = warm_environment()
+
+    assert calls[0] == ["uv", "sync", "--project", str(project)]
+    assert "--frozen" not in calls[0]
+    # Still records interpreter state — the fallback must not skip the point.
+    assert info["interpreter"] == "/fake/venv/bin/python"
+    on_disk = json.loads((state_dir() / "interpreter.json").read_text(encoding="utf-8"))
+    assert on_disk["interpreter"] == "/fake/venv/bin/python"
+    assert on_disk["machine"] == platform.node()

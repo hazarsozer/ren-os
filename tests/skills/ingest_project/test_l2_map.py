@@ -25,6 +25,7 @@ import pytest
 
 from lib.governance.backup_gate import BackupRequired
 from lib.memory import journal, quarantine, queue
+from lib.adapter import claude_md as claude_md_lib
 from lib.ren_paths import wiki_root
 
 ingest_lib = importlib.import_module("skills.ingest-project.lib")
@@ -96,6 +97,7 @@ def test_assemble_l2_renders_exact_schema():
     expected = (
         "---\n"
         "type: l2-map\n"
+        "schema_version: 1\n"
         "project: demo-project\n"
         "---\n"
         "# demo-project — knowledge map\n"
@@ -112,12 +114,46 @@ def test_assemble_l2_renders_exact_schema():
     assert content == expected
 
 
+def test_assemble_l2_stamps_schema_version_so_doctor_stops_skipping_maps():
+    """Issue #20: `l2-map` has been a registered page type since 0.2 but the
+    emission never stamped `schema_version`, so `check_schema_versions` (which
+    skips any page without one) silently ignored every project map."""
+    import importlib
+
+    doctor = importlib.import_module("skills.doctor.lib")
+    content = assemble_l2("p", knowledge=[], pointers=[], log_line="l")
+
+    assert doctor._frontmatter_field(content, "type") == "l2-map"
+    assert doctor._frontmatter_field(content, "schema_version") == "1"
+
+    registry = importlib.import_module("skills.wiki-migration.lib").load_registry()
+    assert registry["page_types"]["l2-map"]["current"] == 1
+
+
+def test_assemble_l2_accepts_knowledge_and_repo_pointer_targets():
+    """The two sanctioned pointer target shapes (issue #20's existence rule):
+    an in-wiki `projects/<slug>/knowledge/` page, or a `repo:` reference."""
+    content = assemble_l2(
+        "flux",
+        knowledge=[],
+        pointers=[
+            {"topic": "stack", "path": "projects/flux/knowledge/stack.md", "anchor": None, "write_id": "w-1"},
+            {"topic": "entrypoint", "path": "repo:flux:src/main.rs", "anchor": None, "write_id": "w-2"},
+        ],
+        log_line="l",
+    )
+
+    assert "- [stack] → projects/flux/knowledge/stack.md (w-1)" in content
+    assert "- [entrypoint] → repo:flux:src/main.rs (w-2)" in content
+
+
 def test_assemble_l2_empty_knowledge_and_pointers_still_valid():
     content = assemble_l2("empty-project", knowledge=[], pointers=[], log_line="2026-01-01: project bootstrapped")
 
     expected = (
         "---\n"
         "type: l2-map\n"
+        "schema_version: 1\n"
         "project: empty-project\n"
         "---\n"
         "# empty-project — knowledge map\n"
@@ -303,3 +339,67 @@ def test_ingest_blocked_without_backup_on_populated_wiki(wiki, monkeypatch):
 
     with pytest.raises(BackupRequired):
         ingest("some-project", ["a fact"], [], session="sess-1")
+
+
+# --- issues #15 + #19: repo-side CLAUDE.md pointer + repo-path↔slug mapping ---
+
+
+def test_ingest_writes_project_claude_md_pointer_block(wiki, tmp_path):
+    repo = tmp_path / "widget-repo"
+    repo.mkdir()
+
+    result = ingest("fixture-widget", ["a fact"], [], session="sess-1", repo_root=repo)
+
+    claude_md = repo / "CLAUDE.md"
+    assert claude_md.exists()
+    text = claude_md.read_text(encoding="utf-8")
+    assert claude_md_lib.MARKER_BEGIN in text and claude_md_lib.MARKER_END in text
+    assert "projects/fixture-widget/map.md" in text
+    assert result["claude_md"] == "added"
+
+
+def test_ingest_claude_md_is_additive_and_idempotent(wiki, tmp_path, configured_backup):
+    repo = tmp_path / "widget-repo"
+    repo.mkdir()
+    (repo / "CLAUDE.md").write_text("# My project\n\nHand-written notes.\n", encoding="utf-8")
+
+    ingest("fixture-widget", ["a fact"], [], session="sess-1", repo_root=repo)
+    first = (repo / "CLAUDE.md").read_text(encoding="utf-8")
+    assert "Hand-written notes." in first
+
+    result = ingest("fixture-widget", ["a fact"], [], session="sess-2", repo_root=repo)
+    assert (repo / "CLAUDE.md").read_text(encoding="utf-8") == first
+    assert result["claude_md"] == "unchanged"
+
+
+def test_ingest_without_repo_root_writes_no_claude_md(wiki, tmp_path):
+    result = ingest("fixture-widget", ["a fact"], [], session="sess-1")
+    assert result["claude_md"] is None
+
+
+def test_ingest_records_repo_path_mapping(wiki, tmp_path):
+    from lib import ren_paths
+
+    repo = tmp_path / "genshin-calculator-dev"
+    repo.mkdir()
+
+    ingest("genshin-calculator", ["a fact"], [], session="sess-1", repo_root=repo)
+
+    registry = ren_paths.load_project_registry()
+    assert registry["genshin-calculator"]["repo_path"] == str(repo.resolve())
+    # ... and detect_project now finds it from inside the differently-named clone.
+    assert ren_paths.detect_project(repo, wiki, dev_root=tmp_path / "Dev") == "genshin-calculator"
+
+
+def test_ingest_survives_unwritable_repo_root(wiki, tmp_path, monkeypatch):
+    """A CLAUDE.md/mapping failure must never break the ingest itself."""
+    repo = tmp_path / "widget-repo"
+    repo.mkdir()
+
+    def _boom(*_args, **_kwargs):
+        raise OSError("simulated failure")
+
+    monkeypatch.setattr(ingest_lib, "write_project_claude_md", _boom)
+    result = ingest("fixture-widget", ["a fact"], [], session="sess-1", repo_root=repo)
+    assert result["write_id"] is not None
+    assert result["claude_md"] == "error"

@@ -39,7 +39,10 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from pathlib import Path
 
+import logging
+
 from lib import ren_paths
+from lib.adapter.claude_md import write_project_claude_md
 from lib.governance.backup_gate import require_backup
 from lib.memory import quarantine
 from lib.memory.queue import Proposal, QueueEntry, propose_and_apply
@@ -47,6 +50,8 @@ from lib.memory.queue import Proposal, QueueEntry, propose_and_apply
 from . import scan as _scan_module
 
 FIRST_SESSION_LEAD = "I set up your project memory — here's what I captured:"
+
+_LOGGER = logging.getLogger(__name__)
 
 
 def scan_repo(repo_root: Path) -> dict:
@@ -74,10 +79,21 @@ def assemble_l2(
     targets a page that hasn't been through the write-queue yet). `log_line`
     is the already-formatted one-line log entry (e.g. `"2026-01-01: bootstrapped"`)
     — this function only prefixes it with the bullet marker.
+
+    Pointer `path` values are either wiki-relative page paths (which MUST
+    exist, or be created in the same batch — issue #20's pointer-existence
+    rule) or external repo references written `repo:<name>:<path>`, which
+    `/ren:doctor` and `/ren:wiki-health` skip rather than report dangling.
+    Durable project pages belong under `projects/<slug>/knowledge/`.
+
+    The frontmatter carries `schema_version: 1` (issue #20): `l2-map` has
+    been a registered page type since 0.2 but the emission never stamped a
+    version, so `doctor.check_schema_versions` silently skipped every map.
     """
     lines = [
         "---",
         "type: l2-map",
+        "schema_version: 1",
         f"project: {project_slug}",
         "---",
         f"# {project_slug} — knowledge map",
@@ -102,6 +118,7 @@ def ingest(
     knowledge: list[str],
     pointers: list[dict],
     session: str,
+    repo_root: Path | None = None,
 ) -> dict:
     """Assemble and queue an L2 map from scan-derived (LLM-shaped) knowledge.
 
@@ -126,6 +143,22 @@ def ingest(
     (empty if none); when non-empty, a matching provenance note ("N
     instruction-shaped fragment(s) detected at scan") is appended to `content`
     (and so to both the written page and `artifact`) before queuing.
+
+    When `repo_root` is given (the repo just scanned, e.g. `Path.cwd()`), two
+    repo-side side-cars run after the map is applied (issues #15 + #19):
+      - `<repo_root>/CLAUDE.md` gets the thin project pointer block, via
+        `lib.adapter.claude_md.write_project_claude_md` — the same additive
+        marker-block contract `bootstrap-project` uses (content outside the
+        markers is byte-for-byte preserved; re-ingest is idempotent). Its
+        result string is returned as `"claude_md"` (`None` when `repo_root`
+        is omitted, `"error"` if a side-car failed).
+      - the repo-path↔slug mapping is recorded in
+        `state_dir()/projects.json` via `ren_paths.record_project_repo`, so
+        `ren_paths.detect_project` finds this project from a checkout
+        directory whose NAME differs from the manifest-derived slug — without
+        it, such a clone is silently orphaned from wake-up injection forever.
+    Neither can break the ingest: the map is already saved by then, so
+    failures are logged and folded into `"claude_md": "error"`.
 
     Gated on a configured backup once the wiki holds grown content (0.6.0
     Task 4, issue #11 §2) — see `lib.governance.backup_gate.require_backup`.
@@ -161,9 +194,47 @@ def ingest(
     if write_id:
         closing = f"This is saved (write {write_id}) — one step to revert, just say \"undo\" if it's wrong."
     else:
-        closing = "This is held for review — a conflict was flagged that needs your input before it's saved."
+        closing = (
+            "This is held for review — either a conflict was flagged or the target is a "
+            "global-tier page (only promotion puts pages there) — it needs your input "
+            "before it's saved."
+        )
     artifact = f"{FIRST_SESSION_LEAD}\n\n{content}\n\n{closing}"
-    return {"qid": entry.qid, "write_id": write_id, "artifact": artifact, "instruction_shaped": instruction_shaped}
+    claude_md = _wire_repo(repo_root, project_slug) if repo_root is not None else None
+    return {
+        "qid": entry.qid,
+        "write_id": write_id,
+        "artifact": artifact,
+        "instruction_shaped": instruction_shaped,
+        "claude_md": claude_md,
+    }
+
+
+def _wire_repo(repo_root: Path, project_slug: str) -> str:
+    """Stamp `<repo_root>/CLAUDE.md`'s pointer block and record the
+    repo-path↔slug mapping. Returns `apply_block`'s result string
+    (`"added"`/`"updated"`/`"unchanged"`/`"conflict"`), or `"error"` if
+    either step failed.
+
+    Both are best-effort side-cars: the wiki map is already written and
+    applied by the time this runs, so a failure here (read-only checkout,
+    permissions) must never break the ingest itself (same failure isolation
+    `bootstrap-project` uses).
+    """
+    repo_root = Path(repo_root)
+    try:
+        _path, result = write_project_claude_md(repo_root, project_slug)
+    except OSError:
+        _LOGGER.exception("ingest-project: failed to write CLAUDE.md at %s", repo_root)
+        result = "error"
+    try:
+        ren_paths.record_project_repo(project_slug, repo_root)
+    except OSError:
+        _LOGGER.exception(
+            "ingest-project: failed to record repo mapping for %s at %s", project_slug, repo_root
+        )
+        result = "error"
+    return result
 
 
 __all__ = ["FIRST_SESSION_LEAD", "scan_repo", "assemble_l2", "ingest"]

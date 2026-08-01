@@ -66,6 +66,21 @@ def test_no_pycache_or_pytest_cache_inside_shippable_dirs():
         assert not tracked_offenders, f"cache files tracked in git: {tracked_offenders}"
 
 
+def test_uv_lock_is_git_tracked():
+    """The shipped plugin must carry uv.lock: install's `warm_environment()`
+    runs `uv sync --frozen` against the plugin root, and a missing lockfile
+    made stage 1 of install fail unconditionally (issue #14). `uv.lock` was
+    gitignored, so it never reached the published repo."""
+    lock = REPO_ROOT / "uv.lock"
+    assert lock.is_file(), "uv.lock missing from repo root"
+
+    proc = subprocess.run(
+        ["git", "-C", str(REPO_ROOT), "ls-files", "--error-unmatch", "uv.lock"],
+        capture_output=True, text=True,
+    )
+    assert proc.returncode == 0, "uv.lock is not tracked by git — it will not ship to friends"
+
+
 def test_every_skill_md_has_required_frontmatter_keys():
     skill_mds = sorted((REPO_ROOT / "skills").glob("*/SKILL.md"))
     assert skill_mds, "expected at least one skills/*/SKILL.md"
@@ -129,6 +144,102 @@ def test_at_least_expected_number_of_skill_libs_discovered():
     """Sanity guard: if module discovery silently found zero modules, every
     parametrized import test above passes vacuously and hides real rot."""
     assert len(_skill_lib_module_names()) >= 10
+
+
+# --- documented skill-module reference integrity (issue #17) -----------------
+#
+# SKILL.md files used to document Python entry points in plain dotted form
+# (`skills.wiki_health.lib.release_page(...)`). Skill packages on disk are
+# hyphenated (skills/wiki-health/), so the underscore form resolves to
+# nothing and the hyphenated form isn't a legal `import` statement either —
+# either way, a friend (or an LLM) copy-pasting the documented call gets
+# ModuleNotFoundError. The runnable form is
+# importlib.import_module("skills.wiki-health.lib").release_page(...).
+#
+# Two invariants, both enforced by grepping the docs (no module is imported
+# here — these checks are pure path/syntax checks, no import side effects):
+#   1. every documented `skills.<...>` dotted reference maps to a real path
+#      on disk;
+#   2. every documented *invocation* (a dotted reference ending in a call)
+#      into a hyphenated skill package is wrapped in importlib.import_module.
+
+_DOC_SKILL_REF_RE = re.compile(r"\bskills\.([A-Za-z0-9_.-]+)")
+_IMPORTLIB_WRAPPED_RE = re.compile(r'importlib\.import_module\(\s*"skills\.([A-Za-z0-9_.-]+)"\s*\)')
+
+
+def _doc_md_files() -> list[Path]:
+    """Instructional markdown that a friend/LLM may copy-paste from."""
+    return sorted(p for p in (REPO_ROOT / "skills").rglob("*.md") if p.is_file())
+
+
+def _hyphenated_skill_dirs() -> set[str]:
+    return {
+        d.name for d in (REPO_ROOT / "skills").iterdir() if d.is_dir() and "-" in d.name
+    }
+
+
+def test_documented_skill_module_references_resolve_on_disk():
+    """A `skills.foo.lib` reference in any skill doc must correspond to a real
+    package path (skills/foo/lib/). Catches the underscore-vs-hyphen drift
+    (`skills.wiki_health.lib` -> no such directory) that issue #17 reported."""
+    broken: dict[str, list[str]] = {}
+    for md in _doc_md_files():
+        for line_no, line in enumerate(md.read_text().splitlines(), start=1):
+            for match in _DOC_SKILL_REF_RE.finditer(line):
+                segments = [s for s in match.group(1).split(".") if s]
+                if not segments:
+                    continue
+                # Walk the dotted path as far as it exists on disk; the tail
+                # may be an attribute (function/constant), which is fine.
+                path = REPO_ROOT / "skills"
+                resolved = False
+                for seg in segments:
+                    candidate_dir = path / seg
+                    candidate_py = path / f"{seg}.py"
+                    if candidate_dir.is_dir():
+                        path = candidate_dir
+                        resolved = True
+                    elif candidate_py.is_file():
+                        resolved = True
+                        break
+                    else:
+                        break
+                if not resolved:
+                    broken.setdefault(str(md.relative_to(REPO_ROOT)), []).append(
+                        f"line {line_no}: skills.{match.group(1)}"
+                    )
+    assert not broken, (
+        "documented skill module references that do not exist on disk "
+        f"(hyphen/underscore drift?): {broken}"
+    )
+
+
+def test_documented_hyphenated_skill_invocations_are_runnable():
+    """Documented calls into a hyphenated skill package must use the
+    importlib form — a bare dotted `skills.wiki-health.lib.sweep()` is not
+    valid Python and cannot be copy-pasted."""
+    hyphenated = _hyphenated_skill_dirs()
+    assert hyphenated, "expected at least one hyphenated skill package"
+    offenders: dict[str, list[str]] = {}
+    for md in _doc_md_files():
+        for line_no, line in enumerate(md.read_text().splitlines(), start=1):
+            wrapped_spans = [m.span(1) for m in _IMPORTLIB_WRAPPED_RE.finditer(line)]
+            for match in _DOC_SKILL_REF_RE.finditer(line):
+                ref = match.group(1)
+                if ref.split(".")[0] not in hyphenated:
+                    continue
+                if any(start <= match.start(1) < end for start, end in wrapped_spans):
+                    continue
+                # Only invocations matter; bare module mentions in prose are fine.
+                if not line[match.end() :].lstrip().startswith("("):
+                    continue
+                offenders.setdefault(str(md.relative_to(REPO_ROOT)), []).append(
+                    f"line {line_no}: skills.{ref}(...)"
+                )
+    assert not offenders, (
+        "documented invocations into hyphenated skill packages must be written as "
+        'importlib.import_module("skills.<name>.lib").fn(...): ' + str(offenders)
+    )
 
 
 # --- /ren:<verb> reference integrity (Gate 0 finding, 2026-07-08) ------------

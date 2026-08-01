@@ -68,13 +68,22 @@ def _parse_ts(ts: str | None) -> datetime | None:
 
 def _data_plane_pages(root) -> list[str]:
     """Every `*.md` wiki-relative path under `root`, excluding `archive/` and
-    `global/` (same rglob-and-filter pattern used by `quarantine`, `revert`,
-    `promotion` — there's no shared "list all data-plane pages" helper)."""
+    every instruction-plane page (same rglob-and-filter pattern used by
+    `quarantine`, `revert`, `promotion` — there's no shared "list all
+    data-plane pages" helper).
+
+    Issue #18: "instruction plane" is `lib.governance.tiers
+    .is_instruction_plane_page` — `global/` plus the global-tier
+    `decisions/`·`patterns/`·`research/`. Decay never touches the global
+    tier: those pages are durable by construction and only a human puts
+    them there."""
+    from lib.governance.tiers import is_instruction_plane_page
+
     pages = []
     for path in sorted(root.rglob("*.md")):
         rel = path.relative_to(root).as_posix()
         top = rel.split("/", 1)[0]
-        if top in ("archive", "global"):
+        if top == "archive" or is_instruction_plane_page(rel):
             continue
         pages.append(rel)
     return pages

@@ -112,6 +112,9 @@ def bootstrap(project_slug: str, session: str, repo_root: Path | None = None) ->
             "handle": "friend",
             "name": "friend",
             "framework_version": ren_paths.framework_version(),
+            # schema.md.tmpl stamps the project's own SCHEMA stub — its
+            # frontmatter `project:` field needs the slug (issue #20 amendment).
+            "project": project_slug,
         },
         path_prefix=f"projects/{project_slug}/",
     )
@@ -129,7 +132,11 @@ def bootstrap(project_slug: str, session: str, repo_root: Path | None = None) ->
                 page=page,
                 content=content,
                 reason="bootstrap-project",
-                producer="promotion",
+                # Issue #18: `producer="promotion"` is reserved for the
+                # human-gated global-tier promotion path; this is a
+                # data-plane L2 map, so it uses the ingest producer (writer
+                # stays "human", so trust is still "user").
+                producer="ingest",
                 writer="human",
                 session=session,
                 salience=False,
@@ -146,6 +153,17 @@ def bootstrap(project_slug: str, session: str, repo_root: Path | None = None) ->
             write_project_claude_md(Path(repo_root), project_slug)
         except OSError:
             _LOGGER.exception("bootstrap-project: failed to write CLAUDE.md at %s", repo_root)
+
+        # Issue #19: record repo-path↔slug so `ren_paths.detect_project` finds
+        # this project even when the checkout dir is named differently.
+        try:
+            ren_paths.record_project_repo(project_slug, Path(repo_root))
+        except OSError:
+            _LOGGER.exception(
+                "bootstrap-project: failed to record repo mapping for %s at %s",
+                project_slug,
+                repo_root,
+            )
 
     return entry
 

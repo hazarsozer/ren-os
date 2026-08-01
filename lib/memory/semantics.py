@@ -88,6 +88,21 @@ _MIN_DUPLICATE_LINES = 3  # pages with fewer meaningful lines can't be judged du
 _MIN_SHARED_TOKENS_FOR_CONTRADICTION = 3
 _MIN_SIGNIFICANT_TOKENS_TO_CONSIDER = 3
 
+# issue #16: a negation marker plus >=3 shared topic tokens was too weak a
+# signal — batch-ingested sibling pages restate each other's topics constantly,
+# and any page carrying a "do not ..." line contradicted every sibling that
+# merely TALKED about the same topic. A contradiction requires the SAME CLAIM,
+# negated on one side: the negation-stripped line and the affirmative line must
+# overlap on most of their significant tokens, not just three of them.
+#
+# 0.6.2 review finding H2: this gate is CONTAINMENT (shared / min side), not
+# symmetric Jaccard. A genuine contradiction whose negated side carries an
+# explanation ("Migrations do not run automatically on deploy; run them
+# manually first." vs "Migrations run automatically on deploy.") dilutes a
+# symmetric union below the threshold while fully containing the short
+# side's claim — containment keeps it.
+_MIN_NEGATED_CLAIM_OVERLAP = 0.6
+
 _FRONTMATTER_RE = re.compile(r"\A---\n(.*?)\n---\n?", re.DOTALL)
 
 
@@ -155,12 +170,36 @@ def _first_shared_line(a_lines: list[str], b_lines: list[str]) -> str:
     return a_lines[0] if a_lines else ""
 
 
+def _same_claim(negated_toks: set[str], affirmative: str) -> bool:
+    """Is the affirmative line the SAME claim the negated line negates?
+
+    Two gates, both required (issue #16): at least
+    `_MIN_SHARED_TOKENS_FOR_CONTRADICTION` significant tokens in common (the
+    original topic gate), AND a significant-token CONTAINMENT — shared over
+    the SMALLER side — of at least `_MIN_NEGATED_CLAIM_OVERLAP` between the
+    negation-stripped line and the affirmative one (0.6.2 H2: containment,
+    not symmetric Jaccard, so a negated side that also carries an
+    explanation doesn't dilute a genuine same-claim match). The second gate
+    is what separates "X is bad" vs "X is good" (same claim, one negated →
+    contradiction) from "don't do X" vs "here is a long paragraph that also
+    mentions X" (topic overlap only → restatement, NOT a contradiction)."""
+    affirmative_toks = _significant_tokens(affirmative)
+    shared = negated_toks & affirmative_toks
+    if len(shared) < _MIN_SHARED_TOKENS_FOR_CONTRADICTION:
+        return False
+    smaller = min(len(negated_toks), len(affirmative_toks))
+    if smaller == 0:
+        return False
+    return len(shared) / smaller >= _MIN_NEGATED_CLAIM_OVERLAP
+
+
 def _detect_contradictions(
     proposed_lines: list[str], existing_lines: list[str]
 ) -> list[str]:
-    """Return existing lines that contradict `proposed_lines` (either direction):
-    a negated line on one side sharing >=3 significant tokens with an affirmative
-    line on the other side. One entry per contradicting existing line, at most."""
+    """Return existing lines that contradict `proposed_lines` (either
+    direction): a negated line on one side that states the SAME CLAIM
+    (`_same_claim`) as an affirmative line on the other side. One entry per
+    contradicting existing line, at most."""
     hits: list[str] = []
 
     for line in proposed_lines:
@@ -173,7 +212,7 @@ def _detect_contradictions(
         for existing in existing_lines:
             if _strip_negation(existing) is not None:
                 continue  # symmetric case handled by the loop below
-            if len(toks & _significant_tokens(existing)) >= _MIN_SHARED_TOKENS_FOR_CONTRADICTION:
+            if _same_claim(toks, existing):
                 hits.append(existing)
 
     for existing in existing_lines:
@@ -186,7 +225,7 @@ def _detect_contradictions(
         for line in proposed_lines:
             if _strip_negation(line) is not None:
                 continue  # already covered above
-            if len(existing_toks & _significant_tokens(line)) >= _MIN_SHARED_TOKENS_FOR_CONTRADICTION:
+            if _same_claim(existing_toks, line):
                 hits.append(existing)
 
     return hits
@@ -269,7 +308,115 @@ def numeric_drift_evidence(text_a: str, text_b: str) -> tuple[str, str] | None:
     return None
 
 
-def detect(op: str, page: str, content: str | None, wiki_root: Path) -> list[Conflict]:
+def _numeric_divergence_lines(
+    proposed_lines: list[str], existing_lines: list[str]
+) -> list[str]:
+    """Existing lines that state the same fact as a proposed line with ONE
+    number changed ("timeout is 30 seconds" vs "timeout is 60 seconds").
+
+    This is the second accepted contradiction signal (issue #16): with the
+    negation gate tightened, a same-fact numeric divergence is the other case
+    where overlap really is a contradiction rather than a restatement.
+
+    Deliberately stricter than the report-only `numeric_drift_evidence`: both
+    lines must carry the SAME COUNT of numbers and differ in EXACTLY ONE
+    numeric position. Enumerated boilerplate ("line number 1 describes topic
+    1." vs "line number 12 describes topic 12.") differs in two positions and
+    is therefore not a contradiction — it is two different items."""
+    hits: list[str] = []
+    templates: dict[str, list[tuple[str, list[str]]]] = {}
+    for line in proposed_lines:
+        numbers = _NUMBER_RE.findall(line)
+        if not numbers:
+            continue
+        template = _NUMBER_RE.sub(_NUMBER_MASK, line)
+        if len(_significant_tokens(template)) < _MIN_SIGNIFICANT_TOKENS_TO_CONSIDER:
+            continue
+        templates.setdefault(template, []).append((line, numbers))
+
+    for existing in existing_lines:
+        numbers = _NUMBER_RE.findall(existing)
+        if not numbers:
+            continue
+        template = _NUMBER_RE.sub(_NUMBER_MASK, existing)
+        for line, line_numbers in templates.get(template, []):
+            if len(line_numbers) != len(numbers):
+                continue
+            differing = sum(1 for a, b in zip(line_numbers, numbers) if a != b)
+            if differing == 1:
+                hits.append(existing)
+                break
+
+    return hits
+
+
+def project_subtree(page: str) -> str | None:
+    """`"projects/<slug>"` for a page under a project subtree, else None."""
+    parts = str(page).replace("\\", "/").strip("/").split("/")
+    if len(parts) >= 2 and parts[0] == "projects" and parts[1]:
+        return f"projects/{parts[1]}"
+    return None
+
+
+_L2_MAP_TYPE_RE = re.compile(r"^type:\s*[\"']?l2-map[\"']?\s*$", re.MULTILINE)
+
+
+def is_l2_map(page: str, text: str | None = None) -> bool:
+    """Is this page an L2 map — by path (`projects/<slug>/map.md`) or by
+    `type: l2-map` frontmatter?"""
+    normalized = str(page).replace("\\", "/").strip("/")
+    subtree = project_subtree(normalized)
+    if subtree is not None and normalized == f"{subtree}/map.md":
+        return True
+    if text:
+        match = _FRONTMATTER_RE.match(text)
+        if match and _L2_MAP_TYPE_RE.search(match.group(1)):
+            return True
+    return False
+
+
+def _contradicts_exempt(
+    page: str,
+    content: str | None,
+    candidate_rel: str,
+    candidate_text: str,
+    exempt_pages: set[str],
+) -> bool:
+    """Should the (proposed page, candidate page) pair skip the `contradicts`
+    check entirely? (Duplicate/supersedes detection is never exempted.)
+
+    Two exemptions, both from issue #16's batch-ingest false positives:
+
+    1. SAME BATCH — `candidate_rel` is in `exempt_pages`: a page written by
+       the same session into the same `projects/<slug>/` subtree. Sibling
+       pages distilled from one source in one pass restate each other by
+       construction; holding page 2 for "contradicting" page 1 of the same
+       batch is never a real finding.
+    2. L2 MAP — either side is the subtree's map and the other side lives in
+       that same subtree. A map summarizes the pages it points to; overlap
+       with its own children is its job.
+
+    0.6.2 review finding H1: for the PROPOSED side, map detection is
+    PATH-ONLY (`projects/<slug>/map.md`) — a proposal must not be able to
+    self-exempt from contradiction checks by declaring `type: l2-map` in its
+    own frontmatter. Frontmatter-based detection stays for the EXISTING
+    candidate side, whose content is already on disk and trusted.
+    """
+    if candidate_rel in exempt_pages:
+        return True
+    subtree = project_subtree(page)
+    if subtree is None or project_subtree(candidate_rel) != subtree:
+        return False
+    return is_l2_map(page) or is_l2_map(candidate_rel, candidate_text)
+
+
+def detect(
+    op: str,
+    page: str,
+    content: str | None,
+    wiki_root: Path,
+    exempt_pages: set[str] | list[str] | None = None,
+) -> list[Conflict]:
     """Run the three deterministic conflict checks for a proposed write.
 
     Args:
@@ -279,11 +426,15 @@ def detect(op: str, page: str, content: str | None, wiki_root: Path) -> list[Con
         content: the proposed page content (may include frontmatter; stripped
             before comparison), or None (e.g. a DELETE carries no content).
         wiki_root: root directory the wiki lives under.
+        exempt_pages: wiki-relative pages this proposal must NOT be reported as
+            contradicting — the same-batch sibling set (see
+            `_contradicts_exempt`). Duplicate/supersedes detection ignores it.
 
     Returns a list of `Conflict`, checked in order: duplicate, supersedes,
     contradicts. All three may fire in the same call.
     """
     wiki_root = Path(wiki_root)
+    exempt = set(exempt_pages or ())
     target_path = wiki_root / page
     target_exists = target_path.is_file()
 
@@ -316,9 +467,18 @@ def detect(op: str, page: str, content: str | None, wiki_root: Path) -> list[Con
                 evidence = _first_shared_line(proposed_lines, candidate_lines)
                 conflicts.append(Conflict("duplicate", rel, write_id, evidence))
 
-        # 3. contradicts (checked per-candidate; collected below with the others)
-        for evidence_line in _detect_contradictions(proposed_lines, candidate_lines):
-            conflicts.append(Conflict("contradicts", rel, write_id, evidence_line))
+        # 3. contradicts (checked per-candidate; collected below with the others).
+        # Two signals qualify: a negated restatement of the same claim, or a
+        # same-fact numeric divergence. Pure topic overlap never does.
+        if not _contradicts_exempt(page, content, rel, raw, exempt):
+            evidence_lines = _detect_contradictions(proposed_lines, candidate_lines)
+            evidence_lines += [
+                line
+                for line in _numeric_divergence_lines(proposed_lines, candidate_lines)
+                if line not in evidence_lines
+            ]
+            for evidence_line in evidence_lines:
+                conflicts.append(Conflict("contradicts", rel, write_id, evidence_line))
 
     # 2. supersedes — target page only, ADD/UPDATE only.
     if op in ("ADD", "UPDATE") and target_exists:
@@ -452,6 +612,8 @@ __all__ = [
     "detect",
     "contradiction_evidence",
     "duplicate_evidence",
+    "is_l2_map",
+    "project_subtree",
     "numeric_drift_evidence",
     "shortlist_pairs",
 ]

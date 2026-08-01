@@ -1,0 +1,36 @@
+---
+title: "Project Wiki Schema"
+type: project-schema
+schema_version: 1
+project: {{project}}
+framework_version: "{{framework_version}}"
+created: {{today}}
+updated: {{today}}
+---
+
+# Wiki schema — {{project}}
+
+<!-- This is THIS project's SCHEMA document (the LLM-wiki pattern):
+     the structure + conventions every session reads and follows before
+     writing under projects/{{project}}/. The ingest worker drafts the real
+     taxonomy from what the repo/domain actually contains — this stub only
+     marks the slot. Evolving it later is a normal wiki write. -->
+
+## Taxonomy
+
+<!-- Which knowledge/ subdirectories exist and what belongs in each, e.g.
+       knowledge/entities/…    domain objects
+       knowledge/mechanics/…   how the system behaves
+     Every subdirectory carries a hub index.md that links its children;
+     the L2 map points at hubs and top-level pages, never deep leaves. -->
+
+## Naming conventions
+
+<!-- File/heading naming rules for this project's pages. -->
+
+## raw/
+
+<!-- What projects/{{project}}/raw/ holds: immutable source material,
+     write-once (fix by adding, not rewriting). Sources, not claims —
+     coherence scans skip it; pointers may target it; wake-up never
+     injects it. -->

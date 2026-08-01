@@ -119,6 +119,7 @@ from lib.instrument.calibration import PLAUSIBLE_RATIO_BAND
 from lib.memory import archive, queue, quarantine
 from lib.memory.provenance import read_frontmatter_provenance
 from lib.ren_paths import DEFAULT_DEV_ROOT_REL, detect_project, resolve_dev_root, state_dir
+from lib.skeleton import wiki_stamped
 
 logger = logging.getLogger(__name__)
 
@@ -809,7 +810,41 @@ def _is_skeleton_or_empty_page(path: Path) -> bool:
     return _is_overview_skeleton_or_empty(_strip_frontmatter(text))
 
 
-def _discover_extra_candidates(wiki_root: Path, exclude: set[str]) -> tuple[list[str], int]:
+def _is_own_project_knowledge(rel: str, project: str | None) -> bool:
+    """True if `rel` is a page under `projects/<project>/knowledge/` for the
+    session's DETECTED project (issue #20).
+
+    Such pages are the friend's own distilled project knowledge, written by
+    `/ren:ingest-project` from their own repo — so `ren_trust: "foreign"`
+    alone must not exile them from that project's own sessions forever. This
+    exempts them from the `_is_foreign_stamped` extras exclusion ONLY (see
+    `_discover_extra_candidates`); the quarantine BANNER exclusion is
+    untouched, so a knowledge page still stays out of context until a human
+    releases it (`skills.wiki-health.lib.release_page`). Nothing outside this exact
+    path prefix — not other projects, not the project's own map/overview, not
+    root-tier pages — is affected.
+    """
+    if not project:
+        return False
+    # A bare startswith on the prefix: nested paths
+    # (knowledge/entities/characters/x.md) are covered by construction —
+    # the hierarchical-wiki amendment (issue #20) relies on exactly that.
+    return rel.startswith(f"projects/{project}/knowledge/")
+
+
+def _is_project_raw(rel: str) -> bool:
+    """True if `rel` sits under any `projects/<slug>/raw/` — immutable
+    source material (issue #20 amendment). Never a wake-up candidate: raw
+    holds sources, not distilled knowledge, so it is skipped outright (and
+    NOT counted as held-out — there is no withheld trust signal, the page
+    was never eligible)."""
+    parts = rel.split("/")
+    return len(parts) >= 3 and parts[0] == "projects" and parts[2] == "raw"
+
+
+def _discover_extra_candidates(
+    wiki_root: Path, exclude: set[str], project: str | None = None
+) -> tuple[list[str], int]:
     """Every `*.md` under `wiki_root`, excluding dotdirs, `exclude` (the pages
     already surfaced as L1/L2, so they aren't offered twice), quarantined
     pages (0.4.1 trust hardening — see module docstring for the L1 exemption,
@@ -847,13 +882,15 @@ def _discover_extra_candidates(wiki_root: Path, exclude: set[str]) -> tuple[list
             continue
         if rel in exclude:
             continue
+        if _is_project_raw(rel):
+            continue
         if archive.is_archived(rel):
             held_count += 1
             continue
         if rel in held_pages:
             held_count += 1
             continue
-        if _is_foreign_stamped(path):
+        if _is_foreign_stamped(path) and not _is_own_project_knowledge(rel, project):
             held_count += 1
             continue
         if _is_skeleton_or_empty_page(path):
@@ -900,6 +937,7 @@ def rank_extras(
     exclude: set[str],
     *,
     count: int = DEFAULT_EXTRAS_COUNT,
+    project: str | None = None,
 ) -> tuple[list[str], int]:
     """Rank candidate pages (excluding `exclude` and quarantined pages) via
     `skills.recall.lib.rank`, then move any salience-boosted page (Task 4.2
@@ -908,13 +946,17 @@ def rank_extras(
     `(top count pages, held_count)`, where `held_count` is the number of
     quarantined pages excluded (see `_discover_extra_candidates`).
 
+    `project` (the session's detected project slug, or `None`) narrowly
+    exempts `projects/<project>/knowledge/` pages from the foreign-stamp
+    exclusion — see `_is_own_project_knowledge` (issue #20).
+
     `rank` is reached via `importlib.import_module("skills.recall.lib")`, the
     hyphen-safe pattern documented in Task 4.4 (kept here for consistency even
     though `recall` itself has no hyphen).
     """
     import importlib
 
-    candidates, held_count = _discover_extra_candidates(wiki_root, exclude)
+    candidates, held_count = _discover_extra_candidates(wiki_root, exclude, project)
     if not candidates:
         return [], held_count
 
@@ -955,12 +997,16 @@ def compose_wake_up_context(
     `collect.record(KIND_INJECTED_BYTES, ...)` — this instrumentation is
     unconditional, not optional.
 
-    Returns "" if the wiki is inaccessible (graceful degradation; the hook
-    still exits 0). NEVER raises — any per-section failure degrades that
+    Returns "" if the wiki is inaccessible OR not stamped (`index.md` absent
+    — an existing but empty/unrelated directory is NOT a wiki, issue #12), and
+    also when nothing real was gathered: a payload consisting only of the
+    "## RenOS wake-up context" header is silent-empty in disguise, and the
+    hook's caller relies on "" to fire the loud uninitialized notice. Graceful
+    degradation; the hook still exits 0. NEVER raises — any per-section failure degrades that
     section to empty rather than aborting the whole payload.
     """
-    if not wiki_root.is_dir():
-        logger.info("wiki not found at %s; emitting empty context", wiki_root)
+    if not wiki_stamped(wiki_root):
+        logger.info("no stamped wiki at %s; emitting empty context", wiki_root)
         return ""
 
     # ONE ratio for this entire compose: read the calibrated chars-per-token
@@ -1080,7 +1126,7 @@ def compose_wake_up_context(
     try:
         query = _build_rank_query(project, cwd)
         extras, extras_held_count = rank_extras(
-            query, wiki_root, exclude=set(surfaced_pages) | dedicated_paths
+            query, wiki_root, exclude=set(surfaced_pages) | dedicated_paths, project=project
         )
     except Exception:  # noqa: BLE001 - ranking failure degrades to no extras
         logger.debug("rank_extras failed", exc_info=True)
@@ -1088,21 +1134,33 @@ def compose_wake_up_context(
     held_count += extras_held_count
 
     if extras:
-        sections.append(SECTION_EXTRAS)
         per_page_budget = max(EXTRA_PAGE_BUDGET, EXTRAS_BUDGET // max(len(extras), 1))
+        extra_blocks: list[str] = []
         for rel in extras:
             text = _read_text_safe(wiki_root / rel)
             if not text:
                 continue
-            sections.append(f"#### {rel}")
-            sections.append(truncate_text_to_tokens(_strip_extras_placeholder_lines(text), per_page_budget, chars_per_token))
+            extra_blocks.append(f"#### {rel}")
+            extra_blocks.append(truncate_text_to_tokens(_strip_extras_placeholder_lines(text), per_page_budget, chars_per_token))
             surfaced_pages.append(rel)
+        # Same no-bare-header rule as every other section: when every ranked
+        # extra reads empty, the header alone must not be emitted.
+        if extra_blocks:
+            sections.append(SECTION_EXTRAS)
+            sections.extend(extra_blocks)
 
     if held_count > 0:
         sections.append(
             f"{held_count} quarantined page(s) held out of this context — "
             "ask to see them explicitly."
         )
+
+    # `sections[0]` is the seed header; anything after it is real content.
+    # With nothing real gathered, return "" rather than a header-only payload
+    # (issue #12) so the hook emits its loud uninitialized notice instead.
+    if not [s for s in sections[1:] if s.strip()]:
+        logger.info("nothing to inject from %s; emitting empty context", wiki_root)
+        return ""
 
     composed = "\n\n".join(s for s in sections if s.strip())
 

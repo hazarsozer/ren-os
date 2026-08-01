@@ -10,9 +10,10 @@ warrant becoming a suggestion:
    sessions (per spec §1.2).
 
 2. is_critical_page() — checks if a page target is instruction-plane or
-   load-bearing. Instruction-plane pages (global/) are always gated by human
-   review per spec §10; data-plane pages auto-apply. This predicate reuses
-   lib.governance.tiers.GLOBAL_PREFIX for the prefix check.
+   load-bearing. Instruction-plane pages (global/ plus the global-tier
+   decisions/, patterns/, research/ — issue #18) are always gated by human
+   review per spec §10; data-plane pages auto-apply. This predicate
+   delegates to lib.governance.tiers.is_instruction_plane_page.
 
 DOCTRINE (ratified §1.2, verbatim): "suggestions are rare and high-stakes;
 below-threshold patterns accumulate silently; staleness and low-risk
@@ -29,7 +30,7 @@ from __future__ import annotations
 
 from typing import Final
 
-from lib.governance.tiers import GLOBAL_PREFIX
+from lib.governance.tiers import is_instruction_plane_page
 
 RECURRENCE_MIN_SESSIONS: Final[int] = 3
 RECURRENCE_WINDOW_SESSIONS: Final[int] = 5
@@ -65,8 +66,11 @@ def recurs(evidence_sessions: set[str], recent_sessions: list[str]) -> bool:
 
 
 def is_critical_page(page: str) -> bool:
-    """True for instruction-plane / load-bearing pages: pages that start with
-    GLOBAL_PREFIX ("global/") or are the root global page itself.
+    """True for instruction-plane / load-bearing pages: `global/` plus the
+    root-level global-tier dirs `decisions/`·`patterns/`·`research/` (issue
+    #18). Delegates to `lib.governance.tiers.is_instruction_plane_page` —
+    the single canonical encoding of the plane split; this module must not
+    re-spell the prefixes.
 
     The instruction plane (spec §10) is human-review gated; data-plane pages
     auto-apply. This predicate checks the path prefix only. When the caller has
@@ -81,10 +85,7 @@ def is_critical_page(page: str) -> bool:
         True if the page is on the instruction plane (global/* or global);
         False otherwise.
     """
-    # Match lib.governance.tiers._is_global_page logic exactly
-    if not page:
-        return False
-    return page == "global" or page.startswith(GLOBAL_PREFIX)
+    return is_instruction_plane_page(page)
 
 
 __all__ = [

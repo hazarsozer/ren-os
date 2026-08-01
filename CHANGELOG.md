@@ -1,5 +1,55 @@
 # Changelog
 
+## [0.6.2] - 2026-08-01 — "the dogfood train"
+
+Nine fixes from the first real fresh-machine install (MacBook, issues
+#12–#20), plus an adversarial review pass over the whole train.
+
+- **Real hierarchical project memory** (#20) — `projects/<slug>/knowledge/`
+  is now the sanctioned durable subtree for project-specific pages
+  (registered `project-knowledge` page type, skeleton dir, ingest drafts
+  into it, L2 map points at it). New pointer rule: Decision-map pointers
+  must target pages that exist (same-batch or `repo:<name>:<path>` refs),
+  never invented future filenames. `migrations/project-knowledge-1/`
+  relocates existing flat files (dry-run default, never overwrites,
+  per-move journal). Amended in-train to the full Karpathy LLM-wiki shape:
+  `knowledge/` nests to project-determined depth with a hub `index.md` per
+  subdirectory (the map points at hubs, not deep leaves); each project
+  declares its own taxonomy in `projects/<slug>/schema.md` (new
+  `project-schema` page type — ingest drafts it before any knowledge page,
+  bootstrap stamps a stub); `projects/<slug>/raw/` holds immutable source
+  material (skipped by coherence scans, never injected by wake-up, valid
+  pointer target). wiki-health grows `hubless_knowledge_dirs` +
+  `unlinked_knowledge_pages` structural findings; the migration also
+  reports (never fabricates) a missing `schema.md`.
+- **Global tier actually promotion-gated** (#18) — `global/`, `decisions/`,
+  `patterns/`, `research/` are instruction-plane for every producer;
+  non-promotion writes hold pending instead of auto-applying. One
+  canonical prefix predicate; page strings are normalized and `..`
+  segments rejected so the gate can't be walked around. wiki-health flags
+  global-tier pages that name exactly one project.
+- **Contradiction detector grew judgment** (#16) — `contradicts` now
+  requires a real signal (negated same-claim by containment, or
+  single-position numeric divergence); same-batch sibling pages and L2
+  maps no longer false-positive each other. Kills the wall of ~40 bogus
+  holds on an 8-page batch ingest.
+- **Ingested projects reach wake-up** (#15, #19) — ingest writes the
+  CLAUDE.md pointer block and records repo↔slug in
+  `.ren/projects.json`; `detect_project` consults the registry first, so
+  a clone dir named differently from its slug is no longer orphaned.
+  Doctor gains an orphaned-project check.
+- **First-run honesty** (#12, #14) — the wake-up hook now emits the
+  uninitialized notice for an existing-but-unstamped wiki root (and a
+  distinct notice for stamped-but-empty); `uv.lock` ships in the plugin
+  so the interpreter warm path works on a fresh install (with a
+  non-frozen fallback).
+- **Copy-paste-runnable docs** (#17) and a test suite that no longer
+  writes into the real `~/.renos` (#13), with a loud leak guard.
+- **Review hardening** — quarantined instruction-plane pages can be
+  released again; `/ren:pin` docs no longer claim a held pin was saved;
+  registry slugs validated; migration frontmatter rewrite scoped to
+  column-0 keys.
+
 ## [0.6.1] - 2026-07-30 — "the economics layer"
 
 RenOS now reasons explicitly about which model tier does which work, and

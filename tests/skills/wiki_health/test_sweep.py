@@ -53,7 +53,8 @@ def test_sweep_returns_all_dict_keys(wiki):
         "dangling_pointers", "contradiction_pairs", "duplicate_pairs",
         "numeric_drift_pairs", "contradiction_scan_note",
         "mass_deletions", "quarantined_pages", "judge_dismissed", "judge_supersedes",
-        "retrieval_eval", "generated_at",
+        "retrieval_eval", "single_project_global_pages",
+        "hubless_knowledge_dirs", "unlinked_knowledge_pages", "generated_at",
     }
     assert result["generated_at"]
     assert result["contradiction_scan_note"] is None
@@ -84,6 +85,54 @@ def test_sweep_no_dangling_pointer_when_target_exists(wiki):
     )
     result = wiki_health.sweep()
     assert result["dangling_pointers"] == []
+
+
+def test_sweep_skips_repo_refs_rather_than_calling_them_dangling(wiki):
+    """Issue #20: `repo:<name>:<path>` targets an external repository, not an
+    in-wiki page — unresolvable here by construction, so never dangling."""
+    (wiki / "map.md").write_text(
+        "---\ntype: l2-map\nproject: p\n---\n"
+        "## Decision map\n"
+        "- [entrypoint] → repo:flux:src/main.rs (w-1)\n",
+        encoding="utf-8",
+    )
+    assert wiki_health.sweep()["dangling_pointers"] == []
+
+
+def test_sweep_still_flags_missing_in_wiki_target_alongside_a_repo_ref(wiki):
+    (wiki / "map.md").write_text(
+        "---\ntype: l2-map\nproject: p\n---\n"
+        "## Decision map\n"
+        "- [entrypoint] → repo:flux:src/main.rs (w-1)\n"
+        "- [stack] → projects/p/knowledge/gone.md (w-2)\n",
+        encoding="utf-8",
+    )
+    targets = [d["target"] for d in wiki_health.sweep()["dangling_pointers"]]
+    assert targets == ["projects/p/knowledge/gone.md"]
+
+
+def test_sweep_accepts_an_existing_project_knowledge_pointer(wiki):
+    (wiki / "projects" / "p" / "knowledge").mkdir(parents=True)
+    (wiki / "projects" / "p" / "knowledge" / "stack.md").write_text(
+        "---\ntype: project-knowledge\nschema_version: 1\nproject: p\n---\nRust.\n",
+        encoding="utf-8",
+    )
+    (wiki / "projects" / "p" / "map.md").write_text(
+        "---\ntype: l2-map\nproject: p\n---\n"
+        "## Decision map\n"
+        "- [stack] → projects/p/knowledge/stack.md (w-1)\n",
+        encoding="utf-8",
+    )
+    assert wiki_health.sweep()["dangling_pointers"] == []
+
+
+def test_repo_ref_prefix_does_not_drift_between_wiki_health_and_doctor():
+    """Both dangling-pointer implementations must agree on what a repo ref is
+    (the module docstring's reimplemented-walk contract)."""
+    import importlib
+
+    doctor = importlib.import_module("skills.doctor.lib")
+    assert wiki_health._REPO_REF_PREFIX == doctor._REPO_REF_PREFIX
 
 
 def test_sweep_finds_contradiction_pair(wiki):
@@ -608,3 +657,201 @@ def test_wiki_health_critical_still_emits_for_unjudged_global_contradiction(wiki
 
     assert len(specs) == 1
     assert "judge" not in specs[0].payload
+
+
+# ------------------------- single-project global-tier pages (issue #18)
+
+
+def _write(root, rel, text):
+    path = root / rel
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
+def test_single_project_global_page_flagged_by_explicit_projects_ref(wiki):
+    _write(wiki, "decisions/flux-stack.md", "# Flux stack\n\nSee projects/flux/map.md for context.\n")
+
+    findings = wiki_health.sweep()["single_project_global_pages"]
+
+    assert findings == [{"page": "decisions/flux-stack.md", "project": "flux"}]
+
+
+def test_single_project_global_page_flagged_by_known_slug_word(wiki):
+    (wiki / "projects" / "flux").mkdir(parents=True)
+    _write(wiki, "patterns/retry-loop.md", "# Retry loop\n\nWe use this in flux only.\n")
+
+    findings = wiki_health.sweep()["single_project_global_pages"]
+
+    assert findings == [{"page": "patterns/retry-loop.md", "project": "flux"}]
+
+
+def test_general_and_multi_project_global_pages_are_not_flagged(wiki):
+    (wiki / "projects" / "flux").mkdir(parents=True)
+    (wiki / "projects" / "sidecar").mkdir(parents=True)
+    _write(wiki, "patterns/general.md", "# General\n\nAlways write the test first.\n")
+    _write(wiki, "research/compare.md", "# Compare\n\nprojects/flux and projects/sidecar differ.\n")
+
+    assert wiki_health.sweep()["single_project_global_pages"] == []
+
+
+def test_data_plane_pages_naming_one_project_are_not_flagged(wiki):
+    (wiki / "projects" / "flux").mkdir(parents=True)
+    _write(wiki, "projects/flux/map.md", "# flux\n\nprojects/flux is this project.\n")
+
+    assert wiki_health.sweep()["single_project_global_pages"] == []
+
+
+def test_render_report_has_single_project_section(wiki):
+    _write(wiki, "decisions/flux-stack.md", "# Flux\n\nprojects/flux stack notes.\n")
+
+    text = wiki_health.render_report(wiki_health.sweep())
+
+    assert "## Global-tier pages naming a single project" in text
+    assert "decisions/flux-stack.md" in text
+
+
+def test_render_report_single_project_section_says_none_when_clean(wiki):
+    text = wiki_health.render_report(wiki_health.sweep())
+    section = text.split("## Global-tier pages naming a single project", 1)[1]
+    assert section.lstrip().startswith("- none")
+
+
+# ---------------- hierarchical project wikis (issue #20 amendment) --------
+#
+# `knowledge/` may nest arbitrarily deep; every subdirectory needs a hub
+# `index.md` (`hubless_knowledge_dirs`), a leaf in a subdirectory must be
+# linked from some hub or the map (`unlinked_knowledge_pages`), and
+# `projects/<slug>/raw/` is immutable source material the pair scans skip.
+
+
+def test_sweep_flags_knowledge_subdir_without_hub(wiki):
+    _write(wiki, "projects/flux/knowledge/mechanics/combat.md", "# Combat\n")
+
+    result = wiki_health.sweep()
+
+    assert result["hubless_knowledge_dirs"] == ["projects/flux/knowledge/mechanics"]
+
+
+def test_sweep_accepts_knowledge_subdir_with_hub(wiki):
+    _write(
+        wiki,
+        "projects/flux/knowledge/mechanics/index.md",
+        "---\ntype: project-knowledge\nhub: true\n---\n# Mechanics\n\n- [combat](combat.md)\n",
+    )
+    _write(wiki, "projects/flux/knowledge/mechanics/combat.md", "# Combat\n")
+
+    result = wiki_health.sweep()
+
+    assert result["hubless_knowledge_dirs"] == []
+    assert result["unlinked_knowledge_pages"] == []
+
+
+def test_nested_knowledge_dirs_each_need_their_own_hub(wiki):
+    _write(
+        wiki,
+        "projects/flux/knowledge/entities/index.md",
+        "---\nhub: true\n---\n# Entities\n\n- characters/amber.md\n",
+    )
+    _write(wiki, "projects/flux/knowledge/entities/characters/amber.md", "# Amber\n")
+
+    result = wiki_health.sweep()
+
+    assert result["hubless_knowledge_dirs"] == ["projects/flux/knowledge/entities/characters"]
+
+
+def test_sweep_flags_unlinked_knowledge_leaf(wiki):
+    _write(
+        wiki,
+        "projects/flux/knowledge/mechanics/index.md",
+        "---\nhub: true\n---\n# Mechanics\n\nNothing linked yet.\n",
+    )
+    _write(wiki, "projects/flux/knowledge/mechanics/orphan.md", "# Orphan\n")
+
+    result = wiki_health.sweep()
+
+    assert result["unlinked_knowledge_pages"] == ["projects/flux/knowledge/mechanics/orphan.md"]
+
+
+def test_map_pointer_counts_as_link_for_a_leaf(wiki):
+    _write(
+        wiki,
+        "projects/flux/map.md",
+        "---\ntype: l2-map\n---\n# flux\n## Decision map\n"
+        "- [combat] → projects/flux/knowledge/mechanics/combat.md\n",
+    )
+    _write(
+        wiki,
+        "projects/flux/knowledge/mechanics/index.md",
+        "---\nhub: true\n---\n# Mechanics\n",
+    )
+    _write(wiki, "projects/flux/knowledge/mechanics/combat.md", "# Combat\n")
+
+    result = wiki_health.sweep()
+
+    assert result["unlinked_knowledge_pages"] == []
+
+
+def test_top_level_knowledge_pages_are_never_unlinked_findings(wiki):
+    # Top-level knowledge/*.md pages are indexed by the map directly (the
+    # pre-amendment contract) — no hub requirement, no orphan finding.
+    _write(wiki, "projects/flux/knowledge/stack.md", "# Stack\n")
+
+    result = wiki_health.sweep()
+
+    assert result["hubless_knowledge_dirs"] == []
+    assert result["unlinked_knowledge_pages"] == []
+
+
+def test_hub_pages_themselves_are_not_unlinked_findings(wiki):
+    _write(
+        wiki,
+        "projects/flux/knowledge/mechanics/index.md",
+        "---\nhub: true\n---\n# Mechanics\n",
+    )
+
+    result = wiki_health.sweep()
+
+    assert result["unlinked_knowledge_pages"] == []
+
+
+def test_raw_pages_are_skipped_by_pair_scans(wiki):
+    # raw/ is source material, not claims — a source that "contradicts" the
+    # page distilling it must never be a contradiction finding.
+    _write(
+        wiki,
+        "projects/flux/raw/design-notes.md",
+        "## Knowledge\nThe pricing model always uses monthly billing cycles.\n",
+    )
+    _write(
+        wiki,
+        "projects/flux/knowledge/pricing.md",
+        "## Knowledge\nThe pricing model never uses monthly billing cycles.\n",
+    )
+
+    result = wiki_health.sweep()
+
+    assert result["contradiction_pairs"] == []
+    assert result["duplicate_pairs"] == []
+
+
+def test_raw_pointer_target_is_not_dangling(wiki):
+    _write(wiki, "projects/flux/raw/spec.md", "# Original spec dump\n")
+    _write(
+        wiki,
+        "projects/flux/map.md",
+        "---\ntype: l2-map\n---\n# flux\n## Decision map\n"
+        "- [spec] → projects/flux/raw/spec.md\n",
+    )
+
+    assert wiki_health.sweep()["dangling_pointers"] == []
+
+
+def test_render_report_includes_hierarchy_sections(wiki):
+    _write(wiki, "projects/flux/knowledge/mechanics/combat.md", "# Combat\n")
+
+    text = wiki_health.render_report(wiki_health.sweep())
+
+    assert "## Knowledge dirs without a hub" in text
+    assert "projects/flux/knowledge/mechanics" in text
+    assert "## Unlinked knowledge pages" in text

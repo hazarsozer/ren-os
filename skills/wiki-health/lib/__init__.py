@@ -8,7 +8,7 @@ what it can (through the existing write-safety substrate: `propose_and_apply`
 See `SKILL.md` for the full behavior contract; this module is the sweep
 mechanics only — it never writes anything itself.
 
-`sweep()` returns six findings + a timestamp:
+`sweep()` returns seven findings + a timestamp:
   - `dangling_pointers` — every l2-map page's "## Decision map" pointer
     lines, target existence. Same question `skills.doctor.lib
     .check_dangling_pointers` answers, reimplemented here (not imported)
@@ -44,6 +44,17 @@ mechanics only — it never writes anything itself.
   - `quarantined_pages` — the unreviewed-content inventory
     (`lib.memory.quarantine.is_quarantined`): llm-auto writes still sitting
     behind the banner, never promoted or released.
+  - `single_project_global_pages` — global-tier pages naming exactly one
+    project (issue #18). The write-time gate (`lib.governance.tiers
+    .INSTRUCTION_PLANE_PREFIXES`) stops NEW project-specific pages from
+    landing in the global tier; this finds the ones already on disk,
+    including hand-authored ones the queue never saw.
+  - `hubless_knowledge_dirs` / `unlinked_knowledge_pages` — structural audit
+    of the hierarchical `projects/<slug>/knowledge/` trees (issue #20
+    amendment): a knowledge subdirectory must carry a hub `index.md`, and a
+    leaf page in a subdirectory must be linked from some hub or project-root
+    page. `projects/<slug>/raw/` (immutable source material) is skipped by
+    the pairwise scans — sources, not claims.
 """
 
 from __future__ import annotations
@@ -64,6 +75,10 @@ from skills.recall.lib import rank as _recall_rank
 _FRONTMATTER_RE = re.compile(r"\A---\n(.*?)\n---\n?", re.DOTALL)
 _FM_TYPE_RE = re.compile(r"^type:\s*(.+)$", re.MULTILINE)
 _POINTER_RE = re.compile(r"^-\s*\[[^\]]*\]\s*→\s*([^\s#]+)")
+# External repository reference (issue #20): `repo:<name>:<path>`. Kept
+# byte-identical with `skills.doctor.lib._REPO_REF_PREFIX` — the drift test
+# `tests/skills/wiki_health/test_sweep.py` asserts the two agree.
+_REPO_REF_PREFIX = "repo:"
 
 _MASS_DELETION_WINDOW = timedelta(hours=24)
 _MASS_DELETION_THRESHOLD = 5  # anomaly when a rolling window has MORE than this many
@@ -97,6 +112,11 @@ def _dangling_pointers(wiki_root: Path) -> list[dict]:
                 continue
             target = m.group(1)
             page = str(md_path.relative_to(wiki_root))
+            if target.startswith(_REPO_REF_PREFIX):
+                # `repo:<name>:<path>` — an external repository reference
+                # (issue #20). Not a wiki page, so not resolvable in-wiki and
+                # never "dangling". Missing IN-WIKI targets are still flagged.
+                continue
             if target.startswith("/"):
                 dangling.append({"page": page, "target": target})
                 continue
@@ -113,6 +133,14 @@ def _dangling_pointers(wiki_root: Path) -> list[dict]:
 _CONTRADICTION_PAGE_CAP = 200  # above this many candidate pages, narrow the all-pairs scan
 
 
+def _in_project_raw(rel_parts: tuple[str, ...]) -> bool:
+    """True if the wiki-relative path is under `projects/<slug>/raw/` —
+    immutable source material (issue #20 amendment). Sources, not claims:
+    the pairwise coherence scans must never compare a source against the
+    page that distills it."""
+    return len(rel_parts) >= 3 and rel_parts[0] == "projects" and rel_parts[2] == "raw"
+
+
 def _knowledge_pages(wiki_root: Path) -> list[tuple[str, str, str | None]]:
     """(rel_path, text, frontmatter_type) for every page with a "## Knowledge"
     section, skipping the `.ren/` metrics tree and quarantined pages (0.4.5:
@@ -123,6 +151,8 @@ def _knowledge_pages(wiki_root: Path) -> list[tuple[str, str, str | None]]:
     for md_path in sorted(wiki_root.rglob("*.md")):
         rel_path = md_path.relative_to(wiki_root)
         if ".ren" in rel_path.parts:
+            continue
+        if _in_project_raw(rel_path.parts):
             continue
         text = md_path.read_text(encoding="utf-8", errors="replace")
         if "## Knowledge" not in text:
@@ -243,6 +273,106 @@ def _quarantined_pages(wiki_root: Path) -> dict:
         and quarantine.is_quarantined(md_path.read_text(encoding="utf-8", errors="replace"))
     ]
     return {"count": len(pages), "pages": pages}
+
+
+_PROJECT_REF_RE = re.compile(r"projects/([a-z0-9][a-z0-9._-]*)")
+_WORD_RE = re.compile(r"[a-z0-9][a-z0-9._-]*")
+
+
+def _known_project_slugs(wiki_root: Path) -> set[str]:
+    """The slug vocabulary: the repo-path↔slug registry plus every directory
+    under `projects/`. Never raises — a missing/corrupt registry just
+    narrows the vocabulary."""
+    slugs = {s.lower() for s in ren_paths.load_project_registry()}
+    projects_dir = wiki_root / "projects"
+    if projects_dir.is_dir():
+        slugs |= {p.name.lower() for p in projects_dir.iterdir() if p.is_dir()}
+    return slugs
+
+
+def _single_project_global_pages(wiki_root: Path) -> list[dict]:
+    """Global-tier pages (`lib.governance.tiers.INSTRUCTION_PLANE_PREFIXES`)
+    whose body names EXACTLY ONE project — the shape issue #18 caught live
+    (a project-specific `decisions/flux-stack.md` written during ingest).
+
+    Founder doctrine: the global tier is only for practices general enough
+    to apply across projects; a page about one project belongs under
+    `projects/<slug>/`. Deliberately cheap and word-based: an explicit
+    `projects/<slug>` reference, or a bare word matching a known slug.
+    Naming zero projects (genuinely general) or two-plus (a real
+    cross-project comparison) is not a finding."""
+    from lib.governance.tiers import INSTRUCTION_PLANE_PREFIXES
+
+    slugs = _known_project_slugs(wiki_root)
+    findings: list[dict] = []
+    for prefix in INSTRUCTION_PLANE_PREFIXES:
+        tier_dir = wiki_root / prefix.rstrip("/")
+        if not tier_dir.is_dir():
+            continue
+        for md_path in sorted(tier_dir.rglob("*.md")):
+            try:
+                low = md_path.read_text(encoding="utf-8", errors="replace").lower()
+            except OSError:  # pragma: no cover - unreadable page is not a finding
+                continue
+            named = {m.group(1) for m in _PROJECT_REF_RE.finditer(low)}
+            words = set(_WORD_RE.findall(low))
+            named |= {slug for slug in slugs if slug in words}
+            if len(named) == 1:
+                findings.append({
+                    "page": md_path.relative_to(wiki_root).as_posix(),
+                    "project": next(iter(named)),
+                })
+    return findings
+
+
+def _knowledge_tree_findings(wiki_root: Path) -> tuple[list[str], list[str]]:
+    """Structural audit of the hierarchical `projects/<slug>/knowledge/`
+    trees (issue #20 amendment — Karpathy LLM-wiki pattern).
+
+    Returns `(hubless_knowledge_dirs, unlinked_knowledge_pages)`:
+      - every subdirectory (any depth) of a project's `knowledge/` without a
+        hub `index.md`;
+      - every leaf page (non-`index.md` `*.md` in a SUBDIRECTORY of
+        `knowledge/`) whose filename appears in no hub page and no page
+        directly under `projects/<slug>/` (map/overview/schema). Top-level
+        `knowledge/*.md` pages are exempt — the map indexes them directly.
+
+    Deliberately cheap and name-based (same spirit as
+    `_single_project_global_pages`): a leaf counts as linked if its filename
+    is mentioned anywhere in a hub or project-root page — forgiving over
+    false positives."""
+    hubless: list[str] = []
+    unlinked: list[str] = []
+    projects_dir = wiki_root / "projects"
+    if not projects_dir.is_dir():
+        return hubless, unlinked
+
+    for project_dir in sorted(p for p in projects_dir.iterdir() if p.is_dir()):
+        knowledge = project_dir / "knowledge"
+        if not knowledge.is_dir():
+            continue
+
+        # Text that can legitimately link a leaf: every hub index.md in the
+        # knowledge tree, plus every page directly under the project root
+        # (map.md's Decision map, overview.md, schema.md).
+        link_text: list[str] = []
+        for page in sorted(project_dir.glob("*.md")):
+            link_text.append(page.read_text(encoding="utf-8", errors="replace"))
+        for hub in sorted(knowledge.rglob("index.md")):
+            link_text.append(hub.read_text(encoding="utf-8", errors="replace"))
+        joined = "\n".join(link_text)
+
+        for sub in sorted(p for p in knowledge.rglob("*") if p.is_dir()):
+            if not (sub / "index.md").is_file():
+                hubless.append(sub.relative_to(wiki_root).as_posix())
+
+        for leaf in sorted(knowledge.rglob("*.md")):
+            if leaf.name == "index.md" or leaf.parent == knowledge:
+                continue
+            if leaf.name not in joined:
+                unlinked.append(leaf.relative_to(wiki_root).as_posix())
+
+    return hubless, unlinked
 
 
 def _now_iso() -> str:
@@ -444,6 +574,9 @@ def sweep(wiki_root: Path | None = None, llm_call: Callable[[str], str] | None =
             "contradiction_scan_note": None,
             "mass_deletions": _mass_deletions(),
             "quarantined_pages": {"count": 0, "pages": []},
+            "single_project_global_pages": [],
+            "hubless_knowledge_dirs": [],
+            "unlinked_knowledge_pages": [],
             "judge_dismissed": [],
             "judge_supersedes": [],
             "retrieval_eval": _retrieval_eval(),
@@ -465,6 +598,7 @@ def sweep(wiki_root: Path | None = None, llm_call: Callable[[str], str] | None =
             )
         except Exception:  # noqa: BLE001 - fail-closed: keep the no-llm result already computed
             pass
+    hubless_knowledge_dirs, unlinked_knowledge_pages = _knowledge_tree_findings(wiki_root)
     return {
         "dangling_pointers": _dangling_pointers(wiki_root),
         "contradiction_pairs": contradiction_pairs,
@@ -473,6 +607,9 @@ def sweep(wiki_root: Path | None = None, llm_call: Callable[[str], str] | None =
         "contradiction_scan_note": contradiction_scan_note,
         "mass_deletions": _mass_deletions(),
         "quarantined_pages": _quarantined_pages(wiki_root),
+        "single_project_global_pages": _single_project_global_pages(wiki_root),
+        "hubless_knowledge_dirs": hubless_knowledge_dirs,
+        "unlinked_knowledge_pages": unlinked_knowledge_pages,
         "judge_dismissed": judge_dismissed,
         "judge_supersedes": judge_supersedes,
         "retrieval_eval": _retrieval_eval(),
@@ -535,6 +672,33 @@ def render_report(findings: dict) -> str:
         lines.append("- none")
     lines.append("")
 
+    lines.append("## Global-tier pages naming a single project")
+    single = findings.get("single_project_global_pages") or []
+    if single:
+        lines.extend(
+            f"- {s['page']}: names only {s['project']} — belongs under projects/{s['project']}/"
+            for s in single
+        )
+    else:
+        lines.append("- none")
+    lines.append("")
+
+    lines.append("## Knowledge dirs without a hub")
+    hubless = findings.get("hubless_knowledge_dirs") or []
+    if hubless:
+        lines.extend(f"- {d}: missing index.md hub page" for d in hubless)
+    else:
+        lines.append("- none")
+    lines.append("")
+
+    lines.append("## Unlinked knowledge pages")
+    unlinked = findings.get("unlinked_knowledge_pages") or []
+    if unlinked:
+        lines.extend(f"- {p}: linked from no hub and no map" for p in unlinked)
+    else:
+        lines.append("- none")
+    lines.append("")
+
     lines.append("## Quarantined (unreviewed)")
     quarantined = findings.get("quarantined_pages") or {"count": 0, "pages": []}
     lines.append(f"- {quarantined['count']} page(s)")
@@ -572,17 +736,23 @@ def release_page(page: str, session: str) -> tuple:
     the live session calls this only after the friend explicitly says the
     page is fine (see SKILL.md; never auto-release from a sweep).
 
-    Routes through the normal write substrate (`propose_and_apply`,
-    writer="human", producer="retrospective" — this module isn't its own
-    producer class, see SKILL.md "What this skill does NOT do") so the
-    release is journaled, snapshotted, and revertible like every other
-    write. Returns `(QueueEntry, Provenance | None)` — `Provenance` is None
-    only if the proposal was held (e.g. a contradiction conflict), in which
-    case the session resolves it like any other hold.
+    Routes through the normal write substrate (writer="human",
+    producer="retrospective" — this module isn't its own producer class, see
+    SKILL.md "What this skill does NOT do") so the release is journaled,
+    snapshotted, and revertible like every other write. Because release IS
+    the human review, the write goes `propose` → `approve_and_apply`
+    (0.6.2 review finding H3) rather than `propose_and_apply` — a
+    quarantined instruction-plane page (`decisions/*` etc.) would otherwise
+    pend forever, since `propose_and_apply` holds instruction-plane targets
+    for exactly the human approval this call already represents.
+
+    Returns `(QueueEntry, Provenance | None)` — `Provenance` is None only if
+    the proposal was held on a `contradicts` conflict (the session resolves
+    it like any other hold) or was a no-op.
 
     Raises `FileNotFoundError` if the page doesn't exist, `ValueError` if it
     isn't quarantined."""
-    from lib.memory.queue import Proposal, propose_and_apply
+    from lib.memory.queue import Proposal, approve_and_apply, get, propose
 
     path = ren_paths.safe_join(ren_paths.wiki_root(), page)
     if not path.is_file():
@@ -591,7 +761,7 @@ def release_page(page: str, session: str) -> tuple:
     if not quarantine.is_quarantined(text):
         raise ValueError(f"{page!r} is not quarantined — nothing to release")
 
-    return propose_and_apply(
+    entry = propose(
         Proposal(
             op="UPDATE",
             page=page,
@@ -602,6 +772,12 @@ def release_page(page: str, session: str) -> tuple:
             session=session,
         )
     )
+    if entry.status != "pending":
+        return entry, None
+    if any(c.get("kind") == "contradicts" for c in entry.conflicts):
+        return entry, None
+    prov = approve_and_apply(entry.qid, who="human:quarantine-release")
+    return get(entry.qid), prov
 
 
 __all__ = ["sweep", "render_report", "release_page"]

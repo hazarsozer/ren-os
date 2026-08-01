@@ -73,7 +73,9 @@ def test_bootstrap_auto_applies_add_with_empty_map(wiki):
     assert entry.write_id is not None
     assert entry.proposal.op == "ADD"
     assert entry.proposal.page == "projects/new-idea/map.md"
-    assert entry.proposal.producer == "promotion"
+    # Issue #18: "promotion" is reserved for the human-gated global-tier
+    # path; a data-plane L2 map is an ingest-producer write.
+    assert entry.proposal.producer == "ingest"
     assert entry.proposal.writer == "human"
     assert "## Knowledge" in entry.proposal.content
     assert "## Decision map" in entry.proposal.content

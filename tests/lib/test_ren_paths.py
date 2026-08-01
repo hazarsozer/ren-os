@@ -363,3 +363,122 @@ def test_claude_user_dir_ren_claude_dir_takes_precedence_over_claude_config_dir(
 def test_claude_user_dir_ren_claude_dir_alone_still_works(clean_claude_env, tmp_path):
     clean_claude_env.setenv("REN_CLAUDE_DIR", str(tmp_path))
     assert claude_user_dir() == tmp_path
+
+
+# --- issue #13: lazy home resolution ----------------------------------------
+
+
+def test_framework_root_follows_patched_home(clean_path_env, tmp_path):
+    """framework_root() must re-read HOME at call time, not freeze it at import."""
+    clean_path_env.setenv("HOME", str(tmp_path))
+    assert framework_root() == tmp_path / ".renos"
+
+
+def test_plugin_data_dir_follows_patched_home(clean_path_env, tmp_path):
+    clean_path_env.delenv("CLAUDE_PLUGIN_DATA", raising=False)
+    clean_path_env.setenv("HOME", str(tmp_path))
+    assert ren_paths.plugin_data_dir() == (
+        tmp_path / ".claude" / "plugins" / "data" / "renos"
+    )
+
+
+# --- issue #19: repo-path ↔ slug registry ------------------------------------
+
+
+def test_record_project_repo_writes_registry_schema(clean_path_env, tmp_path):
+    clean_path_env.setenv("REN_FRAMEWORK_ROOT", str(tmp_path))
+    repo = tmp_path / "genshin-calculator-dev"
+    repo.mkdir()
+
+    path = ren_paths.record_project_repo("genshin-calculator", repo)
+
+    assert path == state_dir() / "projects.json"
+    import json
+
+    data = json.loads(path.read_text(encoding="utf-8"))
+    assert data["version"] == 1
+    assert data["projects"]["genshin-calculator"]["repo_path"] == str(repo.resolve())
+
+
+def test_record_project_repo_merges_and_is_idempotent(clean_path_env, tmp_path):
+    clean_path_env.setenv("REN_FRAMEWORK_ROOT", str(tmp_path))
+    a = tmp_path / "a-repo"
+    b = tmp_path / "b-repo"
+    a.mkdir()
+    b.mkdir()
+
+    ren_paths.record_project_repo("alpha", a)
+    ren_paths.record_project_repo("beta", b)
+    ren_paths.record_project_repo("alpha", a)
+
+    registry = ren_paths.load_project_registry()
+    assert set(registry) == {"alpha", "beta"}
+    assert registry["alpha"]["repo_path"] == str(a.resolve())
+
+
+def test_load_project_registry_tolerates_missing_and_corrupt(clean_path_env, tmp_path):
+    clean_path_env.setenv("REN_FRAMEWORK_ROOT", str(tmp_path))
+    assert ren_paths.load_project_registry() == {}
+
+    path = state_dir() / "projects.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("{not json", encoding="utf-8")
+    assert ren_paths.load_project_registry() == {}
+
+
+def test_detect_project_uses_registry_when_dirname_differs(clean_path_env, tmp_path):
+    """Issue #19: a clone dir named differently from the slug is still detected."""
+    clean_path_env.setenv("REN_FRAMEWORK_ROOT", str(tmp_path))
+    wiki = wiki_root()
+    (wiki / "projects" / "genshin-calculator").mkdir(parents=True)
+    dev_root = tmp_path / "Dev"
+    repo = dev_root / "genshin-calculator-dev"
+    (repo / "src").mkdir(parents=True)
+
+    # Without a mapping: orphaned (dir-name segment has no wiki project dir).
+    assert ren_paths.detect_project(repo / "src", wiki, dev_root=dev_root) is None
+
+    ren_paths.record_project_repo("genshin-calculator", repo)
+    assert ren_paths.detect_project(repo / "src", wiki, dev_root=dev_root) == "genshin-calculator"
+    # Works outside dev_root too — the mapping is absolute.
+    outside = tmp_path / "elsewhere" / "genshin-calculator-dev"
+    (outside).mkdir(parents=True)
+    ren_paths.record_project_repo("genshin-calculator", outside)
+    assert ren_paths.detect_project(outside, wiki, dev_root=dev_root) == "genshin-calculator"
+
+
+def test_detect_project_falls_back_to_dirname_matching(clean_path_env, tmp_path):
+    clean_path_env.setenv("REN_FRAMEWORK_ROOT", str(tmp_path))
+    wiki = wiki_root()
+    (wiki / "projects" / "sidecar").mkdir(parents=True)
+    dev_root = tmp_path / "Dev"
+    repo = dev_root / "sidecar"
+    repo.mkdir(parents=True)
+
+    ren_paths.record_project_repo("other", tmp_path / "unrelated")
+    assert ren_paths.detect_project(repo, wiki, dev_root=dev_root) == "sidecar"
+
+
+def test_detect_project_registry_entry_without_wiki_dir_is_ignored(clean_path_env, tmp_path):
+    clean_path_env.setenv("REN_FRAMEWORK_ROOT", str(tmp_path))
+    wiki = wiki_root()
+    (wiki / "projects").mkdir(parents=True)
+    repo = tmp_path / "ghost-repo"
+    repo.mkdir()
+    ren_paths.record_project_repo("ghost", repo)
+    assert ren_paths.detect_project(repo, wiki, dev_root=tmp_path / "Dev") is None
+
+
+def test_detect_project_prefers_longest_matching_repo_path(clean_path_env, tmp_path):
+    clean_path_env.setenv("REN_FRAMEWORK_ROOT", str(tmp_path))
+    wiki = wiki_root()
+    (wiki / "projects" / "outer").mkdir(parents=True)
+    (wiki / "projects" / "inner").mkdir(parents=True)
+    outer = tmp_path / "mono"
+    inner = outer / "packages" / "inner"
+    inner.mkdir(parents=True)
+    ren_paths.record_project_repo("outer", outer)
+    ren_paths.record_project_repo("inner", inner)
+
+    assert ren_paths.detect_project(inner, wiki, dev_root=tmp_path / "Dev") == "inner"
+    assert ren_paths.detect_project(outer, wiki, dev_root=tmp_path / "Dev") == "outer"
