@@ -461,6 +461,28 @@ def test_cap_respects_heuristic_first_then_near_similar_by_descending_jaccard(tm
     assert [p["reason"] for p in capped] == ["heuristic-contradiction", "heuristic-contradiction", "near-similar"]
 
 
+def test_project_raw_pages_are_excluded_from_shortlist(tmp_path):
+    # M1 (0.6.2 review): raw/ is immutable source material — a source and the
+    # knowledge page distilling it are SUPPOSED to overlap heavily. Pairing
+    # them for the judge would violate the "coherence scans skip raw/"
+    # invariant `skills.wiki-health` already enforces.
+    _write(
+        tmp_path,
+        "projects/flux/raw/design-notes.md",
+        "Redis caches user sessions for fast lookup.\n",
+    )
+    _write(
+        tmp_path,
+        "projects/flux/knowledge/caching.md",
+        "Fast lookup of user sessions is cached using Redis.\n",
+    )
+
+    pairs = shortlist_pairs(tmp_path)
+
+    involved_pages = {p["page"] for p in pairs} | {p["with"] for p in pairs}
+    assert "projects/flux/raw/design-notes.md" not in involved_pages
+
+
 def test_focus_pages_restricts_one_side_of_every_pair(tmp_path):
     _write(tmp_path, "notes/a.md", "Redis caches user sessions for fast lookup.\n")
     _write(tmp_path, "notes/b.md", "Fast lookup of user sessions is cached using Redis.\n")

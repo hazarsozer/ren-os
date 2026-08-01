@@ -353,6 +353,16 @@ class PathTraversalError(ValueError):
     """Raised by `safe_join` when a relative path would escape its base directory."""
 
 
+def in_project_raw(rel_parts: tuple[str, ...]) -> bool:
+    """True if the wiki-relative path is under `projects/<slug>/raw/` —
+    write-once source material (issue #20 amendment). Sources, not claims:
+    coherence scans (wiki-health's pair scans, the judge shortlist) must
+    never compare a source against the page that distills it, and schema
+    checks must not demand migrations of source files. Shared predicate —
+    do not re-implement locally (0.6.2 review M1/L4)."""
+    return len(rel_parts) >= 3 and rel_parts[0] == "projects" and rel_parts[2] == "raw"
+
+
 def safe_join(base: Path | str, rel: Path | str) -> Path:
     """Join `rel` onto `base`, raising `PathTraversalError` if the result would
     escape `base` (e.g. via `../../etc/passwd` or an absolute path override).
@@ -567,6 +577,7 @@ __all__ = [
     "wiki_root",
     "state_dir",
     "PathTraversalError",
+    "in_project_raw",
     "safe_join",
     "HANDLE_RE",
     "validate_handle",

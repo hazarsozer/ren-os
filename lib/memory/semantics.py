@@ -45,6 +45,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+from lib.ren_paths import in_project_raw
+
 from . import quarantine
 from .provenance import read_frontmatter_provenance
 
@@ -508,7 +510,11 @@ def _shortlist_candidate_pages(
     """(rel_path, text) for every page eligible for shortlist scanning.
 
     Mirrors `skills.wiki-health`'s `_knowledge_pages` candidate discipline:
-    skip the `.ren/` metrics tree and (0.5.1 trust taxonomy) `ren_trust:
+    skip the `.ren/` metrics tree, `projects/<slug>/raw/` source material
+    (`lib.ren_paths.in_project_raw` — a source and the page distilling it
+    are supposed to overlap; pairing them would hand the judge exactly the
+    raw↔distilled pairs the "coherence scans skip raw/" invariant forbids),
+    and (0.5.1 trust taxonomy) `ren_trust:
     foreign` pages — ingested content a human hasn't reviewed must stay
     invisible to automatic pairwise scans, the judge included. Foreign trust
     is untrusted provenance and is excluded unconditionally, focus or not.
@@ -524,6 +530,8 @@ def _shortlist_candidate_pages(
     for md_path in sorted(wiki_root.rglob("*.md")):
         rel_path = md_path.relative_to(wiki_root)
         if ".ren" in rel_path.parts:
+            continue
+        if in_project_raw(rel_path.parts):
             continue
         text = md_path.read_text(encoding="utf-8", errors="replace")
         prov = read_frontmatter_provenance(text)

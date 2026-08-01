@@ -70,3 +70,27 @@ def should_run_trust_backfill(old: str, new: str) -> bool:
     except ValueError:
         return False
     return old_key < gate_key <= new_key
+
+
+_PROJECT_KNOWLEDGE_GATE = "0.6.2"
+
+
+def should_run_project_knowledge_1(old: str, new: str) -> bool:
+    """True when an update crosses the 0.6.2 boundary (old < 0.6.2 <= new).
+
+    Gates ``migrations/project-knowledge-1/migrate.py`` (see that migration's
+    README) the same way ``should_run_trust_backfill`` gates its migration:
+    a pure version-tuple comparison, no chain machinery, because
+    project-knowledge-1 is a standalone global migration that walks whole
+    ``projects/<slug>/`` directories rather than a schema_version-keyed
+    page type.
+    """
+    try:
+        old_key, new_key, gate_key = (
+            _version_key(old),
+            _version_key(new),
+            _version_key(_PROJECT_KNOWLEDGE_GATE),
+        )
+    except ValueError:
+        return False
+    return old_key < gate_key <= new_key

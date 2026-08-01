@@ -133,14 +133,6 @@ def _dangling_pointers(wiki_root: Path) -> list[dict]:
 _CONTRADICTION_PAGE_CAP = 200  # above this many candidate pages, narrow the all-pairs scan
 
 
-def _in_project_raw(rel_parts: tuple[str, ...]) -> bool:
-    """True if the wiki-relative path is under `projects/<slug>/raw/` —
-    immutable source material (issue #20 amendment). Sources, not claims:
-    the pairwise coherence scans must never compare a source against the
-    page that distills it."""
-    return len(rel_parts) >= 3 and rel_parts[0] == "projects" and rel_parts[2] == "raw"
-
-
 def _knowledge_pages(wiki_root: Path) -> list[tuple[str, str, str | None]]:
     """(rel_path, text, frontmatter_type) for every page with a "## Knowledge"
     section, skipping the `.ren/` metrics tree and quarantined pages (0.4.5:
@@ -152,7 +144,7 @@ def _knowledge_pages(wiki_root: Path) -> list[tuple[str, str, str | None]]:
         rel_path = md_path.relative_to(wiki_root)
         if ".ren" in rel_path.parts:
             continue
-        if _in_project_raw(rel_path.parts):
+        if ren_paths.in_project_raw(rel_path.parts):
             continue
         text = md_path.read_text(encoding="utf-8", errors="replace")
         if "## Knowledge" not in text:
@@ -363,13 +355,25 @@ def _knowledge_tree_findings(wiki_root: Path) -> tuple[list[str], list[str]]:
         joined = "\n".join(link_text)
 
         for sub in sorted(p for p in knowledge.rglob("*") if p.is_dir()):
+            # Only dirs that actually organize markdown (any .md, direct or
+            # deeper) need a hub — empty scaffold dirs and asset-only dirs
+            # (knowledge/img/) have no children a hub could summarize.
+            if next(sub.rglob("*.md"), None) is None:
+                continue
             if not (sub / "index.md").is_file():
                 hubless.append(sub.relative_to(wiki_root).as_posix())
 
         for leaf in sorted(knowledge.rglob("*.md")):
             if leaf.name == "index.md" or leaf.parent == knowledge:
                 continue
-            if leaf.name not in joined:
+            # Word-bounded filename match: a bare substring check let `a.md`
+            # count as linked via `schema.md` and `map.md` via
+            # `combat-map.md`. Preceding path separators (`/`, `(`, space…)
+            # are fine; filename characters are not.
+            name_re = re.compile(
+                rf"(?<![A-Za-z0-9._-]){re.escape(leaf.name)}(?![A-Za-z0-9_])"
+            )
+            if not name_re.search(joined):
                 unlinked.append(leaf.relative_to(wiki_root).as_posix())
 
     return hubless, unlinked

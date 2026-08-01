@@ -145,6 +145,19 @@ def test_check_schema_versions_warns_when_behind(wiki):
     assert "routine-spec-1-to-2" in result.message
 
 
+def test_check_schema_versions_skips_project_raw(wiki):
+    # L4 (0.6.2 review): raw/ is immutable source material — a source file
+    # that happens to carry registered-type frontmatter must not draw a
+    # "behind current schema" warn (there is no migrating a source).
+    raw_dir = wiki / "projects" / "flux" / "raw"
+    raw_dir.mkdir(parents=True)
+    (raw_dir / "old-notes.md").write_text(
+        '---\ntype: routine-spec\nschema_version: 1\n---\n', encoding="utf-8"
+    )
+    result = doctor.check_schema_versions(wiki)
+    assert result.status == "ok"
+
+
 # --------------------------------------------------------------- check_budget_lint
 
 
