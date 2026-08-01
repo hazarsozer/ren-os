@@ -89,6 +89,29 @@ profiles:
         min_framework_version: "0.5.5"
         description: "Per-project orientation page — guaranteed wake-up slot (0.5.5)"
 
+      - path: "schema.md"
+        template: "templates/projects/schema.md.tmpl"
+        type: file
+        write_rule: copy_if_missing
+        min_framework_version: "0.6.2"
+        description: >
+          The project's own SCHEMA document (issue #20 amendment, Karpathy
+          LLM-wiki pattern): taxonomy tree (which knowledge/ subdirs exist
+          and what belongs in each), naming conventions, what raw/ holds.
+          Bootstrap stamps only this stub; the ingest worker drafts the real
+          taxonomy BEFORE any knowledge page, and future sessions read and
+          follow it. Registered page type `project-schema`.
+
+      - path: "raw/"
+        type: directory
+        write_rule: create_if_missing
+        min_framework_version: "0.6.2"
+        description: >
+          Immutable source material (issue #20 amendment). Write-once by
+          convention — fix by adding, never rewriting. Sources, not claims:
+          wiki-health's contradiction/duplicate scans skip it, pointers may
+          target it, wake-up never injects it.
+
       - path: "knowledge/"
         type: directory
         write_rule: create_if_missing
@@ -166,6 +189,8 @@ profiles:
 #   {{name}}               friend display name                required for identity.md
 #   {{today}}              ISO date YYYY-MM-DD                always available
 #   {{framework_version}}  framework semver (e.g. "0.2.0")    always available
+#   {{project}}            project slug (kebab-case)          project profile only
+#                                                             (bootstrap passes it)
 #
 # Missing placeholder values cause the loader to leave the literal {{var}} in
 # the file and emit a warning. No silent substitution with empty strings.

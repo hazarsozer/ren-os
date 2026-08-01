@@ -197,8 +197,19 @@ def main(argv: list[str] | None = None) -> int:
     records: list[dict] = []
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
+    schemaless = 0
     for project_dir in sorted(p for p in projects_dir.iterdir() if p.is_dir()):
         slug = project_dir.name
+        # Issue #20 amendment (hierarchical project wikis): every project
+        # should carry its own SCHEMA document. REPORT-only — a migration
+        # script cannot invent a taxonomy; the model/user writes schema.md
+        # in a live session that can see the project.
+        if not (project_dir / "schema.md").is_file():
+            print(
+                f"projects/{slug}: no schema.md — draft one (type: project-schema) "
+                "declaring this project's knowledge/ taxonomy (not fabricated here)"
+            )
+            schemaless += 1
         for page in _flat_pages(project_dir):
             target = project_dir / KNOWLEDGE_DIRNAME / page.name
             rel_from = page.relative_to(wiki).as_posix()
@@ -239,7 +250,8 @@ def main(argv: list[str] | None = None) -> int:
     verb = "moved" if apply else "would move"
     print(
         f"project-knowledge-1: {moved} page(s) {verb}, {len(rewritten)} pointer(s) "
-        f"{'rewritten' if apply else 'would be rewritten'}, {collisions} collision(s)"
+        f"{'rewritten' if apply else 'would be rewritten'}, {collisions} collision(s), "
+        f"{schemaless} project(s) missing schema.md"
         + ("" if apply else " — DRY RUN, re-run with --apply to write")
     )
     return 0

@@ -63,6 +63,13 @@ used to catch, by sweeping periodically instead of gating continuously.
    one project; the global tier is for cross-project practices only, so such
    a page belongs under `projects/<slug>/`. Never auto-relocated: propose the
    move to the friend, since only a human puts pages in the global tier),
+   `hubless_knowledge_dirs` + `unlinked_knowledge_pages` (issue #20
+   amendment: structural audit of the hierarchical
+   `projects/<slug>/knowledge/` trees — every subdirectory needs a hub
+   `index.md`, and a leaf page in a subdirectory must be linked from some
+   hub or the map; top-level `knowledge/*.md` pages are exempt.
+   `projects/<slug>/raw/` is immutable source material and is SKIPPED by
+   the contradiction/duplicate/drift scans — sources, not claims),
    plus
    `retrieval_eval` (0.6.1: `{"hit_rate", "cases"}` from scoring the shipped
    ranker against the frozen retrieval-eval fixture, independent of this
@@ -96,6 +103,14 @@ used to catch, by sweeping periodically instead of gating continuously.
      numbers (across two pages, or twice within one page): almost always a
      stale value. The live session asks the friend which number is
      current, then fixes via `resolve_and_apply` with a note.
+   - **Hubless knowledge dir**: mechanically fixable — draft the missing
+     hub `index.md` (`type: project-knowledge`, `hub: true`) summarizing
+     and linking the directory's children, through `propose_and_apply`
+     (same producer as other repairs). Consult the project's `schema.md`
+     for what the directory is FOR before writing the summary.
+   - **Unlinked knowledge page**: link it from the right hub (or the map,
+     if top-level in spirit) — or, if it's genuinely dead, propose
+     archiving it to the friend. Never delete on your own judgment.
    - **Mass-deletion anomaly**: never auto-fix. This is a "look at this"
      signal, not a repair target — surface the window (count, pages, start
      time) and ask the friend if it was intentional.

@@ -49,6 +49,12 @@ mechanics only — it never writes anything itself.
     .INSTRUCTION_PLANE_PREFIXES`) stops NEW project-specific pages from
     landing in the global tier; this finds the ones already on disk,
     including hand-authored ones the queue never saw.
+  - `hubless_knowledge_dirs` / `unlinked_knowledge_pages` — structural audit
+    of the hierarchical `projects/<slug>/knowledge/` trees (issue #20
+    amendment): a knowledge subdirectory must carry a hub `index.md`, and a
+    leaf page in a subdirectory must be linked from some hub or project-root
+    page. `projects/<slug>/raw/` (immutable source material) is skipped by
+    the pairwise scans — sources, not claims.
 """
 
 from __future__ import annotations
@@ -127,6 +133,14 @@ def _dangling_pointers(wiki_root: Path) -> list[dict]:
 _CONTRADICTION_PAGE_CAP = 200  # above this many candidate pages, narrow the all-pairs scan
 
 
+def _in_project_raw(rel_parts: tuple[str, ...]) -> bool:
+    """True if the wiki-relative path is under `projects/<slug>/raw/` —
+    immutable source material (issue #20 amendment). Sources, not claims:
+    the pairwise coherence scans must never compare a source against the
+    page that distills it."""
+    return len(rel_parts) >= 3 and rel_parts[0] == "projects" and rel_parts[2] == "raw"
+
+
 def _knowledge_pages(wiki_root: Path) -> list[tuple[str, str, str | None]]:
     """(rel_path, text, frontmatter_type) for every page with a "## Knowledge"
     section, skipping the `.ren/` metrics tree and quarantined pages (0.4.5:
@@ -137,6 +151,8 @@ def _knowledge_pages(wiki_root: Path) -> list[tuple[str, str, str | None]]:
     for md_path in sorted(wiki_root.rglob("*.md")):
         rel_path = md_path.relative_to(wiki_root)
         if ".ren" in rel_path.parts:
+            continue
+        if _in_project_raw(rel_path.parts):
             continue
         text = md_path.read_text(encoding="utf-8", errors="replace")
         if "## Knowledge" not in text:
@@ -307,6 +323,56 @@ def _single_project_global_pages(wiki_root: Path) -> list[dict]:
                     "project": next(iter(named)),
                 })
     return findings
+
+
+def _knowledge_tree_findings(wiki_root: Path) -> tuple[list[str], list[str]]:
+    """Structural audit of the hierarchical `projects/<slug>/knowledge/`
+    trees (issue #20 amendment — Karpathy LLM-wiki pattern).
+
+    Returns `(hubless_knowledge_dirs, unlinked_knowledge_pages)`:
+      - every subdirectory (any depth) of a project's `knowledge/` without a
+        hub `index.md`;
+      - every leaf page (non-`index.md` `*.md` in a SUBDIRECTORY of
+        `knowledge/`) whose filename appears in no hub page and no page
+        directly under `projects/<slug>/` (map/overview/schema). Top-level
+        `knowledge/*.md` pages are exempt — the map indexes them directly.
+
+    Deliberately cheap and name-based (same spirit as
+    `_single_project_global_pages`): a leaf counts as linked if its filename
+    is mentioned anywhere in a hub or project-root page — forgiving over
+    false positives."""
+    hubless: list[str] = []
+    unlinked: list[str] = []
+    projects_dir = wiki_root / "projects"
+    if not projects_dir.is_dir():
+        return hubless, unlinked
+
+    for project_dir in sorted(p for p in projects_dir.iterdir() if p.is_dir()):
+        knowledge = project_dir / "knowledge"
+        if not knowledge.is_dir():
+            continue
+
+        # Text that can legitimately link a leaf: every hub index.md in the
+        # knowledge tree, plus every page directly under the project root
+        # (map.md's Decision map, overview.md, schema.md).
+        link_text: list[str] = []
+        for page in sorted(project_dir.glob("*.md")):
+            link_text.append(page.read_text(encoding="utf-8", errors="replace"))
+        for hub in sorted(knowledge.rglob("index.md")):
+            link_text.append(hub.read_text(encoding="utf-8", errors="replace"))
+        joined = "\n".join(link_text)
+
+        for sub in sorted(p for p in knowledge.rglob("*") if p.is_dir()):
+            if not (sub / "index.md").is_file():
+                hubless.append(sub.relative_to(wiki_root).as_posix())
+
+        for leaf in sorted(knowledge.rglob("*.md")):
+            if leaf.name == "index.md" or leaf.parent == knowledge:
+                continue
+            if leaf.name not in joined:
+                unlinked.append(leaf.relative_to(wiki_root).as_posix())
+
+    return hubless, unlinked
 
 
 def _now_iso() -> str:
@@ -509,6 +575,8 @@ def sweep(wiki_root: Path | None = None, llm_call: Callable[[str], str] | None =
             "mass_deletions": _mass_deletions(),
             "quarantined_pages": {"count": 0, "pages": []},
             "single_project_global_pages": [],
+            "hubless_knowledge_dirs": [],
+            "unlinked_knowledge_pages": [],
             "judge_dismissed": [],
             "judge_supersedes": [],
             "retrieval_eval": _retrieval_eval(),
@@ -530,6 +598,7 @@ def sweep(wiki_root: Path | None = None, llm_call: Callable[[str], str] | None =
             )
         except Exception:  # noqa: BLE001 - fail-closed: keep the no-llm result already computed
             pass
+    hubless_knowledge_dirs, unlinked_knowledge_pages = _knowledge_tree_findings(wiki_root)
     return {
         "dangling_pointers": _dangling_pointers(wiki_root),
         "contradiction_pairs": contradiction_pairs,
@@ -539,6 +608,8 @@ def sweep(wiki_root: Path | None = None, llm_call: Callable[[str], str] | None =
         "mass_deletions": _mass_deletions(),
         "quarantined_pages": _quarantined_pages(wiki_root),
         "single_project_global_pages": _single_project_global_pages(wiki_root),
+        "hubless_knowledge_dirs": hubless_knowledge_dirs,
+        "unlinked_knowledge_pages": unlinked_knowledge_pages,
         "judge_dismissed": judge_dismissed,
         "judge_supersedes": judge_supersedes,
         "retrieval_eval": _retrieval_eval(),
@@ -608,6 +679,22 @@ def render_report(findings: dict) -> str:
             f"- {s['page']}: names only {s['project']} — belongs under projects/{s['project']}/"
             for s in single
         )
+    else:
+        lines.append("- none")
+    lines.append("")
+
+    lines.append("## Knowledge dirs without a hub")
+    hubless = findings.get("hubless_knowledge_dirs") or []
+    if hubless:
+        lines.extend(f"- {d}: missing index.md hub page" for d in hubless)
+    else:
+        lines.append("- none")
+    lines.append("")
+
+    lines.append("## Unlinked knowledge pages")
+    unlinked = findings.get("unlinked_knowledge_pages") or []
+    if unlinked:
+        lines.extend(f"- {p}: linked from no hub and no map" for p in unlinked)
     else:
         lines.append("- none")
     lines.append("")

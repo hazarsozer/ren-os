@@ -7,6 +7,10 @@
   `skills/doctor`, `hooks/wake-up`, `migrations/project-knowledge-1`
 - **Builds on** `docs/decisions/2026-08-01-global-tier-promotion-gate.md`
   (issue #18). Supersedes nothing.
+- **Amended by** `docs/decisions/2026-08-01-hierarchical-project-wiki.md`
+  (same train): `knowledge/` becomes a nested tree with hub `index.md`
+  pages, each project declares its taxonomy in `projects/<slug>/schema.md`,
+  and `projects/<slug>/raw/` holds immutable source material.
 
 > Dated-filename convention, same as the #18 record — this repo has no
 > numbered ADR series.

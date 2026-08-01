@@ -237,3 +237,32 @@ def test_registered_page_type_matches_the_schema_registry(wiki):
     entry = registry["page_types"][migrate.PAGE_TYPE]
     assert entry["current"] == migrate.SCHEMA_VERSION
     assert migrate.PAGE_TYPE == "project-knowledge"
+
+
+def test_reports_missing_schema_md_without_fabricating_one(wiki, capsys):
+    """Issue #20 amendment: the run reports a project missing its
+    `schema.md` (the taxonomy is the model's/human's to write — a migration
+    script cannot invent it) and never creates the file itself."""
+    _flux(wiki)
+
+    _load_migrate().main([])
+    out = capsys.readouterr().out
+    assert "projects/flux: no schema.md" in out
+    assert not (wiki / "projects" / "flux" / "schema.md").exists()
+
+    _load_migrate().main(["--apply"])
+    out = capsys.readouterr().out
+    assert "projects/flux: no schema.md" in out
+    assert not (wiki / "projects" / "flux" / "schema.md").exists()
+
+
+def test_project_with_schema_md_is_not_flagged(wiki, capsys):
+    _flux(wiki)
+    _write(
+        wiki / "projects" / "flux" / "schema.md",
+        "---\ntype: project-schema\nschema_version: 1\nproject: flux\n---\n# Schema\n",
+    )
+
+    _load_migrate().main([])
+    out = capsys.readouterr().out
+    assert "no schema.md" not in out

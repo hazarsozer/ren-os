@@ -112,6 +112,9 @@ def bootstrap(project_slug: str, session: str, repo_root: Path | None = None) ->
             "handle": "friend",
             "name": "friend",
             "framework_version": ren_paths.framework_version(),
+            # schema.md.tmpl stamps the project's own SCHEMA stub — its
+            # frontmatter `project:` field needs the slug (issue #20 amendment).
+            "project": project_slug,
         },
         path_prefix=f"projects/{project_slug}/",
     )

@@ -826,7 +826,20 @@ def _is_own_project_knowledge(rel: str, project: str | None) -> bool:
     """
     if not project:
         return False
+    # A bare startswith on the prefix: nested paths
+    # (knowledge/entities/characters/x.md) are covered by construction —
+    # the hierarchical-wiki amendment (issue #20) relies on exactly that.
     return rel.startswith(f"projects/{project}/knowledge/")
+
+
+def _is_project_raw(rel: str) -> bool:
+    """True if `rel` sits under any `projects/<slug>/raw/` — immutable
+    source material (issue #20 amendment). Never a wake-up candidate: raw
+    holds sources, not distilled knowledge, so it is skipped outright (and
+    NOT counted as held-out — there is no withheld trust signal, the page
+    was never eligible)."""
+    parts = rel.split("/")
+    return len(parts) >= 3 and parts[0] == "projects" and parts[2] == "raw"
 
 
 def _discover_extra_candidates(
@@ -868,6 +881,8 @@ def _discover_extra_candidates(
         if any(part.startswith(".") for part in path.relative_to(wiki_root).parts):
             continue
         if rel in exclude:
+            continue
+        if _is_project_raw(rel):
             continue
         if archive.is_archived(rel):
             held_count += 1

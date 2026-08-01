@@ -12,7 +12,16 @@ Nine fixes from the first real fresh-machine install (MacBook, issues
   must target pages that exist (same-batch or `repo:<name>:<path>` refs),
   never invented future filenames. `migrations/project-knowledge-1/`
   relocates existing flat files (dry-run default, never overwrites,
-  per-move journal).
+  per-move journal). Amended in-train to the full Karpathy LLM-wiki shape:
+  `knowledge/` nests to project-determined depth with a hub `index.md` per
+  subdirectory (the map points at hubs, not deep leaves); each project
+  declares its own taxonomy in `projects/<slug>/schema.md` (new
+  `project-schema` page type — ingest drafts it before any knowledge page,
+  bootstrap stamps a stub); `projects/<slug>/raw/` holds immutable source
+  material (skipped by coherence scans, never injected by wake-up, valid
+  pointer target). wiki-health grows `hubless_knowledge_dirs` +
+  `unlinked_knowledge_pages` structural findings; the migration also
+  reports (never fabricates) a missing `schema.md`.
 - **Global tier actually promotion-gated** (#18) — `global/`, `decisions/`,
   `patterns/`, `research/` are instruction-plane for every producer;
   non-promotion writes hold pending instead of auto-applying. One

@@ -1748,3 +1748,30 @@ def test_hook_stamped_but_empty_wiki_still_says_something(monkeypatch, capsys, t
     assert ctx.strip()
     assert "initialized but empty" in ctx
     assert "not initialized" not in ctx  # NOT the uninstalled notice
+
+
+def test_project_raw_pages_are_never_extras_candidates(wiki):
+    """Issue #20 amendment: `projects/<slug>/raw/` is immutable source
+    material — wake-up never injects it, and it is not counted as held-out
+    (raw was never a candidate; there is no withheld trust signal)."""
+    _write(
+        wiki / "projects" / "flux" / "raw" / "notes.md",
+        "# Notes\n\nA long raw source dump with plenty of content in it.",
+    )
+
+    ranked, held_count = wakeup.rank_extras("", wiki, exclude=set(), project="flux")
+    assert ranked == []
+    assert held_count == 0
+
+
+def test_nested_knowledge_page_survives_the_foreign_stamp(wiki):
+    """The `_is_own_project_knowledge` exemption is a prefix predicate and
+    must cover arbitrary-depth nested knowledge paths (issue #20 amendment)."""
+    _write(
+        wiki / "projects" / "flux" / "knowledge" / "entities" / "characters" / "amber.md",
+        _foreign_knowledge_page("flux", "# Amber\n\nAmber is a pyro archer character."),
+    )
+
+    ranked, held_count = wakeup.rank_extras("", wiki, exclude=set(), project="flux")
+    assert "projects/flux/knowledge/entities/characters/amber.md" in ranked
+    assert held_count == 0

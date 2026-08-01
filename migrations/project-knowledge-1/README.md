@@ -44,6 +44,15 @@ For each `projects/<slug>/` directory:
   whose target was the old path now point at the new one. Targets that are
   not moved paths (including `repo:<name>:<path>` external references) are
   untouched.
+- **Reports a missing `schema.md`** (issue #20 amendment,
+  `docs/decisions/2026-08-01-hierarchical-project-wiki.md`): any
+  `projects/<slug>/` without a `schema.md` (`type: project-schema` — the
+  project's own taxonomy/conventions document) gets a report line, in dry
+  run and apply alike. **Report only, never fabricated** — a migration
+  script cannot invent a project's taxonomy; the model (or you) writes
+  `schema.md` in a live session that can see the project. Relocated pages
+  land directly under `knowledge/` for the same reason: sorting them into a
+  taxonomy is a judgment call, not a script's.
 
 ## Safety
 

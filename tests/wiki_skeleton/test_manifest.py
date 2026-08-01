@@ -130,3 +130,54 @@ def test_overview_template_passes_frontmatter_lint():
     data = yaml.safe_load(fm_text)
     assert data.get("type") == "overview", f"expected type=overview, got {data}"
     assert data.get("schema_version") == 1, f"expected schema_version=1, got {data}"
+
+
+def test_project_profile_includes_schema_stub_and_raw_dir():
+    """Issue #20 amendment (hierarchical project wikis): bootstrap stamps a
+    `schema.md` template stub (the project's own SCHEMA document — Karpathy
+    LLM-wiki pattern) and creates the `raw/` immutable-sources directory."""
+    manifest = _load_manifest()
+    schema = next(
+        (e for e in _project_profile_entries(manifest) if e["path"] == "schema.md"), None
+    )
+    assert schema is not None, "expected schema.md in the project profile"
+    assert schema["write_rule"] == "copy_if_missing"
+    assert schema["template"] == "templates/projects/schema.md.tmpl"
+
+    raw = next((e for e in _project_profile_entries(manifest) if e["path"] == "raw/"), None)
+    assert raw is not None, "expected raw/ in the project profile"
+    assert raw["type"] == "directory"
+    assert raw["write_rule"] == "create_if_missing"
+    assert "template" not in raw
+
+
+def test_schema_template_passes_frontmatter_lint():
+    """schema.md template: type=project-schema, schema_version=1, and a
+    `project` field — same lint shape as the overview template test."""
+    import re
+
+    import yaml
+
+    manifest = _load_manifest()
+    entry = next(e for e in _project_profile_entries(manifest) if e["path"] == "schema.md")
+    template_path = SKELETON_ROOT / entry["template"]
+    assert template_path.is_file(), f"template not found: {template_path}"
+
+    template_text = template_path.read_text(encoding="utf-8")
+    bindings = {"today": "2026-01-01", "framework_version": "0.6.2", "project": "flux"}
+    rendered = re.sub(r"\{\{(\w+)\}\}", lambda m: bindings[m.group(1)], template_text)
+
+    assert rendered.startswith("---")
+    end_idx = rendered.find("\n---", 3)
+    assert end_idx != -1
+    data = yaml.safe_load(rendered[3:end_idx])
+    assert data.get("type") == "project-schema", f"expected type=project-schema, got {data}"
+    assert data.get("schema_version") == 1
+    assert data.get("project") == "flux"
+
+
+def test_project_schema_page_type_is_registered():
+    import importlib
+
+    registry = importlib.import_module("skills.wiki-migration.lib").load_registry()
+    assert registry["page_types"]["project-schema"]["current"] == 1
