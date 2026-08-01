@@ -520,3 +520,184 @@ def test_foreign_page_in_focus_pages_still_excluded(tmp_path):
 def test_real_duplicates_still_flag():
     body = "# Deploy notes\n- use port 8080\n- restart nginx after deploy\n- check logs in /var/log\n"
     assert duplicate_evidence(body, body) is not None
+
+
+# --- issue #16: batch-ingest false-positive contradictions -------------------
+#
+# Batch-ingesting one repo produces a fan of sibling pages (distilled pages +
+# an L2 map) that restate each other's topics by construction. Before the fix,
+# the first page to land turned into a contradiction wall for the rest of its
+# own batch: ~40 spans held, every one a same-topic restatement.
+
+
+_INGEST_PAGES = {
+    "projects/acme/architecture.md": (
+        "The service layer owns all database access for the acme platform.\n"
+        "Avoid calling the ORM directly from route handlers in the acme platform.\n"
+        "Background jobs run through the queue worker pool.\n"
+    ),
+    "projects/acme/conventions.md": (
+        "Route handlers in the acme platform delegate database access to the "
+        "service layer, which owns it.\n"
+        "The queue worker pool is where background jobs run.\n"
+        "Tests live beside the module they cover.\n"
+    ),
+    "projects/acme/testing.md": (
+        "Tests for the acme platform live beside the module they cover.\n"
+        "Do not stub the service layer in integration tests for the platform.\n"
+        "The queue worker pool has its own integration test suite.\n"
+    ),
+}
+
+_INGEST_MAP = (
+    "---\n"
+    "type: l2-map\n"
+    "---\n"
+    "The service layer owns all database access for the acme platform.\n"
+    "Background jobs run through the queue worker pool.\n"
+    "Tests live beside the module they cover.\n"
+)
+
+
+def test_batch_of_sibling_pages_yields_no_contradicts_holds(tmp_path):
+    """The reproduction: land the batch page by page, each new page exempting
+    the siblings its own session already wrote. Zero contradicts."""
+    written: list[str] = []
+    for page, content in _INGEST_PAGES.items():
+        conflicts = detect("ADD", page, content, tmp_path, exempt_pages=set(written))
+        assert [c for c in conflicts if c.kind == "contradicts"] == [], page
+        _write(tmp_path, page, content)
+        written.append(page)
+
+
+def test_same_batch_exemption_does_not_suppress_duplicate_detection(tmp_path):
+    body = "\n".join(_numbered_lines(12)) + "\n"
+    _write(tmp_path, "projects/acme/one.md", body)
+
+    conflicts = detect(
+        "ADD", "projects/acme/two.md", body, tmp_path,
+        exempt_pages={"projects/acme/one.md"},
+    )
+
+    assert [c.kind for c in conflicts if c.kind == "duplicate"] == ["duplicate"]
+
+
+def test_exemption_is_scoped_to_the_named_pages(tmp_path):
+    _write(tmp_path, "projects/acme/style.md", "Always use spaces for indentation in Python files.\n")
+
+    conflicts = detect(
+        "ADD", "projects/acme/new.md",
+        "Do not use spaces for indentation in Python files.\n",
+        tmp_path, exempt_pages={"projects/acme/unrelated.md"},
+    )
+
+    assert [c.kind for c in conflicts if c.kind == "contradicts"] == ["contradicts"]
+
+
+# --- issue #16: L2 map never contradicts its own subtree --------------------
+
+
+def test_l2_map_does_not_contradict_pages_in_its_own_subtree(tmp_path):
+    for page, content in _INGEST_PAGES.items():
+        _write(tmp_path, page, content)
+
+    conflicts = detect("ADD", "projects/acme/map.md", _INGEST_MAP, tmp_path)
+
+    assert [c for c in conflicts if c.kind == "contradicts"] == []
+
+
+def test_page_does_not_contradict_the_map_of_its_own_subtree(tmp_path):
+    _write(tmp_path, "projects/acme/map.md", _INGEST_MAP)
+
+    proposed = "Do not run background jobs through the queue worker pool.\n"
+    conflicts = detect("ADD", "projects/acme/jobs.md", proposed, tmp_path)
+
+    assert [c for c in conflicts if c.kind == "contradicts"] == []
+
+
+def test_map_by_frontmatter_type_is_exempt_even_off_the_map_path(tmp_path):
+    _write(tmp_path, "projects/acme/style.md", "Always use spaces for indentation in Python files.\n")
+
+    proposed = "---\ntype: l2-map\n---\nDo not use spaces for indentation in Python files.\n"
+    conflicts = detect("ADD", "projects/acme/overview.md", proposed, tmp_path)
+
+    assert [c for c in conflicts if c.kind == "contradicts"] == []
+
+
+def test_map_exemption_does_not_cross_project_subtrees(tmp_path):
+    _write(tmp_path, "projects/acme/style.md", "Always use spaces for indentation in Python files.\n")
+    _write(
+        tmp_path, "projects/acme/other-map.md",
+        "---\ntype: l2-map\n---\nDo not use spaces for indentation in Python files.\n",
+    )
+
+    # A map in a DIFFERENT project's subtree gets no exemption here: the
+    # candidate glob is sibling-scoped, so assert via the subtree helper that
+    # the two sides are not treated as one project.
+    from lib.memory.semantics import project_subtree
+
+    assert project_subtree("projects/acme/map.md") == "projects/acme"
+    assert project_subtree("projects/other/map.md") == "projects/other"
+    assert project_subtree("decisions/adr-001.md") is None
+
+
+# --- issue #16: a signal is required, topic overlap is not enough -----------
+
+
+def test_restatement_sharing_topic_tokens_is_not_a_contradiction(tmp_path):
+    existing = (
+        "Background jobs run through the queue worker pool, which the service "
+        "layer enqueues into during request handling.\n"
+    )
+    _write(tmp_path, "projects/demo/jobs.md", existing)
+
+    # Negation marker present, same topic, but a DIFFERENT claim — the old
+    # >=3-shared-token rule fired here; it must not now.
+    proposed = "Do not enqueue jobs from the acme platform CLI entrypoint scripts.\n"
+    conflicts = detect("ADD", "projects/demo/cli.md", proposed, tmp_path)
+
+    assert [c for c in conflicts if c.kind == "contradicts"] == []
+
+
+def test_genuine_negation_of_the_same_claim_is_still_held(tmp_path):
+    existing = "Background jobs run through the queue worker pool.\n"
+    _write(tmp_path, "projects/demo/jobs.md", existing)
+
+    proposed = "Background jobs do not run through the queue worker pool.\n"
+    conflicts = detect("ADD", "projects/demo/jobs2.md", proposed, tmp_path)
+
+    con = [c for c in conflicts if c.kind == "contradicts"]
+    assert len(con) == 1
+    assert con[0].evidence == "background jobs run through the queue worker pool."
+
+
+def test_numeric_divergence_of_the_same_fact_is_held(tmp_path):
+    _write(tmp_path, "projects/demo/config.md", "The request timeout is 30 seconds by default.\n")
+
+    proposed = "The request timeout is 60 seconds by default.\n"
+    conflicts = detect("ADD", "projects/demo/config2.md", proposed, tmp_path)
+
+    con = [c for c in conflicts if c.kind == "contradicts"]
+    assert len(con) == 1
+    assert con[0].evidence == "the request timeout is 30 seconds by default."
+
+
+def test_enumerated_lines_are_not_numeric_divergence(tmp_path):
+    _write(tmp_path, "projects/demo/list.md", "\n".join(_numbered_lines(4)) + "\n")
+
+    proposed = "Line number 9 describes topic 9.\n"
+    conflicts = detect("ADD", "projects/demo/list2.md", proposed, tmp_path)
+
+    assert [c for c in conflicts if c.kind == "contradicts"] == []
+
+
+def test_numeric_divergence_is_exempt_within_a_batch(tmp_path):
+    _write(tmp_path, "projects/acme/config.md", "The request timeout is 30 seconds by default.\n")
+
+    conflicts = detect(
+        "ADD", "projects/acme/config2.md",
+        "The request timeout is 60 seconds by default.\n",
+        tmp_path, exempt_pages={"projects/acme/config.md"},
+    )
+
+    assert [c for c in conflicts if c.kind == "contradicts"] == []

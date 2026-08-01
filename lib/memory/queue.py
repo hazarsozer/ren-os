@@ -237,6 +237,44 @@ def _normalize_body(text: str) -> str:
     return f"---\n{fm_content}\n---\n{body}".strip()
 
 
+def _project_subtree(page: str) -> str | None:
+    """`"projects/<slug>"` for a page under a project subtree, else None.
+    Kept local (rather than imported from `semantics`) so the queue's batch
+    scoping does not depend on the best-effort `_semantics` import."""
+    parts = str(page).replace("\\", "/").strip("/").split("/")
+    if len(parts) >= 2 and parts[0] == "projects" and parts[1]:
+        return f"projects/{parts[1]}"
+    return None
+
+
+def _same_batch_pages(p: Proposal) -> set[str]:
+    """Pages this same session already put through the door in the SAME
+    `projects/<slug>/` subtree as `p.page` (issue #16).
+
+    Batch-ingesting one source produces a fan of sibling pages that restate
+    each other's topics by construction; the first one to land must not turn
+    into a contradiction wall for the rest of its own batch. `semantics.detect`
+    skips `contradicts` (only) against these pages — duplicate and supersedes
+    detection still see them.
+
+    The target page itself counts as part of the batch when THIS session
+    already wrote it (a session revising its own page in the same pass — that
+    lineage is what `supersedes` records, not a contradiction).
+
+    Session-scoped and subtree-scoped, both required: a different session's
+    write, or the same session writing outside this project's subtree, is not
+    part of this batch and stays fully checked."""
+    subtree = _project_subtree(p.page)
+    if subtree is None:
+        return set()
+    return {
+        entry.proposal.page
+        for entry in all_entries()
+        if entry.proposal.session == p.session
+        and _project_subtree(entry.proposal.page) == subtree
+    }
+
+
 def propose(p: Proposal) -> QueueEntry:
     """Submit `p` at the single write-door.
 
@@ -272,7 +310,13 @@ def propose(p: Proposal) -> QueueEntry:
     if _semantics is not None:
         conflicts = [
             asdict(c)
-            for c in _semantics.detect(op=p.op, page=p.page, content=p.content, wiki_root=ren_paths.wiki_root())
+            for c in _semantics.detect(
+                op=p.op,
+                page=p.page,
+                content=p.content,
+                wiki_root=ren_paths.wiki_root(),
+                exempt_pages=_same_batch_pages(p),
+            )
         ]
     else:
         conflicts = []
