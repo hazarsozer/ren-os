@@ -55,7 +55,7 @@ used to catch, by sweeping periodically instead of gating continuously.
 
 ## Behavior
 
-1. Call `skills.wiki-health.lib.sweep()` — read-only, six findings:
+1. Call `importlib.import_module("skills.wiki-health.lib").sweep()` — read-only, six findings:
    `dangling_pointers`, `contradiction_pairs`, `duplicate_pairs`,
    `numeric_drift_pairs`, `mass_deletions`, `quarantined_pages`, plus
    `retrieval_eval` (0.6.1: `{"hit_rate", "cases"}` from scoring the shipped

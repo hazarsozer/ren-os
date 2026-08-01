@@ -71,9 +71,9 @@ exit_criterion: "<non-empty string>"     # human-readable, required
 ## Behavior
 
 1. Collect the routine's declared fields (schedule, exit criterion, failure handler — fixed to `"notify-journal"`, allowlist paths/capabilities) from the friend.
-2. Call `skills.routine-init.lib.validate_routine_spec(spec, migrated=False)`. Any error blocks the declaration; warnings (there are none for a NEW spec — those only apply to `migrated=True`) are informational.
+2. Call `importlib.import_module("skills.routine-init.lib").validate_routine_spec(spec, migrated=False)`. Any error blocks the declaration; warnings (there are none for a NEW spec — those only apply to `migrated=True`) are informational.
 3. Once valid, the routine-spec page is written (page-writing itself is outside this module's scope — see below).
-4. At runtime, whenever the routine is about to `lib.memory.queue.propose` a write, it calls `skills.routine-init.lib.check_proposal_against_allowlist(routine_spec, proposal)` FIRST. A `False` result means the routine must not propose that write — the allowlist is checked before the queue's own producer/writer validation, not instead of it.
+4. At runtime, whenever the routine is about to `lib.memory.queue.propose` a write, it calls `importlib.import_module("skills.routine-init.lib").check_proposal_against_allowlist(routine_spec, proposal)` FIRST. A `False` result means the routine must not propose that write — the allowlist is checked before the queue's own producer/writer validation, not instead of it.
 
 ## Scope note (what this skill's `lib` does NOT do)
 
