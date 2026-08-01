@@ -810,7 +810,28 @@ def _is_skeleton_or_empty_page(path: Path) -> bool:
     return _is_overview_skeleton_or_empty(_strip_frontmatter(text))
 
 
-def _discover_extra_candidates(wiki_root: Path, exclude: set[str]) -> tuple[list[str], int]:
+def _is_own_project_knowledge(rel: str, project: str | None) -> bool:
+    """True if `rel` is a page under `projects/<project>/knowledge/` for the
+    session's DETECTED project (issue #20).
+
+    Such pages are the friend's own distilled project knowledge, written by
+    `/ren:ingest-project` from their own repo — so `ren_trust: "foreign"`
+    alone must not exile them from that project's own sessions forever. This
+    exempts them from the `_is_foreign_stamped` extras exclusion ONLY (see
+    `_discover_extra_candidates`); the quarantine BANNER exclusion is
+    untouched, so a knowledge page still stays out of context until a human
+    releases it (`skills.wiki-health.lib.release_page`). Nothing outside this exact
+    path prefix — not other projects, not the project's own map/overview, not
+    root-tier pages — is affected.
+    """
+    if not project:
+        return False
+    return rel.startswith(f"projects/{project}/knowledge/")
+
+
+def _discover_extra_candidates(
+    wiki_root: Path, exclude: set[str], project: str | None = None
+) -> tuple[list[str], int]:
     """Every `*.md` under `wiki_root`, excluding dotdirs, `exclude` (the pages
     already surfaced as L1/L2, so they aren't offered twice), quarantined
     pages (0.4.1 trust hardening — see module docstring for the L1 exemption,
@@ -854,7 +875,7 @@ def _discover_extra_candidates(wiki_root: Path, exclude: set[str]) -> tuple[list
         if rel in held_pages:
             held_count += 1
             continue
-        if _is_foreign_stamped(path):
+        if _is_foreign_stamped(path) and not _is_own_project_knowledge(rel, project):
             held_count += 1
             continue
         if _is_skeleton_or_empty_page(path):
@@ -901,6 +922,7 @@ def rank_extras(
     exclude: set[str],
     *,
     count: int = DEFAULT_EXTRAS_COUNT,
+    project: str | None = None,
 ) -> tuple[list[str], int]:
     """Rank candidate pages (excluding `exclude` and quarantined pages) via
     `skills.recall.lib.rank`, then move any salience-boosted page (Task 4.2
@@ -909,13 +931,17 @@ def rank_extras(
     `(top count pages, held_count)`, where `held_count` is the number of
     quarantined pages excluded (see `_discover_extra_candidates`).
 
+    `project` (the session's detected project slug, or `None`) narrowly
+    exempts `projects/<project>/knowledge/` pages from the foreign-stamp
+    exclusion — see `_is_own_project_knowledge` (issue #20).
+
     `rank` is reached via `importlib.import_module("skills.recall.lib")`, the
     hyphen-safe pattern documented in Task 4.4 (kept here for consistency even
     though `recall` itself has no hyphen).
     """
     import importlib
 
-    candidates, held_count = _discover_extra_candidates(wiki_root, exclude)
+    candidates, held_count = _discover_extra_candidates(wiki_root, exclude, project)
     if not candidates:
         return [], held_count
 
@@ -1085,7 +1111,7 @@ def compose_wake_up_context(
     try:
         query = _build_rank_query(project, cwd)
         extras, extras_held_count = rank_extras(
-            query, wiki_root, exclude=set(surfaced_pages) | dedicated_paths
+            query, wiki_root, exclude=set(surfaced_pages) | dedicated_paths, project=project
         )
     except Exception:  # noqa: BLE001 - ranking failure degrades to no extras
         logger.debug("rank_extras failed", exc_info=True)

@@ -97,6 +97,7 @@ def test_assemble_l2_renders_exact_schema():
     expected = (
         "---\n"
         "type: l2-map\n"
+        "schema_version: 1\n"
         "project: demo-project\n"
         "---\n"
         "# demo-project — knowledge map\n"
@@ -113,12 +114,46 @@ def test_assemble_l2_renders_exact_schema():
     assert content == expected
 
 
+def test_assemble_l2_stamps_schema_version_so_doctor_stops_skipping_maps():
+    """Issue #20: `l2-map` has been a registered page type since 0.2 but the
+    emission never stamped `schema_version`, so `check_schema_versions` (which
+    skips any page without one) silently ignored every project map."""
+    import importlib
+
+    doctor = importlib.import_module("skills.doctor.lib")
+    content = assemble_l2("p", knowledge=[], pointers=[], log_line="l")
+
+    assert doctor._frontmatter_field(content, "type") == "l2-map"
+    assert doctor._frontmatter_field(content, "schema_version") == "1"
+
+    registry = importlib.import_module("skills.wiki-migration.lib").load_registry()
+    assert registry["page_types"]["l2-map"]["current"] == 1
+
+
+def test_assemble_l2_accepts_knowledge_and_repo_pointer_targets():
+    """The two sanctioned pointer target shapes (issue #20's existence rule):
+    an in-wiki `projects/<slug>/knowledge/` page, or a `repo:` reference."""
+    content = assemble_l2(
+        "flux",
+        knowledge=[],
+        pointers=[
+            {"topic": "stack", "path": "projects/flux/knowledge/stack.md", "anchor": None, "write_id": "w-1"},
+            {"topic": "entrypoint", "path": "repo:flux:src/main.rs", "anchor": None, "write_id": "w-2"},
+        ],
+        log_line="l",
+    )
+
+    assert "- [stack] → projects/flux/knowledge/stack.md (w-1)" in content
+    assert "- [entrypoint] → repo:flux:src/main.rs (w-2)" in content
+
+
 def test_assemble_l2_empty_knowledge_and_pointers_still_valid():
     content = assemble_l2("empty-project", knowledge=[], pointers=[], log_line="2026-01-01: project bootstrapped")
 
     expected = (
         "---\n"
         "type: l2-map\n"
+        "schema_version: 1\n"
         "project: empty-project\n"
         "---\n"
         "# empty-project — knowledge map\n"

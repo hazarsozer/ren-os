@@ -735,6 +735,79 @@ def test_quarantined_l2_map_with_foreign_stamp_and_released_banner_is_held_out(p
     assert "held out of this context" in payload
 
 
+def _foreign_knowledge_page(slug: str, body: str) -> str:
+    return (
+        '---\ntype: project-knowledge\nschema_version: 1\n'
+        f"project: {slug}\n"
+        'ren_write_id: "w-k1"\nren_writer: "llm-auto"\nren_trust: "foreign"\n---\n'
+        + body
+    )
+
+
+def test_own_project_knowledge_page_survives_the_foreign_stamp(wiki):
+    """Issue #20: the user ingested their OWN repo — a foreign-stamped page
+    under `projects/<detected>/knowledge/` stays eligible for that project's
+    own sessions once its quarantine banner is released."""
+    _write(
+        wiki / "projects" / "flux" / "knowledge" / "stack.md",
+        _foreign_knowledge_page("flux", "# Stack\n\nFlux renders with Rust and wgpu."),
+    )
+
+    ranked, held_count = wakeup.rank_extras("", wiki, exclude=set(), project="flux")
+    assert "projects/flux/knowledge/stack.md" in ranked
+    assert held_count == 0
+
+
+def test_other_projects_knowledge_page_is_still_held_out(wiki):
+    _write(
+        wiki / "projects" / "other" / "knowledge" / "stack.md",
+        _foreign_knowledge_page("other", "# Stack\n\nOther project renders with Rust and wgpu."),
+    )
+
+    ranked, held_count = wakeup.rank_extras("", wiki, exclude=set(), project="flux")
+    assert ranked == []
+    assert held_count == 1
+
+
+def test_exception_is_scoped_to_knowledge_not_the_whole_project_dir(wiki):
+    """Narrow by construction: a foreign-stamped page sitting flat under the
+    detected project's directory gets no exemption — only `knowledge/` does."""
+    _write(
+        wiki / "projects" / "flux" / "loose.md",
+        _foreign_knowledge_page("flux", "# Loose\n\nFlux renders with Rust and wgpu."),
+    )
+
+    ranked, held_count = wakeup.rank_extras("", wiki, exclude=set(), project="flux")
+    assert ranked == []
+    assert held_count == 1
+
+
+def test_knowledge_exemption_does_not_apply_without_a_detected_project(wiki):
+    _write(
+        wiki / "projects" / "flux" / "knowledge" / "stack.md",
+        _foreign_knowledge_page("flux", "# Stack\n\nFlux renders with Rust and wgpu."),
+    )
+
+    ranked, held_count = wakeup.rank_extras("", wiki, exclude=set(), project=None)
+    assert ranked == []
+    assert held_count == 1
+
+
+def test_own_project_knowledge_page_still_held_while_banner_is_intact(wiki):
+    """The exemption relaxes the durable trust STAMP only; an unreviewed page
+    still carries its quarantine banner and stays out until a human clears it."""
+    from lib.memory import quarantine
+
+    _write(
+        wiki / "projects" / "flux" / "knowledge" / "stack.md",
+        _foreign_knowledge_page("flux", quarantine.mark("# Stack\n\nFlux renders with Rust and wgpu.")),
+    )
+
+    ranked, held_count = wakeup.rank_extras("", wiki, exclude=set(), project="flux")
+    assert ranked == []
+    assert held_count == 1
+
+
 def test_rank_extras_includes_unstamped_bannerless_ordinary_page(wiki):
     # Deliberate scope decision (Task 9b brief): unstamped pages REMAIN
     # included — they're the user's own hand-written Obsidian-invariant

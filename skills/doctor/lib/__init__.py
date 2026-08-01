@@ -166,6 +166,11 @@ def check_schema_versions(wiki_root: Path | None = None) -> CheckResult:
 
 _DECLARED_TOKENS_RE = re.compile(r"^\s*tokens:\s*(\d+)\s*$", re.MULTILINE)
 
+# External repository reference in an L2 Decision-map pointer (issue #20):
+# `repo:<name>:<path>`. Mirrored in `skills.wiki-health.lib`; a drift test
+# asserts the two constants agree.
+_REPO_REF_PREFIX = "repo:"
+
 
 def check_budget_lint(wiki_root: Path | None = None) -> CheckResult:
     """Declared SKILL.md `budgets:` blocks vs. measured `capability_tokens`
@@ -233,6 +238,11 @@ def check_dangling_pointers(wiki_root: Path | None = None) -> CheckResult:
                 continue
             target = m.group(1)
             rel = md_path.relative_to(wiki_root)
+            if target.startswith(_REPO_REF_PREFIX):
+                # `repo:<name>:<path>` external repo reference (issue #20) —
+                # not an in-wiki page, so never dangling. Mirrors
+                # `skills.wiki-health.lib._dangling_pointers`.
+                continue
             if target.startswith("/"):
                 dangling.append(f"{rel} → {target}")
                 continue

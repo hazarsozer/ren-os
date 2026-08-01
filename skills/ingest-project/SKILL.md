@@ -20,6 +20,7 @@ execution_tier: worker
 contract:
   required_outputs:
     - "One Proposal queued: ADD (or UPDATE) projects/<slug>/map.md, populated from real repo facts"
+    - "Any distilled durable pages queued as projects/<slug>/knowledge/<topic>.md (type: project-knowledge), in the same batch, before the map"
     - "The first-session artifact text shown to the user verbatim"
   budgets:
     turns: 4
@@ -63,7 +64,10 @@ Bringing an existing repo's context into the wiki, in one visible artifact. `sca
 2. Call `importlib.import_module("skills.ingest-project.lib").scan_repo(repo_root)` — read-only facts: detected languages/package managers/frameworks, entry points, doc inventory, git history summary, size signals. Never writes to the project, never raises on a non-project path (see the carried `scan.py`'s own contract).
 3. **Draft knowledge + pointers from the facts — in a worker subagent when possible** (`execution_tier: worker`): the facts JSON is self-contained, so spawn a cheap worker-model subagent (worker-class or classifier-class) with the facts and the drafting spec below, and take its output back. Parse its returned JSON with `lib.adapter.worker.parse_worker_json` — it tolerates a ```json fence or leading prose despite raw-JSON-only instructions, and raises `WorkerOutputError` (carrying the raw text) if the output still isn't valid JSON. Fall back to drafting inline only when subagents aren't available. What gets drafted either way:
    - `knowledge: list[str]` — compact, general facts worth remembering (e.g. "Python project using FastAPI + PostgreSQL", "138 commits since 2025-03")
-   - `pointers: list[dict]` — `{"topic": ..., "path": ..., "anchor": ..., "write_id": None}` entries pointing at wiki pages worth cross-referencing (decisions, patterns, research) — `write_id` is `None` until that target page has actually been through the write-queue (renders as `unstamped`)
+   - `knowledge_pages: list[dict]` — the distilled DURABLE pages worth keeping, each `{"name": "<topic>.md", "body": "<markdown>"}`. They are written to **`projects/<slug>/knowledge/<topic>.md`** (issue #20) — the sanctioned per-project subtree — with frontmatter `type: project-knowledge`, `schema_version: 1`, `project: <slug>`. Write each through the same door as the map (`lib.memory.queue.propose_and_apply` with `producer="ingest"`, `writer="llm-auto"`, `op="ADD"`), in the SAME batch as the map, BEFORE calling `ingest` — so the map's pointers can name real, already-written pages and carry their real `write_id`s.
+   - `pointers: list[dict]` — `{"topic": ..., "path": ..., "anchor": ..., "write_id": ...}` entries indexing the knowledge pages just written (`"path": "projects/<slug>/knowledge/<topic>.md"`, `write_id` from the queue entry).
+   - **Pointer existence rule (founder ruling, issue #20): every pointer must target something that exists.** Either (a) an in-wiki page that already exists or is being created in this same batch, or (b) an external repository reference written `repo:<name>:<path>` (e.g. `repo:flux:src/main.rs`) — those are skipped by the dangling-pointer checks because they are not resolvable in-wiki. **Never invent a future filename.** A pointer at a page nobody has written is a dangling pointer, not a placeholder; `write_id: None` (`unstamped`) is only for a real page that has not been through the queue, never a licence to name a file that does not exist.
+   - Do NOT draft project-specific pages into root-level `decisions/` · `patterns/` · `research/`. Those are the instruction plane — general practice only, promotion-gated for every producer (`docs/decisions/2026-08-01-global-tier-promotion-gate.md`); a write there holds pending instead of applying. Project-specific durable knowledge goes under `projects/<slug>/knowledge/`.
 4. Call `importlib.import_module("skills.ingest-project.lib").ingest(project_slug, knowledge, pointers, session)` — assembles the L2 map and proposes it through the data-plane door (`producer="ingest"`, `writer="llm-auto"` (trust class `"foreign"`) — scan-derived content is LLM-shaped, so it's quarantine-marked; the write auto-applies immediately since a project map is a non-global page, per the v2.2 pivot), and returns `{"qid": ..., "write_id": ..., "artifact": ...}`.
 5. **Pass `repo_root=` to `ingest()`** (the path resolved in step 1) so the repo gets wired to its memory — two side-cars run after the map is applied (issues #15 + #19), both best-effort and neither able to break the ingest:
    - `<repo_root>/CLAUDE.md` gets the thin RenOS pointer block via `lib.adapter.claude_md.write_project_claude_md(repo_root, project_slug)` — same additive `ren:` marker-block contract `bootstrap-project` uses: content outside the markers is byte-for-byte preserved, re-ingest is idempotent, torn markers are a `"conflict"` that touches nothing. The result string comes back as `result["claude_md"]` (`None` when `repo_root` is omitted, `"error"` if a side-car failed).
@@ -88,7 +92,8 @@ The knowledge/pointers here are synthesized from raw scan facts by the live sess
 |---|---|---|
 | Path isn't a project (no manifest/git/README) | `scan_repo` still returns a complete facts dict with `looks_like_project: false` | Session decides whether to proceed with a thin map or ask the friend to confirm |
 | A map already exists for this slug | `ingest` proposes `UPDATE`; queue attaches a `supersedes` conflict against the prior map, then auto-applies (supersedes never holds auto-apply — lineage is recorded in the journal) | "Updating projects/<slug>/map.md — this supersedes the existing map (<write_id>)." |
-| Pointer references a page never written through the queue | Renders `(unstamped)` in the Decision map, not a crash | (visible in the rendered map itself) |
+| Pointer references a page never written through the queue | Renders `(unstamped)` in the Decision map, not a crash — but see the pointer existence rule: the target page must still EXIST, or `/ren:doctor`+`/ren:wiki-health` report it dangling | (visible in the rendered map itself) |
+| A `knowledge/<topic>.md` page already exists for that topic | The queue proposes an `UPDATE` and surfaces a `supersedes` conflict, same as the map — never a silent clobber | "Updating projects/<slug>/knowledge/<topic>.md — supersedes (<write_id>)." |
 
 ## References
 
@@ -96,4 +101,6 @@ The knowledge/pointers here are synthesized from raw scan facts by the live sess
 - Task 4.4 (`skills/bootstrap-project/lib`) — the empty-map sibling skill
 - Spec §3.1 L2 + §3.8 A-10 — the pointer-map schema and the first-session artifact requirement
 - Task 2.1 (`lib/memory/queue.py`) — the single write-queue this skill's only write path
+- `docs/decisions/2026-08-01-project-knowledge-subtree.md` (issue #20) — the `projects/<slug>/knowledge/` subtree, the pointer existence rule, and the wake-up trust decision
+- `migrations/project-knowledge-1/` — relocates pre-0.6.2 flat project pages into `knowledge/`
 - Task 2.2 (`lib/memory/semantics.py`) — the supersedes/contradicts/duplicate conflict detection this skill's UPDATE path surfaces

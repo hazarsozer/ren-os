@@ -86,6 +86,54 @@ def test_sweep_no_dangling_pointer_when_target_exists(wiki):
     assert result["dangling_pointers"] == []
 
 
+def test_sweep_skips_repo_refs_rather_than_calling_them_dangling(wiki):
+    """Issue #20: `repo:<name>:<path>` targets an external repository, not an
+    in-wiki page — unresolvable here by construction, so never dangling."""
+    (wiki / "map.md").write_text(
+        "---\ntype: l2-map\nproject: p\n---\n"
+        "## Decision map\n"
+        "- [entrypoint] → repo:flux:src/main.rs (w-1)\n",
+        encoding="utf-8",
+    )
+    assert wiki_health.sweep()["dangling_pointers"] == []
+
+
+def test_sweep_still_flags_missing_in_wiki_target_alongside_a_repo_ref(wiki):
+    (wiki / "map.md").write_text(
+        "---\ntype: l2-map\nproject: p\n---\n"
+        "## Decision map\n"
+        "- [entrypoint] → repo:flux:src/main.rs (w-1)\n"
+        "- [stack] → projects/p/knowledge/gone.md (w-2)\n",
+        encoding="utf-8",
+    )
+    targets = [d["target"] for d in wiki_health.sweep()["dangling_pointers"]]
+    assert targets == ["projects/p/knowledge/gone.md"]
+
+
+def test_sweep_accepts_an_existing_project_knowledge_pointer(wiki):
+    (wiki / "projects" / "p" / "knowledge").mkdir(parents=True)
+    (wiki / "projects" / "p" / "knowledge" / "stack.md").write_text(
+        "---\ntype: project-knowledge\nschema_version: 1\nproject: p\n---\nRust.\n",
+        encoding="utf-8",
+    )
+    (wiki / "projects" / "p" / "map.md").write_text(
+        "---\ntype: l2-map\nproject: p\n---\n"
+        "## Decision map\n"
+        "- [stack] → projects/p/knowledge/stack.md (w-1)\n",
+        encoding="utf-8",
+    )
+    assert wiki_health.sweep()["dangling_pointers"] == []
+
+
+def test_repo_ref_prefix_does_not_drift_between_wiki_health_and_doctor():
+    """Both dangling-pointer implementations must agree on what a repo ref is
+    (the module docstring's reimplemented-walk contract)."""
+    import importlib
+
+    doctor = importlib.import_module("skills.doctor.lib")
+    assert wiki_health._REPO_REF_PREFIX == doctor._REPO_REF_PREFIX
+
+
 def test_sweep_finds_contradiction_pair(wiki):
     (wiki / "knowledge").mkdir()
     (wiki / "knowledge" / "pricing-a.md").write_text(

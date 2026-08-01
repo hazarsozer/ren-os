@@ -79,10 +79,21 @@ def assemble_l2(
     targets a page that hasn't been through the write-queue yet). `log_line`
     is the already-formatted one-line log entry (e.g. `"2026-01-01: bootstrapped"`)
     — this function only prefixes it with the bullet marker.
+
+    Pointer `path` values are either wiki-relative page paths (which MUST
+    exist, or be created in the same batch — issue #20's pointer-existence
+    rule) or external repo references written `repo:<name>:<path>`, which
+    `/ren:doctor` and `/ren:wiki-health` skip rather than report dangling.
+    Durable project pages belong under `projects/<slug>/knowledge/`.
+
+    The frontmatter carries `schema_version: 1` (issue #20): `l2-map` has
+    been a registered page type since 0.2 but the emission never stamped a
+    version, so `doctor.check_schema_versions` silently skipped every map.
     """
     lines = [
         "---",
         "type: l2-map",
+        "schema_version: 1",
         f"project: {project_slug}",
         "---",
         f"# {project_slug} — knowledge map",

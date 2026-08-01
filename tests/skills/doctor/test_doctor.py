@@ -215,6 +215,33 @@ def test_check_dangling_pointers_warns_not_crashes_on_path_escaping_target(wiki)
     assert "../../outside.md" in result.message
 
 
+def test_check_dangling_pointers_skips_repo_refs(wiki):
+    """Issue #20: `repo:<name>:<path>` is an external repository reference —
+    not resolvable in-wiki, so not dangling."""
+    (wiki / "map.md").write_text(
+        "---\ntype: l2-map\nproject: p\n---\n"
+        "## Decision map\n"
+        "- [entrypoint] → repo:flux:src/main.rs (w-1)\n",
+        encoding="utf-8",
+    )
+    result = doctor.check_dangling_pointers(wiki)
+    assert result.status == "ok"
+
+
+def test_check_dangling_pointers_still_warns_on_missing_knowledge_page(wiki):
+    (wiki / "map.md").write_text(
+        "---\ntype: l2-map\nproject: p\n---\n"
+        "## Decision map\n"
+        "- [entrypoint] → repo:flux:src/main.rs (w-1)\n"
+        "- [stack] → projects/p/knowledge/gone.md (w-2)\n",
+        encoding="utf-8",
+    )
+    result = doctor.check_dangling_pointers(wiki)
+    assert result.status == "warn"
+    assert "projects/p/knowledge/gone.md" in result.message
+    assert "repo:flux" not in result.message
+
+
 # ------------------------------------------------------------ check_graphify_status
 
 

@@ -83,6 +83,19 @@ def test_project_profile_includes_overview():
     assert entry["write_rule"] == "copy_if_missing"
 
 
+def test_project_profile_includes_knowledge_dir():
+    """Issue #20: `projects/<slug>/knowledge/` is the sanctioned durable
+    subtree — bootstrap must create it, and never write into it."""
+    manifest = _load_manifest()
+    entry = next(
+        (e for e in _project_profile_entries(manifest) if e["path"] == "knowledge/"), None
+    )
+    assert entry is not None, "expected knowledge/ in the project profile"
+    assert entry["type"] == "directory"
+    assert entry["write_rule"] == "create_if_missing"
+    assert "template" not in entry
+
+
 def test_overview_template_passes_frontmatter_lint():
     """Verify overview.md template has correct frontmatter: type=overview,
     schema_version=1. The repo convention is `type` (not `page_type`) — the

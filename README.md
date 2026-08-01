@@ -72,7 +72,8 @@ for where each exit criterion actually stands.
                  (foreign-stamped
                  pages held out)
                  projects/<slug>/
-                 map.md
+                 map.md +
+                 knowledge/
    │                │                  │
    └────────────────┴──────────────────┘
                     │  promotion (gated, never automatic)
@@ -219,7 +220,11 @@ scripts, worker-shaped drafting delegates to cheap subagent models, and judgment
 ├── index.md            # the wiki's own map
 ├── identity.md         # who you are, how you work
 ├── log.md              # chronological session log
-├── projects/<slug>/    # one L2 pointer-map per project
+├── projects/<slug>/    # per-project subtree
+│   ├── map.md          #   L2 pointer-map (the index)
+│   ├── overview.md     #   orientation page
+│   ├── knowledge/      #   durable project pages the map points at
+│   └── l1/             #   session notes
 ├── decisions/          # durable decisions (promotion-gated)
 ├── patterns/           # recurring approaches worth naming
 ├── research/           # ingested sources, distilled

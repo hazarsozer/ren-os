@@ -89,6 +89,18 @@ profiles:
         min_framework_version: "0.5.5"
         description: "Per-project orientation page — guaranteed wake-up slot (0.5.5)"
 
+      - path: "knowledge/"
+        type: directory
+        write_rule: create_if_missing
+        min_framework_version: "0.6.2"
+        description: >
+          Durable per-project knowledge subtree (issue #20, 0.6.2). Distilled
+          project-specific pages (`type: project-knowledge`) live here; the L2
+          map's Decision-map pointers target them. Root-level decisions/ ·
+          patterns/ · research/ are the INSTRUCTION plane and are promotion-
+          gated (see docs/decisions/2026-08-01-global-tier-promotion-gate.md),
+          so project pages must not be written there.
+
   venture:
     description: >
       OPTIONAL founder/venture-arc module (§3.8: "out" of the default 0.2
