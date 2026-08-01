@@ -107,6 +107,26 @@ Carried near-verbatim from donor `skills/update/` (Task 7.3) — the migration s
   what would be stamped with zero writes. Idempotent — safe to (re-)run even
   if a friend already updated once without it.
 
+## 0.6.2 update notes
+
+- **project-knowledge-1 (issue #20):** a friend upgrading from before 0.6.2
+  may have flat `.md` pages directly under `projects/<slug>/` (pre-0.6.2
+  ingest had no sanctioned durable subtree). Run
+  `migrations/project-knowledge-1/migrate.py` once as a post-update step
+  after the version bump lands, gated by
+  `skills.update.lib.should_run_project_knowledge_1(<old-version>,
+  <new-version>)` — `True` when the update crosses the 0.6.2 boundary.
+  Standalone global migration (walks whole `projects/<slug>/` directories,
+  not a schema_version-keyed page type) — see
+  `skills/wiki-migration/schemas.json`'s `global_migrations` note and that
+  migration's README.md. Dry-run is the DEFAULT (`--apply` writes); show the
+  friend the dry-run plan before applying. Idempotent — safe to (re-)run.
+  It also reports any `projects/<slug>/` missing a `schema.md`; relocating
+  pages is the script's job, but organizing them into a taxonomy (nested
+  `knowledge/` subtrees, hubs, `schema.md`) is model-work — offer the friend
+  a follow-up session per project (or a re-run of `/ren:ingest-project`,
+  which now produces the hierarchical shape natively).
+
 ## Overlap note: snapshot substrate vs. Task 1.2's per-write snapshots
 
 `lib/memory/snapshot.py` (Task 1.2, G9) is a DIFFERENT snapshot mechanism: per-write-id, page-granularity snapshots for the write-safety substrate (revert a single memory write in one step). `scripts/snapshot.sh` here is whole-wiki, version-bump-granularity, for migration rollback. They serve genuinely different purposes at different granularities — this skill's carried snapshot logic is NOT rewritten to unify with Task 1.2's substrate; that unification (if it's ever worth doing) is a 0.3-scoped ADR decision, not something to improvise here. Noted per the task brief's explicit instruction not to rewrite working carried code.
