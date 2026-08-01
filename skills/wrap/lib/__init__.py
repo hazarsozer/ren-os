@@ -653,6 +653,47 @@ def _conflict_flags(conflicts: list[dict]) -> list[str]:
     return flags
 
 
+def live_pin_pages() -> list[dict]:
+    """Applied `producer="pin"` queue entries whose page still exists on disk
+    and isn't archived — deduped by page (newest entry wins), newest-first
+    (issue #25's wrap-side cleanup gate, mechanical half).
+
+    Cross-session by design: stale pins from EARLIER sessions are exactly the
+    ones needing cleanup. Purely mechanical detection — judging whether a pin
+    looks acted-on is model-work for the live session (see SKILL.md), never a
+    heuristic here. Returns `[{"page": <rel>, "qid": <qid>,
+    "preview": <one-line content preview>}]`. Read-only; never raises — any
+    queue-read failure degrades to `[]`."""
+    from lib.memory import archive
+
+    try:
+        entries = queue.all_entries()
+    except Exception:  # noqa: BLE001 - a broken queue must not break wrap
+        return []
+
+    root = ren_paths.wiki_root()
+    by_page: dict[str, dict] = {}
+    # qids are ULIDs — lexicographic order IS chronological order, so sorting
+    # ascending and overwriting leaves the newest entry per page.
+    for entry in sorted(entries, key=lambda e: e.qid):
+        if not (entry.status == "applied" and entry.proposal.producer == "pin"):
+            continue
+        page = entry.proposal.page
+        if not page or archive.is_archived(page):
+            continue
+        try:
+            if not ren_paths.safe_join(root, page).is_file():
+                continue
+        except Exception:  # noqa: BLE001 - a hostile/odd path is simply not live
+            continue
+        by_page[page] = {
+            "page": page,
+            "qid": entry.qid,
+            "preview": _content_preview(entry.proposal.content),
+        }
+    return sorted(by_page.values(), key=lambda p: p["qid"], reverse=True)
+
+
 def render_pending_list() -> str:
     """Every pending queue entry, ALL sessions, oldest first — the
     deterministic backing for wake-up's 'ask me to list them'. Read-only."""
@@ -739,6 +780,20 @@ def render_wrap_screen(wrap_result: dict, session: str) -> str:
         n = len(partial)
         lines.append(f"- {n} consolidation{'s' if n != 1 else ''} partial — see journal")
     lines.append("")
+
+    # --- Live pins (#25) — omitted entirely when none ---
+    # Cross-session: stale pins from earlier sessions are exactly the ones
+    # needing cleanup. The live session judges which look acted-on and asks
+    # the friend (see SKILL.md); a confirmed delete goes through the queue
+    # via the normal correction path. Nothing here auto-deletes.
+    pins = live_pin_pages()
+    if pins:
+        lines.append("## Live pins")
+        for pin_info in pins:
+            lines.append(f"- {pin_info['page']} ({pin_info['qid']})")
+            if pin_info["preview"]:
+                lines.append(f"  > {pin_info['preview']}")
+        lines.append("")
 
     # --- Classify this session's still-pending entries into held/suggestions ---
     # A pending entry is a *hold* iff any conflict is a `contradicts` —

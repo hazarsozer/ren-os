@@ -914,3 +914,92 @@ class TestDecayAtWrap:
 
         assert result["decayed"] == []
         assert result["l1_qid"]  # wrap otherwise completed normally
+
+
+# --- Live pins (#25): wrap's pin-cleanup gate --------------------------------
+
+
+class TestLivePinPages:
+    """`live_pin_pages` — the mechanical detection half of #25's wrap-side
+    pin cleanup gate. Applied queue entries with producer="pin" whose page
+    still exists on disk and isn't archived; deduped by page, newest-first.
+    Judging whether a pin looks acted-on is model-work in the live session,
+    NOT a heuristic here."""
+
+    def _pin(self, page: str, text: str, session: str = "sess-pin"):
+        from skills.pin.lib import pin
+        return pin(text, page, session=session)
+
+    def test_lists_applied_pin_with_existing_page(self, wiki):
+        from skills.wrap.lib import live_pin_pages
+
+        self._pin("projects/p/plan.md", "next session: fix the widget")
+
+        pins = live_pin_pages()
+        assert [p["page"] for p in pins] == ["projects/p/plan.md"]
+        assert "fix the widget" in pins[0]["preview"]
+
+    def test_excludes_page_deleted_from_disk(self, wiki):
+        from skills.wrap.lib import live_pin_pages
+
+        self._pin("projects/p/plan.md", "next session: fix the widget")
+        (wiki / "projects" / "p" / "plan.md").unlink()
+
+        assert live_pin_pages() == []
+
+    def test_excludes_archived_page(self, wiki):
+        from lib.memory import archive
+        from skills.wrap.lib import live_pin_pages
+
+        self._pin("projects/p/plan.md", "next session: fix the widget")
+        archive.archive_page("projects/p/plan.md", "sess-pin", reason="test")
+
+        assert live_pin_pages() == []
+
+    def test_excludes_non_pin_producers(self, wiki):
+        from skills.wrap.lib import live_pin_pages
+
+        queue.propose_and_apply(
+            Proposal(
+                op="ADD", page="projects/p/notes.md", content="wrap-written note",
+                reason="wrap", producer="wrap", writer="llm-auto", session="s1",
+            )
+        )
+
+        assert live_pin_pages() == []
+
+    def test_dedupes_by_page(self, wiki):
+        from skills.wrap.lib import live_pin_pages
+
+        self._pin("projects/p/plan.md", "v1 of the plan")
+        self._pin("projects/p/plan.md", "v2 of the plan")
+
+        pins = live_pin_pages()
+        assert [p["page"] for p in pins] == ["projects/p/plan.md"]
+        assert "v2 of the plan" in pins[0]["preview"]
+
+
+class TestWrapScreenLivePins:
+    def test_screen_lists_live_pins_from_any_session(self, wiki):
+        """The gate is cross-session by design — stale pins from EARLIER
+        sessions are exactly the ones needing cleanup."""
+        from skills.pin.lib import pin
+
+        pin("next session: fix the widget", "projects/p/plan.md", session="sess-old")
+
+        result = wrap_session(
+            narrative_md="# Summary\n", durable_items=[], session="sess-new",
+        )
+        screen = render_wrap_screen(result, "sess-new")
+
+        assert "## Live pins" in screen
+        assert "projects/p/plan.md" in screen
+        assert "fix the widget" in screen
+
+    def test_screen_omits_live_pins_header_when_none(self, wiki):
+        result = wrap_session(
+            narrative_md="# Summary\n", durable_items=[], session="sess-none",
+        )
+        screen = render_wrap_screen(result, "sess-none")
+
+        assert "## Live pins" not in screen

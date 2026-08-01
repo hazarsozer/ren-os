@@ -69,6 +69,10 @@ Reactive memory control, mid-session. The friend says "remember it like THIS" or
 
 Per spec §3.2, a pinned or corrected page is something the friend explicitly cared enough about to interrupt flow for. `salience` is carried through the `Proposal` into the `QueueEntry` so wake-up's relevance ranking (Phase 5) can boost it — a pin is a strong, direct signal, stronger than anything inferred.
 
+## Task-shaped pins (issue #25)
+
+A pin whose content is a TASK ("next session, do X") should carry its own disposal as its last step — end the pinned text with "…and delete this page once done." Belt-and-braces: `/ren:wrap`'s "Live pins" gate (see `skills/wrap/SKILL.md`) also lists every live pin at session end and asks the friend about ones that look acted-on, so a finished plan-pin gets caught there even when the text forgot its own delete step. Disposal is always the normal correction path (`correct(page, None, session)` → queue DELETE) — never a direct file deletion.
+
 ## What this skill does NOT do
 
 - Write to a wiki page directly. Every pin/correction is a `Proposal` at the data-plane door (`propose_and_apply`) — applying (or holding on a contradiction) is owned by the queue/tier machinery, not this skill.
