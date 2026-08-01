@@ -183,7 +183,11 @@ def ingest(
     if write_id:
         closing = f"This is saved (write {write_id}) — one step to revert, just say \"undo\" if it's wrong."
     else:
-        closing = "This is held for review — a conflict was flagged that needs your input before it's saved."
+        closing = (
+            "This is held for review — either a conflict was flagged or the target is a "
+            "global-tier page (only promotion puts pages there) — it needs your input "
+            "before it's saved."
+        )
     artifact = f"{FIRST_SESSION_LEAD}\n\n{content}\n\n{closing}"
     claude_md = _wire_repo(repo_root, project_slug) if repo_root is not None else None
     return {

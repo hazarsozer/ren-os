@@ -8,7 +8,7 @@ what it can (through the existing write-safety substrate: `propose_and_apply`
 See `SKILL.md` for the full behavior contract; this module is the sweep
 mechanics only — it never writes anything itself.
 
-`sweep()` returns six findings + a timestamp:
+`sweep()` returns seven findings + a timestamp:
   - `dangling_pointers` — every l2-map page's "## Decision map" pointer
     lines, target existence. Same question `skills.doctor.lib
     .check_dangling_pointers` answers, reimplemented here (not imported)
@@ -44,6 +44,11 @@ mechanics only — it never writes anything itself.
   - `quarantined_pages` — the unreviewed-content inventory
     (`lib.memory.quarantine.is_quarantined`): llm-auto writes still sitting
     behind the banner, never promoted or released.
+  - `single_project_global_pages` — global-tier pages naming exactly one
+    project (issue #18). The write-time gate (`lib.governance.tiers
+    .INSTRUCTION_PLANE_PREFIXES`) stops NEW project-specific pages from
+    landing in the global tier; this finds the ones already on disk,
+    including hand-authored ones the queue never saw.
 """
 
 from __future__ import annotations
@@ -245,6 +250,56 @@ def _quarantined_pages(wiki_root: Path) -> dict:
     return {"count": len(pages), "pages": pages}
 
 
+_PROJECT_REF_RE = re.compile(r"projects/([a-z0-9][a-z0-9._-]*)")
+_WORD_RE = re.compile(r"[a-z0-9][a-z0-9._-]*")
+
+
+def _known_project_slugs(wiki_root: Path) -> set[str]:
+    """The slug vocabulary: the repo-path↔slug registry plus every directory
+    under `projects/`. Never raises — a missing/corrupt registry just
+    narrows the vocabulary."""
+    slugs = {s.lower() for s in ren_paths.load_project_registry()}
+    projects_dir = wiki_root / "projects"
+    if projects_dir.is_dir():
+        slugs |= {p.name.lower() for p in projects_dir.iterdir() if p.is_dir()}
+    return slugs
+
+
+def _single_project_global_pages(wiki_root: Path) -> list[dict]:
+    """Global-tier pages (`lib.governance.tiers.INSTRUCTION_PLANE_PREFIXES`)
+    whose body names EXACTLY ONE project — the shape issue #18 caught live
+    (a project-specific `decisions/flux-stack.md` written during ingest).
+
+    Founder doctrine: the global tier is only for practices general enough
+    to apply across projects; a page about one project belongs under
+    `projects/<slug>/`. Deliberately cheap and word-based: an explicit
+    `projects/<slug>` reference, or a bare word matching a known slug.
+    Naming zero projects (genuinely general) or two-plus (a real
+    cross-project comparison) is not a finding."""
+    from lib.governance.tiers import INSTRUCTION_PLANE_PREFIXES
+
+    slugs = _known_project_slugs(wiki_root)
+    findings: list[dict] = []
+    for prefix in INSTRUCTION_PLANE_PREFIXES:
+        tier_dir = wiki_root / prefix.rstrip("/")
+        if not tier_dir.is_dir():
+            continue
+        for md_path in sorted(tier_dir.rglob("*.md")):
+            try:
+                low = md_path.read_text(encoding="utf-8", errors="replace").lower()
+            except OSError:  # pragma: no cover - unreadable page is not a finding
+                continue
+            named = {m.group(1) for m in _PROJECT_REF_RE.finditer(low)}
+            words = set(_WORD_RE.findall(low))
+            named |= {slug for slug in slugs if slug in words}
+            if len(named) == 1:
+                findings.append({
+                    "page": md_path.relative_to(wiki_root).as_posix(),
+                    "project": next(iter(named)),
+                })
+    return findings
+
+
 def _now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -444,6 +499,7 @@ def sweep(wiki_root: Path | None = None, llm_call: Callable[[str], str] | None =
             "contradiction_scan_note": None,
             "mass_deletions": _mass_deletions(),
             "quarantined_pages": {"count": 0, "pages": []},
+            "single_project_global_pages": [],
             "judge_dismissed": [],
             "judge_supersedes": [],
             "retrieval_eval": _retrieval_eval(),
@@ -473,6 +529,7 @@ def sweep(wiki_root: Path | None = None, llm_call: Callable[[str], str] | None =
         "contradiction_scan_note": contradiction_scan_note,
         "mass_deletions": _mass_deletions(),
         "quarantined_pages": _quarantined_pages(wiki_root),
+        "single_project_global_pages": _single_project_global_pages(wiki_root),
         "judge_dismissed": judge_dismissed,
         "judge_supersedes": judge_supersedes,
         "retrieval_eval": _retrieval_eval(),
@@ -530,6 +587,17 @@ def render_report(findings: dict) -> str:
         lines.extend(
             f"- {a['count']} deletes starting {a['window_start']}: {', '.join(p for p in a['pages'] if p)}"
             for a in anomalies
+        )
+    else:
+        lines.append("- none")
+    lines.append("")
+
+    lines.append("## Global-tier pages naming a single project")
+    single = findings.get("single_project_global_pages") or []
+    if single:
+        lines.extend(
+            f"- {s['page']}: names only {s['project']} — belongs under projects/{s['project']}/"
+            for s in single
         )
     else:
         lines.append("- none")

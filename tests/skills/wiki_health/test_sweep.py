@@ -53,7 +53,7 @@ def test_sweep_returns_all_dict_keys(wiki):
         "dangling_pointers", "contradiction_pairs", "duplicate_pairs",
         "numeric_drift_pairs", "contradiction_scan_note",
         "mass_deletions", "quarantined_pages", "judge_dismissed", "judge_supersedes",
-        "retrieval_eval", "generated_at",
+        "retrieval_eval", "single_project_global_pages", "generated_at",
     }
     assert result["generated_at"]
     assert result["contradiction_scan_note"] is None
@@ -608,3 +608,61 @@ def test_wiki_health_critical_still_emits_for_unjudged_global_contradiction(wiki
 
     assert len(specs) == 1
     assert "judge" not in specs[0].payload
+
+
+# ------------------------- single-project global-tier pages (issue #18)
+
+
+def _write(root, rel, text):
+    path = root / rel
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
+def test_single_project_global_page_flagged_by_explicit_projects_ref(wiki):
+    _write(wiki, "decisions/flux-stack.md", "# Flux stack\n\nSee projects/flux/map.md for context.\n")
+
+    findings = wiki_health.sweep()["single_project_global_pages"]
+
+    assert findings == [{"page": "decisions/flux-stack.md", "project": "flux"}]
+
+
+def test_single_project_global_page_flagged_by_known_slug_word(wiki):
+    (wiki / "projects" / "flux").mkdir(parents=True)
+    _write(wiki, "patterns/retry-loop.md", "# Retry loop\n\nWe use this in flux only.\n")
+
+    findings = wiki_health.sweep()["single_project_global_pages"]
+
+    assert findings == [{"page": "patterns/retry-loop.md", "project": "flux"}]
+
+
+def test_general_and_multi_project_global_pages_are_not_flagged(wiki):
+    (wiki / "projects" / "flux").mkdir(parents=True)
+    (wiki / "projects" / "sidecar").mkdir(parents=True)
+    _write(wiki, "patterns/general.md", "# General\n\nAlways write the test first.\n")
+    _write(wiki, "research/compare.md", "# Compare\n\nprojects/flux and projects/sidecar differ.\n")
+
+    assert wiki_health.sweep()["single_project_global_pages"] == []
+
+
+def test_data_plane_pages_naming_one_project_are_not_flagged(wiki):
+    (wiki / "projects" / "flux").mkdir(parents=True)
+    _write(wiki, "projects/flux/map.md", "# flux\n\nprojects/flux is this project.\n")
+
+    assert wiki_health.sweep()["single_project_global_pages"] == []
+
+
+def test_render_report_has_single_project_section(wiki):
+    _write(wiki, "decisions/flux-stack.md", "# Flux\n\nprojects/flux stack notes.\n")
+
+    text = wiki_health.render_report(wiki_health.sweep())
+
+    assert "## Global-tier pages naming a single project" in text
+    assert "decisions/flux-stack.md" in text
+
+
+def test_render_report_single_project_section_says_none_when_clean(wiki):
+    text = wiki_health.render_report(wiki_health.sweep())
+    section = text.split("## Global-tier pages naming a single project", 1)[1]
+    assert section.lstrip().startswith("- none")

@@ -55,9 +55,15 @@ used to catch, by sweeping periodically instead of gating continuously.
 
 ## Behavior
 
-1. Call `importlib.import_module("skills.wiki-health.lib").sweep()` — read-only, six findings:
+1. Call `importlib.import_module("skills.wiki-health.lib").sweep()` — read-only, seven findings:
    `dangling_pointers`, `contradiction_pairs`, `duplicate_pairs`,
-   `numeric_drift_pairs`, `mass_deletions`, `quarantined_pages`, plus
+   `numeric_drift_pairs`, `mass_deletions`, `quarantined_pages`,
+   `single_project_global_pages` (issue #18: global-tier pages —
+   `decisions/`·`patterns/`·`research/`·`global/` — whose body names exactly
+   one project; the global tier is for cross-project practices only, so such
+   a page belongs under `projects/<slug>/`. Never auto-relocated: propose the
+   move to the friend, since only a human puts pages in the global tier),
+   plus
    `retrieval_eval` (0.6.1: `{"hit_rate", "cases"}` from scoring the shipped
    ranker against the frozen retrieval-eval fixture, independent of this
    sweep's `wiki_root` — degrades to `{"hit_rate": None, "error": "<msg>"}`

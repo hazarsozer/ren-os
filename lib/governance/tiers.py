@@ -17,8 +17,11 @@ Four tiers, strictly ordered by how much a human must be in the loop:
                      (G2) and one-step revertible (G4) — "bounded" means
                      contained enough that unattended auto-apply is safe, not
                      that it's unreviewed forever.
-    diff_approved  — writes to a `global/` page (the instruction plane, from
-                     any writer), plus ALL code/config writes. Queued, never
+    diff_approved  — writes to an instruction-plane page (`global/` plus the
+                     root-level global tier `decisions/`·`patterns/`·
+                     `research/` — see `INSTRUCTION_PLANE_PREFIXES`, issue
+                     #18), from any writer, plus ALL code/config writes.
+                     Queued, never
                      auto-applied; a human (or an explicit approval step)
                      reviews the diff.
     ask            — destructive actions. Always requires an explicit human
@@ -52,6 +55,32 @@ GLOBAL_PREFIX = "global/"
 `diff_approved` regardless of writer — spec §3.1's typed global tier is
 promotion-gated by construction, never auto-applied."""
 
+INSTRUCTION_PLANE_PREFIXES: tuple[str, ...] = (
+    GLOBAL_PREFIX,
+    "decisions/",
+    "patterns/",
+    "research/",
+)
+"""THE canonical encoding of the instruction plane — the global tier as the
+README's memory-hierarchy diagram draws it: `global/` (typed doctrine and
+preferences) plus the three durable global-tier content dirs
+`decisions/` · `patterns/` · `research/`.
+
+Issue #18 (2026-07-31, surfaced dogfooding the Flux ingest): the diagram said
+the global tier is reached by "promotion (gated, never automatic)", but only
+`global/` was mechanically gated — a `producer="ingest", writer="llm-auto"`
+proposal targeting `decisions/<x>.md` auto-applied like any data-plane write.
+Founder doctrine, encoded here: global-tier `decisions/`/`patterns/` are ONLY
+for practices general enough to apply across projects; project-specific
+decisions live under `projects/<slug>/` and reach the global tier only
+through the human-gated promotion path (propose -> approve -> apply).
+
+Every other module that needs "is this the instruction plane?" delegates to
+`is_instruction_plane_page` rather than re-spelling the prefixes
+(`lib.suggestions.gate.is_critical_page`, `lib.memory.lifecycle
+._data_plane_pages`, `skills.wiki-health.lib`) — see
+`tests/lib/governance/test_tiers.py`'s drift test."""
+
 
 class UnattendedBlocked(Exception):
     """Raised when a destructive action is attempted with no human present
@@ -71,6 +100,21 @@ def _is_global_page(page: str | None) -> bool:
     if not page:
         return False
     return page == "global" or page.startswith(GLOBAL_PREFIX)
+
+
+def is_instruction_plane_page(page: str | None) -> bool:
+    """True iff `page` is on the INSTRUCTION plane — `global/` or any of the
+    root-level global-tier dirs (`decisions/`, `patterns/`, `research/`).
+    Path-prefix only; never reads page bodies. This is the single source of
+    truth for the plane split (issue #18) — callers must not re-spell the
+    prefix list."""
+    if not page:
+        return False
+    if any(page.startswith(prefix) for prefix in INSTRUCTION_PLANE_PREFIXES):
+        return True
+    # A bare dir name with no trailing slash ("global", "decisions") is the
+    # tier page itself, not a data-plane page that merely starts with it.
+    return f"{page}/" in INSTRUCTION_PLANE_PREFIXES
 
 
 def tier_of(action: Action) -> Tier:
@@ -102,7 +146,11 @@ def tier_of(action: Action) -> Tier:
     # revert (§3.10) are the accountability mechanism, not a human diff.
     # The INSTRUCTION plane (global/) keeps diff_approved: promotion through
     # a human is the only door from remembered to obeyed.
-    if _is_global_page(action.page):
+    # Issue #18: the instruction plane is the WHOLE global tier — `global/`
+    # plus `decisions/`/`patterns/`/`research/` — not just `global/`. A
+    # non-promotion producer's write to any of them holds pending instead of
+    # auto-applying; the human-gated promotion path is the only door.
+    if is_instruction_plane_page(action.page):
         return "diff_approved"
     return "auto"
 
@@ -121,6 +169,8 @@ __all__ = [
     "Tier",
     "ActionKind",
     "GLOBAL_PREFIX",
+    "INSTRUCTION_PLANE_PREFIXES",
+    "is_instruction_plane_page",
     "UnattendedBlocked",
     "Action",
     "tier_of",

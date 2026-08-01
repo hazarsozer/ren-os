@@ -129,7 +129,11 @@ def bootstrap(project_slug: str, session: str, repo_root: Path | None = None) ->
                 page=page,
                 content=content,
                 reason="bootstrap-project",
-                producer="promotion",
+                # Issue #18: `producer="promotion"` is reserved for the
+                # human-gated global-tier promotion path; this is a
+                # data-plane L2 map, so it uses the ingest producer (writer
+                # stays "human", so trust is still "user").
+                producer="ingest",
                 writer="human",
                 session=session,
                 salience=False,
