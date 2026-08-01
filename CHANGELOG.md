@@ -2,8 +2,9 @@
 
 ## [0.6.3] - 2026-08-01 — "wake-up actually remembers"
 
-Five fixes from the second dogfood pass (issues #21–#25): last-session
-continuity, trust minting, and the two lifecycle loops that never closed.
+Six fixes from the second dogfood pass (issues #21–#26): last-session
+continuity, trust minting, the two lifecycle loops that never closed, and
+the push guard that blocked publishing this very train.
 
 - **L1 continuity is global, not project-gated** (#21) — the "What
   happened last session" read (project-local `l1/` first, global `l1/`
@@ -32,6 +33,11 @@ continuity, trust minting, and the two lifecycle loops that never closed.
   session) and the skill asks about ones that look acted-on; confirmed
   deletes go through the queue's normal correction path. Task-shaped pins
   are documented to carry their own delete step as belt-and-braces.
+- **Push guard recognizes the repo's own remote** (#26) — the maintainer
+  path denylist in `pre_push_scan` stands down when every push targets
+  the remote named by the plugin manifest's `repository` field (the
+  single-remote reality since 0.6.2 retired the dev-backup mirror), and
+  stays in force for any other remote. Secrets scan unaffected.
 
 ## [0.6.2] - 2026-08-01 — "the dogfood train"
 

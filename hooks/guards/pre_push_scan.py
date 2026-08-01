@@ -211,6 +211,49 @@ def _extract_remote(command: str, cwd: str) -> str:
     return ""
 
 
+def _normalize_git_url(url: str) -> str:
+    """Reduce a git remote URL to a comparable `host/owner/repo` form:
+    `git@github.com:owner/repo.git`, `ssh://git@github.com/owner/repo`, and
+    `https://github.com/owner/repo` all normalize identically."""
+    url = url.strip().lower()
+    url = re.sub(r"^[a-z+]+://", "", url)  # https:// | ssh:// | git+ssh://
+    url = re.sub(r"^[^@/]+@", "", url)     # git@host:… | user@host/…
+    url = url.replace(":", "/", 1)
+    url = re.sub(r"\.git$", "", url)
+    return url.rstrip("/")
+
+
+def _is_own_canonical_remote(cwd: str, remote: str) -> bool:
+    """True iff `remote`'s URL matches the plugin manifest's `repository`
+    field — the repo's own canonical home (issue #26: since the dev-backup
+    mirror was retired, the dev repo IS its public remote, and the
+    maintainer denylist must not block the maintainer's own push there).
+    Any failure (no such remote, no manifest, no `repository` field)
+    degrades to False — fail TOWARD scanning."""
+    if not remote:
+        return False
+    try:
+        top = subprocess.run(
+            ["git", "-C", cwd, "rev-parse", "--show-toplevel"],
+            capture_output=True, text=True, timeout=5,
+        )
+        if top.returncode != 0 or not top.stdout.strip():
+            return False
+        manifest = Path(top.stdout.strip()) / ".claude-plugin" / "plugin.json"
+        repository = json.loads(manifest.read_text(encoding="utf-8")).get("repository")
+        if not isinstance(repository, str) or not repository.strip():
+            return False
+        url = subprocess.run(
+            ["git", "-C", cwd, "remote", "get-url", remote],
+            capture_output=True, text=True, timeout=5,
+        )
+        if url.returncode != 0 or not url.stdout.strip():
+            return False
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        return False
+    return _normalize_git_url(url.stdout) == _normalize_git_url(repository)
+
+
 def _ls_files(cwd: str) -> list[str]:
     try:
         result = subprocess.run(
@@ -286,8 +329,14 @@ def check_push(command: str, cwd: str) -> int:
 
     # B2: the maintainer PATH_DENYLIST is a RenOS-repo-only concern — it must
     # not block a user pushing their OWN repo that legitimately tracks tests/,
-    # .claude/, docs/. Scoped by repo identity.
-    if _is_renos_repo(cwd):
+    # .claude/, docs/. Scoped by repo identity. Issue #26: it must ALSO not
+    # block the maintainer pushing the plugin repo to its own canonical home
+    # (every push segment's remote URL matches the manifest's `repository`) —
+    # since the dev-backup mirror was retired, the dev repo IS that remote and
+    # legitimately tracks the denylisted paths. Any OTHER remote (a
+    # distribution repo, a fork) keeps the denylist; the secrets scan below
+    # runs regardless.
+    if _is_renos_repo(cwd) and not all(_is_own_canonical_remote(cwd, r) for r in remotes):
         denylisted = _denylisted_paths(_ls_files(cwd))
         if denylisted:
             return _block(
