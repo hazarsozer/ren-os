@@ -69,20 +69,49 @@ def _isolate_home(tmp_path, monkeypatch):
     yield
 
 
+def _claude_watch_paths() -> list[Path]:
+    """The only paths under the real ~/.claude that RenOS code can write.
+
+    Dogfood-2 finding M4: the old blanket rglob over all of ~/.claude
+    false-positived constantly — a live Claude Code harness writes there
+    CONTINUOUSLY while the suite runs (bash-commands.log, cost-tracker.log,
+    history.jsonl, daemon/, cache/, statsig/, todos/, shell-snapshots/,
+    file-history/, ...), and pytest attributes the session-teardown error to
+    whatever test happened to be collected last (the intermittent "manifest
+    test flake"). Exclusion lists can't win an arms race against harness
+    churn, so the watch is inverted: only what RenOS itself could touch.
+
+    Per lib/ren_paths.py, RenOS writes under ~/.claude exactly two things:
+      - CLAUDE.md (`claude_user_dir()` — the managed pointer-block in
+        lib/adapter/claude_md.py and skills/install),
+      - plugins/data/renos/ (`plugin_data_dir()` — snapshots, code-maps).
+    Plus, defensively, any plugins/ entry whose name starts with "ren"
+    (loader-installed plugin dirs). Everything else under ~/.claude is
+    harness-owned and out of scope. ~/.renos keeps its full watch.
+    """
+    watch = [_REAL_CLAUDE / "CLAUDE.md", _REAL_CLAUDE / "plugins" / "data" / "renos"]
+    plugins = _REAL_CLAUDE / "plugins"
+    if plugins.is_dir():
+        for sub in plugins.iterdir():
+            if sub.name.startswith("ren"):
+                watch.append(sub)
+            elif sub.is_dir() and sub.name != "data":
+                watch.extend(p for p in sub.iterdir() if p.name.startswith("ren"))
+    return watch
+
+
 @pytest.fixture(scope="session", autouse=True)
 def _real_renos_untouched():
-    """Fail the run loudly if the suite modified the real ~/.renos or ~/.claude."""
+    """Fail the run loudly if the suite modified the real ~/.renos, or any
+    RenOS-writable path under the real ~/.claude (see `_claude_watch_paths`)."""
     start = time.time()
     yield
     touched: list[str] = []
-    for root in (_REAL_RENOS, _REAL_CLAUDE):
+    roots = [_REAL_RENOS, *_claude_watch_paths()]
+    for root in roots:
         if not root.exists():
             continue
-        for path in root.rglob("*"):
-            # A live Claude Code session writes its own transcript/state under
-            # ~/.claude/projects/ while the suite runs — not a suite leak.
-            if root == _REAL_CLAUDE and path.is_relative_to(_REAL_CLAUDE / "projects"):
-                continue
+        for path in (root.rglob("*") if root.is_dir() else [root]):
             try:
                 if path.lstat().st_mtime > start:
                     touched.append(str(path))
@@ -90,6 +119,6 @@ def _real_renos_untouched():
                 continue
     if touched:
         raise AssertionError(
-            "test suite wrote into the real ~/.renos or ~/.claude (isolation "
-            f"breach, issue #13/L3): {touched[:20]}"
+            "test suite wrote into the real ~/.renos or a RenOS-owned path "
+            f"under ~/.claude (isolation breach, issue #13/L3): {touched[:20]}"
         )
