@@ -1,5 +1,38 @@
 # Changelog
 
+## [0.6.3] - 2026-08-01 — "wake-up actually remembers"
+
+Five fixes from the second dogfood pass (issues #21–#25): last-session
+continuity, trust minting, and the two lifecycle loops that never closed.
+
+- **L1 continuity is global, not project-gated** (#21) — the "What
+  happened last session" read (project-local `l1/` first, global `l1/`
+  fallback always) now runs whether or not a project is detected, so
+  sessions from the dev root (or any non-project cwd) wake up with
+  continuity. The l1-exclusion loop moved out of the gate with it: a
+  no-project session no longer miscounts its own summary as a held-out
+  quarantined page.
+- **Ingest drafts mint `ren_trust: "model"`, not `"foreign"`** (#22) —
+  they're RenOS's own subagents distilling the friend's own repo,
+  queue-applied with quarantine banners, same as L1. "foreign" stays in
+  the taxonomy (reserved for genuinely external, explicitly-stamped
+  content) and every foreign check remains in force.
+  `migrations/foreign-remint-1/` heals existing wikis (restamps only
+  foreign pages with a known non-human `ren_writer`; banners untouched;
+  `--check` preview; idempotent), gated on the update crossing 0.6.3.
+- **Empty rank query suppresses "Possibly relevant now"** (#23) — with no
+  project and no git signal, wake-up injects nothing there rather than
+  whatever happened to be released.
+- **Wake-up surfacing no longer counts as a decay touch** (#24) — only L3
+  fetches and direct reads refresh the 90-day clock; a page the framework
+  keeps injecting but nobody ever reads now decays instead of
+  self-perpetuating. Surfacing stays logged for the miss metric.
+- **Wrap closes the pin loop** (#25) — the wrap screen gains a "Live
+  pins" section (every applied pin-written page still on disk, any
+  session) and the skill asks about ones that look acted-on; confirmed
+  deletes go through the queue's normal correction path. Task-shaped pins
+  are documented to carry their own delete step as belt-and-braces.
+
 ## [0.6.2] - 2026-08-01 — "the dogfood train"
 
 Nine fixes from the first real fresh-machine install (MacBook, issues
