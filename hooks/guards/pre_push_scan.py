@@ -135,14 +135,38 @@ def _is_renos_repo(cwd: str) -> bool:
     return isinstance(data, dict) and data.get("name") == "ren"
 
 
-def _outgoing_files(cwd: str) -> list[str]:
+def _remote_base_ref(cwd: str, remote: str) -> str:
+    """Best-effort base ref for a no-upstream push: the push target's default
+    branch as a remote-tracking ref (`<remote>/HEAD` when set, else
+    `<remote>/main`, else `<remote>/master`; unnamed remote falls back to
+    "origin"). Returns "" when none resolves — the remote has no known refs,
+    so everything is genuinely outgoing (issue #27)."""
+    name = remote or "origin"
+    for candidate in (f"{name}/HEAD", f"{name}/main", f"{name}/master"):
+        try:
+            rev = subprocess.run(
+                ["git", "-C", cwd, "rev-parse", "--verify", "--quiet", candidate],
+                capture_output=True, text=True, timeout=5,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return ""
+        if rev.returncode == 0 and rev.stdout.strip():
+            return candidate
+    return ""
+
+
+def _outgoing_files(cwd: str, remote: str = "") -> list[str]:
     """Files to run the secrets scan over: only those touched by commits not
     yet on the upstream (`@{u}..HEAD`) — a secret-shaped string in a file that
     is NOT part of this push must not block. When there is no upstream (first
-    push of a branch), everything tracked is outgoing, so fall back to the full
-    `git ls-files` tree. Never raises — degrades to [] on diff failure with an
-    upstream present (fail toward not-scanning that file set rather than
-    crashing the guard)."""
+    push of a branch), diff against the push target's default branch instead
+    (`<base>...HEAD`, i.e. since the merge-base — issue #27: the full-tree
+    fallback blocked every new branch of a repo whose tree legitimately
+    carries secret-shaped fixtures already on the remote). Only when the
+    remote has no known refs at all (genuinely first publish) is everything
+    tracked outgoing, via the full `git ls-files` tree. Never raises —
+    degrades to [] on diff failure with a base present (fail toward
+    not-scanning that file set rather than crashing the guard)."""
     try:
         rev = subprocess.run(
             ["git", "-C", cwd, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"],
@@ -152,12 +176,17 @@ def _outgoing_files(cwd: str) -> list[str]:
     except (OSError, subprocess.TimeoutExpired):
         has_upstream = False
 
-    if not has_upstream:
-        return _ls_files(cwd)
+    if has_upstream:
+        base = "@{u}.."
+    else:
+        base_ref = _remote_base_ref(cwd, remote)
+        if not base_ref:
+            return _ls_files(cwd)
+        base = f"{base_ref}..."  # three-dot: diff since the merge-base
 
     try:
         diff = subprocess.run(
-            ["git", "-C", cwd, "diff", "--name-only", "@{u}..HEAD"],
+            ["git", "-C", cwd, "diff", "--name-only", f"{base}HEAD"],
             capture_output=True, text=True, timeout=15,
         )
         if diff.returncode != 0:
@@ -346,7 +375,7 @@ def check_push(command: str, cwd: str) -> int:
 
     # B2: scan only the OUTGOING changes, not the whole tracked tree — a
     # secret-shaped string in a file that isn't part of this push must not block.
-    findings = _scan_secrets(cwd, _outgoing_files(cwd))
+    findings = _scan_secrets(cwd, _outgoing_files(cwd, next((r for r in remotes if r), "")))
     if findings:
         kinds = sorted({kind for _, kind in findings})
         paths = sorted({path for path, _ in findings})

@@ -2,9 +2,9 @@
 
 ## [0.6.3] - 2026-08-01 — "wake-up actually remembers"
 
-Six fixes from the second dogfood pass (issues #21–#26): last-session
+Seven fixes from the second dogfood pass (issues #21–#27): last-session
 continuity, trust minting, the two lifecycle loops that never closed, and
-the push guard that blocked publishing this very train.
+the two push-guard defects that blocked publishing this very train.
 
 - **L1 continuity is global, not project-gated** (#21) — the "What
   happened last session" read (project-local `l1/` first, global `l1/`
@@ -38,6 +38,12 @@ the push guard that blocked publishing this very train.
   the remote named by the plugin manifest's `repository` field (the
   single-remote reality since 0.6.2 retired the dev-backup mirror), and
   stays in force for any other remote. Secrets scan unaffected.
+- **First-push secrets scan diffs against the remote base** (#27) — a new
+  branch with no upstream is scanned since the merge-base with the push
+  target's default branch, not the full tracked tree (which legitimately
+  carries secret-shaped scrub patterns and test fixtures already on the
+  remote). Full-tree scan remains only for a genuinely first publish
+  (remote with no refs).
 
 ## [0.6.2] - 2026-08-01 — "the dogfood train"
 

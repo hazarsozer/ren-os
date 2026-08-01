@@ -830,3 +830,41 @@ def test_manifest_without_repository_field_keeps_denylist(renos_git_repo, capsys
     rc = pre_push_scan.check_push("git push origin main", str(renos_git_repo))
     assert rc == 2
     assert "tests/test_x.py" in capsys.readouterr().err
+
+
+# --- issue #27: first-push secrets scan must diff against the remote base ----
+
+
+def test_first_push_of_branch_scans_only_outgoing_not_full_tree(git_repo, tmp_path):
+    """Issue #27: a NEW branch has no upstream — the secrets scan must diff
+    against the remote default branch's merge-base, not fall back to the
+    full tracked tree (which legitimately contains secret-SHAPED fixtures
+    already on the remote)."""
+    secret = "AKIA" + "IOSFODNN7EXAMPLE"
+    _commit_file(git_repo, "fixtures/fake.env", f"AWS_KEY = '{secret}'\n")
+
+    remote = tmp_path / "remote.git"
+    subprocess.run(["git", "init", "-q", "--bare", str(remote)], check=True)
+    _git(git_repo, "remote", "add", "origin", str(remote))
+    _git(git_repo, "push", "-q", "origin", "HEAD")  # fixture now ON the remote
+
+    _git(git_repo, "checkout", "-q", "-b", "feature")
+    _commit_file(git_repo, "clean.py", "x = 1\n")  # branch adds only clean work
+
+    rc = pre_push_scan.check_push("git push -u origin feature", str(git_repo))
+    assert rc == 0
+
+
+def test_first_push_of_whole_repo_still_scans_full_tree(git_repo, tmp_path, capsys):
+    """When the remote has no refs at all (genuinely first publish),
+    EVERYTHING is outgoing — the full-tree scan stays."""
+    secret = "AKIA" + "IOSFODNN7EXAMPLE"
+    _commit_file(git_repo, "fixtures/fake.env", f"AWS_KEY = '{secret}'\n")
+
+    remote = tmp_path / "remote.git"
+    subprocess.run(["git", "init", "-q", "--bare", str(remote)], check=True)
+    _git(git_repo, "remote", "add", "origin", str(remote))
+
+    rc = pre_push_scan.check_push("git push -u origin HEAD", str(git_repo))
+    assert rc == 2
+    assert "fixtures/fake.env" in capsys.readouterr().err
