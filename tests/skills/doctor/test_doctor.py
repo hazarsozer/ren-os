@@ -58,7 +58,7 @@ def test_run_checks_returns_one_result_per_check(wiki):
         "backup_configured", "execution_tiers", "global_drift", "harness_neutrality", "guard_health",
         "suggestion_store", "apply_integrity", "judge_health", "archive_integrity",
         "routing_audit", "model_map_staleness", "orphaned_projects",
-        "execution_doctrine",
+        "execution_doctrine", "agent_shadowing",
     }
 
 
@@ -768,3 +768,53 @@ def test_check_execution_doctrine_errors_when_agent_missing(tmp_path, monkeypatc
 
 def test_check_execution_doctrine_registered_in_all_check_names():
     assert "check_execution_doctrine" in doctor._ALL_CHECK_NAMES
+
+
+# --------------------------------------------------------- check_agent_shadowing
+
+
+def test_check_agent_shadowing_skips_without_user_agents_dir(tmp_path, monkeypatch):
+    monkeypatch.setenv("REN_CLAUDE_DIR", str(tmp_path / ".claude"))
+    result = doctor.check_agent_shadowing()
+    assert result.status == "skip"
+
+
+def test_check_agent_shadowing_ok_when_no_collision(tmp_path, monkeypatch):
+    user_agents = tmp_path / ".claude" / "agents"
+    user_agents.mkdir(parents=True)
+    (user_agents / "my-own-agent.md").write_text("hi", encoding="utf-8")
+    monkeypatch.setenv("REN_CLAUDE_DIR", str(tmp_path / ".claude"))
+    result = doctor.check_agent_shadowing()
+    assert result.status == "ok"
+
+
+def test_check_agent_shadowing_warns_on_user_dir_collision(tmp_path, monkeypatch):
+    user_agents = tmp_path / ".claude" / "agents"
+    user_agents.mkdir(parents=True)
+    (user_agents / "ren-planner.md").write_text("shadow", encoding="utf-8")
+    monkeypatch.setenv("REN_CLAUDE_DIR", str(tmp_path / ".claude"))
+    result = doctor.check_agent_shadowing()
+    assert result.status == "warn"
+    assert "ren-planner" in result.message
+
+
+def test_check_agent_shadowing_warns_on_project_dir_collision(wiki, tmp_path, clean_path_env, monkeypatch):
+    from lib import ren_paths
+
+    monkeypatch.setenv("REN_CLAUDE_DIR", str(tmp_path / "userclaude"))
+
+    (wiki / "projects" / "myproj").mkdir(parents=True)
+    repo = tmp_path / "myproj-repo"
+    project_agents = repo / ".claude" / "agents"
+    project_agents.mkdir(parents=True)
+    (project_agents / "ren-reviewer.md").write_text("shadow", encoding="utf-8")
+    ren_paths.record_project_repo("myproj", repo)
+
+    monkeypatch.chdir(repo)
+    result = doctor.check_agent_shadowing()
+    assert result.status == "warn"
+    assert "ren-reviewer" in result.message
+
+
+def test_check_agent_shadowing_registered_in_all_check_names():
+    assert "check_agent_shadowing" in doctor._ALL_CHECK_NAMES
