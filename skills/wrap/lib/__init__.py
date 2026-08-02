@@ -44,10 +44,11 @@ import yaml
 from lib import ren_paths
 from lib.adapter.worker import parse_worker_json
 from lib.instrument import calibration, collect
-from lib.memory import queue
+from lib.memory import journal, queue
 from lib.memory import quarantine
 from lib.memory.judge import JUDGE_MIN_CONFIDENCE, JUDGE_PAIR_CAP, judge_pairs
 from lib.memory.lifecycle import consolidate_duplicates, run_decay
+from lib.memory.provenance import new_provenance
 from lib.memory.queue import Proposal, propose_and_apply
 from lib.memory.scrub import SecretsFound
 from lib.memory.semantics import shortlist_pairs
@@ -533,7 +534,7 @@ def wrap_session(
     except Exception:  # noqa: BLE001 - instrumentation must never fail wrap close-out
         pass
 
-    return {
+    result = {
         "l1_qid": l1_entry.qid,
         "applied": applied,
         "held": held,
@@ -545,6 +546,13 @@ def wrap_session(
         "consolidated": consolidated,
         "overview": overview_status,
     }
+
+    try:
+        _append_session_summary(session, project, result)
+    except Exception:  # noqa: BLE001 - the session journal line must never break wrap close-out
+        pass
+
+    return result
 
 
 def _run_wiki_health_sweep() -> dict:
@@ -622,6 +630,32 @@ def harvest_suggestions(session: str, cwd: str | None = None) -> int:
         if record_suggestion(spec) is not None:
             count += 1
     return count
+
+
+def _append_session_summary(session: str, project: str | None, result: dict) -> None:
+    """One append-only journal line summarizing this wrap (0.6.5 session
+    journal): a `routine`-writer NOOP entry on the pseudo-page
+    `"_wrap-session"`, same page-less-journal-marker pattern as
+    `skills.metric-watch.lib`'s `"_metric-watch"` NOOP entries — this is a
+    journal notification, never a wiki page. `ren-wiki-lint` (a later
+    0.6.5 task) reads these lines to select which pages changed since its
+    last incremental run, via `pages_touched`."""
+    touched = sorted({e["proposal"]["page"] for e in _session_queue_entries(session)})
+    journal.append(
+        new_provenance(writer="routine", session=session, op="NOOP", page="_wrap-session"),
+        extra={
+            "wrap_summary": {
+                "session": session,
+                "project": project,
+                "pages_touched": touched,
+                "counts": {
+                    "applied": len(result.get("applied", [])),
+                    "held": len(result.get("held", [])),
+                    "refused": len(result.get("refused", [])),
+                },
+            }
+        },
+    )
 
 
 def _session_queue_entries(session: str) -> list[dict]:
