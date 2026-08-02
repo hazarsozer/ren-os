@@ -44,7 +44,7 @@ except ImportError:
     sys.exit(2)
 
 
-DEFAULT_PATHS = ["skills", "wiki/decisions", "hooks"]
+DEFAULT_PATHS = ["skills", "wiki/decisions", "hooks", "agents"]
 
 
 def extract_frontmatter(content: str) -> tuple[str, int] | None:
