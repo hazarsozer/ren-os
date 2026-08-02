@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.6.4] - <publish-date> — "the harness ships with the plugin"
+
+The execution discipline that lived only in the dev machine's local setup now
+ships in the box: every wake-up injects a hard-gate execution doctrine
+(brainstorm gate → atomic decomposition → TDD dispatch → review gate),
+delegating to superpowers process skills when that plugin is installed and
+falling back to a self-contained loop when it isn't.
+
+- **Execution doctrine card** — wake-up injects a ≤50-line, 400-token process
+  card as the first section; detect-and-delegate to superpowers.
+- **`ren-reviewer` shipped agent** — the review gate's enforcement arm:
+  verified findings with runnable repros, scope + TDD conformance, fixed
+  report format. First agent RenOS ships (`agents/`).
+- **Doctor: `execution_doctrine` check** — verifies card references resolve
+  and warns on manual CLAUDE.md stopgap residue from pre-0.6.4 installs.
+
 ## [0.6.3] - 2026-08-01 — "wake-up actually remembers"
 
 Eight fixes from the second dogfood pass (issues #21–#28): last-session

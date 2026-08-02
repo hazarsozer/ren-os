@@ -59,3 +59,22 @@ class TestDetection:
         (claude / "plugins" / "cache" / "weird" / "superpowers").write_text("not a dir")
         monkeypatch.setenv("REN_CLAUDE_DIR", str(claude))
         assert superpowers_installed() is False
+
+
+class TestReferencesResolve:
+    def test_every_agent_named_by_the_card_ships(self):
+        import re
+        for sp in (True, False):
+            card = render_doctrine_card(sp)
+            for agent_name in re.findall(r"`([a-z-]+)` agent", card):
+                assert (REPO / "agents" / f"{agent_name}.md").is_file(), agent_name
+
+    def test_superpowers_skills_named_by_card_use_known_ids(self):
+        card = render_doctrine_card(True)
+        known = {
+            "superpowers:brainstorming",
+            "superpowers:subagent-driven-development",
+            "superpowers:test-driven-development",
+        }
+        import re
+        assert set(re.findall(r"superpowers:[a-z-]+", card)) <= known
