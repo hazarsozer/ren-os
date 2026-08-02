@@ -83,6 +83,7 @@ End-of-session consolidation. The friend runs `/ren:wrap`; this skill writes the
 
 5. **Harvest instruction suggestions.** Call `skills.wrap.lib.harvest_suggestions(session)`. This runs the wrap-time suggestion producers (promotion candidates, doctrine shaping, wiki-health critical contradictions — the retrospective producer runs inside `/ren:retrospective`, not here) and records any new ones into `lib.suggestions`. Never raises; nothing in the end screen below depends on its return value — pending suggestions surface to the friend at the NEXT wake-up (`suggestion_line()`'s store pointer) or via `/ren:suggestions`, not on this screen.
 6. **Session journal.** `wrap_session` appends one append-only summary line to the journal (pages touched, counts) — automatic, no action needed. `ren-wiki-lint` uses these lines to lint incrementally.
+7. **Wiki lint (non-blocking).** Spawn the `ren-wiki-lint` agent in the background. Do not wait for it; its findings surface via the suggestions store.
 
 ## End screen
 
