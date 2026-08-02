@@ -357,7 +357,16 @@ def read_l1(project_dir: Path) -> str:
     if not text:
         return ""
 
-    prov = read_frontmatter_provenance(text)
+    # `read_frontmatter_provenance` calls `yaml.safe_load` unguarded, so a page
+    # with malformed frontmatter RAISES here — and this call sits outside any
+    # try in `compose_wake_up_context`, which must never raise (0.6.5 fix
+    # round 1). A page we cannot parse is not a verified model-class write:
+    # degrade to held-out, same as an unstamped one.
+    try:
+        prov = read_frontmatter_provenance(text)
+    except Exception:  # noqa: BLE001 - malformed frontmatter is untrusted, never fatal
+        logger.debug("could not read L1 provenance from %s", path, exc_info=True)
+        return ""
     if prov and prov.get("trust") == "model":
         return text
 

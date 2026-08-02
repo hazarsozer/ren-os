@@ -2174,3 +2174,21 @@ class TestOpenWorkSection:
         )
 
         assert "wire the loader" in payload
+
+
+def test_malformed_l1_frontmatter_never_raises_compose(project):
+    """0.6.5 fix round 1: `read_frontmatter_provenance` calls `yaml.safe_load`
+    unguarded, so an L1 page with malformed frontmatter used to propagate a
+    YAML error out of `compose_wake_up_context` — which must NEVER raise."""
+    _write(
+        project["project_dir"] / "l1" / "session-bad.md",
+        "---\nren_write_id: \"w-x\"\nbroken: {{unrenderd}}\n---\n\n# nope\n",
+    )
+    _write(project["project_dir"] / "map.md", "# demo-project — knowledge map\n## Knowledge\n- uses FastAPI\n")
+
+    payload = wakeup.compose_wake_up_context(
+        cwd=project["cwd"], wiki_root=wiki_root(), session="sess-bad"
+    )
+
+    assert wakeup.SECTION_L1 not in payload
+    assert "uses FastAPI" in payload

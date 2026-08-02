@@ -106,7 +106,7 @@ def test_reconcile_creates_page_with_correct_frontmatter(wiki):
 # --- (b) closure from session queue entries -----------------------------------
 
 
-def test_open_line_closes_when_session_wrote_its_ptr_target(wiki):
+def test_open_line_closes_from_explicit_completed_ptrs(wiki):
     _write_ledger(
         wiki,
         "## Open\n\n"
@@ -283,3 +283,98 @@ def test_wrap_session_signature_is_backward_compatible(wiki):
     """Existing callers pass no open_threads/completed_ptrs at all."""
     result = wrap_session("narrative", [], "sess-7", project=PROJECT)
     assert result["open_work"] == {"closed": [], "opened": [], "carried": 0}
+
+
+# --- closure-rule regressions (fix round 1) ----------------------------------
+
+
+def test_issue_pointer_closes_only_its_own_line(wiki):
+    """Regression: `_ptr_target("issue:#7")` is empty (the whole body is a
+    fragment), so target-equality matching used to close EVERY issue-pointer
+    line at once — the ledger reporting unfinished work as done."""
+    _write_ledger(
+        wiki,
+        "## Open\n\n"
+        f"- [ ] a — ptr:issue:#7 (opened {_days_ago(1)})\n"
+        f"- [ ] b — ptr:issue:#42 (opened {_days_ago(1)})\n"
+        f"- [ ] c — ptr:issue:#99 (opened {_days_ago(1)})\n\n"
+        "## Archive\n",
+    )
+
+    result = reconcile_open_work("sess-issue", PROJECT, completed_ptrs=["issue:#7"])
+
+    assert result["closed"] == ["issue:#7"]
+    text = _page(wiki).read_text(encoding="utf-8")
+    assert "- [x] a — ptr:issue:#7" in text
+    assert f"- [ ] b — ptr:issue:#42 (opened {_days_ago(1)})" in text
+    assert f"- [ ] c — ptr:issue:#99 (opened {_days_ago(1)})" in text
+
+
+def test_completed_task_does_not_close_sibling_task_in_same_plan(wiki):
+    """Regression: `plan:docs/p.md#task-3` and `#task-9` share a target file;
+    the fragment is load-bearing and must not be dropped when matching."""
+    _write_ledger(
+        wiki,
+        "## Open\n\n"
+        f"- [ ] three — ptr:plan:docs/p.md#task-3 (opened {_days_ago(1)})\n"
+        f"- [ ] nine — ptr:plan:docs/p.md#task-9 (opened {_days_ago(1)})\n"
+        f"- [ ] sec two — ptr:spec:x.md§2 (opened {_days_ago(1)})\n"
+        f"- [ ] sec five — ptr:spec:x.md§5 (opened {_days_ago(1)})\n\n"
+        "## Archive\n",
+    )
+
+    result = reconcile_open_work(
+        "sess-frag", PROJECT, completed_ptrs=["plan:docs/p.md#task-3", "spec:x.md§2"]
+    )
+
+    assert sorted(result["closed"]) == ["plan:docs/p.md#task-3", "spec:x.md§2"]
+    text = _page(wiki).read_text(encoding="utf-8")
+    assert f"- [ ] nine — ptr:plan:docs/p.md#task-9 (opened {_days_ago(1)})" in text
+    assert f"- [ ] sec five — ptr:spec:x.md§5 (opened {_days_ago(1)})" in text
+
+
+def test_page_write_never_closes_a_fragment_pointer(wiki):
+    """A file write is not evidence that a specific task INSIDE that file is
+    done — the `written_pages` channel only closes fragment-less pointers."""
+    _write_ledger(
+        wiki,
+        "## Open\n\n"
+        f"- [ ] whole page — ptr:spec:projects/{PROJECT}/knowledge/y.md (opened {_days_ago(1)})\n"
+        f"- [ ] one section — ptr:spec:projects/{PROJECT}/knowledge/y.md§3 (opened {_days_ago(1)})\n\n"
+        "## Archive\n",
+    )
+
+    from lib.memory.queue import Proposal, propose_and_apply
+
+    propose_and_apply(
+        Proposal(
+            op="ADD",
+            page=f"projects/{PROJECT}/knowledge/y.md",
+            content="---\ntitle: y\n---\n\nsome knowledge\n",
+            reason="test write",
+            producer="wrap",
+            writer="llm-auto",
+            session="sess-frag2",
+        )
+    )
+
+    result = reconcile_open_work("sess-frag2", PROJECT)
+
+    assert result["closed"] == [f"spec:projects/{PROJECT}/knowledge/y.md"]
+    text = _page(wiki).read_text(encoding="utf-8")
+    assert f"- [ ] one section — ptr:spec:projects/{PROJECT}/knowledge/y.md§3" in text
+
+
+def test_bare_target_in_completed_ptrs_still_closes_fragmentless_line(wiki):
+    """Callers may pass a bare path instead of a schemed pointer; that still
+    closes a fragment-less line."""
+    _write_ledger(
+        wiki,
+        "## Open\n\n"
+        f"- [ ] whole page — ptr:spec:docs/z.md (opened {_days_ago(1)})\n\n"
+        "## Archive\n",
+    )
+
+    result = reconcile_open_work("sess-bare", PROJECT, completed_ptrs=["docs/z.md"])
+
+    assert result["closed"] == ["spec:docs/z.md"]

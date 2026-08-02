@@ -248,15 +248,26 @@ _OPEN_HEADER = "## Open"
 _ARCHIVE_HEADER = "## Archive"
 
 
-def _ptr_target(ptr: str) -> str:
-    """The wiki/repo path a `ptr:` value points at, with its scheme prefix and
-    any `#task-N` / `§section` fragment stripped: `spec:projects/x/map.md§2`
-    → `projects/x/map.md`. Deterministic string work only — matching a
-    pointer to a session's writes is bookkeeping, never model judgment."""
+def _ptr_parts(ptr: str) -> tuple[str, bool]:
+    """`(target, has_fragment)` for a `ptr:` value: the path it points at with
+    the scheme prefix and any `#task-N` / `§section` fragment stripped, plus
+    whether a fragment was present. `spec:projects/x/map.md§2` →
+    `("projects/x/map.md", True)`; `issue:#7` → `("", True)`, because an issue
+    pointer is ALL fragment and has no file target at all.
+
+    Both halves are load-bearing (fix round 1). Matching on the target alone
+    collapsed `plan:docs/p.md#task-3` and `#task-9` into the same key, and
+    made every `issue:#N` line share the empty-string key — so closing one
+    item silently closed its siblings. Callers must therefore never match on
+    a target that is empty or that came from a fragment-bearing pointer."""
     body = ptr.split(":", 1)[1] if ":" in ptr else ptr
+    target = body
+    has_fragment = False
     for sep in ("#", "§"):
-        body = body.split(sep, 1)[0]
-    return body.strip()
+        if sep in target:
+            has_fragment = True
+            target = target.split(sep, 1)[0]
+    return target.strip(), has_fragment
 
 
 def _split_ledger_sections(body: str) -> tuple[list[str], list[str], list[str]]:
@@ -264,10 +275,11 @@ def _split_ledger_sections(body: str) -> tuple[list[str], list[str], list[str]]:
 
     EVERY line lands in exactly one bucket — the ledger's core invariant is
     that nothing is ever dropped, including lines this module cannot parse.
-    Section headers themselves are not carried (they're re-emitted by
-    `_render_ledger_body`); an unrecognized `##` header and the lines under
-    it stay in whichever bucket was current, so a hand-added section survives
-    a reconcile instead of vanishing."""
+    Only the two KNOWN headers (`## Open`, `## Archive`) are consumed here and
+    re-emitted by `_render_ledger_body`. Any other header line is not special
+    to this parser: it is appended verbatim like any other line, along with
+    everything under it, into whichever bucket was current — so a hand-added
+    section survives a reconcile heading and all."""
     preamble: list[str] = []
     open_lines: list[str] = []
     archive_lines: list[str] = []
@@ -342,10 +354,16 @@ def reconcile_open_work(
     (0.6.5, M3 pointer/cursor shape). Returns
     `{"closed": [ptr, ...], "opened": [ptr, ...], "carried": int}`.
 
-    Deterministic bookkeeping, NOT a judgment call. A line closes when
-    either (a) the caller passed its `ptr` in `completed_ptrs`, or (b) this
-    `session`'s queue entries wrote the page its `ptr` targets. Nothing here
-    asks a model anything.
+    Deterministic bookkeeping, NOT a judgment call. A line closes when either
+    (a) the caller passed its exact `ptr` in `completed_ptrs` — the only
+    channel that can close a FRAGMENT-bearing pointer (`issue:#7`,
+    `plan:p.md#task-3`) — or (b) the pointer has no fragment and its target
+    file is either a bare path in `completed_ptrs` or a page this `session`'s
+    queue entries actually wrote. Nothing here asks a model anything.
+
+    `carried` counts pre-existing OPEN lines left untouched this run: it
+    excludes lines closed on this run, already-closed lines, and lines the
+    regex could not parse (those are carried on disk, just not counted).
 
     THE INVARIANT: no line is ever deleted. Closed lines older than
     `OPEN_WORK_ARCHIVE_DAYS` MOVE to `## Archive` intact; a line the regex
@@ -371,11 +389,24 @@ def reconcile_open_work(
     _, existing_body = _split_overview_frontmatter(existing_text)
     preamble, open_lines, archive_lines = _split_ledger_sections(existing_body)
 
-    # Closure set: explicit pointers from the caller (matched as given AND by
-    # target, so `issue:#7` and a bare target both work) plus every page this
-    # session actually wrote.
-    explicit = {str(p) for p in (completed_ptrs or [])}
-    explicit |= {_ptr_target(str(p)) for p in (completed_ptrs or [])}
+    # Closure sets (fix round 1 — the fragment is load-bearing):
+    #   * `explicit_full` matches a ledger line's pointer STRING exactly. This
+    #     is the only channel that can close a fragment-bearing pointer
+    #     (`issue:#7`, `plan:p.md#task-3`), so completing one task can never
+    #     close its siblings in the same file.
+    #   * `explicit_targets` holds bare targets from FRAGMENT-LESS explicit
+    #     pointers only, so a caller may pass a plain path.
+    #   * `written_pages` (this session's actual queue writes) may only close
+    #     a fragment-less pointer: writing a file is not evidence that a
+    #     specific task inside it is done.
+    # An empty target is never a match key — it is the shape every `issue:#N`
+    # pointer degrades to.
+    explicit_full = {str(p) for p in (completed_ptrs or [])}
+    explicit_targets: set[str] = set()
+    for raw in completed_ptrs or []:
+        cand_target, cand_fragment = _ptr_parts(str(raw))
+        if cand_target and not cand_fragment:
+            explicit_targets.add(cand_target)
     try:
         written_pages = {e["proposal"]["page"] for e in _session_queue_entries(session)}
     except Exception:  # noqa: BLE001 - a broken queue must not break the ledger
@@ -399,8 +430,11 @@ def reconcile_open_work(
         open_ptrs.add(ptr)
         closed_on = match.group("closed")
         if closed_on is None:
-            target = _ptr_target(ptr)
-            if ptr in explicit or target in explicit or target in written_pages:
+            target, has_fragment = _ptr_parts(ptr)
+            fragmentless_hit = bool(target) and not has_fragment and (
+                target in explicit_targets or target in written_pages
+            )
+            if ptr in explicit_full or fragmentless_hit:
                 closed.append(ptr)
                 kept_open.append(
                     f"- [x] {match.group('desc')} — ptr:{ptr} "
