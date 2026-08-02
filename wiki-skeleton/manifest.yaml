@@ -102,6 +102,20 @@ profiles:
           taxonomy BEFORE any knowledge page, and future sessions read and
           follow it. Registered page type `project-schema`.
 
+      - path: "open-work.md"
+        template: "templates/projects/open-work.md.tmpl"
+        type: file
+        write_rule: copy_if_missing
+        min_framework_version: "0.6.5"
+        description: >
+          The project's open-thread ledger (0.6.5): one checkbox line per
+          open item with a `ptr:` target and an opened date. /ren:wrap
+          reconciles it at close-out (closing items whose pointer target was
+          written this session, appending newly-noticed threads); lines are
+          never deleted — closed lines older than 14 days move to
+          `## Archive`. Wake-up injects only the still-open lines.
+          Registered page type `open-work`.
+
       - path: "raw/"
         type: directory
         write_rule: create_if_missing

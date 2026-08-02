@@ -35,7 +35,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import asdict
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Callable
 
@@ -237,6 +237,219 @@ def _build_overview_content(existing_text: str, overview_body: str) -> str:
     return "\n".join(lines) + overview_body.strip() + "\n"
 
 
+# --- open-work ledger (0.6.5 Task 6) ----------------------------------------
+
+OPEN_WORK_LINE_RE = re.compile(
+    r"^- \[( |x)\] (?P<desc>.+?) — ptr:(?P<ptr>\S+) "
+    r"\(opened (?P<opened>\d{4}-\d{2}-\d{2})(?:, closed (?P<closed>\d{4}-\d{2}-\d{2}))?\)$"
+)
+OPEN_WORK_ARCHIVE_DAYS = 14
+_OPEN_HEADER = "## Open"
+_ARCHIVE_HEADER = "## Archive"
+
+
+def _ptr_target(ptr: str) -> str:
+    """The wiki/repo path a `ptr:` value points at, with its scheme prefix and
+    any `#task-N` / `§section` fragment stripped: `spec:projects/x/map.md§2`
+    → `projects/x/map.md`. Deterministic string work only — matching a
+    pointer to a session's writes is bookkeeping, never model judgment."""
+    body = ptr.split(":", 1)[1] if ":" in ptr else ptr
+    for sep in ("#", "§"):
+        body = body.split(sep, 1)[0]
+    return body.strip()
+
+
+def _split_ledger_sections(body: str) -> tuple[list[str], list[str], list[str]]:
+    """Split a ledger body into `(preamble, open_lines, archive_lines)`.
+
+    EVERY line lands in exactly one bucket — the ledger's core invariant is
+    that nothing is ever dropped, including lines this module cannot parse.
+    Section headers themselves are not carried (they're re-emitted by
+    `_render_ledger_body`); an unrecognized `##` header and the lines under
+    it stay in whichever bucket was current, so a hand-added section survives
+    a reconcile instead of vanishing."""
+    preamble: list[str] = []
+    open_lines: list[str] = []
+    archive_lines: list[str] = []
+    current = preamble
+    for line in body.splitlines():
+        stripped = line.strip()
+        if stripped == _OPEN_HEADER:
+            current = open_lines
+            continue
+        if stripped == _ARCHIVE_HEADER:
+            current = archive_lines
+            continue
+        current.append(line)
+    return preamble, open_lines, archive_lines
+
+
+def _render_ledger_body(
+    project: str, preamble: list[str], open_lines: list[str], archive_lines: list[str]
+) -> str:
+    """Re-emit the ledger body with both section headers always present."""
+    head = "\n".join(preamble).strip()
+    if not head:
+        head = (
+            f"# Open work — {project}\n\n"
+            "<!-- One line per item: `- [ ] <desc> — ptr:<target> (opened YYYY-MM-DD)`.\n"
+            "     Lines are NEVER deleted; closed lines older than "
+            f"{OPEN_WORK_ARCHIVE_DAYS} days move to the archive section below. -->"
+        )
+    parts = [
+        head,
+        "",
+        _OPEN_HEADER,
+        "",
+        "\n".join(line for line in open_lines).strip("\n"),
+        "",
+        _ARCHIVE_HEADER,
+        "",
+        "\n".join(line for line in archive_lines).strip("\n"),
+    ]
+    return "\n".join(parts).rstrip() + "\n"
+
+
+def _build_open_work_content(existing_text: str, project: str, body: str) -> str:
+    """Frontmatter + body for an open-work ADD/UPDATE, carrying cosmetic
+    fields forward exactly like `_build_overview_content` does."""
+    fm, _ = _split_overview_frontmatter(existing_text)
+    today = date.today().isoformat()
+    lines = [
+        "---",
+        f'title: "{_yaml_double_quoted(fm.get("title", "Open Work"))}"',
+        "type: open-work",
+        "schema_version: 1",
+        f"project: {project}",
+        f'framework_version: "{fm.get("framework_version") or ren_paths.framework_version()}"',
+        f"created: {fm.get('created', today)}",
+        f"updated: {today}",
+        "---",
+        "",
+    ]
+    return "\n".join(lines) + body
+
+
+def reconcile_open_work(
+    session: str,
+    project: str,
+    cwd: Path | None = None,
+    *,
+    open_threads: list | None = None,
+    completed_ptrs: list | None = None,
+) -> dict:
+    """Reconcile `projects/<project>/open-work.md` — the open-thread ledger
+    (0.6.5, M3 pointer/cursor shape). Returns
+    `{"closed": [ptr, ...], "opened": [ptr, ...], "carried": int}`.
+
+    Deterministic bookkeeping, NOT a judgment call. A line closes when
+    either (a) the caller passed its `ptr` in `completed_ptrs`, or (b) this
+    `session`'s queue entries wrote the page its `ptr` targets. Nothing here
+    asks a model anything.
+
+    THE INVARIANT: no line is ever deleted. Closed lines older than
+    `OPEN_WORK_ARCHIVE_DAYS` MOVE to `## Archive` intact; a line the regex
+    cannot parse is carried through verbatim in whichever section it was in.
+    A ledger the reconciler silently eats is worse than no ledger.
+
+    `cwd` is accepted for signature symmetry with the rest of wrap's write
+    path and is unused: the page path is derived from `project` alone.
+    """
+    del cwd  # unused — see docstring
+
+    page = f"projects/{project}/open-work.md"
+    path = ren_paths.safe_join(ren_paths.wiki_root(), page)
+
+    existing_text = ""
+    exists = path.is_file()
+    if exists:
+        try:
+            existing_text = path.read_text(encoding="utf-8")
+        except OSError:
+            existing_text = ""
+
+    _, existing_body = _split_overview_frontmatter(existing_text)
+    preamble, open_lines, archive_lines = _split_ledger_sections(existing_body)
+
+    # Closure set: explicit pointers from the caller (matched as given AND by
+    # target, so `issue:#7` and a bare target both work) plus every page this
+    # session actually wrote.
+    explicit = {str(p) for p in (completed_ptrs or [])}
+    explicit |= {_ptr_target(str(p)) for p in (completed_ptrs or [])}
+    try:
+        written_pages = {e["proposal"]["page"] for e in _session_queue_entries(session)}
+    except Exception:  # noqa: BLE001 - a broken queue must not break the ledger
+        written_pages = set()
+
+    today = date.today().isoformat()
+    cutoff = date.today() - timedelta(days=OPEN_WORK_ARCHIVE_DAYS)
+
+    closed: list[str] = []
+    carried = 0
+    kept_open: list[str] = []
+    open_ptrs: set[str] = set()
+
+    for line in open_lines:
+        match = OPEN_WORK_LINE_RE.match(line.strip())
+        if match is None:
+            # Unparseable (or blank, or a human's freeform note) — verbatim.
+            kept_open.append(line)
+            continue
+        ptr = match.group("ptr")
+        open_ptrs.add(ptr)
+        closed_on = match.group("closed")
+        if closed_on is None:
+            target = _ptr_target(ptr)
+            if ptr in explicit or target in explicit or target in written_pages:
+                closed.append(ptr)
+                kept_open.append(
+                    f"- [x] {match.group('desc')} — ptr:{ptr} "
+                    f"(opened {match.group('opened')}, closed {today})"
+                )
+                continue
+            carried += 1
+            kept_open.append(line)
+            continue
+        # Already closed: archive it once it ages past the window — MOVED,
+        # never dropped.
+        try:
+            aged_out = date.fromisoformat(closed_on) < cutoff
+        except ValueError:  # pragma: no cover - regex already pins the shape
+            aged_out = False
+        if aged_out:
+            archive_lines.append(line)
+        else:
+            kept_open.append(line)
+
+    opened: list[str] = []
+    for thread in open_threads or []:
+        if not isinstance(thread, dict):
+            continue
+        desc = str(thread.get("desc", "")).strip()
+        ptr = str(thread.get("ptr", "")).strip()
+        if not desc or not ptr or ptr in open_ptrs:
+            continue
+        open_ptrs.add(ptr)
+        opened.append(ptr)
+        kept_open.append(f"- [ ] {desc} — ptr:{ptr} (opened {today})")
+
+    content = _build_open_work_content(
+        existing_text, project, _render_ledger_body(project, preamble, kept_open, archive_lines)
+    )
+    propose_and_apply(
+        Proposal(
+            op="UPDATE" if exists else "ADD",
+            page=page,
+            content=content,
+            reason="open-work reconcile",
+            producer="wrap",
+            writer="llm-auto",
+            session=session,
+        )
+    )
+    return {"closed": closed, "opened": opened, "carried": carried}
+
+
 def maintain_overview(
     project: str,
     session: str,
@@ -339,6 +552,9 @@ def wrap_session(
     llm_call: Callable[[str], str] | None = None,
     project: str | None = None,
     cwd: Path | None = None,
+    *,
+    open_threads: list | None = None,
+    completed_ptrs: list | None = None,
 ) -> dict:
     """Run the wrap write path for one session close-out.
 
@@ -392,6 +608,12 @@ def wrap_session(
         `project` is in scope for this wrap, or the LLM call/output failed
         and `maintain_overview` fail-closed (never silent — always one of
         these four values, never omitted).
+      - "open_work": `{"closed": [...], "opened": [...], "carried": int}` —
+        `reconcile_open_work`'s (0.6.5 Task 6) bookkeeping over
+        `projects/<project>/open-work.md`, driven by the keyword-only
+        `open_threads` / `completed_ptrs` the live session passes and by this
+        session's own queue writes. The zero-value dict when no project is in
+        scope or the reconcile failed (isolated like the sweeps above).
 
     `project` (codex D4): when the wrap is scoped to a project, the L1 page
     is written to `projects/<project>/l1/session-<id>.md`, the EXACT path
@@ -545,12 +767,27 @@ def wrap_session(
         "decayed": decayed,
         "consolidated": consolidated,
         "overview": overview_status,
+        "open_work": {"closed": [], "opened": [], "carried": 0},
     }
 
     try:
         _append_session_summary(session, project, result)
     except Exception:  # noqa: BLE001 - the session journal line must never break wrap close-out
         pass
+
+    # 0.6.5 Task 6: reconcile the project's open-work ledger. Isolated like
+    # every other close-out sub-step — a ledger failure must never break
+    # wrap; the result stays the zero-value dict above.
+    if project:
+        try:
+            result["open_work"] = reconcile_open_work(
+                session,
+                project,
+                open_threads=open_threads,
+                completed_ptrs=completed_ptrs,
+            )
+        except Exception:  # noqa: BLE001 - the ledger must never break wrap close-out
+            pass
 
     return result
 

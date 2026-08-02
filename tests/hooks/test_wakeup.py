@@ -2023,3 +2023,154 @@ class TestUnlintedNudge:
             stripped = line.strip()
             assert not stripped.startswith(("import skills", "from skills")), line
         assert 'import_module("skills.wiki-health' not in source
+
+
+class TestOpenWorkSection:
+    """0.6.5 Task 6: the open-work ledger's wake-up section."""
+
+    def _ledger(self, body: str, *, stamped: bool = True) -> str:
+        fm = (
+            "---\n"
+            'title: "Open work"\n'
+            "type: open-work\n"
+            "schema_version: 1\n"
+            "project: demo-project\n"
+        )
+        if stamped:
+            fm += 'ren_write_id: "w-test"\nren_writer: "llm-auto"\nren_trust: "model"\n'
+        return fm + "---\n\n" + body
+
+    def _open_body(self) -> str:
+        return (
+            "# Open work\n\n"
+            "## Open\n\n"
+            "- [ ] wire the loader — ptr:issue:#42 (opened 2026-08-01)\n"
+            "- [x] done thing — ptr:issue:#7 (opened 2026-07-30, closed 2026-08-01)\n\n"
+            "## Archive\n\n"
+            "- [x] ancient thing — ptr:issue:#1 (opened 2026-01-01, closed 2026-01-05)\n"
+        )
+
+    def test_open_lines_surface_closed_and_archived_do_not(self, project):
+        _write(project["project_dir"] / "l1" / "session-001.md", _model_stamped("L1 content"))
+        _write(project["project_dir"] / "open-work.md", self._ledger(self._open_body()))
+
+        payload = wakeup.compose_wake_up_context(
+            cwd=project["cwd"], wiki_root=wiki_root(), session="sess-ow"
+        )
+
+        assert wakeup.SECTION_OPENWORK in payload
+        assert "wire the loader" in payload
+        assert "done thing" not in payload
+        assert "ancient thing" not in payload
+
+    def test_section_sits_between_l1_and_l2(self, project):
+        _write(project["project_dir"] / "l1" / "session-001.md", _model_stamped("L1 content"))
+        _write(project["project_dir"] / "map.md", "# demo-project — knowledge map\n## Knowledge\n- uses FastAPI\n")
+        _write(project["project_dir"] / "open-work.md", self._ledger(self._open_body()))
+
+        payload = wakeup.compose_wake_up_context(
+            cwd=project["cwd"], wiki_root=wiki_root(), session="sess-ow"
+        )
+
+        assert payload.index(wakeup.SECTION_L1) < payload.index(wakeup.SECTION_OPENWORK)
+        assert payload.index(wakeup.SECTION_OPENWORK) < payload.index(wakeup.SECTION_L2)
+
+    def test_absent_page_omits_header(self, project):
+        _write(project["project_dir"] / "l1" / "session-001.md", _model_stamped("L1 content"))
+
+        payload = wakeup.compose_wake_up_context(
+            cwd=project["cwd"], wiki_root=wiki_root(), session="sess-ow"
+        )
+
+        assert wakeup.SECTION_OPENWORK not in payload
+
+    def test_no_open_lines_omits_header(self, project):
+        _write(project["project_dir"] / "l1" / "session-001.md", _model_stamped("L1 content"))
+        _write(
+            project["project_dir"] / "open-work.md",
+            self._ledger("# Open work\n\n## Open\n\n## Archive\n"),
+        )
+
+        payload = wakeup.compose_wake_up_context(
+            cwd=project["cwd"], wiki_root=wiki_root(), session="sess-ow"
+        )
+
+        assert wakeup.SECTION_OPENWORK not in payload
+
+    def test_foreign_stamped_ledger_is_held_out(self, project):
+        _write(project["project_dir"] / "l1" / "session-001.md", _model_stamped("L1 content"))
+        foreign = (
+            '---\ntype: open-work\nproject: demo-project\nren_write_id: "w-f"\n'
+            'ren_writer: "llm-auto"\nren_trust: "foreign"\n---\n\n'
+            "## Open\n\n- [ ] hostile item — ptr:issue:#666 (opened 2026-08-01)\n"
+        )
+        _write(project["project_dir"] / "open-work.md", foreign)
+
+        payload = wakeup.compose_wake_up_context(
+            cwd=project["cwd"], wiki_root=wiki_root(), session="sess-ow"
+        )
+
+        assert "hostile item" not in payload
+
+    def test_template_stamped_page_surfaces(self, project):
+        """A bootstrap-written ledger carries no `ren_trust` yet — the page
+        type stamp is what makes it trustworthy (same shape as read_l1's
+        model-stamp check, widened for the template case)."""
+        _write(project["project_dir"] / "l1" / "session-001.md", _model_stamped("L1 content"))
+        _write(project["project_dir"] / "open-work.md", self._ledger(self._open_body(), stamped=False))
+
+        payload = wakeup.compose_wake_up_context(
+            cwd=project["cwd"], wiki_root=wiki_root(), session="sess-ow"
+        )
+
+        assert "wire the loader" in payload
+
+    def test_section_respects_budget_with_pointer(self, project):
+        _write(project["project_dir"] / "l1" / "session-001.md", _model_stamped("L1 content"))
+        many = "".join(
+            f"- [ ] item number {i} with a fairly long description to burn budget "
+            f"— ptr:issue:#{i} (opened 2026-08-01)\n"
+            for i in range(400)
+        )
+        _write(
+            project["project_dir"] / "open-work.md",
+            self._ledger(f"## Open\n\n{many}\n## Archive\n"),
+        )
+
+        payload = wakeup.compose_wake_up_context(
+            cwd=project["cwd"], wiki_root=wiki_root(), session="sess-ow", max_tokens=100_000
+        )
+
+        start = payload.index(wakeup.SECTION_OPENWORK)
+        end = payload.find("\n\n## ", start + 1)
+        segment = payload[start:end] if end != -1 else payload[start:]
+        assert len(segment) <= wakeup.OPENWORK_BUDGET * wakeup.CHARS_PER_TOKEN + 300
+        assert "projects/demo-project/open-work.md" in segment
+
+    def test_ledger_path_excluded_from_extras(self, project):
+        _write(project["project_dir"] / "l1" / "session-001.md", _model_stamped("L1 content"))
+        _write(project["project_dir"] / "open-work.md", self._ledger(self._open_body()))
+
+        payload = wakeup.compose_wake_up_context(
+            cwd=project["cwd"], wiki_root=wiki_root(), session="sess-ow"
+        )
+
+        assert "#### projects/demo-project/open-work.md" not in payload
+
+    def test_user_stamped_ledger_surfaces(self, project):
+        """The skeleton loader stamps founding pages `writer="human"` →
+        `ren_trust: "user"`; a friend's own hand-edited lines land the same
+        way. This page is meant to be human-writable, so those surface."""
+        _write(project["project_dir"] / "l1" / "session-001.md", _model_stamped("L1 content"))
+        page = self._ledger(self._open_body(), stamped=False).replace(
+            "---\n\n",
+            'ren_write_id: "w-h"\nren_writer: "human"\nren_trust: "user"\n---\n\n',
+            1,
+        )
+        _write(project["project_dir"] / "open-work.md", page)
+
+        payload = wakeup.compose_wake_up_context(
+            cwd=project["cwd"], wiki_root=wiki_root(), session="sess-ow"
+        )
+
+        assert "wire the loader" in payload

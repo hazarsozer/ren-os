@@ -141,6 +141,7 @@ OVERVIEW_BUDGET: Final[int] = 600
 L1_BUDGET: Final[int] = 1_200
 L2_BUDGET: Final[int] = 1_200
 ROUTINE_SPEC_BUDGET: Final[int] = 400
+OPENWORK_BUDGET: Final[int] = 400
 DOCTRINE_BUDGET: Final[int] = 400
 EXTRAS_BUDGET: Final[int] = 1_600   # ranked additional pages, split across however many fit
 EXTRA_PAGE_BUDGET: Final[int] = 400  # per-page cap within the extras budget
@@ -148,6 +149,7 @@ DEFAULT_EXTRAS_COUNT: Final[int] = 3
 
 IDENTITY_FILENAME: Final[str] = "identity.md"
 OVERVIEW_FILENAME: Final[str] = "overview.md"
+OPENWORK_FILENAME: Final[str] = "open-work.md"
 
 # `/ren:interview`'s `render_identity` (skills/interview/lib) ALWAYS writes
 # this exact set of list fields to identity.md's frontmatter, non-empty only
@@ -178,6 +180,7 @@ _IDENTITY_ITALIC_LINE_RE = re.compile(r"^_.+_$")
 SECTION_IDENTITY: Final[str] = "## Who am I working with"
 SECTION_OVERVIEW: Final[str] = "## What is this project"
 SECTION_L1: Final[str] = "## What happened last session"
+SECTION_OPENWORK: Final[str] = "## Open work"
 SECTION_L2: Final[str] = "## Where to find project knowledge"
 SECTION_ROUTINES: Final[str] = "## Active routines"
 SECTION_PENDING: Final[str] = "## Waiting on you"
@@ -361,6 +364,51 @@ def read_l1(project_dir: Path) -> str:
     # Not a verified model-class RenOS write — held out, whether foreign-
     # stamped or entirely unstamped. Never injected raw on path shape alone.
     return ""
+
+
+def read_open_work(project_dir: Path) -> str:
+    """Return the still-OPEN lines of the project's open-work ledger (0.6.5
+    Task 6), or "" when the page is absent, untrusted, or has no open lines.
+
+    Only lines under `## Open` that are still unchecked (`- [ ]`) surface:
+    checked lines are done, and `## Archive` holds aged-out closed lines —
+    neither is what the session needs at wake-up.
+
+    Trust check follows `read_l1`'s pattern: the page's OWN stamp decides,
+    path shape is never trusted. `ren_trust: "model"` is a genuine RenOS
+    write (what `reconcile_open_work` produces) and surfaces; `"user"` is the
+    template-stamped bootstrap page (`lib.skeleton` stamps skeleton writes
+    `writer="human"`) or a friend's own hand-edit, and surfaces too — this
+    ledger is explicitly a page humans write lines into, unlike L1. Anything
+    else — `"foreign"` above all — is held out, as is an entirely unstamped
+    file unless its frontmatter carries the template's own `type: open-work`.
+    """
+    text = _read_text_safe(project_dir / OPENWORK_FILENAME)
+    if not text:
+        return ""
+
+    try:
+        prov = read_frontmatter_provenance(text) or {}
+    except Exception:  # noqa: BLE001 - malformed frontmatter is untrusted, never fatal
+        logger.debug("could not read open-work provenance", exc_info=True)
+        return ""
+    trust = prov.get("trust")
+    if trust not in ("model", "user"):
+        if trust is not None:
+            return ""
+        if _parse_frontmatter_dict(text).get("type") != "open-work":
+            return ""
+
+    open_lines: list[str] = []
+    in_open = False
+    for line in _strip_frontmatter(text).splitlines():
+        stripped = line.strip()
+        if stripped.startswith("## "):
+            in_open = stripped == "## Open"
+            continue
+        if in_open and stripped.startswith("- [ ] "):
+            open_lines.append(stripped)
+    return "\n".join(open_lines)
 
 
 def read_l2_map(project_dir: Path) -> str:
@@ -1111,8 +1159,10 @@ def compose_wake_up_context(
     if project_dir is not None:
         overview_rel = f"projects/{project}/{OVERVIEW_FILENAME}"
         l2_rel = f"projects/{project}/{L2_MAP_FILENAME}"
+        openwork_rel = f"projects/{project}/{OPENWORK_FILENAME}"
         dedicated_paths.add(overview_rel)
         dedicated_paths.add(l2_rel)
+        dedicated_paths.add(openwork_rel)
 
         overview_text = read_overview(project_dir)
         if overview_text:
@@ -1161,6 +1211,19 @@ def compose_wake_up_context(
         l1_path = _most_recent_l1_path(l1_source_dir / L1_DIRNAME)
         l1_rel = l1_path.relative_to(wiki_root).as_posix() if l1_path else None
         sections.append(_inject_section(l1_text, L1_BUDGET, l1_rel, chars_per_token))
+
+    # Open work sits between "what happened last session" and "where to find
+    # knowledge": it is the other half of continuity — what is still open.
+    # Real content, so it is appended BEFORE the emptiness verdict below
+    # (unlike the nudge/doctrine card, which ride real content).
+    if project_dir is not None:
+        open_work_text = read_open_work(project_dir)
+        if open_work_text:
+            sections.append(SECTION_OPENWORK)
+            sections.append(
+                _inject_section(open_work_text, OPENWORK_BUDGET, openwork_rel, chars_per_token)
+            )
+            surfaced_pages.append(openwork_rel)
 
     if project_dir is not None:
         l2_text = read_l2_map(project_dir)
@@ -1283,6 +1346,7 @@ __all__ = [
     "L1_BUDGET",
     "L2_BUDGET",
     "ROUTINE_SPEC_BUDGET",
+    "OPENWORK_BUDGET",
     "DOCTRINE_BUDGET",
     "EXTRAS_BUDGET",
     "EXTRA_PAGE_BUDGET",
@@ -1291,6 +1355,7 @@ __all__ = [
     "SECTION_IDENTITY",
     "SECTION_OVERVIEW",
     "SECTION_L1",
+    "SECTION_OPENWORK",
     "SECTION_L2",
     "SECTION_ROUTINES",
     "SECTION_PENDING",

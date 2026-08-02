@@ -84,6 +84,10 @@ End-of-session consolidation. The friend runs `/ren:wrap`; this skill writes the
 5. **Harvest instruction suggestions.** Call `skills.wrap.lib.harvest_suggestions(session)`. This runs the wrap-time suggestion producers (promotion candidates, doctrine shaping, wiki-health critical contradictions — the retrospective producer runs inside `/ren:retrospective`, not here) and records any new ones into `lib.suggestions`. Never raises; nothing in the end screen below depends on its return value — pending suggestions surface to the friend at the NEXT wake-up (`suggestion_line()`'s store pointer) or via `/ren:suggestions`, not on this screen.
 6. **Session journal.** `wrap_session` appends one append-only summary line to the journal (pages touched, counts) — automatic, no action needed. `ren-wiki-lint` uses these lines to lint incrementally.
 7. **Wiki lint (non-blocking).** Spawn the `ren-wiki-lint` agent in the background. Do not wait for it; its findings surface via the suggestions store.
+8. **Open-work ledger.** BEFORE calling `wrap_session` (step 3), gather two lists from this session and pass them through as keyword arguments:
+   - `open_threads=[{"desc": "<one line>", "ptr": "<pointer>"}, ...]` — threads this session OPENED and left open. A pointer is one of `plan:<path>#task-N`, `issue:#N`, `spec:<path>§<section>`, `repo:<ref>`. Only real, still-open work — an item you cannot point at is not a thread, it's a feeling.
+   - `completed_ptrs=["<pointer>", ...]` — pointers this session finished. Only what you actually know closed; `wrap_session` ALSO closes any ledger line whose pointer target is a page this session wrote, so you never need to guess.
+   `wrap_session` then reconciles `projects/<slug>/open-work.md` (`result["open_work"]` = `{"closed", "opened", "carried"}`). It never deletes a line — closed lines age out into an archive section — and a failure there never breaks the wrap.
 
 ## End screen
 
