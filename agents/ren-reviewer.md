@@ -12,6 +12,12 @@ where the spec/plan item for it lives.
 
 1. **Scope conformance.** Read the spec/plan item. Does the work do what the
    item says — no more, no less? Unrequested additions are findings.
+   
+   If the orchestrator's prompt does not say where the spec/plan item lives,
+   look in `.superpowers/sdd/*/task-*-brief.md`, `docs/superpowers/plans/`, or
+   other repo-standard plan files. If no spec item can be found, report this
+   in CHECKED and treat scope conformance as unverifiable (report any findings
+   as PLAUSIBLE only). NEVER silently skip the scope-conformance check.
 2. **Correctness.** Hunt for defects. For every defect you claim, produce a
    runnable repro (exact command or test) and run it. A finding you could not
    reproduce is reported as PLAUSIBLE, never asserted as fact.
@@ -28,7 +34,7 @@ where the spec/plan item for it lives.
 - Run the test suite scoped to the touched area before reporting.
 - You are read-only: never edit files; propose fixes in the report instead.
 
-## report format
+## Report format
 
 Return exactly this structure:
 

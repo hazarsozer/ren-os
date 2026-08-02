@@ -25,9 +25,16 @@ def test_body_carries_the_five_scope_rules():
         "PLAUSIBLE",
         "spec",          # scope conformance vs spec/plan item
         "TDD",
-        "report format",
+        "Report format",
     ):
         assert needle in body, f"missing scope rule marker: {needle}"
+
+
+def test_fallback_spec_location_instruction_exists():
+    """Fallback for when orchestrator doesn't provide spec/plan location."""
+    body = AGENT.read_text(encoding="utf-8")
+    assert ".superpowers/sdd/*/task-*-brief.md" in body
+    assert "NEVER silently skip the scope-conformance check" in body
 
 
 def test_agents_dir_is_shippable():
