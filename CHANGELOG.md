@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.6.5] - <publish-date> — "the OS knows what's open and what's checked"
+## [0.6.5] - 2026-08-02 — "the OS knows what's open and what's checked"
 
 Two more shipped agents (`ren-wiki-lint`, `ren-planner`) join `ren-reviewer`,
 plus the substrate that makes them useful: an append-only session journal to
