@@ -9,6 +9,7 @@ sys.path.insert(0, str(REPO / "hooks" / "wake-up"))
 from wakeup.doctrine_card import (  # noqa: E402
     SECTION_DOCTRINE,
     render_doctrine_card,
+    render_doctrine_card_compact,
     superpowers_installed,
 )
 
@@ -45,10 +46,13 @@ class TestCardContent:
             assert "`ren-planner` agent" in card
 
     def test_review_gate_requires_open_work_closure(self):
+        """Pin the actual phrase: a loose `"closed" in card` would match any
+        stray occurrence, and the closure rule must not read as an either/or
+        (a model can satisfy "closed OR added" by adding a line and stopping)."""
         for sp in (True, False):
             card = render_doctrine_card(sp)
-            assert "open-work" in card
-            assert "closed" in card
+            assert "open-work ledger is closed" in card
+            assert "if it has no line, add one before you claim done" in card
 
     def test_line_cap_50(self):
         for sp in (True, False):
@@ -150,6 +154,31 @@ class TestBudgetAndStructure:
             # The table header for Red flags section (stable structural marker).
             idx_table_header = card.index("| Thought | Reality |")
             assert idx_table_header > idx_review, "Table header appears before review gate"
+
+    def test_compact_card_survives_band_low_budget_intact(self):
+        """The head-preserving fallback must fit the band-low budget whole
+        (500 tokens x 1.5 chars/token), header and all four gate leads included
+        — otherwise it would itself get tail-cut and reintroduce the bug."""
+        import sys
+        sys.path.insert(0, str(REPO / "hooks" / "wake-up"))
+        from wakeup import DOCTRINE_BUDGET, truncate_text_to_tokens  # noqa: E402
+
+        compact = render_doctrine_card_compact()
+        assert truncate_text_to_tokens(compact, DOCTRINE_BUDGET, 1.5) == compact
+        assert compact.startswith(SECTION_DOCTRINE)
+        for lead in (
+            "1. **Brainstorm gate.**",
+            "2. **Decompose.**",
+            "3. **Dispatch.**",
+            "4. **Review gate.**",
+        ):
+            assert lead in compact, lead
+        assert "superpowers:" not in compact  # variant-agnostic, so no skill ids
+
+    def test_compact_card_agents_ship(self):
+        import re
+        for agent_name in re.findall(r"`([a-z-]+)` agent", render_doctrine_card_compact()):
+            assert (REPO / "agents" / f"{agent_name}.md").is_file(), agent_name
 
     def test_card_keeps_margin_under_raised_budget(self):
         """Both variants must stay >=150 chars clear of the 500x4.0 char cap, so

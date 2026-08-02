@@ -114,7 +114,12 @@ from typing import Final
 
 import yaml
 
-from .doctrine_card import SECTION_DOCTRINE, render_doctrine_card, superpowers_installed
+from .doctrine_card import (
+    SECTION_DOCTRINE,
+    render_doctrine_card,
+    render_doctrine_card_compact,
+    superpowers_installed,
+)
 from lib.instrument import collect, miss_log
 from lib.instrument.calibration import PLAUSIBLE_RATIO_BAND
 from lib.memory import archive, queue, quarantine
@@ -1326,10 +1331,19 @@ def compose_wake_up_context(
 
     # Doctrine rides real content; empty compose stays "" (loud notice) —
     # the emptiness decision above is made before the card is ever added.
-    card = render_doctrine_card(superpowers_installed())
+    full_card = render_doctrine_card(superpowers_installed())
     # Pointer (not None): if a band-low calibration ratio forces a cut, the
     # loss must be VISIBLE rather than silently eating doctrine text.
-    card = _inject_section(card, DOCTRINE_BUDGET, DOCTRINE_POINTER, chars_per_token) or card
+    card = _inject_section(full_card, DOCTRINE_BUDGET, DOCTRINE_POINTER, chars_per_token)
+    if card != full_card:
+        # The full card doesn't fit. `truncate_text_to_tokens` keeps the TAIL,
+        # which would elide the header and gates 1-3 — the card's whole point.
+        # Swap in the head-preserving compact variant instead (card-local fix;
+        # the shared truncator is untouched because it has other callers).
+        compact = render_doctrine_card_compact()
+        card = truncate_text_to_tokens(compact, DOCTRINE_BUDGET, chars_per_token)
+        card = f"{card}\n*(continues in `{DOCTRINE_POINTER}`)*"
+    card = card or full_card
     sections.insert(1, card)
 
     composed = "\n\n".join(s for s in sections if s.strip())

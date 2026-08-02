@@ -988,6 +988,10 @@ class TestStructuredSections:
         start = payload.index(wakeup.SECTION_DOCTRINE)
         end = payload.find("\n\n## ", start + 1)
         segment = payload[start:end] if end != -1 else payload[start:]
+        # Loose sanity bound on the COMPOSED segment (which may carry a pointer
+        # line the raw card does not). The authoritative card-size guard is
+        # `test_doctrine_card.py::test_card_keeps_margin_under_raised_budget`,
+        # which enforces the tighter >=150-char margin on the card itself.
         assert len(segment) <= wakeup.DOCTRINE_BUDGET * wakeup.CHARS_PER_TOKEN + 200
 
     def test_card_truncation_is_visible_at_band_low(self, project, monkeypatch):
@@ -1009,6 +1013,31 @@ class TestStructuredSections:
         assert "*(continues in" in payload
         # ...and it is the DOCTRINE card's marker, not some other section's.
         assert wakeup.DOCTRINE_POINTER in payload
+
+    def test_band_low_card_keeps_header_and_all_four_gates(self, project, monkeypatch):
+        """Visible truncation is not enough: the surviving card must still carry
+        the gates it exists to deliver. The generic truncator keeps the TAIL,
+        which elides the header and gates 1-3 — so at band-low ratios the
+        composer swaps in the head-preserving compact card instead."""
+        _write(project["project_dir"] / "l1" / "session-001.md", _model_stamped("L1 content"))
+        monkeypatch.setattr(wakeup, "_calibrated_chars_per_token", lambda: 1.5)
+
+        payload = wakeup.compose_wake_up_context(cwd=project["cwd"], wiki_root=wiki_root(), session="sess-1")
+
+        start = payload.index(wakeup.SECTION_DOCTRINE)
+        end = payload.find("\n\n## ", start + 1)
+        segment = payload[start:end] if end != -1 else payload[start:]
+
+        assert segment.startswith(wakeup.SECTION_DOCTRINE)
+        for lead in (
+            "1. **Brainstorm gate.**",
+            "2. **Decompose.**",
+            "3. **Dispatch.**",
+            "4. **Review gate.**",
+        ):
+            assert lead in segment, lead
+        assert wakeup.DOCTRINE_POINTER in segment
+        assert "[...truncated" not in segment
 
     def test_absent_sources_omit_headers(self, project):
         _write(project["project_dir"] / "l1" / "session-001.md", _model_stamped("L1 content"))
