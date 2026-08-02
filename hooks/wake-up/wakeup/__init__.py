@@ -142,7 +142,10 @@ L1_BUDGET: Final[int] = 1_200
 L2_BUDGET: Final[int] = 1_200
 ROUTINE_SPEC_BUDGET: Final[int] = 400
 OPENWORK_BUDGET: Final[int] = 400
-DOCTRINE_BUDGET: Final[int] = 400
+DOCTRINE_BUDGET: Final[int] = 500
+# The doctrine card ships in the plugin rather than living in the wiki, so its
+# `_inject_section` pointer names the source in prose instead of a page rel.
+DOCTRINE_POINTER: Final[str] = "the full doctrine card, which ships in the plugin"
 EXTRAS_BUDGET: Final[int] = 1_600   # ranked additional pages, split across however many fit
 EXTRA_PAGE_BUDGET: Final[int] = 400  # per-page cap within the extras budget
 DEFAULT_EXTRAS_COUNT: Final[int] = 3
@@ -1324,7 +1327,9 @@ def compose_wake_up_context(
     # Doctrine rides real content; empty compose stays "" (loud notice) —
     # the emptiness decision above is made before the card is ever added.
     card = render_doctrine_card(superpowers_installed())
-    card = _inject_section(card, DOCTRINE_BUDGET, None, chars_per_token) or card
+    # Pointer (not None): if a band-low calibration ratio forces a cut, the
+    # loss must be VISIBLE rather than silently eating doctrine text.
+    card = _inject_section(card, DOCTRINE_BUDGET, DOCTRINE_POINTER, chars_per_token) or card
     sections.insert(1, card)
 
     composed = "\n\n".join(s for s in sections if s.strip())
@@ -1357,6 +1362,7 @@ __all__ = [
     "ROUTINE_SPEC_BUDGET",
     "OPENWORK_BUDGET",
     "DOCTRINE_BUDGET",
+    "DOCTRINE_POINTER",
     "EXTRAS_BUDGET",
     "EXTRA_PAGE_BUDGET",
     "SALIENCE_WINDOW_DAYS",

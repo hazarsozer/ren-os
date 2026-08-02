@@ -990,6 +990,26 @@ class TestStructuredSections:
         segment = payload[start:end] if end != -1 else payload[start:]
         assert len(segment) <= wakeup.DOCTRINE_BUDGET * wakeup.CHARS_PER_TOKEN + 200
 
+    def test_card_truncation_is_visible_at_band_low(self, project, monkeypatch):
+        """At the band-low calibration ratio the card may not fit its budget.
+        If it truncates, the cut MUST be visible: the payload carries a
+        continuation marker instead of silently losing doctrine text (0.6.4
+        regression — truncation was silent at 1.5 chars/token)."""
+        from wakeup.doctrine_card import render_doctrine_card
+
+        _write(project["project_dir"] / "l1" / "session-001.md", _model_stamped("L1 content"))
+        monkeypatch.setattr(wakeup, "_calibrated_chars_per_token", lambda: 1.5)
+
+        card = render_doctrine_card(wakeup.superpowers_installed())
+        assert wakeup.truncate_text_to_tokens(card, wakeup.DOCTRINE_BUDGET, 1.5) != card, (
+            "precondition: the card is expected to exceed its budget at 1.5 chars/token"
+        )
+
+        payload = wakeup.compose_wake_up_context(cwd=project["cwd"], wiki_root=wiki_root(), session="sess-1")
+        assert "*(continues in" in payload
+        # ...and it is the DOCTRINE card's marker, not some other section's.
+        assert wakeup.DOCTRINE_POINTER in payload
+
     def test_absent_sources_omit_headers(self, project):
         _write(project["project_dir"] / "l1" / "session-001.md", _model_stamped("L1 content"))
 
