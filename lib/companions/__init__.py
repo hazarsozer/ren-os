@@ -83,6 +83,7 @@ def is_installed(companion: Companion) -> bool:
         cache = ren_paths.claude_user_dir() / "plugins" / "cache"
         if not cache.is_dir():
             return False
+        # twin probe: hooks/wake-up/wakeup/doctrine_card.superpowers_installed
         return any(p.is_dir() for p in cache.glob(f"*/{companion.detect}"))
     return False
 
