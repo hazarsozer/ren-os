@@ -35,8 +35,8 @@ from __future__ import annotations
 
 import re
 from dataclasses import asdict
-from datetime import date
-from pathlib import Path
+from datetime import date, timedelta
+from pathlib import Path, PurePosixPath
 from typing import Callable
 
 import yaml
@@ -44,10 +44,11 @@ import yaml
 from lib import ren_paths
 from lib.adapter.worker import parse_worker_json
 from lib.instrument import calibration, collect
-from lib.memory import queue
+from lib.memory import journal, queue
 from lib.memory import quarantine
 from lib.memory.judge import JUDGE_MIN_CONFIDENCE, JUDGE_PAIR_CAP, judge_pairs
 from lib.memory.lifecycle import consolidate_duplicates, run_decay
+from lib.memory.provenance import new_provenance
 from lib.memory.queue import Proposal, propose_and_apply
 from lib.memory.scrub import SecretsFound
 from lib.memory.semantics import shortlist_pairs
@@ -236,6 +237,290 @@ def _build_overview_content(existing_text: str, overview_body: str) -> str:
     return "\n".join(lines) + overview_body.strip() + "\n"
 
 
+# --- open-work ledger (0.6.5 Task 6) ----------------------------------------
+
+OPEN_WORK_LINE_RE = re.compile(
+    r"^- \[( |x)\] (?P<desc>.+?) — ptr:(?P<ptr>\S+) "
+    r"\(opened (?P<opened>\d{4}-\d{2}-\d{2})(?:, closed (?P<closed>\d{4}-\d{2}-\d{2}))?\)$"
+)
+OPEN_WORK_ARCHIVE_DAYS = 14
+_OPEN_HEADER = "## Open"
+_ARCHIVE_HEADER = "## Archive"
+
+
+def _ptr_parts(ptr: str) -> tuple[str, bool]:
+    """`(target, has_fragment)` for a `ptr:` value: the path it points at with
+    the scheme prefix and any `#task-N` / `§section` fragment stripped, plus
+    whether a fragment was present. `spec:projects/x/map.md§2` →
+    `("projects/x/map.md", True)`; `issue:#7` → `("", True)`, because an issue
+    pointer is ALL fragment and has no file target at all.
+
+    Both halves are load-bearing (fix round 1). Matching on the target alone
+    collapsed `plan:docs/p.md#task-3` and `#task-9` into the same key, and
+    made every `issue:#N` line share the empty-string key — so closing one
+    item silently closed its siblings. Callers must therefore never match on
+    a target that is empty or that came from a fragment-bearing pointer."""
+    body = ptr.split(":", 1)[1] if ":" in ptr else ptr
+    target = body
+    has_fragment = False
+    for sep in ("#", "§"):
+        if sep in target:
+            has_fragment = True
+            target = target.split(sep, 1)[0]
+    return target.strip(), has_fragment
+
+
+def _split_ledger_sections(body: str) -> tuple[list[str], list[str], list[str]]:
+    """Split a ledger body into `(preamble, open_lines, archive_lines)`.
+
+    EVERY line lands in exactly one bucket — the ledger's core invariant is
+    that nothing is ever dropped, including lines this module cannot parse.
+    Only the two KNOWN headers (`## Open`, `## Archive`) are consumed here and
+    re-emitted by `_render_ledger_body`. Any other header line is not special
+    to this parser: it is appended verbatim like any other line, along with
+    everything under it, into whichever bucket was current — so a hand-added
+    section survives a reconcile heading and all."""
+    preamble: list[str] = []
+    open_lines: list[str] = []
+    archive_lines: list[str] = []
+    current = preamble
+    for line in body.splitlines():
+        stripped = line.strip()
+        if stripped == _OPEN_HEADER:
+            current = open_lines
+            continue
+        if stripped == _ARCHIVE_HEADER:
+            current = archive_lines
+            continue
+        current.append(line)
+    return preamble, open_lines, archive_lines
+
+
+def _render_ledger_body(
+    project: str, preamble: list[str], open_lines: list[str], archive_lines: list[str]
+) -> str:
+    """Re-emit the ledger body with both section headers always present."""
+    head = "\n".join(preamble).strip()
+    if not head:
+        head = (
+            f"# Open work — {project}\n\n"
+            "<!-- One line per item: `- [ ] <desc> — ptr:<target> (opened YYYY-MM-DD)`.\n"
+            "     Lines are NEVER deleted; closed lines older than "
+            f"{OPEN_WORK_ARCHIVE_DAYS} days move to the archive section below. -->"
+        )
+    parts = [
+        head,
+        "",
+        _OPEN_HEADER,
+        "",
+        "\n".join(line for line in open_lines).strip("\n"),
+        "",
+        _ARCHIVE_HEADER,
+        "",
+        "\n".join(line for line in archive_lines).strip("\n"),
+    ]
+    return "\n".join(parts).rstrip() + "\n"
+
+
+def _build_open_work_content(existing_text: str, project: str, body: str) -> str:
+    """Frontmatter + body for an open-work ADD/UPDATE, carrying cosmetic
+    fields forward exactly like `_build_overview_content` does."""
+    fm, _ = _split_overview_frontmatter(existing_text)
+    today = date.today().isoformat()
+    lines = [
+        "---",
+        f'title: "{_yaml_double_quoted(fm.get("title", "Open Work"))}"',
+        "type: open-work",
+        "schema_version: 1",
+        f"project: {project}",
+        f'framework_version: "{fm.get("framework_version") or ren_paths.framework_version()}"',
+        f"created: {fm.get('created', today)}",
+        f"updated: {today}",
+        "---",
+        "",
+    ]
+    return "\n".join(lines) + body
+
+
+#: Wrap's own bookkeeping artifacts. Wrap rewrites these on EVERY session as
+#: a side effect of wrapping up — they are never evidence that a human's
+#: open-work line about them is done.
+_WRAP_INTERNAL_BASENAMES = ("overview.md", "open-work.md")
+
+
+def _is_session_work_write(proposal: dict) -> bool:
+    """True iff this queue entry is genuine SESSION work, i.e. may close a
+    fragment-less open-work pointer.
+
+    0.6.5 added two UNCONDITIONAL automated writers to every session — the
+    `ren-wiki-lint` pass (`producer="routine"`) and wrap's own
+    `maintain_overview` / L1 narrative. Before this guard, either of them
+    touching a page ticked its ledger box, so the ledger closed lines while
+    nothing about the actual work had changed. The ledger exists to remember
+    open threads; an automated writer must never be what closes one.
+    """
+    if proposal.get("producer") == "routine":
+        return False
+    page = PurePosixPath(str(proposal.get("page", "")))
+    if page.name in _WRAP_INTERNAL_BASENAMES:
+        return False
+    # `projects/<slug>/l1/session-*.md` (and the project-less `l1/…` form) —
+    # wrap writes one every session.
+    if "l1" in page.parts and page.name.startswith("session-"):
+        return False
+    return True
+
+
+def reconcile_open_work(
+    session: str,
+    project: str,
+    cwd: Path | None = None,
+    *,
+    open_threads: list | None = None,
+    completed_ptrs: list | None = None,
+) -> dict:
+    """Reconcile `projects/<project>/open-work.md` — the open-thread ledger
+    (0.6.5, M3 pointer/cursor shape). Returns
+    `{"closed": [ptr, ...], "opened": [ptr, ...], "carried": int}`.
+
+    Deterministic bookkeeping, NOT a judgment call. A line closes when either
+    (a) the caller passed its exact `ptr` in `completed_ptrs` — the only
+    channel that can close a FRAGMENT-bearing pointer (`issue:#7`,
+    `plan:p.md#task-3`) — or (b) the pointer has no fragment and its target
+    file is either a bare path in `completed_ptrs` or a page this `session`'s
+    GENUINE work wrote (`_is_session_work_write` — the routine lint and wrap's
+    own overview/L1/ledger writes are excluded, since they touch pages on
+    every session regardless of what the human did). Nothing here asks a model
+    anything.
+
+    `carried` counts pre-existing OPEN lines left untouched this run: it
+    excludes lines closed on this run, already-closed lines, and lines the
+    regex could not parse (those are carried on disk, just not counted).
+
+    THE INVARIANT: no line is ever deleted. Closed lines older than
+    `OPEN_WORK_ARCHIVE_DAYS` MOVE to `## Archive` intact; a line the regex
+    cannot parse is carried through verbatim in whichever section it was in.
+    A ledger the reconciler silently eats is worse than no ledger.
+
+    `cwd` is accepted for signature symmetry with the rest of wrap's write
+    path and is unused: the page path is derived from `project` alone.
+    """
+    del cwd  # unused — see docstring
+
+    page = f"projects/{project}/open-work.md"
+    path = ren_paths.safe_join(ren_paths.wiki_root(), page)
+
+    existing_text = ""
+    exists = path.is_file()
+    if exists:
+        try:
+            existing_text = path.read_text(encoding="utf-8")
+        except OSError:
+            existing_text = ""
+
+    _, existing_body = _split_overview_frontmatter(existing_text)
+    preamble, open_lines, archive_lines = _split_ledger_sections(existing_body)
+
+    # Closure sets (fix round 1 — the fragment is load-bearing):
+    #   * `explicit_full` matches a ledger line's pointer STRING exactly. This
+    #     is the only channel that can close a fragment-bearing pointer
+    #     (`issue:#7`, `plan:p.md#task-3`), so completing one task can never
+    #     close its siblings in the same file.
+    #   * `explicit_targets` holds bare targets from FRAGMENT-LESS explicit
+    #     pointers only, so a caller may pass a plain path.
+    #   * `written_pages` (this session's GENUINE queue writes — see
+    #     `_is_session_work_write`; automated writers are filtered out) may
+    #     only close a fragment-less pointer: writing a file is not evidence
+    #     that a specific task inside it is done.
+    # An empty target is never a match key — it is the shape every `issue:#N`
+    # pointer degrades to.
+    explicit_full = {str(p) for p in (completed_ptrs or [])}
+    explicit_targets: set[str] = set()
+    for raw in completed_ptrs or []:
+        cand_target, cand_fragment = _ptr_parts(str(raw))
+        if cand_target and not cand_fragment:
+            explicit_targets.add(cand_target)
+    try:
+        written_pages = {
+            e["proposal"]["page"]
+            for e in _session_queue_entries(session)
+            if _is_session_work_write(e["proposal"])
+        }
+    except Exception:  # noqa: BLE001 - a broken queue must not break the ledger
+        written_pages = set()
+
+    today = date.today().isoformat()
+    cutoff = date.today() - timedelta(days=OPEN_WORK_ARCHIVE_DAYS)
+
+    closed: list[str] = []
+    carried = 0
+    kept_open: list[str] = []
+    open_ptrs: set[str] = set()
+
+    for line in open_lines:
+        match = OPEN_WORK_LINE_RE.match(line.strip())
+        if match is None:
+            # Unparseable (or blank, or a human's freeform note) — verbatim.
+            kept_open.append(line)
+            continue
+        ptr = match.group("ptr")
+        open_ptrs.add(ptr)
+        closed_on = match.group("closed")
+        if closed_on is None:
+            target, has_fragment = _ptr_parts(ptr)
+            fragmentless_hit = bool(target) and not has_fragment and (
+                target in explicit_targets or target in written_pages
+            )
+            if ptr in explicit_full or fragmentless_hit:
+                closed.append(ptr)
+                kept_open.append(
+                    f"- [x] {match.group('desc')} — ptr:{ptr} "
+                    f"(opened {match.group('opened')}, closed {today})"
+                )
+                continue
+            carried += 1
+            kept_open.append(line)
+            continue
+        # Already closed: archive it once it ages past the window — MOVED,
+        # never dropped.
+        try:
+            aged_out = date.fromisoformat(closed_on) < cutoff
+        except ValueError:  # pragma: no cover - regex already pins the shape
+            aged_out = False
+        if aged_out:
+            archive_lines.append(line)
+        else:
+            kept_open.append(line)
+
+    opened: list[str] = []
+    for thread in open_threads or []:
+        if not isinstance(thread, dict):
+            continue
+        desc = str(thread.get("desc", "")).strip()
+        ptr = str(thread.get("ptr", "")).strip()
+        if not desc or not ptr or ptr in open_ptrs:
+            continue
+        open_ptrs.add(ptr)
+        opened.append(ptr)
+        kept_open.append(f"- [ ] {desc} — ptr:{ptr} (opened {today})")
+
+    content = _build_open_work_content(
+        existing_text, project, _render_ledger_body(project, preamble, kept_open, archive_lines)
+    )
+    propose_and_apply(
+        Proposal(
+            op="UPDATE" if exists else "ADD",
+            page=page,
+            content=content,
+            reason="open-work reconcile",
+            producer="wrap",
+            writer="llm-auto",
+            session=session,
+        )
+    )
+    return {"closed": closed, "opened": opened, "carried": carried}
+
+
 def maintain_overview(
     project: str,
     session: str,
@@ -338,6 +623,9 @@ def wrap_session(
     llm_call: Callable[[str], str] | None = None,
     project: str | None = None,
     cwd: Path | None = None,
+    *,
+    open_threads: list | None = None,
+    completed_ptrs: list | None = None,
 ) -> dict:
     """Run the wrap write path for one session close-out.
 
@@ -391,6 +679,12 @@ def wrap_session(
         `project` is in scope for this wrap, or the LLM call/output failed
         and `maintain_overview` fail-closed (never silent — always one of
         these four values, never omitted).
+      - "open_work": `{"closed": [...], "opened": [...], "carried": int}` —
+        `reconcile_open_work`'s (0.6.5 Task 6) bookkeeping over
+        `projects/<project>/open-work.md`, driven by the keyword-only
+        `open_threads` / `completed_ptrs` the live session passes and by this
+        session's own queue writes. The zero-value dict when no project is in
+        scope or the reconcile failed (isolated like the sweeps above).
 
     `project` (codex D4): when the wrap is scoped to a project, the L1 page
     is written to `projects/<project>/l1/session-<id>.md`, the EXACT path
@@ -533,7 +827,7 @@ def wrap_session(
     except Exception:  # noqa: BLE001 - instrumentation must never fail wrap close-out
         pass
 
-    return {
+    result = {
         "l1_qid": l1_entry.qid,
         "applied": applied,
         "held": held,
@@ -544,7 +838,29 @@ def wrap_session(
         "decayed": decayed,
         "consolidated": consolidated,
         "overview": overview_status,
+        "open_work": {"closed": [], "opened": [], "carried": 0},
     }
+
+    try:
+        _append_session_summary(session, project, result)
+    except Exception:  # noqa: BLE001 - the session journal line must never break wrap close-out
+        pass
+
+    # 0.6.5 Task 6: reconcile the project's open-work ledger. Isolated like
+    # every other close-out sub-step — a ledger failure must never break
+    # wrap; the result stays the zero-value dict above.
+    if project:
+        try:
+            result["open_work"] = reconcile_open_work(
+                session,
+                project,
+                open_threads=open_threads,
+                completed_ptrs=completed_ptrs,
+            )
+        except Exception:  # noqa: BLE001 - the ledger must never break wrap close-out
+            pass
+
+    return result
 
 
 def _run_wiki_health_sweep() -> dict:
@@ -622,6 +938,32 @@ def harvest_suggestions(session: str, cwd: str | None = None) -> int:
         if record_suggestion(spec) is not None:
             count += 1
     return count
+
+
+def _append_session_summary(session: str, project: str | None, result: dict) -> None:
+    """One append-only journal line summarizing this wrap (0.6.5 session
+    journal): a `routine`-writer NOOP entry on the pseudo-page
+    `"_wrap-session"`, same page-less-journal-marker pattern as
+    `skills.metric-watch.lib`'s `"_metric-watch"` NOOP entries — this is a
+    journal notification, never a wiki page. `ren-wiki-lint` (a later
+    0.6.5 task) reads these lines to select which pages changed since its
+    last incremental run, via `pages_touched`."""
+    touched = sorted({e["proposal"]["page"] for e in _session_queue_entries(session)})
+    journal.append(
+        new_provenance(writer="routine", session=session, op="NOOP", page="_wrap-session"),
+        extra={
+            "wrap_summary": {
+                "session": session,
+                "project": project,
+                "pages_touched": touched,
+                "counts": {
+                    "applied": len(result.get("applied", [])),
+                    "held": len(result.get("held", [])),
+                    "refused": len(result.get("refused", [])),
+                },
+            }
+        },
+    )
 
 
 def _session_queue_entries(session: str) -> list[dict]:

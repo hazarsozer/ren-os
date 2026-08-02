@@ -702,6 +702,62 @@ def check_execution_doctrine() -> CheckResult:
     return CheckResult(name, "ok", "doctrine card wired; ren-reviewer shipped; no stopgap residue")
 
 
+def _project_agents_dir() -> Path | None:
+    """`.claude/agents/` of the repo the current cwd maps to, via the
+    repo-path↔slug registry (`ren_paths.load_project_registry`) — same
+    resolution `detect_project` uses, so this agrees with the wake-up hook
+    and the wrap skill on which project "here" is. Returns None when no
+    wiki, no mapped project, or no recorded repo path — never raises."""
+    try:
+        wiki_root_ = ren_paths.wiki_root()
+    except Exception:
+        return None
+    if not wiki_root_.is_dir():
+        return None
+    project_slug = ren_paths.detect_project(Path.cwd(), wiki_root_)
+    if project_slug is None:
+        return None
+    entry = ren_paths.load_project_registry().get(project_slug)
+    if not entry or not entry.get("repo_path"):
+        return None
+    return Path(entry["repo_path"]) / ".claude" / "agents"
+
+
+def check_agent_shadowing() -> CheckResult:
+    """0.6.5: a user or project `.claude/agents/<name>.md` with the same
+    filename as a shipped RenOS agent (`agents/*.md`) shadows the shipped
+    behavior — Claude Code resolves agent names to whichever definition it
+    finds, and the shipped one isn't guaranteed to win. Checks both
+    `claude_user_dir()/agents` and, when the cwd resolves to a registered
+    project (`_project_agents_dir`), that project's `.claude/agents/` too.
+    Skips only when neither directory exists."""
+    name = "agent_shadowing"
+    shipped = {p.stem for p in (_REPO_ROOT / "agents").glob("*.md")}
+
+    candidate_dirs = []
+    user_dir = ren_paths.claude_user_dir() / "agents"
+    if user_dir.is_dir():
+        candidate_dirs.append(user_dir)
+    project_dir = _project_agents_dir()
+    if project_dir is not None and project_dir.is_dir():
+        candidate_dirs.append(project_dir)
+
+    if not candidate_dirs:
+        return CheckResult(name, "skip", "no user agents directory")
+
+    clashes: set[str] = set()
+    for d in candidate_dirs:
+        clashes |= shipped & {p.stem for p in d.glob("*.md")}
+
+    if clashes:
+        return CheckResult(
+            name, "warn",
+            f"user agent(s) shadow shipped RenOS agents: {', '.join(sorted(clashes))} — "
+            "rename yours or the shipped behavior won't apply",
+        )
+    return CheckResult(name, "ok", f"{len(shipped)} shipped agent(s), no shadowing")
+
+
 _ALL_CHECK_NAMES: tuple[str, ...] = (
     "check_env",
     "check_wiki_structure",
@@ -724,6 +780,7 @@ _ALL_CHECK_NAMES: tuple[str, ...] = (
     "check_model_map_staleness",
     "check_orphaned_projects",
     "check_execution_doctrine",
+    "check_agent_shadowing",
 )
 
 
@@ -766,5 +823,6 @@ __all__ = [
     "check_model_map_staleness",
     "check_orphaned_projects",
     "check_execution_doctrine",
+    "check_agent_shadowing",
     "run_checks",
 ]

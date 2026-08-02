@@ -1,12 +1,15 @@
 import sys
 from pathlib import Path
 
+import pytest
+
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "hooks" / "wake-up"))
 
 from wakeup.doctrine_card import (  # noqa: E402
     SECTION_DOCTRINE,
     render_doctrine_card,
+    render_doctrine_card_compact,
     superpowers_installed,
 )
 
@@ -36,6 +39,20 @@ class TestCardContent:
         card = render_doctrine_card(False)
         assert "superpowers:" not in card
         assert "recommended companion" in card  # points at /ren:doctor advice
+
+    def test_decompose_gate_spawns_ren_planner(self):
+        for sp in (True, False):
+            card = render_doctrine_card(sp)
+            assert "`ren-planner` agent" in card
+
+    def test_review_gate_requires_open_work_closure(self):
+        """Pin the actual phrase: a loose `"closed" in card` would match any
+        stray occurrence, and the closure rule must not read as an either/or
+        (a model can satisfy "closed OR added" by adding a line and stopping)."""
+        for sp in (True, False):
+            card = render_doctrine_card(sp)
+            assert "open-work ledger is closed" in card
+            assert "if it has no line, add one before you claim done" in card
 
     def test_line_cap_50(self):
         for sp in (True, False):
@@ -81,20 +98,19 @@ class TestReferencesResolve:
 
 
 class TestBudgetAndStructure:
-    def test_card_never_truncates_at_exact_budget(self):
-        """Ensure the card variant measuring ~391 tokens never silently truncates
-        when within the 400-token DOCTRINE_BUDGET. This guards against a footgun:
-        if a future edit pushes the card over budget, the existing test (with its
-        +200 char slop) would still pass while the card truncates silently."""
+    @pytest.mark.parametrize("ratio", [4.0, 12.0])
+    def test_card_never_truncates_at_exact_budget(self, ratio):
+        """Neither card variant may truncate at or above the safe-default
+        calibration ratio. This guards against a footgun: if a future edit
+        pushes the card over budget, the slop-tolerant compose test would still
+        pass while the card truncates silently."""
         import sys
         sys.path.insert(0, str(REPO / "hooks" / "wake-up"))
         from wakeup import DOCTRINE_BUDGET, truncate_text_to_tokens  # noqa: E402
 
         for sp in (True, False):
             card = render_doctrine_card(sp)
-            # Use a calibrated ratio (4.0 chars/token is the safe default).
-            # The truncate function preserves the text exactly when it fits.
-            truncated = truncate_text_to_tokens(card, DOCTRINE_BUDGET, 4.0)
+            truncated = truncate_text_to_tokens(card, DOCTRINE_BUDGET, ratio)
             assert truncated == card, (
                 f"Card variant sp={sp} was truncated despite being within "
                 f"DOCTRINE_BUDGET={DOCTRINE_BUDGET}; this suggests an edit "
@@ -125,6 +141,53 @@ class TestBudgetAndStructure:
                 "Gate leads are out of order or missing"
             )
 
+            # v2 additions, pinned to their owning gate.
+            idx_planner = card.index("`ren-planner` agent")
+            idx_ledger = card.index("open-work")
+            assert idx_decompose < idx_planner < idx_dispatch, (
+                "ren-planner must be named inside the decompose gate"
+            )
+            assert idx_ledger > idx_review, (
+                "the ledger-closure sentence must live in the review gate"
+            )
+
             # The table header for Red flags section (stable structural marker).
             idx_table_header = card.index("| Thought | Reality |")
             assert idx_table_header > idx_review, "Table header appears before review gate"
+
+    def test_compact_card_survives_band_low_budget_intact(self):
+        """The head-preserving fallback must fit the band-low budget whole
+        (500 tokens x 1.5 chars/token), header and all four gate leads included
+        — otherwise it would itself get tail-cut and reintroduce the bug."""
+        import sys
+        sys.path.insert(0, str(REPO / "hooks" / "wake-up"))
+        from wakeup import DOCTRINE_BUDGET, truncate_text_to_tokens  # noqa: E402
+
+        compact = render_doctrine_card_compact()
+        assert truncate_text_to_tokens(compact, DOCTRINE_BUDGET, 1.5) == compact
+        assert compact.startswith(SECTION_DOCTRINE)
+        for lead in (
+            "1. **Brainstorm gate.**",
+            "2. **Decompose.**",
+            "3. **Dispatch.**",
+            "4. **Review gate.**",
+        ):
+            assert lead in compact, lead
+        assert "superpowers:" not in compact  # variant-agnostic, so no skill ids
+
+    def test_compact_card_agents_ship(self):
+        import re
+        for agent_name in re.findall(r"`([a-z-]+)` agent", render_doctrine_card_compact()):
+            assert (REPO / "agents" / f"{agent_name}.md").is_file(), agent_name
+
+    def test_card_keeps_margin_under_raised_budget(self):
+        """Both variants must stay >=150 chars clear of the 500x4.0 char cap, so
+        a small future wording edit cannot silently push the card over."""
+        import sys
+        sys.path.insert(0, str(REPO / "hooks" / "wake-up"))
+        from wakeup import DOCTRINE_BUDGET  # noqa: E402
+
+        assert DOCTRINE_BUDGET == 500
+        cap = DOCTRINE_BUDGET * 4.0 - 150
+        for sp in (True, False):
+            assert len(render_doctrine_card(sp)) <= cap

@@ -1,5 +1,46 @@
 # Changelog
 
+## [0.6.5] - <publish-date> — "the OS knows what's open and what's checked"
+
+Two more shipped agents (`ren-wiki-lint`, `ren-planner`) join `ren-reviewer`,
+plus the substrate that makes them useful: an append-only session journal to
+lint incrementally, an open-work ledger so nothing open gets forgotten
+between sessions, and a doctor check protecting shipped-agent names from
+collision.
+
+- **Session-summary journal + lint watermark** — `wrap` appends one
+  append-only session-summary line per session to the journal; a lint
+  watermark in `state_dir()` drives incremental selection so hygiene passes
+  only ever look at what changed since the last clean run.
+- **`ren-wiki-lint` incremental hygiene** — `run_incremental_lint` applies
+  mechanically-safe fixes through the write queue, routes judgment-shaped
+  findings to the suggestions store, hard-excludes `raw/`, the journal,
+  frozen `log.md` days, instruction-plane pages, and `_`-prefixed pseudo
+  pages, and reports a `held` disposition for proposals the queue leaves
+  pending. Spawned non-blocking at wrap close-out, and named in the wake-up
+  nudge when journal entries are unlinted.
+  The first run on a wiki that has never been linted (e.g. straight after an
+  upgrade) SEEDS the watermark at the current journal length and checks
+  nothing — reported as `scope: "seeded"` — so upgrading never triggers an
+  unattended rewrite of the whole wiki's history. Run with `full=True` to
+  lint history deliberately.
+- **Open-work ledger** — a new `open-work` page type and template; wrap
+  reconciles it (`reconcile_open_work`) and wake-up renders a `## Open work`
+  section. Lines are never deleted — closed lines older than 14 days move
+  to `## Archive`.
+- **`ren-planner`** — a wiki-aware plan decomposer for the execution
+  doctrine's decompose gate: reads an approved plan plus the project wiki
+  and emits atomic task briefs sized for one clean subagent context each.
+- **Doctrine card v2** — the decompose gate now names `ren-planner`; the
+  review gate requires the open-work line be closed before declaring done;
+  `DOCTRINE_BUDGET` raised to 500 and truncation is now visible rather than
+  silent; a new head-preserving compact rendering is used whenever the full
+  card would be cut.
+- **Doctor: `agent_shadowing` check** — warns when a user- or project-level
+  `.claude/agents/<name>.md` collides with a shipped agent's filename,
+  covering both `claude_user_dir()/agents` and (when the cwd resolves to a
+  registered project) that project's own `.claude/agents/`.
+
 ## [0.6.4] - 2026-08-02 — "the harness ships with the plugin"
 
 The execution discipline that lived only in the dev machine's local setup now

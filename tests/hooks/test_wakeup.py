@@ -988,7 +988,56 @@ class TestStructuredSections:
         start = payload.index(wakeup.SECTION_DOCTRINE)
         end = payload.find("\n\n## ", start + 1)
         segment = payload[start:end] if end != -1 else payload[start:]
+        # Loose sanity bound on the COMPOSED segment (which may carry a pointer
+        # line the raw card does not). The authoritative card-size guard is
+        # `test_doctrine_card.py::test_card_keeps_margin_under_raised_budget`,
+        # which enforces the tighter >=150-char margin on the card itself.
         assert len(segment) <= wakeup.DOCTRINE_BUDGET * wakeup.CHARS_PER_TOKEN + 200
+
+    def test_card_truncation_is_visible_at_band_low(self, project, monkeypatch):
+        """At the band-low calibration ratio the card may not fit its budget.
+        If it truncates, the cut MUST be visible: the payload carries a
+        continuation marker instead of silently losing doctrine text (0.6.4
+        regression — truncation was silent at 1.5 chars/token)."""
+        from wakeup.doctrine_card import render_doctrine_card
+
+        _write(project["project_dir"] / "l1" / "session-001.md", _model_stamped("L1 content"))
+        monkeypatch.setattr(wakeup, "_calibrated_chars_per_token", lambda: 1.5)
+
+        card = render_doctrine_card(wakeup.superpowers_installed())
+        assert wakeup.truncate_text_to_tokens(card, wakeup.DOCTRINE_BUDGET, 1.5) != card, (
+            "precondition: the card is expected to exceed its budget at 1.5 chars/token"
+        )
+
+        payload = wakeup.compose_wake_up_context(cwd=project["cwd"], wiki_root=wiki_root(), session="sess-1")
+        assert "*(continues in" in payload
+        # ...and it is the DOCTRINE card's marker, not some other section's.
+        assert wakeup.DOCTRINE_POINTER in payload
+
+    def test_band_low_card_keeps_header_and_all_four_gates(self, project, monkeypatch):
+        """Visible truncation is not enough: the surviving card must still carry
+        the gates it exists to deliver. The generic truncator keeps the TAIL,
+        which elides the header and gates 1-3 — so at band-low ratios the
+        composer swaps in the head-preserving compact card instead."""
+        _write(project["project_dir"] / "l1" / "session-001.md", _model_stamped("L1 content"))
+        monkeypatch.setattr(wakeup, "_calibrated_chars_per_token", lambda: 1.5)
+
+        payload = wakeup.compose_wake_up_context(cwd=project["cwd"], wiki_root=wiki_root(), session="sess-1")
+
+        start = payload.index(wakeup.SECTION_DOCTRINE)
+        end = payload.find("\n\n## ", start + 1)
+        segment = payload[start:end] if end != -1 else payload[start:]
+
+        assert segment.startswith(wakeup.SECTION_DOCTRINE)
+        for lead in (
+            "1. **Brainstorm gate.**",
+            "2. **Decompose.**",
+            "3. **Dispatch.**",
+            "4. **Review gate.**",
+        ):
+            assert lead in segment, lead
+        assert wakeup.DOCTRINE_POINTER in segment
+        assert "[...truncated" not in segment
 
     def test_absent_sources_omit_headers(self, project):
         _write(project["project_dir"] / "l1" / "session-001.md", _model_stamped("L1 content"))
@@ -1923,3 +1972,308 @@ def test_no_project_empty_query_still_reports_held_out_quarantined_pages(wiki, c
     assert "held out of this context" in payload
     assert "Possibly relevant now" not in payload
     assert "--no-verify" not in payload
+
+
+# --------------------------------------------- unlinted-journal nudge (Task 5)
+
+
+def _write_journal(lines: int) -> Path:
+    """Append `lines` ordinary journal entries at state_dir()/journal.jsonl."""
+    path = state_dir() / "journal.jsonl"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        "".join(json.dumps({"page": f"notes/p{i}.md"}) + "\n" for i in range(lines)),
+        encoding="utf-8",
+    )
+    return path
+
+
+def _write_watermark(lines_seen: int, clean: bool = True) -> Path:
+    path = state_dir() / "wiki_lint_watermark.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps({"journal_lines_seen": lines_seen, "clean": clean,
+                    "stamped_at": "2026-08-02T00:00:00+00:00"}),
+        encoding="utf-8",
+    )
+    return path
+
+
+class TestUnlintedNudge:
+    def test_nudge_when_journal_ahead_of_absent_watermark(self, project):
+        _write(project["project_dir"] / "l1" / "session-001.md", _model_stamped("L1 content"))
+        _write_journal(3)
+
+        payload = wakeup.compose_wake_up_context(
+            cwd=project["cwd"], wiki_root=wiki_root(), session="sess-1")
+
+        assert "3 journal entries unlinted" in payload
+        assert "ren-wiki-lint" in payload
+
+    def test_singular_wording_for_one_entry(self, project):
+        _write(project["project_dir"] / "l1" / "session-001.md", _model_stamped("L1 content"))
+        _write_journal(3)
+        _write_watermark(2)
+
+        payload = wakeup.compose_wake_up_context(
+            cwd=project["cwd"], wiki_root=wiki_root(), session="sess-1")
+
+        assert "1 journal entry unlinted" in payload
+
+    def test_no_nudge_when_watermark_caught_up(self, project):
+        _write(project["project_dir"] / "l1" / "session-001.md", _model_stamped("L1 content"))
+        _write_journal(3)
+        _write_watermark(3)
+
+        payload = wakeup.compose_wake_up_context(
+            cwd=project["cwd"], wiki_root=wiki_root(), session="sess-1")
+
+        assert "unlinted" not in payload
+
+    def test_empty_wiki_stays_empty_despite_unlinted_entries(self, wiki, project):
+        """Loud-notice contract: the nudge is never content for the emptiness
+        verdict — an empty wiki must still compose to "" so the hook fires its
+        uninitialized notice."""
+        _write_journal(3)
+
+        payload = wakeup.compose_wake_up_context(
+            cwd=project["cwd"], wiki_root=wiki_root(), session="sess-1")
+
+        assert payload == ""
+
+    def test_unreadable_journal_yields_no_nudge_and_no_crash(self, project):
+        _write(project["project_dir"] / "l1" / "session-001.md", _model_stamped("L1 content"))
+        # A directory at the journal path: every read of it raises OSError.
+        (state_dir() / "journal.jsonl").mkdir(parents=True, exist_ok=True)
+
+        payload = wakeup.compose_wake_up_context(
+            cwd=project["cwd"], wiki_root=wiki_root(), session="sess-1")
+
+        assert "unlinted" not in payload
+        assert "L1 content" in payload
+
+    def test_corrupt_watermark_degrades_to_full_count(self, project):
+        _write(project["project_dir"] / "l1" / "session-001.md", _model_stamped("L1 content"))
+        _write_journal(2)
+        wm = state_dir() / "wiki_lint_watermark.json"
+        wm.parent.mkdir(parents=True, exist_ok=True)
+        wm.write_text("{not json", encoding="utf-8")
+
+        payload = wakeup.compose_wake_up_context(
+            cwd=project["cwd"], wiki_root=wiki_root(), session="sess-1")
+
+        assert "2 journal entries unlinted" in payload
+
+    def test_hooks_do_not_import_skills_wiki_health(self):
+        """The nudge reads the two state files directly; the hook must stay
+        stdlib-only and must never import the wiki-health skill package."""
+        source = (WAKE_UP_DIR / "wakeup" / "__init__.py").read_text(encoding="utf-8")
+        for line in source.splitlines():
+            stripped = line.strip()
+            assert not stripped.startswith(("import skills", "from skills")), line
+        assert 'import_module("skills.wiki-health' not in source
+
+
+class TestOpenWorkSection:
+    """0.6.5 Task 6: the open-work ledger's wake-up section."""
+
+    def _ledger(self, body: str, *, stamped: bool = True) -> str:
+        fm = (
+            "---\n"
+            'title: "Open work"\n'
+            "type: open-work\n"
+            "schema_version: 1\n"
+            "project: demo-project\n"
+        )
+        if stamped:
+            fm += 'ren_write_id: "w-test"\nren_writer: "llm-auto"\nren_trust: "model"\n'
+        return fm + "---\n\n" + body
+
+    def _open_body(self) -> str:
+        return (
+            "# Open work\n\n"
+            "## Open\n\n"
+            "- [ ] wire the loader — ptr:issue:#42 (opened 2026-08-01)\n"
+            "- [x] done thing — ptr:issue:#7 (opened 2026-07-30, closed 2026-08-01)\n\n"
+            "## Archive\n\n"
+            "- [x] ancient thing — ptr:issue:#1 (opened 2026-01-01, closed 2026-01-05)\n"
+        )
+
+    def test_open_lines_surface_closed_and_archived_do_not(self, project):
+        _write(project["project_dir"] / "l1" / "session-001.md", _model_stamped("L1 content"))
+        _write(project["project_dir"] / "open-work.md", self._ledger(self._open_body()))
+
+        payload = wakeup.compose_wake_up_context(
+            cwd=project["cwd"], wiki_root=wiki_root(), session="sess-ow"
+        )
+
+        assert wakeup.SECTION_OPENWORK in payload
+        assert "wire the loader" in payload
+        assert "done thing" not in payload
+        assert "ancient thing" not in payload
+
+    def test_section_sits_between_l1_and_l2(self, project):
+        _write(project["project_dir"] / "l1" / "session-001.md", _model_stamped("L1 content"))
+        _write(project["project_dir"] / "map.md", "# demo-project — knowledge map\n## Knowledge\n- uses FastAPI\n")
+        _write(project["project_dir"] / "open-work.md", self._ledger(self._open_body()))
+
+        payload = wakeup.compose_wake_up_context(
+            cwd=project["cwd"], wiki_root=wiki_root(), session="sess-ow"
+        )
+
+        assert payload.index(wakeup.SECTION_L1) < payload.index(wakeup.SECTION_OPENWORK)
+        assert payload.index(wakeup.SECTION_OPENWORK) < payload.index(wakeup.SECTION_L2)
+
+    def test_absent_page_omits_header(self, project):
+        _write(project["project_dir"] / "l1" / "session-001.md", _model_stamped("L1 content"))
+
+        payload = wakeup.compose_wake_up_context(
+            cwd=project["cwd"], wiki_root=wiki_root(), session="sess-ow"
+        )
+
+        assert wakeup.SECTION_OPENWORK not in payload
+
+    def test_no_open_lines_omits_header(self, project):
+        _write(project["project_dir"] / "l1" / "session-001.md", _model_stamped("L1 content"))
+        _write(
+            project["project_dir"] / "open-work.md",
+            self._ledger("# Open work\n\n## Open\n\n## Archive\n"),
+        )
+
+        payload = wakeup.compose_wake_up_context(
+            cwd=project["cwd"], wiki_root=wiki_root(), session="sess-ow"
+        )
+
+        assert wakeup.SECTION_OPENWORK not in payload
+
+    def test_foreign_stamped_ledger_is_held_out(self, project):
+        _write(project["project_dir"] / "l1" / "session-001.md", _model_stamped("L1 content"))
+        foreign = (
+            '---\ntype: open-work\nproject: demo-project\nren_write_id: "w-f"\n'
+            'ren_writer: "llm-auto"\nren_trust: "foreign"\n---\n\n'
+            "## Open\n\n- [ ] hostile item — ptr:issue:#666 (opened 2026-08-01)\n"
+        )
+        _write(project["project_dir"] / "open-work.md", foreign)
+
+        payload = wakeup.compose_wake_up_context(
+            cwd=project["cwd"], wiki_root=wiki_root(), session="sess-ow"
+        )
+
+        assert "hostile item" not in payload
+
+    def test_template_stamped_page_surfaces(self, project):
+        """A bootstrap-written ledger carries no `ren_trust` yet — the page
+        type stamp is what makes it trustworthy (same shape as read_l1's
+        model-stamp check, widened for the template case)."""
+        _write(project["project_dir"] / "l1" / "session-001.md", _model_stamped("L1 content"))
+        _write(project["project_dir"] / "open-work.md", self._ledger(self._open_body(), stamped=False))
+
+        payload = wakeup.compose_wake_up_context(
+            cwd=project["cwd"], wiki_root=wiki_root(), session="sess-ow"
+        )
+
+        assert "wire the loader" in payload
+
+    def test_section_respects_budget_with_pointer(self, project):
+        _write(project["project_dir"] / "l1" / "session-001.md", _model_stamped("L1 content"))
+        many = "".join(
+            f"- [ ] item number {i} with a fairly long description to burn budget "
+            f"— ptr:issue:#{i} (opened 2026-08-01)\n"
+            for i in range(400)
+        )
+        _write(
+            project["project_dir"] / "open-work.md",
+            self._ledger(f"## Open\n\n{many}\n## Archive\n"),
+        )
+
+        payload = wakeup.compose_wake_up_context(
+            cwd=project["cwd"], wiki_root=wiki_root(), session="sess-ow", max_tokens=100_000
+        )
+
+        start = payload.index(wakeup.SECTION_OPENWORK)
+        end = payload.find("\n\n## ", start + 1)
+        segment = payload[start:end] if end != -1 else payload[start:]
+        assert len(segment) <= wakeup.OPENWORK_BUDGET * wakeup.CHARS_PER_TOKEN + 300
+        assert "projects/demo-project/open-work.md" in segment
+
+    def test_overflow_keeps_the_oldest_open_threads_and_says_so(self, project):
+        """Final-review finding 5: `truncate_text_to_tokens` keeps the TAIL,
+        so an over-budget ledger silently dropped the OLDEST open threads —
+        the ledger exists so nothing open is forgotten, and its overflow was
+        forgetting the most-forgotten items first. Head-preserving now, with
+        an explicit count of what is not shown."""
+        _write(project["project_dir"] / "l1" / "session-001.md", _model_stamped("L1 content"))
+        many = "".join(
+            f"- [ ] item number {i:03d} with a fairly long description to burn budget "
+            f"— ptr:issue:#{i} (opened 2026-08-01)\n"
+            for i in range(200)
+        )
+        _write(
+            project["project_dir"] / "open-work.md",
+            self._ledger(f"## Open\n\n{many}\n## Archive\n"),
+        )
+
+        payload = wakeup.compose_wake_up_context(
+            cwd=project["cwd"], wiki_root=wiki_root(), session="sess-ow", max_tokens=100_000
+        )
+
+        assert "item number 000" in payload      # oldest survives
+        assert "item number 199" not in payload  # newest is what overflows
+        assert "not shown" in payload
+        assert "projects/demo-project/open-work.md" in payload
+
+    def test_no_overflow_notice_when_everything_fits(self, project):
+        _write(project["project_dir"] / "l1" / "session-001.md", _model_stamped("L1 content"))
+        _write(project["project_dir"] / "open-work.md", self._ledger(self._open_body()))
+
+        payload = wakeup.compose_wake_up_context(
+            cwd=project["cwd"], wiki_root=wiki_root(), session="sess-ow"
+        )
+
+        assert "not shown" not in payload
+
+    def test_ledger_path_excluded_from_extras(self, project):
+        _write(project["project_dir"] / "l1" / "session-001.md", _model_stamped("L1 content"))
+        _write(project["project_dir"] / "open-work.md", self._ledger(self._open_body()))
+
+        payload = wakeup.compose_wake_up_context(
+            cwd=project["cwd"], wiki_root=wiki_root(), session="sess-ow"
+        )
+
+        assert "#### projects/demo-project/open-work.md" not in payload
+
+    def test_user_stamped_ledger_surfaces(self, project):
+        """The skeleton loader stamps founding pages `writer="human"` →
+        `ren_trust: "user"`; a friend's own hand-edited lines land the same
+        way. This page is meant to be human-writable, so those surface."""
+        _write(project["project_dir"] / "l1" / "session-001.md", _model_stamped("L1 content"))
+        page = self._ledger(self._open_body(), stamped=False).replace(
+            "---\n\n",
+            'ren_write_id: "w-h"\nren_writer: "human"\nren_trust: "user"\n---\n\n',
+            1,
+        )
+        _write(project["project_dir"] / "open-work.md", page)
+
+        payload = wakeup.compose_wake_up_context(
+            cwd=project["cwd"], wiki_root=wiki_root(), session="sess-ow"
+        )
+
+        assert "wire the loader" in payload
+
+
+def test_malformed_l1_frontmatter_never_raises_compose(project):
+    """0.6.5 fix round 1: `read_frontmatter_provenance` calls `yaml.safe_load`
+    unguarded, so an L1 page with malformed frontmatter used to propagate a
+    YAML error out of `compose_wake_up_context` — which must NEVER raise."""
+    _write(
+        project["project_dir"] / "l1" / "session-bad.md",
+        "---\nren_write_id: \"w-x\"\nbroken: {{unrenderd}}\n---\n\n# nope\n",
+    )
+    _write(project["project_dir"] / "map.md", "# demo-project — knowledge map\n## Knowledge\n- uses FastAPI\n")
+
+    payload = wakeup.compose_wake_up_context(
+        cwd=project["cwd"], wiki_root=wiki_root(), session="sess-bad"
+    )
+
+    assert wakeup.SECTION_L1 not in payload
+    assert "uses FastAPI" in payload

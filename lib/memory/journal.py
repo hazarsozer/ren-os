@@ -15,11 +15,14 @@ matching journal entry).
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import asdict
 from pathlib import Path
 
 from lib import ren_paths
 from lib.memory.provenance import Provenance
+
+logger = logging.getLogger(__name__)
 
 JOURNAL_FILENAME = "journal.jsonl"
 
@@ -52,11 +55,27 @@ def entries(page: str | None = None) -> list[dict]:
     for line in path.read_text(encoding="utf-8").splitlines():
         if not line.strip():
             continue
-        entry = json.loads(line)
+        # A malformed line must never take the whole reader down. Two
+        # processes append here concurrently (wrap spawns `ren-wiki-lint`
+        # non-blocking while the session keeps writing), so a long line CAN
+        # interleave or be truncated. Raising here would kill the watermark,
+        # the incremental lint and every consumer at once, while the wake-up
+        # hook's own stdlib counter kept counting the bad line — the watermark
+        # could then never advance and the nudge would fire forever. Skip and
+        # log instead; a non-object line is corrupt too (`entry.get` would
+        # blow up at every call site).
+        try:
+            entry = json.loads(line)
+        except ValueError:
+            logger.warning("skipping malformed journal line in %s", path)
+            continue
+        if not isinstance(entry, dict):
+            logger.warning("skipping non-object journal line in %s", path)
+            continue
         if page is not None and entry.get("page") != page:
             continue
         out.append(entry)
     return out
 
 
-__all__ = ["append", "entries"]
+__all__ = ["append", "entries", "JOURNAL_FILENAME"]

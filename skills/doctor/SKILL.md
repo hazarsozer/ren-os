@@ -70,6 +70,7 @@ Donor's Node/gh/claude-cli checks, activity-feed/RC-channel/fleet checks, and th
 | `check_model_map_staleness` | 0.6.1 E4: the `renos:model-map-updated` stamp in `doctrine/model-classes.md` — `warn` if older than 180 days, `info` otherwise |
 | `check_orphaned_projects` | issue #19: every `projects/<slug>/` reachable from a repo — `warn` naming each slug with neither a `projects.json` repo mapping nor a `<dev_root>/<slug>/` dir (memory nothing can ever inject) |
 | `check_execution_doctrine` | 0.6.4: `agents/ren-reviewer.md` present (doctrine card references it) → `error` if missing; a manual pre-0.6.4 `<!-- renos:doctrine-stopgap -->` block left in `~/.claude/CLAUDE.md` → `warn` (the wake-up hook injects the card now, the manual block is redundant residue) |
+| `check_agent_shadowing` | 0.6.5: a user or project `.claude/agents/<name>.md` filename colliding with a shipped `agents/*.md` → `warn` naming the colliding agent(s); checks both `claude_user_dir()/agents` and, when the cwd resolves to a registered project, that project's `.claude/agents/`; `skip` when neither directory exists |
 
 ## Behavior
 

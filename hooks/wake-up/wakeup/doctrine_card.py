@@ -39,13 +39,15 @@ _BODY = """
 RenOS execution doctrine — these gates are MANDATORY for design/build work.
 
 {gate1}
-2. **Decompose.** Break the approved plan into atomic subtasks, each small
-   enough for a fresh subagent to execute without quality loss
-   (one subtask ≈ one clean context).
+2. **Decompose.** Break the approved plan into atomic subtasks — spawn the
+   `ren-planner` agent to cut it into briefs, each small enough for a fresh
+   subagent (one subtask ≈ one clean context).
 {gate3}
 4. **Review gate.** Before chaining to the next subtask or claiming done,
    spawn the `ren-reviewer` agent on the work. Findings must be verified with
    runnable repros. Do NOT proceed past unresolved CRITICAL/HIGH findings.
+   Work is not done until its line in the project's open-work ledger is closed —
+   if it has no line, add one before you claim done.
 
 Red flags — if you catch yourself thinking any of these, STOP: the gate applies.
 
@@ -56,6 +58,30 @@ Red flags — if you catch yourself thinking any of these, STOP: the gate applie
 | "A review here is overkill" | Unreviewed chained work compounds errors. |
 | "The plan is in my head" | If it isn't written and approved, it doesn't exist. |
 """
+
+
+_COMPACT_BODY = """
+RenOS execution doctrine — these gates are MANDATORY for design/build work.
+
+1. **Brainstorm gate.** No design or build work without an approved spec/plan.
+2. **Decompose.** Cut the approved plan into atomic subtasks — spawn the
+   `ren-planner` agent to write the briefs.
+3. **Dispatch.** One fresh subagent per subtask, test-first inside each.
+4. **Review gate.** Spawn the `ren-reviewer` agent before claiming done; clear
+   every CRITICAL/HIGH finding and close the work's open-work ledger line.
+"""
+
+
+def render_doctrine_card_compact() -> str:
+    """Head-preserving fallback used when the full card cannot fit its budget.
+
+    The generic truncator keeps a text's TAIL, which on the full card elides the
+    header and gates 1-3 — it drops exactly the part the card exists to deliver.
+    Rather than change `truncate_text_to_tokens` (shared with other callers),
+    the wake-up composer swaps in this variant, which is sized to survive the
+    band-low calibration ratio (500 tokens x 1.5 chars/token = 750 chars) intact.
+    """
+    return f"{SECTION_DOCTRINE}\n{_COMPACT_BODY.strip()}"
 
 
 def superpowers_installed() -> bool:

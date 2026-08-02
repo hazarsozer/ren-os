@@ -181,3 +181,49 @@ def test_project_schema_page_type_is_registered():
 
     registry = importlib.import_module("skills.wiki-migration.lib").load_registry()
     assert registry["page_types"]["project-schema"]["current"] == 1
+
+
+def test_project_profile_includes_open_work_ledger():
+    """0.6.5 Task 6: the open-work ledger is stamped into every project
+    sub-wiki. `create_if_missing` semantics (never overwrite) expressed as
+    `copy_if_missing`, the loader's file-entry rule — `create_if_missing` is
+    directory-only in this manifest's contract."""
+    manifest = _load_manifest()
+    entry = next(
+        (e for e in _project_profile_entries(manifest) if e["path"] == "open-work.md"), None
+    )
+    assert entry is not None, "expected open-work.md in the project profile"
+    assert entry["write_rule"] == "copy_if_missing"
+    assert entry["template"] == "templates/projects/open-work.md.tmpl"
+
+
+def test_open_work_template_passes_frontmatter_lint():
+    """open-work.md template: type=open-work, schema_version=1, `project`."""
+    import re
+
+    import yaml
+
+    manifest = _load_manifest()
+    entry = next(e for e in _project_profile_entries(manifest) if e["path"] == "open-work.md")
+    template_path = SKELETON_ROOT / entry["template"]
+    assert template_path.is_file(), f"template not found: {template_path}"
+
+    template_text = template_path.read_text(encoding="utf-8")
+    bindings = {"today": "2026-01-01", "framework_version": "0.6.5", "project": "flux"}
+    rendered = re.sub(r"\{\{(\w+)\}\}", lambda m: bindings[m.group(1)], template_text)
+
+    assert rendered.startswith("---")
+    end_idx = rendered.find("\n---", 3)
+    assert end_idx != -1
+    data = yaml.safe_load(rendered[3:end_idx])
+    assert data.get("type") == "open-work", f"expected type=open-work, got {data}"
+    assert data.get("schema_version") == 1
+    assert data.get("project") == "flux"
+    assert "## Open" in rendered and "## Archive" in rendered
+
+
+def test_open_work_page_type_is_registered():
+    import importlib
+
+    registry = importlib.import_module("skills.wiki-migration.lib").load_registry()
+    assert registry["page_types"]["open-work"]["current"] == 1

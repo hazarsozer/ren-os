@@ -114,7 +114,12 @@ from typing import Final
 
 import yaml
 
-from .doctrine_card import SECTION_DOCTRINE, render_doctrine_card, superpowers_installed
+from .doctrine_card import (
+    SECTION_DOCTRINE,
+    render_doctrine_card,
+    render_doctrine_card_compact,
+    superpowers_installed,
+)
 from lib.instrument import collect, miss_log
 from lib.instrument.calibration import PLAUSIBLE_RATIO_BAND
 from lib.memory import archive, queue, quarantine
@@ -141,13 +146,18 @@ OVERVIEW_BUDGET: Final[int] = 600
 L1_BUDGET: Final[int] = 1_200
 L2_BUDGET: Final[int] = 1_200
 ROUTINE_SPEC_BUDGET: Final[int] = 400
-DOCTRINE_BUDGET: Final[int] = 400
+OPENWORK_BUDGET: Final[int] = 400
+DOCTRINE_BUDGET: Final[int] = 500
+# The doctrine card ships in the plugin rather than living in the wiki, so its
+# `_inject_section` pointer names the source in prose instead of a page rel.
+DOCTRINE_POINTER: Final[str] = "the full doctrine card, which ships in the plugin"
 EXTRAS_BUDGET: Final[int] = 1_600   # ranked additional pages, split across however many fit
 EXTRA_PAGE_BUDGET: Final[int] = 400  # per-page cap within the extras budget
 DEFAULT_EXTRAS_COUNT: Final[int] = 3
 
 IDENTITY_FILENAME: Final[str] = "identity.md"
 OVERVIEW_FILENAME: Final[str] = "overview.md"
+OPENWORK_FILENAME: Final[str] = "open-work.md"
 
 # `/ren:interview`'s `render_identity` (skills/interview/lib) ALWAYS writes
 # this exact set of list fields to identity.md's frontmatter, non-empty only
@@ -178,6 +188,7 @@ _IDENTITY_ITALIC_LINE_RE = re.compile(r"^_.+_$")
 SECTION_IDENTITY: Final[str] = "## Who am I working with"
 SECTION_OVERVIEW: Final[str] = "## What is this project"
 SECTION_L1: Final[str] = "## What happened last session"
+SECTION_OPENWORK: Final[str] = "## Open work"
 SECTION_L2: Final[str] = "## Where to find project knowledge"
 SECTION_ROUTINES: Final[str] = "## Active routines"
 SECTION_PENDING: Final[str] = "## Waiting on you"
@@ -286,6 +297,45 @@ def _inject_section(
     return truncated
 
 
+def _inject_open_work(
+    text: str,
+    budget: int,
+    pointer_rel: str,
+    chars_per_token: float | None = None,
+) -> str:
+    """Budget the open-work ledger HEAD-first, naming what didn't fit.
+
+    `truncate_text_to_tokens` keeps the TAIL, which for this section means an
+    over-budget ledger silently drops the OLDEST open threads — the exact
+    items most at risk of being forgotten, in the one artifact whose job is
+    to not forget them. So this section cuts from the head instead (oldest
+    lines survive) and always states how many items are not shown; silent
+    loss is the thing being eliminated, not truncation itself.
+
+    Section-local, by the same reasoning that produced the compact doctrine
+    card: the shared `truncate_text_to_tokens` is untouched because its
+    tail-keeping is correct for its other callers."""
+    if budget <= 0:
+        return ""
+    max_chars = int(budget * (chars_per_token or _calibrated_chars_per_token()))
+    if len(text) <= max_chars:
+        return text
+
+    lines = text.split("\n")
+    kept: list[str] = []
+    used = 0
+    for line in lines:
+        cost = len(line) + 1
+        if used + cost > max_chars:
+            break
+        kept.append(line)
+        used += cost
+
+    dropped = len(lines) - len(kept)
+    notice = f"*({dropped} more open item(s) not shown; full ledger in `{pointer_rel}`)*"
+    return "\n".join(kept + [notice]) if kept else notice
+
+
 # `resolve_dev_root` and `detect_project` now live in `lib.ren_paths` (codex
 # D4 wiring) — imported above, re-exported here so existing callers of
 # `wakeup.resolve_dev_root` / `wakeup.detect_project` keep working. Shared
@@ -354,13 +404,67 @@ def read_l1(project_dir: Path) -> str:
     if not text:
         return ""
 
-    prov = read_frontmatter_provenance(text)
+    # `read_frontmatter_provenance` calls `yaml.safe_load` unguarded, so a page
+    # with malformed frontmatter RAISES here — and this call sits outside any
+    # try in `compose_wake_up_context`, which must never raise (0.6.5 fix
+    # round 1). A page we cannot parse is not a verified model-class write:
+    # degrade to held-out, same as an unstamped one.
+    try:
+        prov = read_frontmatter_provenance(text)
+    except Exception:  # noqa: BLE001 - malformed frontmatter is untrusted, never fatal
+        logger.debug("could not read L1 provenance from %s", path, exc_info=True)
+        return ""
     if prov and prov.get("trust") == "model":
         return text
 
     # Not a verified model-class RenOS write — held out, whether foreign-
     # stamped or entirely unstamped. Never injected raw on path shape alone.
     return ""
+
+
+def read_open_work(project_dir: Path) -> str:
+    """Return the still-OPEN lines of the project's open-work ledger (0.6.5
+    Task 6), or "" when the page is absent, untrusted, or has no open lines.
+
+    Only lines under `## Open` that are still unchecked (`- [ ]`) surface:
+    checked lines are done, and `## Archive` holds aged-out closed lines —
+    neither is what the session needs at wake-up.
+
+    Trust check follows `read_l1`'s pattern: the page's OWN stamp decides,
+    path shape is never trusted. `ren_trust: "model"` is a genuine RenOS
+    write (what `reconcile_open_work` produces) and surfaces; `"user"` is the
+    template-stamped bootstrap page (`lib.skeleton` stamps skeleton writes
+    `writer="human"`) or a friend's own hand-edit, and surfaces too — this
+    ledger is explicitly a page humans write lines into, unlike L1. Anything
+    else — `"foreign"` above all — is held out, as is an entirely unstamped
+    file unless its frontmatter carries the template's own `type: open-work`.
+    """
+    text = _read_text_safe(project_dir / OPENWORK_FILENAME)
+    if not text:
+        return ""
+
+    try:
+        prov = read_frontmatter_provenance(text) or {}
+    except Exception:  # noqa: BLE001 - malformed frontmatter is untrusted, never fatal
+        logger.debug("could not read open-work provenance", exc_info=True)
+        return ""
+    trust = prov.get("trust")
+    if trust not in ("model", "user"):
+        if trust is not None:
+            return ""
+        if _parse_frontmatter_dict(text).get("type") != "open-work":
+            return ""
+
+    open_lines: list[str] = []
+    in_open = False
+    for line in _strip_frontmatter(text).splitlines():
+        stripped = line.strip()
+        if stripped.startswith("## "):
+            in_open = stripped == "## Open"
+            continue
+        if in_open and stripped.startswith("- [ ] "):
+            open_lines.append(stripped)
+    return "\n".join(open_lines)
 
 
 def read_l2_map(project_dir: Path) -> str:
@@ -733,6 +837,63 @@ def _suggestions_store_line() -> str:
     return f"{n} instruction suggestion(s) pending — run /ren:suggestions to review."
 
 
+JOURNAL_FILENAME: Final[str] = "journal.jsonl"
+WATERMARK_FILENAME: Final[str] = "wiki_lint_watermark.json"
+
+
+def _unlinted_count() -> int:
+    """Number of append-only journal lines past the wiki-lint watermark —
+    i.e. how many recorded wiki writes no lint pass has looked at yet (0.6.5
+    Task 5).
+
+    Deliberately reads `state_dir()/journal.jsonl` and
+    `state_dir()/wiki_lint_watermark.json` DIRECTLY with stdlib rather than
+    calling `skills.wiki-health.lib.watermark.unlinted()`: the wake-up hook is
+    py3.9-safe, stdlib-only and latency-sensitive, and must not import skill
+    packages (see the layering note in `_is_overview_skeleton_or_empty`). The
+    file shapes are Task 2's contract — one JSON object per journal line, and
+    a flat `{"journal_lines_seen": int, "clean": bool, "stamped_at": str}`
+    stamp.
+
+    Keyed on the COUNT, never on the stamp's `clean` flag: `clean` is
+    wiki-global, so a single unresolved finding anywhere would otherwise make
+    this a permanent nudge.
+
+    Never raises: an absent/unreadable/corrupt journal or watermark yields 0
+    (no nudge), same failure doctrine as every other producer here."""
+    try:
+        with (state_dir() / JOURNAL_FILENAME).open(encoding="utf-8") as handle:
+            # Blank lines are skipped, matching how the journal's own reader
+            # (`lib.memory.journal.entries`) counts entries — the watermark is
+            # stamped in THOSE units, so the two must agree.
+            lines = sum(1 for line in handle if line.strip())
+    except (OSError, UnicodeDecodeError):
+        logger.debug("could not count journal lines", exc_info=True)
+        return 0
+
+    seen = 0
+    try:
+        data = json.loads((state_dir() / WATERMARK_FILENAME).read_text(encoding="utf-8"))
+        seen = int(data["journal_lines_seen"])
+    except Exception:  # noqa: BLE001 - a missing/corrupt stamp means "lint everything"
+        logger.debug("could not read lint watermark", exc_info=True)
+        seen = 0
+
+    return max(0, lines - seen)
+
+
+def unlinted_nudge_line() -> str:
+    """The wake-up nudge naming the shipped `ren-wiki-lint` agent, or "" when
+    the lint watermark is caught up. Appended only alongside REAL content —
+    it must never make an otherwise-empty compose look non-empty (the
+    loud-notice contract); see `compose_wake_up_context`."""
+    n = _unlinted_count()
+    if n <= 0:
+        return ""
+    plural = "y" if n == 1 else "ies"
+    return f"{n} journal entr{plural} unlinted — spawn the ren-wiki-lint agent or run /ren:wrap."
+
+
 def _git(cwd: Path, args: list[str]) -> str:
     """Read-only, bounded git subprocess call. Returns "" on ANY failure
     (not a repo, git absent, timeout, non-zero exit) — never raises."""
@@ -1054,8 +1215,10 @@ def compose_wake_up_context(
     if project_dir is not None:
         overview_rel = f"projects/{project}/{OVERVIEW_FILENAME}"
         l2_rel = f"projects/{project}/{L2_MAP_FILENAME}"
+        openwork_rel = f"projects/{project}/{OPENWORK_FILENAME}"
         dedicated_paths.add(overview_rel)
         dedicated_paths.add(l2_rel)
+        dedicated_paths.add(openwork_rel)
 
         overview_text = read_overview(project_dir)
         if overview_text:
@@ -1104,6 +1267,19 @@ def compose_wake_up_context(
         l1_path = _most_recent_l1_path(l1_source_dir / L1_DIRNAME)
         l1_rel = l1_path.relative_to(wiki_root).as_posix() if l1_path else None
         sections.append(_inject_section(l1_text, L1_BUDGET, l1_rel, chars_per_token))
+
+    # Open work sits between "what happened last session" and "where to find
+    # knowledge": it is the other half of continuity — what is still open.
+    # Real content, so it is appended BEFORE the emptiness verdict below
+    # (unlike the nudge/doctrine card, which ride real content).
+    if project_dir is not None:
+        open_work_text = read_open_work(project_dir)
+        if open_work_text:
+            sections.append(SECTION_OPENWORK)
+            sections.append(
+                _inject_open_work(open_work_text, OPENWORK_BUDGET, openwork_rel, chars_per_token)
+            )
+            surfaced_pages.append(openwork_rel)
 
     if project_dir is not None:
         l2_text = read_l2_map(project_dir)
@@ -1184,10 +1360,29 @@ def compose_wake_up_context(
         logger.info("nothing to inject from %s; emitting empty context", wiki_root)
         return ""
 
+    # Same rule as the doctrine card below: the unlinted-journal nudge rides
+    # real content and is appended only AFTER the emptiness verdict above, so
+    # journal lines alone can never turn an empty wiki's compose into a
+    # non-empty payload and suppress the loud uninitialized notice.
+    nudge = unlinted_nudge_line()
+    if nudge:
+        sections.append(nudge)
+
     # Doctrine rides real content; empty compose stays "" (loud notice) —
     # the emptiness decision above is made before the card is ever added.
-    card = render_doctrine_card(superpowers_installed())
-    card = _inject_section(card, DOCTRINE_BUDGET, None, chars_per_token) or card
+    full_card = render_doctrine_card(superpowers_installed())
+    # Pointer (not None): if a band-low calibration ratio forces a cut, the
+    # loss must be VISIBLE rather than silently eating doctrine text.
+    card = _inject_section(full_card, DOCTRINE_BUDGET, DOCTRINE_POINTER, chars_per_token)
+    if card != full_card:
+        # The full card doesn't fit. `truncate_text_to_tokens` keeps the TAIL,
+        # which would elide the header and gates 1-3 — the card's whole point.
+        # Swap in the head-preserving compact variant instead (card-local fix;
+        # the shared truncator is untouched because it has other callers).
+        compact = render_doctrine_card_compact()
+        card = truncate_text_to_tokens(compact, DOCTRINE_BUDGET, chars_per_token)
+        card = f"{card}\n*(continues in `{DOCTRINE_POINTER}`)*"
+    card = card or full_card
     sections.insert(1, card)
 
     composed = "\n\n".join(s for s in sections if s.strip())
@@ -1218,7 +1413,9 @@ __all__ = [
     "L1_BUDGET",
     "L2_BUDGET",
     "ROUTINE_SPEC_BUDGET",
+    "OPENWORK_BUDGET",
     "DOCTRINE_BUDGET",
+    "DOCTRINE_POINTER",
     "EXTRAS_BUDGET",
     "EXTRA_PAGE_BUDGET",
     "SALIENCE_WINDOW_DAYS",
@@ -1226,6 +1423,7 @@ __all__ = [
     "SECTION_IDENTITY",
     "SECTION_OVERVIEW",
     "SECTION_L1",
+    "SECTION_OPENWORK",
     "SECTION_L2",
     "SECTION_ROUTINES",
     "SECTION_PENDING",
@@ -1240,6 +1438,7 @@ __all__ = [
     "read_l2_map",
     "read_live_routines",
     "suggestion_line",
+    "unlinted_nudge_line",
     "rank_extras",
     "compose_wake_up_context",
 ]

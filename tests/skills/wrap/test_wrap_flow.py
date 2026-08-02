@@ -979,6 +979,51 @@ class TestLivePinPages:
         assert "v2 of the plan" in pins[0]["preview"]
 
 
+class TestSessionSummaryJournalLine:
+    """0.6.5 session journal: `wrap_session` appends one append-only NOOP
+    journal line summarizing the session (pages touched, counts) — the
+    incremental-lint watermark (a later 0.6.5 task) reads these lines."""
+
+    def test_wrap_appends_session_summary_journal_line(self, wiki, project):
+        from lib.memory import journal
+
+        result = wrap_session(
+            "# did things", [], session="s-sum1",
+            llm_call=_llm_by_lookup({}), cwd=project["cwd"],
+        )
+        lines = [e for e in journal.entries() if e.get("page") == "_wrap-session"]
+        assert len(lines) == 1
+        summary = lines[0]["wrap_summary"]
+        assert summary["session"] == "s-sum1"
+        assert summary["project"] == "demo-project"
+        assert result["l1_qid"]  # wrap itself unaffected
+        # pages wrap wrote this session are listed
+        assert any(p.startswith("projects/demo-project/l1/") for p in summary["pages_touched"])
+
+    def test_session_summary_failure_never_breaks_wrap(self, wiki, project, monkeypatch):
+        # Only the session-summary journal line (page="_wrap-session") is
+        # made to fail — the L1 write's own journal.append (same module,
+        # earlier in wrap_session) must keep working, since that's core
+        # wrap behavior, not the sub-step under test here.
+        import skills.wrap.lib as wraplib
+
+        real_append = wraplib.journal.append
+
+        def flaky_append(prov, extra=None):
+            if prov.page == "_wrap-session":
+                raise OSError("disk")
+            return real_append(prov, extra)
+
+        monkeypatch.setattr(wraplib.journal, "append", flaky_append)
+        result = wrap_session(
+            "# x", [], session="s-sum2",
+            llm_call=_llm_by_lookup({}), cwd=project["cwd"],
+        )
+        assert result["l1_qid"]  # degraded silently, wrap completed
+        lines = [e for e in wraplib.journal.entries() if e.get("page") == "_wrap-session"]
+        assert not any(e.get("session") == "s-sum2" for e in lines)
+
+
 class TestWrapScreenLivePins:
     def test_screen_lists_live_pins_from_any_session(self, wiki):
         """The gate is cross-session by design — stale pins from EARLIER
