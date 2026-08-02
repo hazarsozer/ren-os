@@ -26,7 +26,7 @@ import re
 
 from lib import ren_paths
 from lib.memory.promotion import GLOBAL_PREFIX
-from lib.memory.queue import Proposal, QueueEntry, propose_and_apply
+from lib.memory.queue import Proposal, QueueEntry, approve_and_apply, get, propose_and_apply
 
 _FRONTMATTER_RE = re.compile(r"\A---\n(.*?)\n---\n?", re.DOTALL)
 _TYPE_FIELD_RE = re.compile(r"^type:\s*\S", re.MULTILINE)
@@ -91,11 +91,42 @@ def pin(text: str, page: str, session: str) -> QueueEntry:
     return entry
 
 
-def correct(page: str, replacement: str | None, session: str) -> QueueEntry:
+def _complete_if_held(entry: QueueEntry, approved_by: str | None) -> QueueEntry:
+    """Dogfood-2 finding H1: complete a human-approved correction that the
+    instruction-plane hold left pending.
+
+    A correction targeting an instruction-plane page (`global/`, `decisions/`,
+    `patterns/`, `research/`) holds pending at the data-plane door
+    (`propose_and_apply` case 1) — correct behavior for an unattended write,
+    but wrong when the friend just approved the correction verbally (wrap's
+    "Live pins" gate). With `approved_by` set, the pending entry is released
+    through the sanctioned human-approval path (`queue.approve_and_apply`).
+
+    A `contradicts`-conflict hold is deliberately NOT completed here — that
+    hold exists so the live session reasons about the contradiction first;
+    verbal approval of a delete/update is not that reasoning. The entry is
+    returned still-pending and the caller must report it honestly."""
+    if approved_by is None or entry.status != "pending":
+        return entry
+    if any(c.get("kind") == "contradicts" for c in entry.conflicts):
+        return entry
+    approve_and_apply(entry.qid, who=approved_by)
+    return get(entry.qid)
+
+
+def correct(
+    page: str, replacement: str | None, session: str, *, approved_by: str | None = None
+) -> QueueEntry:
     """Queue a correction: "that's wrong" (`replacement=None` → DELETE) or
     "that's wrong, it should say THIS" (`replacement` given → UPDATE).
 
     Always human-provenance, always salient.
+
+    `approved_by` (keyword-only): the friend's handle when they explicitly
+    approved this correction in conversation. When the proposal lands pending
+    on the instruction-plane hold, the approval is completed immediately via
+    `queue.approve_and_apply` instead of silently swallowing the confirmed
+    correction — see `_complete_if_held`.
     """
     if replacement is None:
         entry, _ = propose_and_apply(
@@ -110,7 +141,7 @@ def correct(page: str, replacement: str | None, session: str) -> QueueEntry:
                 salience=True,
             )
         )
-        return entry
+        return _complete_if_held(entry, approved_by)
     entry, _ = propose_and_apply(
         Proposal(
             op="UPDATE",
@@ -123,7 +154,7 @@ def correct(page: str, replacement: str | None, session: str) -> QueueEntry:
             salience=True,
         )
     )
-    return entry
+    return _complete_if_held(entry, approved_by)
 
 
 __all__ = ["pin", "correct"]

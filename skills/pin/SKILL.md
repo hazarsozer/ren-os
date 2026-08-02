@@ -6,10 +6,10 @@ description: |
   /ren:pin slash command. The simplest producer in the system — one
   invocation, one proposal, queued through the single write-queue like
   every other producer. Not a pipeline.
-version: 0.6.2
+version: 0.6.3
 license: MIT
 
-framework_version: "0.6.2"
+framework_version: "0.6.3"
 schema_version: 1
 type: skill
 execution_tier: judgment
@@ -63,11 +63,15 @@ Reactive memory control, mid-session. The friend says "remember it like THIS" or
 3. Both calls go through `lib.memory.queue.propose_and_apply`, which scrubs secrets, dedups against existing pending entries, and runs conflict detection exactly like any other producer — pin gets no special exemption. Per the v2.2 pivot, a pin/correction to a data-plane page auto-applies immediately (provenance-tagged, one-step revertible). An instruction-plane target (`global/`, `decisions/`, `patterns/`, `research/`) or a `contradicts` conflict holds the entry pending instead — nothing lands on disk.
 4. Confirm to the user, honestly per outcome:
    - Applied: `Saved (write <write_id>) — <op> <page> (pin)`, or `... (correction)`, and mention saying "undo <write_id>" to revert — matching `ingest`'s conversational closing copy.
-   - Held pending (instruction-plane target or contradiction): NEVER say "saved". Report `Queued as <qid> — <page> is an instruction-plane target, held for your approval` and point at the approval path (`lib.memory.queue.approve_and_apply("<qid>", who="<friend>")`, i.e. the /ren approval flow) or contradiction resolution as appropriate.
+   - Held pending (instruction-plane target or contradiction): NEVER say "saved". Report `Queued as <qid> — <page> is an instruction-plane target, held for your approval` and point at the approval path (`lib.memory.queue.approve_and_apply("<qid>", who="<friend>")`, i.e. the /ren approval flow) or contradiction resolution as appropriate. Exception: when the friend has ALREADY approved the correction in conversation (e.g. wrap's "Live pins" gate asked and they said "delete"), pass `approved_by=<friend's handle>` to `correct(...)` — it completes the instruction-plane hold through `approve_and_apply` in the same call, so the confirmed correction actually lands (dogfood-2 finding H1). A `contradicts` hold is never auto-completed this way — it still comes back `pending` and must be reported as held.
 
 ## Why `salience=True`
 
 Per spec §3.2, a pinned or corrected page is something the friend explicitly cared enough about to interrupt flow for. `salience` is carried through the `Proposal` into the `QueueEntry` so wake-up's relevance ranking (Phase 5) can boost it — a pin is a strong, direct signal, stronger than anything inferred.
+
+## Task-shaped pins (issue #25)
+
+A pin whose content is a TASK ("next session, do X") should carry its own disposal as its last step — end the pinned text with "…and delete this page once done." Belt-and-braces: `/ren:wrap`'s "Live pins" gate (see `skills/wrap/SKILL.md`) also lists every live pin at session end and asks the friend about ones that look acted-on, so a finished plan-pin gets caught there even when the text forgot its own delete step. Disposal is always the normal correction path (`correct(page, None, session)` → queue DELETE) — never a direct file deletion.
 
 ## What this skill does NOT do
 

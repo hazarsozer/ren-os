@@ -35,11 +35,14 @@ Checks, in order:
      the plugin "ren"); a user's own repo that tracks tests/ etc. is never
      denylisted (B2). Scans `git ls-files` (not `git diff --stat`, which
      misses already-tracked-but-newly-pushed history) against `PATH_DENYLIST`.
-  4. SECRETS SCAN — `lib.memory.scrub.scan` over the OUTGOING file set only
-     (`@{u}..HEAD`, or the full tree on a first push with no upstream),
-     skipping files >1MB or non-UTF-8 (treated as binary). A secret in a file
-     not part of this push does not block (B2). A finding blocks, naming
-     KINDS and PATHS — never the secret content itself.
+  4. SECRETS SCAN — `lib.memory.scrub.scan` over the OUTGOING ADDED LINES
+     only (`git diff --unified=0` against `@{u}`, or the remote default
+     branch's merge-base on a first branch push — issues #27/#28; full file
+     contents only on a genuinely first publish with no remote refs),
+     skipping blobs >1MB or non-UTF-8 (treated as binary). Secret-shaped
+     content not added by this push does not block (B2, content
+     granularity). A finding blocks, naming KINDS and PATHS — never the
+     secret content itself.
 """
 
 from __future__ import annotations
@@ -135,36 +138,91 @@ def _is_renos_repo(cwd: str) -> bool:
     return isinstance(data, dict) and data.get("name") == "ren"
 
 
-def _outgoing_files(cwd: str) -> list[str]:
-    """Files to run the secrets scan over: only those touched by commits not
-    yet on the upstream (`@{u}..HEAD`) — a secret-shaped string in a file that
-    is NOT part of this push must not block. When there is no upstream (first
-    push of a branch), everything tracked is outgoing, so fall back to the full
-    `git ls-files` tree. Never raises — degrades to [] on diff failure with an
-    upstream present (fail toward not-scanning that file set rather than
-    crashing the guard)."""
+def _remote_base_ref(cwd: str, remote: str) -> str:
+    """Best-effort base ref for a no-upstream push: the push target's default
+    branch as a remote-tracking ref (`<remote>/HEAD` when set, else
+    `<remote>/main`, else `<remote>/master`; unnamed remote falls back to
+    "origin"). Returns "" when none resolves — the remote has no known refs,
+    so everything is genuinely outgoing (issue #27)."""
+    name = remote or "origin"
+    for candidate in (f"{name}/HEAD", f"{name}/main", f"{name}/master"):
+        try:
+            rev = subprocess.run(
+                ["git", "-C", cwd, "rev-parse", "--verify", "--quiet", candidate],
+                capture_output=True, text=True, timeout=5,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return ""
+        if rev.returncode == 0 and rev.stdout.strip():
+            return candidate
+    return ""
+
+
+def _scan_base(cwd: str, remote: str) -> str | None:
+    """Diff base for the outgoing secrets scan: `"@{u}.."` when an upstream
+    exists; else the push target's default branch as `"<ref>..."` (since the
+    merge-base — issue #27: the full-tree fallback blocked every new branch
+    of a repo whose tree legitimately carries secret-shaped fixtures already
+    on the remote); `None` only when the remote has no known refs at all
+    (genuinely first publish — everything tracked really is outgoing)."""
     try:
         rev = subprocess.run(
             ["git", "-C", cwd, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"],
             capture_output=True, text=True, timeout=5,
         )
-        has_upstream = rev.returncode == 0 and bool(rev.stdout.strip())
+        if rev.returncode == 0 and rev.stdout.strip():
+            return "@{u}.."
     except (OSError, subprocess.TimeoutExpired):
-        has_upstream = False
+        pass
+    base_ref = _remote_base_ref(cwd, remote)
+    return f"{base_ref}..." if base_ref else None  # three-dot: since merge-base
 
-    if not has_upstream:
-        return _ls_files(cwd)
+
+def _outgoing_blobs(cwd: str, remote: str = "") -> dict[str, str]:
+    """Text to run the secrets scan over, keyed by file path. B2, applied at
+    CONTENT granularity (issue #28): only the push's ADDED lines are scanned
+    (`git diff --unified=0 <base>HEAD`, `+` lines per file) — pre-existing
+    secret-shaped text in a file the push happens to edit is not part of this
+    push and must not block, while a real secret introduced by the push's own
+    added lines is still caught. Only with no scan base at all (first publish
+    of the repo) does the scan cover full tracked-file contents. Never raises
+    — degrades to {} on diff failure (fail toward not-scanning rather than
+    crashing the guard); files/blobs over 1MB are skipped as in `_scan_secrets`.
+    """
+    base = _scan_base(cwd, remote)
+    root = Path(cwd)
+
+    if base is None:
+        blobs: dict[str, str] = {}
+        for rel in _ls_files(cwd):
+            path = root / rel
+            try:
+                if not path.is_file() or path.stat().st_size > _MAX_SCAN_BYTES:
+                    continue
+                blobs[rel] = path.read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError):
+                continue
+        return blobs
 
     try:
         diff = subprocess.run(
-            ["git", "-C", cwd, "diff", "--name-only", "@{u}..HEAD"],
+            ["git", "-C", cwd, "diff", "--unified=0", f"{base}HEAD"],
             capture_output=True, text=True, timeout=15,
         )
         if diff.returncode != 0:
-            return []
-        return [line for line in diff.stdout.splitlines() if line.strip()]
+            return {}
     except (OSError, subprocess.TimeoutExpired):
-        return []
+        return {}
+
+    blobs = {}
+    current: str | None = None
+    for line in diff.stdout.splitlines():
+        if line.startswith("+++ "):
+            target = line[4:].strip()
+            current = None if target == "/dev/null" else target.removeprefix("b/")
+        elif current and line.startswith("+") and not line.startswith("+++"):
+            blobs[current] = blobs.get(current, "") + line[1:] + "\n"
+    return blobs
 
 
 def _has_force_refspec(command: str) -> bool:
@@ -211,6 +269,53 @@ def _extract_remote(command: str, cwd: str) -> str:
     return ""
 
 
+def _normalize_git_url(url: str) -> str:
+    """Reduce a git remote URL to a comparable `host/owner/repo` form:
+    `git@github.com:owner/repo.git`, `ssh://git@github.com/owner/repo`, and
+    `https://github.com/owner/repo` all normalize identically."""
+    url = url.strip().lower()
+    url = re.sub(r"^[a-z+]+://", "", url)  # https:// | ssh:// | git+ssh://
+    url = re.sub(r"^[^@/]+@", "", url)     # git@host:… | user@host/…
+    url = url.replace(":", "/", 1)
+    url = re.sub(r"\.git$", "", url)
+    return url.rstrip("/")
+
+
+def _is_own_canonical_remote(cwd: str, remote: str) -> bool:
+    """True iff `remote`'s URL matches the plugin manifest's `repository`
+    field — the repo's own canonical home (issue #26: since the dev-backup
+    mirror was retired, the dev repo IS its public remote, and the
+    maintainer denylist must not block the maintainer's own push there).
+    Any failure (no such remote, no manifest, no `repository` field)
+    degrades to False — fail TOWARD scanning."""
+    if not remote:
+        return False
+    try:
+        top = subprocess.run(
+            ["git", "-C", cwd, "rev-parse", "--show-toplevel"],
+            capture_output=True, text=True, timeout=5,
+        )
+        if top.returncode != 0 or not top.stdout.strip():
+            return False
+        manifest = Path(top.stdout.strip()) / ".claude-plugin" / "plugin.json"
+        repository = json.loads(manifest.read_text(encoding="utf-8")).get("repository")
+        if not isinstance(repository, str) or not repository.strip():
+            return False
+        url = subprocess.run(
+            # `--push` (dogfood-2 M2): compare the URL the push actually goes
+            # to — a divergent push URL (`git remote set-url --push`) must not
+            # stand the denylist down. Git falls back to the fetch URL when no
+            # pushurl is set, so the common case is unchanged.
+            ["git", "-C", cwd, "remote", "get-url", "--push", remote],
+            capture_output=True, text=True, timeout=5,
+        )
+        if url.returncode != 0 or not url.stdout.strip():
+            return False
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        return False
+    return _normalize_git_url(url.stdout) == _normalize_git_url(repository)
+
+
 def _ls_files(cwd: str) -> list[str]:
     try:
         result = subprocess.run(
@@ -227,22 +332,17 @@ def _denylisted_paths(files: list[str]) -> list[str]:
     return [f for f in files if any(f.startswith(prefix) for prefix in PATH_DENYLIST)]
 
 
-def _scan_secrets(cwd: str, files: list[str]) -> list[tuple[str, str]]:
-    """Return `[(path, kind), ...]` for every file matching
-    `lib.memory.scrub.PATTERNS`. Skips files over 1MB or that fail to decode
-    as UTF-8 (treated as binary) — bounded scan, not a full repo audit."""
+def _scan_secrets(blobs: dict[str, str]) -> list[tuple[str, str]]:
+    """Return `[(path, kind), ...]` for every blob matching
+    `lib.memory.scrub.PATTERNS`. Blobs are the ADDED-LINES text per outgoing
+    file (or full file contents on a first publish) — see `_outgoing_blobs`.
+    Skips blobs over 1MB — bounded scan, not a full repo audit."""
     _ensure_plugin_root_on_path()
     from lib.memory import scrub as _scrub
 
     findings: list[tuple[str, str]] = []
-    root = Path(cwd)
-    for rel in files:
-        path = root / rel
-        try:
-            if not path.is_file() or path.stat().st_size > _MAX_SCAN_BYTES:
-                continue
-            text = path.read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError):
+    for rel, text in blobs.items():
+        if len(text.encode("utf-8", errors="replace")) > _MAX_SCAN_BYTES:
             continue
         for finding in _scrub.scan(text):
             findings.append((rel, finding.kind))
@@ -286,8 +386,14 @@ def check_push(command: str, cwd: str) -> int:
 
     # B2: the maintainer PATH_DENYLIST is a RenOS-repo-only concern — it must
     # not block a user pushing their OWN repo that legitimately tracks tests/,
-    # .claude/, docs/. Scoped by repo identity.
-    if _is_renos_repo(cwd):
+    # .claude/, docs/. Scoped by repo identity. Issue #26: it must ALSO not
+    # block the maintainer pushing the plugin repo to its own canonical home
+    # (every push segment's remote URL matches the manifest's `repository`) —
+    # since the dev-backup mirror was retired, the dev repo IS that remote and
+    # legitimately tracks the denylisted paths. Any OTHER remote (a
+    # distribution repo, a fork) keeps the denylist; the secrets scan below
+    # runs regardless.
+    if _is_renos_repo(cwd) and not all(_is_own_canonical_remote(cwd, r) for r in remotes):
         denylisted = _denylisted_paths(_ls_files(cwd))
         if denylisted:
             return _block(
@@ -295,9 +401,10 @@ def check_push(command: str, cwd: str) -> int:
                 f"remote: {', '.join(denylisted[:10])}"
             )
 
-    # B2: scan only the OUTGOING changes, not the whole tracked tree — a
-    # secret-shaped string in a file that isn't part of this push must not block.
-    findings = _scan_secrets(cwd, _outgoing_files(cwd))
+    # B2: scan only the OUTGOING changes — the push's added lines, not whole
+    # touched files or the tracked tree (issues #27/#28) — a secret-shaped
+    # string in content that isn't part of this push must not block.
+    findings = _scan_secrets(_outgoing_blobs(cwd, next((r for r in remotes if r), "")))
     if findings:
         kinds = sorted({kind for _, kind in findings})
         paths = sorted({path for path, _ in findings})

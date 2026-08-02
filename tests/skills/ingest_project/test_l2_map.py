@@ -244,12 +244,11 @@ def test_ingest_applies_quarantined(wiki):
     assert entries[0]["writer"] == "llm-auto"
 
 
-def test_ingest_still_auto_applies_with_ren_trust_foreign(wiki):
-    """0.5.1 Task 6 regression: switching ingest's producer label from
-    "promotion" to the honest "ingest" must not change its auto-apply
-    behavior — same queue status trajectory as before, now stamped
-    ren_trust: foreign (producer=="ingest" always maps to "foreign", per
-    lib.memory.provenance.trust_class, regardless of the llm-auto writer)."""
+def test_ingest_still_auto_applies_with_ren_trust_model(wiki):
+    """Issue #22: ingest drafts are RenOS's own subagents distilling the
+    friend's own repo, queue-applied — stamped ren_trust: "model" (plus the
+    quarantine banner, same as L1/wrap output), NOT "foreign". The producer
+    label stays the honest "ingest"; only the trust mint changes."""
     result = ingest("fixture-trust", ["some fact"], [], session="sess-1")
 
     assert result["write_id"] is not None
@@ -258,7 +257,7 @@ def test_ingest_still_auto_applies_with_ren_trust_foreign(wiki):
     assert entry.proposal.producer == "ingest"
 
     page_text = (wiki / "projects" / "fixture-trust" / "map.md").read_text(encoding="utf-8")
-    assert "ren_trust: \"foreign\"" in page_text
+    assert "ren_trust: \"model\"" in page_text
 
 
 def test_ingest_on_existing_map_auto_applies_update_with_supersedes_conflict(wiki, configured_backup):

@@ -781,3 +781,149 @@ class TestBashWikiWriteGuard:
             self.cwd,
         )
         assert rc == 2
+
+
+# --- issue #26: denylist vs. the repo's own canonical remote -----------------
+
+
+def _make_renos_identity_with_repository(repo: Path, repository: str) -> None:
+    manifest = repo / ".claude-plugin" / "plugin.json"
+    manifest.parent.mkdir(parents=True, exist_ok=True)
+    manifest.write_text(
+        f'{{"name": "ren", "repository": "{repository}"}}\n', encoding="utf-8"
+    )
+    _git(repo, "add", ".claude-plugin/plugin.json")
+    _git(repo, "commit", "-q", "-m", "renos identity + repository")
+
+
+def test_push_to_own_canonical_remote_skips_denylist(git_repo):
+    """Issue #26: since b588975 the dev repo IS origin — pushing the plugin
+    repo to its own canonical remote (remote URL matches plugin.json's
+    `repository`) must not trip the maintainer denylist on legitimately
+    tracked tests/, docs/superpowers/, .claude/."""
+    _make_renos_identity_with_repository(git_repo, "https://github.com/hazarsozer/ren-os")
+    _commit_file(git_repo, "tests/test_x.py", "def test_x():\n    assert True\n")
+    _git(git_repo, "remote", "add", "origin", "git@github.com:hazarsozer/ren-os.git")
+
+    rc = pre_push_scan.check_push("git push -u origin main", str(git_repo))
+    assert rc == 0
+
+
+def test_push_to_foreign_remote_still_denylisted(git_repo, capsys):
+    """The denylist stays in force for any remote that is NOT the repo's
+    canonical home — the distribution-remote case it was written for."""
+    _make_renos_identity_with_repository(git_repo, "https://github.com/hazarsozer/ren-os")
+    _commit_file(git_repo, "tests/test_x.py", "def test_x():\n    assert True\n")
+    _git(git_repo, "remote", "add", "marketplace", "git@github.com:someorg/ren-dist.git")
+
+    rc = pre_push_scan.check_push("git push marketplace main", str(git_repo))
+    assert rc == 2
+    assert "tests/test_x.py" in capsys.readouterr().err
+
+
+def test_manifest_without_repository_field_keeps_denylist(renos_git_repo, capsys):
+    """No `repository` in plugin.json => no canonical remote to match =>
+    fail TOWARD scanning (existing fixture writes only {"name": "ren"})."""
+    _commit_file(renos_git_repo, "tests/test_x.py", "def test_x():\n    assert True\n")
+    _git(renos_git_repo, "remote", "add", "origin", "git@github.com:hazarsozer/ren-os.git")
+
+    rc = pre_push_scan.check_push("git push origin main", str(renos_git_repo))
+    assert rc == 2
+    assert "tests/test_x.py" in capsys.readouterr().err
+
+
+# --- issue #27: first-push secrets scan must diff against the remote base ----
+
+
+def test_first_push_of_branch_scans_only_outgoing_not_full_tree(git_repo, tmp_path):
+    """Issue #27: a NEW branch has no upstream — the secrets scan must diff
+    against the remote default branch's merge-base, not fall back to the
+    full tracked tree (which legitimately contains secret-SHAPED fixtures
+    already on the remote)."""
+    aws_id = "AKIA" "IOSFODNN7EXAMPLE"  # split so the fixture line itself is not secret-shaped
+    _commit_file(git_repo, "fixtures/fake.env", f"AWS_KEY = '{aws_id}'\n")
+
+    remote = tmp_path / "remote.git"
+    subprocess.run(["git", "init", "-q", "--bare", str(remote)], check=True)
+    _git(git_repo, "remote", "add", "origin", str(remote))
+    _git(git_repo, "push", "-q", "origin", "HEAD")  # fixture now ON the remote
+
+    _git(git_repo, "checkout", "-q", "-b", "feature")
+    _commit_file(git_repo, "clean.py", "x = 1\n")  # branch adds only clean work
+
+    rc = pre_push_scan.check_push("git push -u origin feature", str(git_repo))
+    assert rc == 0
+
+
+def test_first_push_of_whole_repo_still_scans_full_tree(git_repo, tmp_path, capsys):
+    """When the remote has no refs at all (genuinely first publish),
+    EVERYTHING is outgoing — the full-tree scan stays."""
+    aws_id = "AKIA" "IOSFODNN7EXAMPLE"  # split so the fixture line itself is not secret-shaped
+    _commit_file(git_repo, "fixtures/fake.env", f"AWS_KEY = '{aws_id}'\n")
+
+    remote = tmp_path / "remote.git"
+    subprocess.run(["git", "init", "-q", "--bare", str(remote)], check=True)
+    _git(git_repo, "remote", "add", "origin", str(remote))
+
+    rc = pre_push_scan.check_push("git push -u origin HEAD", str(git_repo))
+    assert rc == 2
+    assert "fixtures/fake.env" in capsys.readouterr().err
+
+
+# --- issue #28: secrets scan covers ADDED LINES only, not whole touched files
+
+
+def test_editing_file_with_preexisting_secret_shaped_text_does_not_block(git_repo, tmp_path):
+    """Issue #28: pre-existing secret-shaped content in a file the push
+    happens to edit must not block — only the push's ADDED lines are scanned
+    (the guard's own B2 doctrine, applied at content granularity)."""
+    aws_id = "AKIA" "IOSFODNN7EXAMPLE"  # split so the fixture line itself is not secret-shaped
+    _commit_file(git_repo, "module.py", f"OLD_FIXTURE = '{aws_id}'\nx = 1\n")
+
+    remote = tmp_path / "remote.git"
+    subprocess.run(["git", "init", "-q", "--bare", str(remote)], check=True)
+    _git(git_repo, "remote", "add", "origin", str(remote))
+    _git(git_repo, "push", "-q", "origin", "HEAD")
+
+    _git(git_repo, "checkout", "-q", "-b", "feature")
+    path = git_repo / "module.py"
+    path.write_text(path.read_text(encoding="utf-8") + "y = 2\n", encoding="utf-8")
+    _git(git_repo, "add", "module.py")
+    _git(git_repo, "commit", "-q", "-m", "clean edit")
+
+    rc = pre_push_scan.check_push("git push -u origin feature", str(git_repo))
+    assert rc == 0
+
+
+def test_secret_in_added_lines_still_blocks(git_repo, tmp_path, capsys):
+    """A REAL secret introduced by the push's own added lines is still caught."""
+    _commit_file(git_repo, "module.py", "x = 1\n")
+
+    remote = tmp_path / "remote.git"
+    subprocess.run(["git", "init", "-q", "--bare", str(remote)], check=True)
+    _git(git_repo, "remote", "add", "origin", str(remote))
+    _git(git_repo, "push", "-q", "origin", "HEAD")
+
+    _git(git_repo, "checkout", "-q", "-b", "feature")
+    aws_id = "AKIA" "IOSFODNN7EXAMPLE"  # split so the fixture line itself is not secret-shaped
+    _commit_file(git_repo, "module.py", f"x = 1\nNEW_KEY = '{aws_id}'\n")
+
+    rc = pre_push_scan.check_push("git push -u origin feature", str(git_repo))
+    assert rc == 2
+    assert "module.py" in capsys.readouterr().err
+
+
+def test_divergent_push_url_keeps_denylist(git_repo, capsys):
+    """Dogfood-2 M2: `git remote set-url --push origin <elsewhere>` makes the
+    fetch URL match plugin.json's canonical `repository` while the push
+    actually goes somewhere else — the canonical-remote exemption must check
+    the PUSH URL, not the fetch URL, or the denylist stands down while the
+    bytes leave for the divergent remote."""
+    _make_renos_identity_with_repository(git_repo, "https://github.com/hazarsozer/ren-os")
+    _commit_file(git_repo, "tests/test_x.py", "def test_x():\n    assert True\n")
+    _git(git_repo, "remote", "add", "origin", "git@github.com:hazarsozer/ren-os.git")
+    _git(git_repo, "remote", "set-url", "--push", "origin", "git@github.com:someorg/ren-dist.git")
+
+    rc = pre_push_scan.check_push("git push origin main", str(git_repo))
+    assert rc == 2
+    assert "tests/test_x.py" in capsys.readouterr().err

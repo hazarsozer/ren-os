@@ -127,10 +127,12 @@ def ingest(
     `lib.memory.semantics`, since the target already exists — `supersedes`
     doesn't hold the auto-apply, it's the normal shape of a changing map).
     Always `producer="ingest"`, `writer="llm-auto"` — the honest producer
-    label for content pulled in from an existing repo (trust class
-    `"foreign"`, per `lib.memory.provenance.trust_class`); quarantined on
-    write until a human reviews it, per spec §3.10, but auto-applied
-    immediately through the data-plane door (non-global page, v2.2 pivot).
+    label for content distilled from an existing repo (trust class
+    `"model"`, per `lib.memory.provenance.trust_class` — issue #22: the
+    drafts are RenOS's own subagents reading the friend's own repo, not
+    foreign content); quarantined on write until a human reviews it, per
+    spec §3.10, but auto-applied immediately through the data-plane door
+    (non-global page, v2.2 pivot).
 
     Returns `{"qid": <queue id>, "write_id": <write id or None if held>,
     "artifact": <first-session artifact text>, "instruction_shaped": <list of

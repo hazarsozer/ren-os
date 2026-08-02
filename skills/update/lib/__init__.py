@@ -94,3 +94,27 @@ def should_run_project_knowledge_1(old: str, new: str) -> bool:
     except ValueError:
         return False
     return old_key < gate_key <= new_key
+
+
+_FOREIGN_REMINT_GATE = "0.6.3"
+
+
+def should_run_foreign_remint_1(old: str, new: str) -> bool:
+    """True when an update crosses the 0.6.3 boundary (old < 0.6.3 <= new).
+
+    Gates ``migrations/foreign-remint-1/migrate.py`` (see that migration's
+    README) the same way ``should_run_trust_backfill`` gates its migration:
+    a pure version-tuple comparison, no chain machinery, because
+    foreign-remint-1 is a standalone global migration (issue #22 — restamp
+    mis-minted ``ren_trust: "foreign"`` ingest drafts to ``"model"``) that
+    walks the whole wiki tree rather than a schema_version-keyed page type.
+    """
+    try:
+        old_key, new_key, gate_key = (
+            _version_key(old),
+            _version_key(new),
+            _version_key(_FOREIGN_REMINT_GATE),
+        )
+    except ValueError:
+        return False
+    return old_key < gate_key <= new_key

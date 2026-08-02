@@ -1,5 +1,56 @@
 # Changelog
 
+## [0.6.3] - 2026-08-01 — "wake-up actually remembers"
+
+Eight fixes from the second dogfood pass (issues #21–#28): last-session
+continuity, trust minting, the two lifecycle loops that never closed, and
+the three push-guard defects that blocked publishing this very train.
+
+- **L1 continuity is global, not project-gated** (#21) — the "What
+  happened last session" read (project-local `l1/` first, global `l1/`
+  fallback always) now runs whether or not a project is detected, so
+  sessions from the dev root (or any non-project cwd) wake up with
+  continuity. The l1-exclusion loop moved out of the gate with it: a
+  no-project session no longer miscounts its own summary as a held-out
+  quarantined page.
+- **Ingest drafts mint `ren_trust: "model"`, not `"foreign"`** (#22) —
+  they're RenOS's own subagents distilling the friend's own repo,
+  queue-applied with quarantine banners, same as L1. "foreign" stays in
+  the taxonomy (reserved for genuinely external, explicitly-stamped
+  content) and every foreign check remains in force.
+  `migrations/foreign-remint-1/` heals existing wikis (restamps only
+  foreign pages with a known non-human `ren_writer`; banners untouched;
+  `--check` preview; idempotent), gated on the update crossing 0.6.3.
+- **Empty rank query suppresses "Possibly relevant now"** (#23) — with no
+  project and no git signal, wake-up injects nothing there rather than
+  whatever happened to be released.
+- **Wake-up surfacing no longer counts as a decay touch** (#24) — only L3
+  fetches and direct reads refresh the 90-day clock; a page the framework
+  keeps injecting but nobody ever reads now decays instead of
+  self-perpetuating. Surfacing stays logged for the miss metric.
+- **Wrap closes the pin loop** (#25) — the wrap screen gains a "Live
+  pins" section (every applied pin-written page still on disk, any
+  session) and the skill asks about ones that look acted-on; confirmed
+  deletes go through the queue's normal correction path. Task-shaped pins
+  are documented to carry their own delete step as belt-and-braces.
+- **Push guard recognizes the repo's own remote** (#26) — the maintainer
+  path denylist in `pre_push_scan` stands down when every push targets
+  the remote named by the plugin manifest's `repository` field (the
+  single-remote reality since 0.6.2 retired the dev-backup mirror), and
+  stays in force for any other remote. Secrets scan unaffected.
+- **First-push secrets scan diffs against the remote base** (#27) — a new
+  branch with no upstream is scanned since the merge-base with the push
+  target's default branch, not the full tracked tree (which legitimately
+  carries secret-shaped scrub patterns and test fixtures already on the
+  remote). Full-tree scan remains only for a genuinely first publish
+  (remote with no refs).
+- **Push secrets scan at content granularity** (#28) — only the push's
+  ADDED lines are scanned, so pre-existing secret-shaped text in a file
+  the push happens to edit (scrub's own patterns, test fixtures,
+  `*_token` identifiers) no longer blocks; a real secret introduced by
+  the push is still caught. The overbroad `password-pair` scrub pattern
+  itself is tracked separately (#29).
+
 ## [0.6.2] - 2026-08-01 — "the dogfood train"
 
 Nine fixes from the first real fresh-machine install (MacBook, issues

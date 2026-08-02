@@ -170,3 +170,33 @@ def test_pin_to_non_global_page_content_unchanged(wiki):
 
     page_text = (wiki / "fresh.md").read_text(encoding="utf-8")
     assert "type: preference" not in page_text
+
+
+def test_confirmed_correct_delete_on_instruction_plane_page_actually_deletes(wiki):
+    # Dogfood-2 H1: wrap's "Live pins" gate asks the friend, gets a verbal
+    # "delete", and calls correct(page, None, session). For an
+    # instruction-plane page (decisions/, patterns/, research/, global/)
+    # propose_and_apply holds the DELETE pending — the friend's confirmed
+    # delete was silently swallowed. `approved_by` completes the
+    # human-approved correction through approve_and_apply.
+    page = wiki / "decisions" / "old-plan.md"
+    page.parent.mkdir(parents=True, exist_ok=True)
+    page.write_text("next session, do X\n", encoding="utf-8")
+
+    entry = correct("decisions/old-plan.md", None, "sess-1", approved_by="hazar")
+
+    assert entry.status == "applied"
+    assert entry.approved_by == "hazar"
+    assert entry.write_id is not None
+    assert not page.exists()
+
+
+def test_correct_delete_on_instruction_plane_page_without_approval_stays_held(wiki):
+    page = wiki / "decisions" / "old-plan.md"
+    page.parent.mkdir(parents=True, exist_ok=True)
+    page.write_text("next session, do X\n", encoding="utf-8")
+
+    entry = correct("decisions/old-plan.md", None, "sess-1")
+
+    assert entry.status == "pending"
+    assert page.exists()

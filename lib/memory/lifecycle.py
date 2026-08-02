@@ -6,17 +6,18 @@ Conservative decay, archive-never-delete (built on Task 16's `archive_page`):
 a data-plane page (never `global/`, never already `archive/`, never
 quarantined) with no active salience boost is a decay candidate once BOTH
 its last journal write AND its last USAGE TOUCH (if any) are older than
-`DECAY_WINDOW_DAYS`. A usage touch is any of three mechanical signals: an
-on-demand L3 fetch (`collect.KIND_L3_FETCH`, via `miss_log.log_fetch`), a
-wake-up injection that surfaced the page (`collect.KIND_WAKEUP_SURFACE`, via
-`miss_log.log_surface` — list-valued `"pages"`, unlike the other two kinds'
-single `"page"`), or a direct page read (`collect.KIND_PAGE_READ`, via
-`miss_log.log_read`). Absence of ALL THREE does NOT protect a page — no one
-has asked for it back, mechanically or by hand, which is itself the decay
-signal — but reading the three usage-metric kinds is a single all-or-nothing
-gate: if any is unreadable (I/O error), `decay_candidates` returns `[]`
-entirely rather than guessing per page, per the spec's "conservative"
-mandate.
+`DECAY_WINDOW_DAYS`. A usage touch is either of two mechanical signals: an
+on-demand L3 fetch (`collect.KIND_L3_FETCH`, via `miss_log.log_fetch`) or a
+direct page read (`collect.KIND_PAGE_READ`, via `miss_log.log_read`) —
+mechanical evidence a human or session actually wanted the page. A wake-up
+injection (`collect.KIND_WAKEUP_SURFACE`) deliberately does NOT count
+(issue #24): it is the framework's own output, and counting it let a page
+that keeps ranking into wake-up refresh its own decay clock indefinitely.
+Absence of BOTH does NOT protect a page — no one has asked for it back,
+mechanically or by hand, which is itself the decay signal — but reading the
+two usage-metric kinds is a single all-or-nothing gate: if either is
+unreadable (I/O error), `decay_candidates` returns `[]` entirely rather
+than guessing per page, per the spec's "conservative" mandate.
 
 Pruning: the metrics log already rotates by calendar month
 (`collect._month_file`), so a long-running install's usage history is
@@ -117,14 +118,20 @@ def _last_write_ts(rel: str) -> datetime | None:
 def decay_candidates(now: datetime) -> list[str]:
     """Data-plane pages eligible for 90-day decay, oldest-write-first.
 
-    Conservative I/O rule: reads all three usage-metric kinds
-    (`collect.read(kind=KIND_L3_FETCH | KIND_WAKEUP_SURFACE | KIND_PAGE_READ)`)
-    inside one gate — if ANY is unreadable, returns `[]` — decay is skipped
-    entirely for this call, never partially.
+    Only two usage-metric kinds count as a touch (`KIND_L3_FETCH` and
+    `KIND_PAGE_READ`) — mechanical evidence a human or session actually
+    wanted the page. `KIND_WAKEUP_SURFACE` deliberately does NOT count
+    (issue #24): a wake-up injection is the framework's OWN output, and
+    counting it let a page that keeps ranking into wake-up refresh its own
+    decay clock indefinitely. Surfacing stays logged for the miss metric;
+    it just isn't demand.
+
+    Conservative I/O rule: both consumed kinds are read inside one gate —
+    if EITHER is unreadable, returns `[]` — decay is skipped entirely for
+    this call, never partially.
     """
     try:
         fetch_entries = collect.read(kind=collect.KIND_L3_FETCH)
-        surface_entries = collect.read(kind=collect.KIND_WAKEUP_SURFACE)
         read_entries = collect.read(kind=collect.KIND_PAGE_READ)
     except OSError:
         return []
@@ -142,10 +149,6 @@ def decay_candidates(now: datetime) -> list[str]:
 
     for entry in fetch_entries:
         _touch(entry.get("page"), entry.get("ts"))
-    for entry in surface_entries:
-        ts_raw = entry.get("ts")
-        for page in entry.get("pages") or []:
-            _touch(page, ts_raw)
     for entry in read_entries:
         _touch(entry.get("page"), entry.get("ts"))
 

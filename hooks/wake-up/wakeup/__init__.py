@@ -770,7 +770,8 @@ def _is_foreign_stamped(path: Path) -> bool:
     misses a foreign-stamped page whose banner has since been released, so
     this checks the durable stamp (Task 6) independently of banner state.
     Unstamped pages are NOT foreign (deliberate scope decision — see module
-    docstring / Task 9b brief: only the ingest door mints "foreign", and
+    docstring / Task 9b brief: "foreign" only ever arrives via an explicit
+    stamp — post-#22 no producer mints it, ingest drafts are "model" — and
     ordinary hand-written pages carry no `ren_*` stamps at all). Never
     raises: any read/parse failure degrades to "not foreign".
     """
@@ -1046,8 +1047,9 @@ def compose_wake_up_context(
     except Exception:  # noqa: BLE001 - never let project detection abort the payload
         logger.debug("detect_project failed", exc_info=True)
 
-    if project is not None:
-        project_dir = wiki_root / "projects" / project
+    project_dir = wiki_root / "projects" / project if project is not None else None
+
+    if project_dir is not None:
         overview_rel = f"projects/{project}/{OVERVIEW_FILENAME}"
         l2_rel = f"projects/{project}/{L2_MAP_FILENAME}"
         dedicated_paths.add(overview_rel)
@@ -1062,42 +1064,46 @@ def compose_wake_up_context(
                 sections.append(_inject_section(overview_text, OVERVIEW_BUDGET, overview_rel, chars_per_token))
                 surfaced_pages.append(overview_rel)
 
-        # Codex P5 (as hardened by the 0.5.1 drill, Leg 4): whether or not
-        # read_l1 ultimately injects a given candidate, NO file under an L1
-        # dir may leak back in via the extras ("Related pages") discovery
-        # path, which excludes only banner-quarantined or foreign-stamped
-        # pages. L1 content may only enter wake-up context through
-        # read_l1's stamp-verified injection path (see read_l1's own
-        # docstring) — path-shape under `l1/` is never trusted for
-        # INCLUSION, but excluding every file at that path shape from the
-        # separate extras channel is safe and correct: it can only ever
-        # cause the module to under-surface (fall back to nothing there),
-        # never to leak an unvetted L1 file raw. The drill found that
-        # excluding only `candidate_files[0]` (the single most-recent file)
-        # left older, bannerless/unstamped hostile files in the same `l1/`
-        # dir free to re-enter once a newer legitimate L1 file existed —
-        # so every file, not just the newest, is excluded here.
-        for candidate_dir in (project_dir, wiki_root):
-            for l1_file in (candidate_dir / L1_DIRNAME).glob("session-*.md"):
-                surfaced_pages.append(str(l1_file.relative_to(wiki_root).as_posix()))
+    # L1 continuity is GLOBAL (issue #21): the read below runs whether or not
+    # a project was detected — project-local `l1/` first when there is one,
+    # with the global `l1/` dir (codex D4) always reachable as the fallback.
+    # Only overview and the L2 map stay project-gated.
+    #
+    # Codex P5 (as hardened by the 0.5.1 drill, Leg 4): whether or not
+    # read_l1 ultimately injects a given candidate, NO file under an L1
+    # dir may leak back in via the extras ("Related pages") discovery
+    # path, which excludes only banner-quarantined or foreign-stamped
+    # pages. L1 content may only enter wake-up context through
+    # read_l1's stamp-verified injection path (see read_l1's own
+    # docstring) — path-shape under `l1/` is never trusted for
+    # INCLUSION, but excluding every file at that path shape from the
+    # separate extras channel is safe and correct: it can only ever
+    # cause the module to under-surface (fall back to nothing there),
+    # never to leak an unvetted L1 file raw. The drill found that
+    # excluding only `candidate_files[0]` (the single most-recent file)
+    # left older, bannerless/unstamped hostile files in the same `l1/`
+    # dir free to re-enter once a newer legitimate L1 file existed —
+    # so every file, not just the newest, is excluded here.
+    l1_dirs = [project_dir, wiki_root] if project_dir is not None else [wiki_root]
+    for candidate_dir in l1_dirs:
+        for l1_file in (candidate_dir / L1_DIRNAME).glob("session-*.md"):
+            surfaced_pages.append(str(l1_file.relative_to(wiki_root).as_posix()))
 
-        l1_text = read_l1(project_dir)
-        l1_source_dir = project_dir
-        if not l1_text:
-            # codex D4: project-local `l1/` has nothing (either no wrap has
-            # ever written here, or this wiki predates the project-aware L1
-            # path) — fall back to the global `l1/` dir so pre-fix pages
-            # (and non-project-scoped wraps) stay reachable rather than the
-            # project's most recent session silently vanishing from context.
-            l1_text = read_l1(wiki_root)
-            l1_source_dir = wiki_root
-
+    l1_text = ""
+    l1_source_dir = wiki_root
+    for candidate_dir in l1_dirs:
+        l1_text = read_l1(candidate_dir)
         if l1_text:
-            sections.append(SECTION_L1)
-            l1_path = _most_recent_l1_path(l1_source_dir / L1_DIRNAME)
-            l1_rel = l1_path.relative_to(wiki_root).as_posix() if l1_path else None
-            sections.append(_inject_section(l1_text, L1_BUDGET, l1_rel, chars_per_token))
+            l1_source_dir = candidate_dir
+            break
 
+    if l1_text:
+        sections.append(SECTION_L1)
+        l1_path = _most_recent_l1_path(l1_source_dir / L1_DIRNAME)
+        l1_rel = l1_path.relative_to(wiki_root).as_posix() if l1_path else None
+        sections.append(_inject_section(l1_text, L1_BUDGET, l1_rel, chars_per_token))
+
+    if project_dir is not None:
         l2_text = read_l2_map(project_dir)
         if l2_text:
             if _is_foreign(l2_text):
@@ -1123,11 +1129,25 @@ def compose_wake_up_context(
         sections.append(suggestion)
 
     extras: list[str] = []
+    extras_held_count = 0
     try:
         query = _build_rank_query(project, cwd)
-        extras, extras_held_count = rank_extras(
-            query, wiki_root, exclude=set(surfaced_pages) | dedicated_paths, project=project
-        )
+        if query:
+            extras, extras_held_count = rank_extras(
+                query, wiki_root, exclude=set(surfaced_pages) | dedicated_paths, project=project
+            )
+        else:
+            # Issue #23: no project and no git signal — the query is empty,
+            # so ranking would just surface whatever happens to be released,
+            # presented with unearned confidence. Inject nothing, not noise.
+            # Dogfood-2 M3: still run the cheap candidate discovery so the
+            # "N quarantined page(s) held out" transparency line survives —
+            # suppressing ranking must not also suppress the withheld-trust
+            # signal (no-project sessions are exactly where it matters).
+            logger.info("empty rank query; suppressing extras")
+            _, extras_held_count = _discover_extra_candidates(
+                wiki_root, set(surfaced_pages) | dedicated_paths, project
+            )
     except Exception:  # noqa: BLE001 - ranking failure degrades to no extras
         logger.debug("rank_extras failed", exc_info=True)
         extras, extras_held_count = [], 0
