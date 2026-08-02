@@ -953,6 +953,7 @@ class TestStructuredSections:
         idx = [
             payload.index(h)
             for h in (
+                wakeup.SECTION_DOCTRINE,
                 wakeup.SECTION_IDENTITY,
                 wakeup.SECTION_OVERVIEW,
                 wakeup.SECTION_L1,
@@ -962,6 +963,32 @@ class TestStructuredSections:
             )
         ]
         assert idx == sorted(idx)
+
+    def test_doctrine_card_first_when_content_present(self, project):
+        _write(project["project_dir"] / "l1" / "session-001.md", _model_stamped("L1 content"))
+        _write(project["project_dir"] / "map.md", "# demo-project — knowledge map\n## Knowledge\n- uses FastAPI\n")
+
+        payload = wakeup.compose_wake_up_context(cwd=project["cwd"], wiki_root=wiki_root(), session="sess-1")
+
+        assert wakeup.SECTION_DOCTRINE in payload
+        for header in (wakeup.SECTION_IDENTITY, wakeup.SECTION_L1, wakeup.SECTION_L2):
+            if header in payload:
+                assert payload.index(wakeup.SECTION_DOCTRINE) < payload.index(header)
+
+    def test_doctrine_card_absent_when_payload_empty(self, wiki, project):
+        payload = wakeup.compose_wake_up_context(cwd=project["cwd"], wiki_root=wiki_root(), session="sess-1")
+
+        assert payload == ""
+
+    def test_doctrine_card_respects_budget(self, project):
+        _write(project["project_dir"] / "l1" / "session-001.md", _model_stamped("L1 content"))
+
+        payload = wakeup.compose_wake_up_context(cwd=project["cwd"], wiki_root=wiki_root(), session="sess-1")
+
+        start = payload.index(wakeup.SECTION_DOCTRINE)
+        end = payload.find("\n\n## ", start + 1)
+        segment = payload[start:end] if end != -1 else payload[start:]
+        assert len(segment) <= wakeup.DOCTRINE_BUDGET * wakeup.CHARS_PER_TOKEN + 200
 
     def test_absent_sources_omit_headers(self, project):
         _write(project["project_dir"] / "l1" / "session-001.md", _model_stamped("L1 content"))

@@ -114,6 +114,7 @@ from typing import Final
 
 import yaml
 
+from .doctrine_card import SECTION_DOCTRINE, render_doctrine_card, superpowers_installed
 from lib.instrument import collect, miss_log
 from lib.instrument.calibration import PLAUSIBLE_RATIO_BAND
 from lib.memory import archive, queue, quarantine
@@ -140,6 +141,7 @@ OVERVIEW_BUDGET: Final[int] = 600
 L1_BUDGET: Final[int] = 1_200
 L2_BUDGET: Final[int] = 1_200
 ROUTINE_SPEC_BUDGET: Final[int] = 400
+DOCTRINE_BUDGET: Final[int] = 400
 EXTRAS_BUDGET: Final[int] = 1_600   # ranked additional pages, split across however many fit
 EXTRA_PAGE_BUDGET: Final[int] = 400  # per-page cap within the extras budget
 DEFAULT_EXTRAS_COUNT: Final[int] = 3
@@ -1182,6 +1184,12 @@ def compose_wake_up_context(
         logger.info("nothing to inject from %s; emitting empty context", wiki_root)
         return ""
 
+    # Doctrine rides real content; empty compose stays "" (loud notice) —
+    # the emptiness decision above is made before the card is ever added.
+    card = render_doctrine_card(superpowers_installed())
+    card = _inject_section(card, DOCTRINE_BUDGET, None, chars_per_token) or card
+    sections.insert(1, card)
+
     composed = "\n\n".join(s for s in sections if s.strip())
 
     final_tokens = _budget_tokens(composed, chars_per_token)
@@ -1210,9 +1218,11 @@ __all__ = [
     "L1_BUDGET",
     "L2_BUDGET",
     "ROUTINE_SPEC_BUDGET",
+    "DOCTRINE_BUDGET",
     "EXTRAS_BUDGET",
     "EXTRA_PAGE_BUDGET",
     "SALIENCE_WINDOW_DAYS",
+    "SECTION_DOCTRINE",
     "SECTION_IDENTITY",
     "SECTION_OVERVIEW",
     "SECTION_L1",

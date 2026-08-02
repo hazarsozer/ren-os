@@ -37,7 +37,6 @@ _FOOTER_FALLBACK = (
 
 _BODY = """
 RenOS execution doctrine — these gates are MANDATORY for design/build work.
-Rationalizing past them is the failure mode this card exists to stop.
 
 {gate1}
 2. **Decompose.** Break the approved plan into atomic subtasks, each small
