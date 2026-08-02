@@ -160,6 +160,12 @@ uv run python -c "import importlib,json; m=importlib.import_module('skills.wiki-
 
 Pass `full=True` to ignore the watermark and check every page.
 
+The result carries `fixed` (writes that LANDED) and `held` separately — a
+proposal the queue holds (instruction-plane target, or a `contradicts`
+conflict) is never reported as fixed, and also becomes a suggestion. The
+watermark's `clean` flag is false while ANY lint finding is still pending a
+human, not merely when this run recorded a new one.
+
 Safe-fix classes (auto-applied): `hub-missing-entry`,
 `dangling-link-repointed`, `stale-link-commented` (commented out, never
 deleted). Everything else — schema violations, ambiguous dangling links —

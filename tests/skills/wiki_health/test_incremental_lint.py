@@ -111,6 +111,11 @@ def test_schema_violation_becomes_a_pending_suggestion_not_a_write(wiki):
 def test_clean_run_advances_watermark_clean_true(wiki):
     _page(wiki, "projects/p/knowledge/topic/index.md", "# Topic\n\n## Pages\n- alpha.md\n", ptype="l2-map")
     _page(wiki, "projects/p/knowledge/topic/alpha.md", "# Alpha\n\n## Knowledge\n- a fact\n")
+    # Start from a NON-ZERO watermark, where a delta and the absolute total
+    # diverge — at W=0 the two are indistinguishable.
+    _touch_journal("projects/p/knowledge/topic/alpha.md")
+    _touch_journal("projects/p/knowledge/topic/alpha.md")
+    watermark.advance_watermark(len(journal.entries()), clean=True)
     _touch_journal("projects/p/knowledge/topic/alpha.md")
 
     result = wiki_health.run_incremental_lint(session="s-1")
@@ -230,3 +235,250 @@ def test_instruction_plane_pages_are_never_auto_fixed(wiki):
     assert result["fixed"] == []
     assert path.read_text(encoding="utf-8") == before
     assert result["queued_suggestions"] >= 1
+
+
+# =====================================================================
+# Fix round 1 — regressions for the review findings (2026-08-02)
+# =====================================================================
+
+
+def _clean_wiki(wiki):
+    _page(wiki, "projects/p/knowledge/topic/index.md", "# Topic\n\n## Pages\n- alpha.md\n", ptype="l2-map")
+    _page(wiki, "projects/p/knowledge/topic/alpha.md", "# Alpha\n")
+
+
+# ---- CRITICAL 1: absolute watermark, from a NON-ZERO starting stamp
+
+
+def test_watermark_stamps_absolute_total_over_three_runs_from_nonzero(wiki):
+    _clean_wiki(wiki)
+    # Pre-existing history + an already-advanced watermark: this is the case
+    # where a DELTA and the ABSOLUTE total diverge (the bug's blind spot).
+    for _ in range(3):
+        _touch_journal("projects/p/knowledge/topic/alpha.md")
+    watermark.advance_watermark(len(journal.entries()), clean=True)
+    assert watermark.read_watermark()["journal_lines_seen"] == 3
+
+    _touch_journal("projects/p/knowledge/topic/alpha.md")
+    total = len(journal.entries())
+
+    run1 = wiki_health.run_incremental_lint(session="s-1")
+    assert run1["pages_checked"]
+    assert watermark.read_watermark()["journal_lines_seen"] == total
+
+    run2 = wiki_health.run_incremental_lint(session="s-1")
+    assert run2["pages_checked"] == []
+    assert watermark.read_watermark()["journal_lines_seen"] == total
+
+    run3 = wiki_health.run_incremental_lint(session="s-1")
+    assert run3["pages_checked"] == []
+    assert watermark.read_watermark()["journal_lines_seen"] == total
+
+
+# ---- IMPORTANT 2: aliased wikilinks
+
+
+def test_aliased_dangling_link_is_repointed_keeping_the_alias(wiki):
+    _page(wiki, "projects/p/knowledge/topic/index.md", "# Topic\n\n## Pages\n- alpha.md\n", ptype="l2-map")
+    _page(wiki, "projects/p/knowledge/topic/alpha.md", "# Alpha\n\nsee [[old/moved.md|the moved page]]\n")
+    _page(wiki, "projects/p/knowledge/other/index.md", "# Other\n\n## Pages\n- moved.md\n", ptype="l2-map")
+    _page(wiki, "projects/p/knowledge/other/moved.md", "# Moved\n")
+    _touch_journal("projects/p/knowledge/topic/alpha.md")
+
+    result = wiki_health.run_incremental_lint(session="s-1")
+
+    assert any(f["fix"] == "dangling-link-repointed" for f in result["fixed"]), result
+    text = (wiki / "projects/p/knowledge/topic/alpha.md").read_text(encoding="utf-8")
+    assert "[[projects/p/knowledge/other/moved.md|the moved page]]" in text
+
+
+def test_unfixable_aliased_link_is_never_claimed_as_fixed(wiki):
+    _page(wiki, "projects/p/knowledge/topic/index.md", "# Topic\n\n## Pages\n- alpha.md\n", ptype="l2-map")
+    _page(wiki, "projects/p/knowledge/topic/alpha.md", "# Alpha\n\nsee [[nowhere/at/all.md|alias]]\n")
+    _touch_journal("projects/p/knowledge/topic/alpha.md")
+
+    result = wiki_health.run_incremental_lint(session="s-1")
+
+    assert result["fixed"] == []
+    # ...and it did NOT vanish from both dispositions.
+    assert any(
+        s["payload"]["rule"] == "dangling-link" and s["payload"]["page"].endswith("alpha.md")
+        for s in pending_suggestions()
+    ), pending_suggestions()
+
+
+# ---- IMPORTANT 3: `## Pages`-lookalike must not crash the run
+
+
+@pytest.mark.parametrize(
+    "hub_body",
+    [
+        "# Topic\n\nwe keep a ## Pages list somewhere\n",
+        "# Topic\n\n## Pages (draft)\n- nothing yet\n",
+        "# Topic\n\n```\n## Pages\n```\n",
+    ],
+)
+def test_pages_section_lookalikes_do_not_crash_the_run(wiki, hub_body):
+    _page(wiki, "projects/p/knowledge/topic/index.md", hub_body, ptype="l2-map")
+    _page(wiki, "projects/p/knowledge/topic/alpha.md", "# Alpha\n")
+    _touch_journal("projects/p/knowledge/topic/alpha.md")
+
+    result = wiki_health.run_incremental_lint(session="s-1")
+
+    assert result["watermark_advanced"] is True
+    hub = (wiki / "projects/p/knowledge/topic/index.md").read_text(encoding="utf-8")
+    assert "alpha.md" in hub
+
+
+# ---- IMPORTANT 4: a HELD proposal is never reported as fixed
+
+
+def test_a_held_proposal_is_reported_as_held_not_fixed(wiki, monkeypatch):
+    _page(wiki, "projects/p/knowledge/topic/index.md", "# Topic\n\n## Pages\n", ptype="l2-map")
+    _page(wiki, "projects/p/knowledge/topic/alpha.md", "# Alpha\n")
+    _touch_journal("projects/p/knowledge/topic/alpha.md")
+
+    lint = importlib.import_module("skills.wiki-health.lib.lint")
+    before = (wiki / "projects/p/knowledge/topic/index.md").read_text(encoding="utf-8")
+
+    class _HeldEntry:
+        qid = "q-held"
+
+    monkeypatch.setattr(lint, "propose_and_apply", lambda proposal: (_HeldEntry(), None))
+
+    result = wiki_health.run_incremental_lint(session="s-1")
+
+    assert result["fixed"] == []
+    assert any(h["fix"] == "hub-missing-entry" and h["qid"] == "q-held" for h in result["held"]), result
+    assert (wiki / "projects/p/knowledge/topic/index.md").read_text(encoding="utf-8") == before
+    assert any(s["payload"]["rule"].startswith("held:") for s in pending_suggestions())
+
+
+# ---- IMPORTANT 5: `clean` reflects OUTSTANDING findings, not just new ones
+
+
+def test_clean_is_false_while_an_older_finding_is_still_pending(wiki):
+    bad = wiki / "projects/p/knowledge/topic/beta.md"
+    bad.parent.mkdir(parents=True, exist_ok=True)
+    bad.write_text("# Beta\n\nno frontmatter\n", encoding="utf-8")
+    _page(wiki, "projects/p/knowledge/topic/index.md", "# Topic\n\n## Pages\n- beta.md\n- gamma.md\n", ptype="l2-map")
+    _touch_journal("projects/p/knowledge/topic/beta.md")
+
+    first = wiki_health.run_incremental_lint(session="s-1")
+    assert first["queued_suggestions"] == 1
+    assert watermark.read_watermark()["clean"] is False
+
+    # A later session touches a DIFFERENT, healthy page. beta.md's finding is
+    # still pending and unread — the wiki is not clean.
+    _page(wiki, "projects/p/knowledge/topic/gamma.md", "# Gamma\n")
+    _touch_journal("projects/p/knowledge/topic/gamma.md")
+
+    second = wiki_health.run_incremental_lint(session="s-1")
+    assert second["queued_suggestions"] == 0
+    assert watermark.read_watermark()["clean"] is False
+
+
+# ---- IMPORTANT 6: every fix class converges in one pass
+
+
+def _journal_len() -> int:
+    return len(journal.entries())
+
+
+def test_hub_fix_converges(wiki):
+    _page(wiki, "projects/p/knowledge/topic/index.md", "# Topic\n\n## Pages\n", ptype="l2-map")
+    _page(wiki, "projects/p/knowledge/topic/alpha.md", "# Alpha\n")
+    _touch_journal("projects/p/knowledge/topic/alpha.md")
+
+    assert wiki_health.run_incremental_lint(session="s-1")["fixed"]
+    before = _journal_len()
+    second = wiki_health.run_incremental_lint(session="s-1")
+    assert second["fixed"] == []
+    assert _journal_len() == before
+
+
+def test_repoint_fix_converges(wiki):
+    _page(wiki, "projects/p/knowledge/topic/index.md", "# Topic\n\n## Pages\n- alpha.md\n", ptype="l2-map")
+    _page(wiki, "projects/p/knowledge/topic/alpha.md", "# Alpha\n\nsee [[old/moved.md]]\n")
+    _page(wiki, "projects/p/knowledge/other/index.md", "# Other\n\n## Pages\n- moved.md\n", ptype="l2-map")
+    _page(wiki, "projects/p/knowledge/other/moved.md", "# Moved\n")
+    _touch_journal("projects/p/knowledge/topic/alpha.md")
+
+    assert wiki_health.run_incremental_lint(session="s-1")["fixed"]
+    before = _journal_len()
+    second = wiki_health.run_incremental_lint(session="s-1")
+    assert second["fixed"] == []
+    assert _journal_len() == before
+
+
+def test_stale_link_fix_converges(wiki):
+    _page(wiki, "projects/p/knowledge/topic/index.md", "# Topic\n\n## Pages\n- alpha.md\n", ptype="l2-map")
+    _page(wiki, "projects/p/knowledge/topic/alpha.md", "# Alpha\n\nsee [[projects/p/knowledge/topic/gone.md]]\n")
+    _touch_journal("projects/p/knowledge/topic/gone.md", op="DELETE")
+    _touch_journal("projects/p/knowledge/topic/alpha.md")
+
+    assert wiki_health.run_incremental_lint(session="s-1")["fixed"]
+    before = _journal_len()
+    second = wiki_health.run_incremental_lint(session="s-1")
+    assert second["fixed"] == []
+    assert second["queued_suggestions"] == 0
+    assert _journal_len() == before
+
+
+# ---- IMPORTANT 7: never rewrite links on a page containing a code fence
+
+
+def test_code_fence_page_links_are_routed_to_suggestions_not_rewritten(wiki):
+    _page(wiki, "projects/p/knowledge/topic/index.md", "# Topic\n\n## Pages\n- alpha.md\n", ptype="l2-map")
+    _page(
+        wiki,
+        "projects/p/knowledge/topic/alpha.md",
+        "# Alpha\n\nsee [[old/moved.md]]\n\n```md\n[[old/moved.md]]\n```\n",
+    )
+    _page(wiki, "projects/p/knowledge/other/index.md", "# Other\n\n## Pages\n- moved.md\n", ptype="l2-map")
+    _page(wiki, "projects/p/knowledge/other/moved.md", "# Moved\n")
+    before = (wiki / "projects/p/knowledge/topic/alpha.md").read_text(encoding="utf-8")
+    _touch_journal("projects/p/knowledge/topic/alpha.md")
+
+    result = wiki_health.run_incremental_lint(session="s-1")
+
+    assert result["fixed"] == []
+    assert (wiki / "projects/p/knowledge/topic/alpha.md").read_text(encoding="utf-8") == before
+    assert any(s["payload"]["rule"] == "dangling-link" for s in pending_suggestions())
+
+
+# ---- MINOR: newline hygiene, log.md and quarantined siblings
+
+
+def test_fix_preserves_absence_of_a_trailing_newline(wiki):
+    path = wiki / "projects/p/knowledge/topic/index.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("---\ntype: l2-map\n---\n# Topic\n\n## Pages\n- keep.md", encoding="utf-8")
+    _page(wiki, "projects/p/knowledge/topic/keep.md", "# Keep\n")
+    _page(wiki, "projects/p/knowledge/topic/alpha.md", "# Alpha\n")
+    _touch_journal("projects/p/knowledge/topic/alpha.md")
+
+    wiki_health.run_incremental_lint(session="s-1")
+
+    text = path.read_text(encoding="utf-8")
+    assert "alpha.md" in text
+    assert not text.endswith("\n\n")
+
+
+def test_hub_fix_skips_log_md_and_quarantined_siblings(wiki):
+    from lib.memory import quarantine
+
+    _page(wiki, "projects/p/knowledge/topic/index.md", "# Topic\n\n## Pages\n", ptype="l2-map")
+    _page(wiki, "projects/p/knowledge/topic/alpha.md", "# Alpha\n")
+    (wiki / "projects/p/knowledge/topic/log.md").write_text("# Log\n", encoding="utf-8")
+    (wiki / "projects/p/knowledge/topic/quar.md").write_text(
+        quarantine.mark("---\ntype: knowledge\n---\n# Quar\n"), encoding="utf-8"
+    )
+    _touch_journal("projects/p/knowledge/topic/alpha.md")
+
+    wiki_health.run_incremental_lint(session="s-1")
+
+    hub = (wiki / "projects/p/knowledge/topic/index.md").read_text(encoding="utf-8")
+    assert "alpha.md" in hub
+    assert "log.md" not in hub
+    assert "quar.md" not in hub

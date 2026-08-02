@@ -19,6 +19,11 @@ Two dispositions, and the split is the whole point:
   violating the schema, a dangling link with no unambiguous target) becomes a
   pending `lib.suggestions` entry. Suggestions are durable and never re-nag.
 
+Nothing ever falls between the two: a fix class is reported only when the
+page text actually changed, and anything intended-but-not-applied (aliased
+form untouched, queue held it, page not writable) falls through to a
+judgment.
+
 Hard exclusions from the FIX path (a finding on such a page is still
 reported, but as a suggestion — it is never written):
   - `projects/<slug>/raw/` — write-once source material, not claims;
@@ -29,8 +34,9 @@ reported, but as a suggestion — it is never written):
   - `_`-prefixed pseudo-pages (e.g. `_wrap-session`) — not wiki pages at all.
 
 `run_incremental_lint` always stamps the watermark forward at the end, with
-`clean=False` when anything was queued for a human — so Task 5's wake-up
-nudge can tell "nothing to look at" from "you have lint findings waiting".
+`clean=False` while ANY lint finding is still pending a human — so Task 5's
+wake-up nudge can tell "nothing to look at" from "you have lint findings
+waiting".
 """
 
 from __future__ import annotations
@@ -40,9 +46,9 @@ from pathlib import Path
 
 from lib import ren_paths
 from lib.governance.tiers import is_instruction_plane_page
-from lib.memory import journal
+from lib.memory import journal, quarantine
 from lib.memory.queue import Proposal, propose_and_apply
-from lib.suggestions import SuggestionSpec, record
+from lib.suggestions import SuggestionSpec, pending_suggestions, record
 
 from . import watermark
 
@@ -57,8 +63,10 @@ _WIKILINK_RE = re.compile(r"\[\[([^\]\|\n]+?)(?:\|[^\]\n]*)?\]\]")
 _H1_RE = re.compile(r"^#\s+(.+)$", re.MULTILINE)
 _FRONTMATTER_RE = re.compile(r"\A---\n(.*?)\n---\n?", re.DOTALL)
 _FM_TYPE_RE = re.compile(r"^type:\s*(.+)$", re.MULTILINE)
+_FENCE_RE = re.compile(r"^\s*```", re.MULTILINE)
 
 _HUB_SECTION = "## Pages"
+_LINT_FINGERPRINT_PREFIX = "wiki-lint:"
 
 
 # ------------------------------------------------------------------- walking
@@ -113,6 +121,19 @@ def _frontmatter_type(text: str) -> str | None:
     return tm.group(1).strip().strip('"').strip("'") if tm else None
 
 
+def _rejoin(lines: list[str], original: str) -> str:
+    """Re-join split lines, preserving whether the original ended in a newline
+    — a lint fix must never silently add or drop a trailing newline."""
+    return "\n".join(lines) + ("\n" if original.endswith("\n") else "")
+
+
+def _is_quarantined(path: Path) -> bool:
+    try:
+        return quarantine.is_quarantined(path.read_text(encoding="utf-8", errors="replace"))
+    except OSError:  # pragma: no cover - unreadable sibling isn't quarantined
+        return False
+
+
 def _name_mentioned(name: str, text: str) -> bool:
     """Word-bounded filename match — the same forgiving check
     `_knowledge_tree_findings` uses, so `a.md` isn't "linked" by `schema.md`."""
@@ -134,21 +155,29 @@ def _hub_missing_entries(wiki_root: Path, page: str, text: str) -> tuple[str, li
     missing = [
         sib
         for sib in sorted(directory.glob("*.md"))
-        if sib.name != "index.md" and not _is_pseudo(sib.name) and not _name_mentioned(sib.name, text)
+        if sib.name != "index.md"
+        and sib.name != "log.md"  # the chronology is not a hub entry
+        and not _is_pseudo(sib.name)
+        and not _is_quarantined(sib)  # unreviewed content isn't advertised by a hub
+        and not _name_mentioned(sib.name, text)
     ]
     if not missing:
         return text, []
 
     bullets = [f"- [{_title_of(sib)}]({sib.name})" for sib in missing]
-    if _HUB_SECTION in text:
-        lines = text.splitlines()
-        start = next(i for i, line in enumerate(lines) if line.strip() == _HUB_SECTION)
+    lines = text.splitlines()
+    # EXACT heading line, not a substring: `## Pages (draft)`, a mention in
+    # prose, or a line inside a fence must not be mistaken for the section
+    # (and must never raise) — no match simply falls through to the append
+    # branch below.
+    start = next((i for i, line in enumerate(lines) if line.strip() == _HUB_SECTION), None)
+    if start is not None:
         end = start + 1
         while end < len(lines) and not lines[end].startswith("## "):
             end += 1
         while end > start + 1 and not lines[end - 1].strip():
             end -= 1
-        new_text = "\n".join(lines[:end] + bullets + lines[end:]) + "\n"
+        new_text = _rejoin(lines[:end] + bullets + lines[end:], text)
     else:
         new_text = text.rstrip("\n") + "\n\n" + _HUB_SECTION + "\n" + "\n".join(bullets) + "\n"
     return new_text, [sib.name for sib in missing]
@@ -167,11 +196,25 @@ def _resolves(wiki_root: Path, page: str, target: str) -> bool:
 
 
 def _deleted_basenames() -> set[str]:
+    """Filenames the journal says were DELETEd.
+
+    Deliberately BASENAME-only, so a `[[gone.md]]` written without its full
+    path still matches. The cost: a `notes.md` deleted under project A marks a
+    dangling `[[notes.md]]` under project B as "deleted" too. Both dispositions
+    are conservative (comment out, never delete), so the worst case is a
+    commented line a human un-comments — but tighten this to full-path
+    matching if a wiki ever grows many same-named pages."""
     return {
         Path(e["page"]).name
         for e in journal.entries()
         if e.get("op") == "DELETE" and e.get("page")
     }
+
+
+def _link_re(target: str) -> re.Pattern:
+    """Match `[[target]]` AND its aliased form `[[target|alias]]` — group(1)
+    is the alias suffix (possibly empty), preserved by every rewrite."""
+    return re.compile(rf"\[\[\s*{re.escape(target)}\s*(\|[^\]\n]*)?\]\]")
 
 
 def _link_findings(
@@ -184,38 +227,72 @@ def _link_findings(
     """Repoint / comment-out / report every unresolvable `[[link]]` in `text`.
 
     Returns `(new_text, applied_fix_classes, judgments)` where `judgments` is
-    a list of `(rule, detail)` pairs for links this cannot safely act on."""
+    a list of `(rule, detail)` pairs for links this cannot safely act on.
+
+    A fix class is reported ONLY when the text actually changed; anything this
+    intended to fix but did not falls through to `judgments`, so a broken link
+    can never vanish from both dispositions.
+
+    A page containing a fenced code block is never link-REWRITTEN at all: the
+    rewrite is a whole-page replace, and a `[[…]]` inside a fence is sample
+    text, not a link. Such pages' dangling links become judgments instead —
+    the finding still surfaces, it just isn't automated on."""
     fixes: list[str] = []
     judgments: list[tuple[str, str]] = []
+    fenced = _FENCE_RE.search(text) is not None
 
-    targets = [m.group(1).strip() for m in _WIKILINK_RE.finditer(text)]
+    # Links on an already-commented-out line are settled business, not open
+    # findings — re-flagging them would make every later run non-clean.
+    targets = [
+        m.group(1).strip()
+        for line in text.splitlines()
+        if not line.lstrip().startswith("<!--")
+        for m in _WIKILINK_RE.finditer(line)
+    ]
     for target in dict.fromkeys(targets):
-        if _resolves(wiki_root, page, target):
+        if not target or _resolves(wiki_root, page, target):
             continue
+        pattern = _link_re(target)
         basename = Path(target).name
         if not basename.endswith(".md"):
             basename += ".md"
         matches = [p for p in all_pages if Path(p).name == basename and p != page]
+
+        if fenced:
+            judgments.append((
+                "dangling-link",
+                f"[[{target}]] does not resolve; page contains a code fence, "
+                "so the lint will not rewrite it automatically",
+            ))
+            continue
+
         if len(matches) == 1:
-            text = text.replace(f"[[{target}]]", f"[[{matches[0]}]]")
-            fixes.append("dangling-link-repointed")
+            new_text = pattern.sub(lambda m: f"[[{matches[0]}{m.group(1) or ''}]]", text)
+            if new_text != text:
+                text = new_text
+                fixes.append("dangling-link-repointed")
+                continue
         elif basename in deleted:
             # Comment out, never delete: the line is the evidence that
             # something used to be there.
-            text = "\n".join(
+            lines = text.splitlines()
+            new_lines = [
                 (
                     f"<!-- stale link (target deleted): {line} -->"
-                    if f"[[{target}]]" in line and not line.lstrip().startswith("<!--")
+                    if pattern.search(line) and not line.lstrip().startswith("<!--")
                     else line
                 )
-                for line in text.splitlines()
-            ) + "\n"
-            fixes.append("stale-link-commented")
-        else:
-            judgments.append((
-                "dangling-link",
-                f"[[{target}]] does not resolve and has no unambiguous replacement",
-            ))
+                for line in lines
+            ]
+            if new_lines != lines:
+                text = _rejoin(new_lines, text)
+                fixes.append("stale-link-commented")
+                continue
+
+        judgments.append((
+            "dangling-link",
+            f"[[{target}]] does not resolve and has no unambiguous replacement",
+        ))
     return text, fixes, judgments
 
 
@@ -261,9 +338,18 @@ def _suggest(page: str, rule: str, detail: str) -> bool:
         evidence={"page": page, "rule": rule, "detail": detail},
         kind="structured_action",
         payload={"action": "review_lint_finding", "page": page, "rule": rule, "detail": detail},
-        fingerprint=f"wiki-lint:{page}:{rule}",
+        fingerprint=f"{_LINT_FINGERPRINT_PREFIX}{page}:{rule}",
     )
     return record(spec) is not None
+
+
+def _pending_lint_findings() -> bool:
+    """True iff ANY lint finding is still pending a human — the state
+    `watermark(clean=...)` must reflect."""
+    return any(
+        str(s.get("fingerprint", "")).startswith(_LINT_FINGERPRINT_PREFIX)
+        for s in pending_suggestions()
+    )
 
 
 def _incremental_scope(wiki_root: Path, touched: list[str]) -> list[str]:
@@ -286,19 +372,28 @@ def run_incremental_lint(session: str, full: bool = False) -> dict:
     mechanically safe classes through the write queue and routing judgment
     findings to the suggestion store. Always stamps the watermark forward.
 
-    Returns `{"scope", "pages_checked", "fixed", "queued_suggestions",
-    "watermark_advanced"}`. See the module docstring for the disposition
-    split and the hard exclusions.
+    Returns `{"scope", "pages_checked", "fixed", "held", "queued_suggestions",
+    "watermark_advanced"}`. See the module docstring for the disposition split
+    and the hard exclusions.
+
+    The watermark is stamped with the ABSOLUTE journal length read BEFORE the
+    run — `unlinted()`'s first element is a DELTA ("how many are unlinted"),
+    and stamping that as the absolute offset would walk the watermark
+    backwards on every pass. Reading the total up front (rather than after)
+    means the lint's own fix-writes stay unlinted and get re-checked next
+    pass: self-healing, not self-blinding.
     """
     wiki_root = ren_paths.wiki_root()
-    lines_seen, touched = watermark.unlinted()
+    total_journal_lines = len(journal.entries())
+    _, touched = watermark.unlinted()
 
     if not wiki_root.is_dir():
-        watermark.advance_watermark(lines_seen, clean=True)
+        watermark.advance_watermark(total_journal_lines, clean=not _pending_lint_findings())
         return {
             "scope": "full" if full else "incremental",
             "pages_checked": [],
             "fixed": [],
+            "held": [],
             "queued_suggestions": 0,
             "watermark_advanced": True,
         }
@@ -312,6 +407,7 @@ def run_incremental_lint(session: str, full: bool = False) -> dict:
     deleted = _deleted_basenames()
 
     fixed: list[dict] = []
+    held: list[dict] = []
     queued = 0
     for page in pages:
         path = wiki_root / page
@@ -333,7 +429,7 @@ def run_incremental_lint(session: str, full: bool = False) -> dict:
 
         if fix_classes and new_text != text:
             classes = list(dict.fromkeys(fix_classes))
-            propose_and_apply(
+            entry, prov = propose_and_apply(
                 Proposal(
                     op="UPDATE",
                     page=page,
@@ -344,17 +440,34 @@ def run_incremental_lint(session: str, full: bool = False) -> dict:
                     session=session,
                 )
             )
-            fixed.extend({"page": page, "fix": cls} for cls in classes)
+            if prov is None:
+                # The queue HELD it (instruction-plane target, or a
+                # `contradicts` conflict the session must reason about). The
+                # write did NOT land — never claim it did; surface it instead.
+                qid = getattr(entry, "qid", None)
+                held.extend({"page": page, "fix": cls, "qid": qid} for cls in classes)
+                judgments.extend(
+                    (f"held:{cls}", f"{cls} fix for {page} was held by the write queue (qid {qid})")
+                    for cls in classes
+                )
+            else:
+                fixed.extend({"page": page, "fix": cls} for cls in classes)
 
         for rule, detail in judgments:
             if _suggest(page, rule, detail):
                 queued += 1
 
-    watermark.advance_watermark(lines_seen, clean=(queued == 0))
+    # `clean` reflects OUTSTANDING findings, not just this run's new ones:
+    # `record()` dedups an already-pending fingerprint, so counting only new
+    # suggestions would let a later run over untouched pages declare the wiki
+    # clean while a real finding still sits unread — and Task 5's wake-up
+    # nudge, whose whole input is this flag, would go dark.
+    watermark.advance_watermark(total_journal_lines, clean=not _pending_lint_findings())
     return {
         "scope": "full" if full else "incremental",
         "pages_checked": pages,
         "fixed": fixed,
+        "held": held,
         "queued_suggestions": queued,
         "watermark_advanced": True,
     }
