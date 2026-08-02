@@ -78,3 +78,53 @@ class TestReferencesResolve:
         }
         import re
         assert set(re.findall(r"superpowers:[a-z-]+", card)) <= known
+
+
+class TestBudgetAndStructure:
+    def test_card_never_truncates_at_exact_budget(self):
+        """Ensure the card variant measuring ~391 tokens never silently truncates
+        when within the 400-token DOCTRINE_BUDGET. This guards against a footgun:
+        if a future edit pushes the card over budget, the existing test (with its
+        +200 char slop) would still pass while the card truncates silently."""
+        import sys
+        sys.path.insert(0, str(REPO / "hooks" / "wake-up"))
+        from wakeup import DOCTRINE_BUDGET, truncate_text_to_tokens  # noqa: E402
+
+        for sp in (True, False):
+            card = render_doctrine_card(sp)
+            # Use a calibrated ratio (4.0 chars/token is the safe default).
+            # The truncate function preserves the text exactly when it fits.
+            truncated = truncate_text_to_tokens(card, DOCTRINE_BUDGET, 4.0)
+            assert truncated == card, (
+                f"Card variant sp={sp} was truncated despite being within "
+                f"DOCTRINE_BUDGET={DOCTRINE_BUDGET}; this suggests an edit "
+                f"pushed it over budget silently."
+            )
+
+    def test_card_structure_skeleton_pinned(self):
+        """Pin the structural skeleton of the doctrine card to catch accidental
+        edits. Asserts the presence and order of: section header, four numbered
+        gates, and the red-flags table header. Uses successive .index() calls to
+        verify in-order appearance (house style: structural stability, not
+        verbatim-text pinning)."""
+        for sp in (True, False):
+            card = render_doctrine_card(sp)
+
+            # The exact section header line
+            assert card.index("## How we work (execution doctrine)") >= 0
+
+            # Four numbered gate leads, in order (substring matching the opener).
+            # Each .index() call will raise if not found; successive calls
+            # verify order (latter index > earlier index).
+            idx_brainstorm = card.index("1. **Brainstorm gate.**")
+            idx_decompose = card.index("2. **Decompose.**")
+            idx_dispatch = card.index("3. **Dispatch.**")
+            idx_review = card.index("4. **Review gate.**")
+
+            assert idx_brainstorm < idx_decompose < idx_dispatch < idx_review, (
+                "Gate leads are out of order or missing"
+            )
+
+            # The table header for Red flags section (stable structural marker).
+            idx_table_header = card.index("| Thought | Reality |")
+            assert idx_table_header > idx_review, "Table header appears before review gate"
