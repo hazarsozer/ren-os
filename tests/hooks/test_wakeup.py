@@ -2196,6 +2196,42 @@ class TestOpenWorkSection:
         assert len(segment) <= wakeup.OPENWORK_BUDGET * wakeup.CHARS_PER_TOKEN + 300
         assert "projects/demo-project/open-work.md" in segment
 
+    def test_overflow_keeps_the_oldest_open_threads_and_says_so(self, project):
+        """Final-review finding 5: `truncate_text_to_tokens` keeps the TAIL,
+        so an over-budget ledger silently dropped the OLDEST open threads —
+        the ledger exists so nothing open is forgotten, and its overflow was
+        forgetting the most-forgotten items first. Head-preserving now, with
+        an explicit count of what is not shown."""
+        _write(project["project_dir"] / "l1" / "session-001.md", _model_stamped("L1 content"))
+        many = "".join(
+            f"- [ ] item number {i:03d} with a fairly long description to burn budget "
+            f"— ptr:issue:#{i} (opened 2026-08-01)\n"
+            for i in range(200)
+        )
+        _write(
+            project["project_dir"] / "open-work.md",
+            self._ledger(f"## Open\n\n{many}\n## Archive\n"),
+        )
+
+        payload = wakeup.compose_wake_up_context(
+            cwd=project["cwd"], wiki_root=wiki_root(), session="sess-ow", max_tokens=100_000
+        )
+
+        assert "item number 000" in payload      # oldest survives
+        assert "item number 199" not in payload  # newest is what overflows
+        assert "not shown" in payload
+        assert "projects/demo-project/open-work.md" in payload
+
+    def test_no_overflow_notice_when_everything_fits(self, project):
+        _write(project["project_dir"] / "l1" / "session-001.md", _model_stamped("L1 content"))
+        _write(project["project_dir"] / "open-work.md", self._ledger(self._open_body()))
+
+        payload = wakeup.compose_wake_up_context(
+            cwd=project["cwd"], wiki_root=wiki_root(), session="sess-ow"
+        )
+
+        assert "not shown" not in payload
+
     def test_ledger_path_excluded_from_extras(self, project):
         _write(project["project_dir"] / "l1" / "session-001.md", _model_stamped("L1 content"))
         _write(project["project_dir"] / "open-work.md", self._ledger(self._open_body()))

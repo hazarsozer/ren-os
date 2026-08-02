@@ -15,7 +15,12 @@ since the last clean watermark, unless told `--full`.
    `skills/wiki-health/` directory is why this goes through `importlib`
    rather than a normal import).
 2. Read the result: `scope`, `pages_checked`, `fixed`, `held`,
-   `queued_suggestions`, `watermark_advanced`. For each entry in `fixed`,
+   `queued_suggestions`, `watermark_advanced`, `watermark_seeded`.
+   `scope: "seeded"` is the FIRST run on a wiki that has never been linted
+   (e.g. right after an upgrade): the watermark was seeded at the current
+   journal length and NOTHING was checked or written, deliberately — history
+   is not mass-rewritten unattended. Report it as such, and say that
+   `--full` is the way to lint history on purpose. For each entry in `fixed`,
    sanity-check the page really improved (open it). Entries in `held` are
    proposals the write queue did not land (an instruction-plane target or a
    conflict) — never report these as fixed; they also became a suggestion.

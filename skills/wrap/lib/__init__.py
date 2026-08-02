@@ -36,7 +36,7 @@ from __future__ import annotations
 import re
 from dataclasses import asdict
 from datetime import date, timedelta
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Callable
 
 import yaml
@@ -342,6 +342,35 @@ def _build_open_work_content(existing_text: str, project: str, body: str) -> str
     return "\n".join(lines) + body
 
 
+#: Wrap's own bookkeeping artifacts. Wrap rewrites these on EVERY session as
+#: a side effect of wrapping up — they are never evidence that a human's
+#: open-work line about them is done.
+_WRAP_INTERNAL_BASENAMES = ("overview.md", "open-work.md")
+
+
+def _is_session_work_write(proposal: dict) -> bool:
+    """True iff this queue entry is genuine SESSION work, i.e. may close a
+    fragment-less open-work pointer.
+
+    0.6.5 added two UNCONDITIONAL automated writers to every session — the
+    `ren-wiki-lint` pass (`producer="routine"`) and wrap's own
+    `maintain_overview` / L1 narrative. Before this guard, either of them
+    touching a page ticked its ledger box, so the ledger closed lines while
+    nothing about the actual work had changed. The ledger exists to remember
+    open threads; an automated writer must never be what closes one.
+    """
+    if proposal.get("producer") == "routine":
+        return False
+    page = PurePosixPath(str(proposal.get("page", "")))
+    if page.name in _WRAP_INTERNAL_BASENAMES:
+        return False
+    # `projects/<slug>/l1/session-*.md` (and the project-less `l1/…` form) —
+    # wrap writes one every session.
+    if "l1" in page.parts and page.name.startswith("session-"):
+        return False
+    return True
+
+
 def reconcile_open_work(
     session: str,
     project: str,
@@ -359,7 +388,10 @@ def reconcile_open_work(
     channel that can close a FRAGMENT-bearing pointer (`issue:#7`,
     `plan:p.md#task-3`) — or (b) the pointer has no fragment and its target
     file is either a bare path in `completed_ptrs` or a page this `session`'s
-    queue entries actually wrote. Nothing here asks a model anything.
+    GENUINE work wrote (`_is_session_work_write` — the routine lint and wrap's
+    own overview/L1/ledger writes are excluded, since they touch pages on
+    every session regardless of what the human did). Nothing here asks a model
+    anything.
 
     `carried` counts pre-existing OPEN lines left untouched this run: it
     excludes lines closed on this run, already-closed lines, and lines the
@@ -396,9 +428,10 @@ def reconcile_open_work(
     #     close its siblings in the same file.
     #   * `explicit_targets` holds bare targets from FRAGMENT-LESS explicit
     #     pointers only, so a caller may pass a plain path.
-    #   * `written_pages` (this session's actual queue writes) may only close
-    #     a fragment-less pointer: writing a file is not evidence that a
-    #     specific task inside it is done.
+    #   * `written_pages` (this session's GENUINE queue writes — see
+    #     `_is_session_work_write`; automated writers are filtered out) may
+    #     only close a fragment-less pointer: writing a file is not evidence
+    #     that a specific task inside it is done.
     # An empty target is never a match key — it is the shape every `issue:#N`
     # pointer degrades to.
     explicit_full = {str(p) for p in (completed_ptrs or [])}
@@ -408,7 +441,11 @@ def reconcile_open_work(
         if cand_target and not cand_fragment:
             explicit_targets.add(cand_target)
     try:
-        written_pages = {e["proposal"]["page"] for e in _session_queue_entries(session)}
+        written_pages = {
+            e["proposal"]["page"]
+            for e in _session_queue_entries(session)
+            if _is_session_work_write(e["proposal"])
+        }
     except Exception:  # noqa: BLE001 - a broken queue must not break the ledger
         written_pages = set()
 

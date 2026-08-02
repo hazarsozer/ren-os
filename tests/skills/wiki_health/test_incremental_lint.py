@@ -40,7 +40,17 @@ def wiki(clean_path_env, tmp_path):
     clean_path_env.setenv("REN_FRAMEWORK_ROOT", str(tmp_path))
     root = wiki_root()
     root.mkdir(parents=True, exist_ok=True)
+    # Steady state: a watermark EXISTS (stamped at 0 lines seen), which is
+    # what every test below exercises. An ABSENT watermark is the distinct
+    # first-run-after-upgrade case — it seeds and lints nothing — and those
+    # tests call `_unseed()` explicitly.
+    watermark.advance_watermark(0, clean=True)
     return root
+
+
+def _unseed() -> None:
+    """Remove the watermark file: the post-upgrade "never linted" state."""
+    (wiki_root() / ".ren" / "wiki_lint_watermark.json").unlink(missing_ok=True)
 
 
 def _prov(page: str, op: str = "UPDATE") -> Provenance:
@@ -482,3 +492,113 @@ def test_hub_fix_skips_log_md_and_quarantined_siblings(wiki):
     assert "alpha.md" in hub
     assert "log.md" not in hub
     assert "quar.md" not in hub
+
+
+# ---- FINAL REVIEW 1: the first run after upgrade must not rewrite history
+
+
+def test_absent_watermark_seeds_and_lints_nothing(wiki):
+    """Upgrading from 0.6.4 leaves no watermark file. Before this fix, that
+    read as "seen 0 lines" and the FIRST background lint pass expanded to
+    every page the journal had ever touched — an unattended full-wiki
+    auto-fix the user never asked for. Absent watermark now SEEDS at the
+    current journal length and does nothing else."""
+    _unseed()
+    _page(wiki, "projects/p/knowledge/topic/index.md", "# Topic\n\n## Pages\n", ptype="l2-map")
+    _page(wiki, "projects/p/knowledge/topic/alpha.md", "# Alpha\n\n## Knowledge\n- a fact\n")
+    _touch_journal("projects/p/knowledge/topic/alpha.md")
+    hub_before = (wiki / "projects/p/knowledge/topic/index.md").read_text(encoding="utf-8")
+
+    result = wiki_health.run_incremental_lint(session="s-seed")
+
+    assert result["scope"] == "seeded"
+    assert result["watermark_seeded"] is True
+    assert result["pages_checked"] == []
+    assert result["fixed"] == []
+    assert result["held"] == []
+    assert result["queued_suggestions"] == 0
+    assert (wiki / "projects/p/knowledge/topic/index.md").read_text(encoding="utf-8") == hub_before
+    assert watermark.read_watermark()["journal_lines_seen"] == _journal_len()
+    assert watermark.unlinted()[0] == 0
+
+
+def test_run_after_seeding_lints_normally(wiki):
+    """Steady state starts clean from the seed point: the NEXT write is
+    linted as usual."""
+    _unseed()
+    _page(wiki, "projects/p/knowledge/topic/index.md", "# Topic\n\n## Pages\n", ptype="l2-map")
+    _touch_journal("projects/p/knowledge/topic/old.md")
+    wiki_health.run_incremental_lint(session="s-seed")
+
+    _page(wiki, "projects/p/knowledge/topic/alpha.md", "# Alpha\n\n## Knowledge\n- a fact\n")
+    _touch_journal("projects/p/knowledge/topic/alpha.md")
+    result = wiki_health.run_incremental_lint(session="s-1")
+
+    assert result["scope"] == "incremental"
+    assert any(f["fix"] == "hub-missing-entry" for f in result["fixed"]), result
+
+
+def test_explicit_full_run_still_lints_history_without_a_watermark(wiki):
+    """`full=True` is the deliberate way to lint history — seeding must not
+    swallow it."""
+    _unseed()
+    _page(wiki, "projects/p/knowledge/topic/index.md", "# Topic\n\n## Pages\n", ptype="l2-map")
+    _page(wiki, "projects/p/knowledge/topic/alpha.md", "# Alpha\n\n## Knowledge\n- a fact\n")
+
+    result = wiki_health.run_incremental_lint(session="s-full", full=True)
+
+    assert result["scope"] == "full"
+    assert any(f["fix"] == "hub-missing-entry" for f in result["fixed"]), result
+
+
+def test_corrupt_but_present_watermark_still_lints_everything(wiki):
+    """A CORRUPT stamp is a different case from an absent one: it degrades to
+    "lint everything" by design, and that behaviour is preserved."""
+    path = wiki / ".ren" / "wiki_lint_watermark.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("{not json", encoding="utf-8")
+    _page(wiki, "projects/p/knowledge/topic/index.md", "# Topic\n\n## Pages\n", ptype="l2-map")
+    _page(wiki, "projects/p/knowledge/topic/alpha.md", "# Alpha\n\n## Knowledge\n- a fact\n")
+    _touch_journal("projects/p/knowledge/topic/alpha.md")
+
+    result = wiki_health.run_incremental_lint(session="s-corrupt")
+
+    assert result["scope"] == "incremental"
+    assert any(f["fix"] == "hub-missing-entry" for f in result["fixed"]), result
+
+
+# ---- FINAL REVIEW 4: noop-duplicate is "already fixed", not a queue hold
+
+
+def test_noop_duplicate_is_not_reported_as_a_hold(wiki, monkeypatch):
+    """`propose` returns a SYNTHETIC, never-persisted entry with
+    status="noop-duplicate" when the proposed content already matches the
+    page. That is not a hold: reporting it as one cited a qid absent from the
+    queue dir, and left a durable suggestion that could never resolve (which
+    also pinned `clean=False` and the wake-up nudge on forever)."""
+    _page(wiki, "projects/p/knowledge/topic/index.md", "# Topic\n\n## Pages\n", ptype="l2-map")
+    _page(wiki, "projects/p/knowledge/topic/alpha.md", "# Alpha\n\n## Knowledge\n- a fact\n")
+    _touch_journal("projects/p/knowledge/topic/alpha.md")
+
+    import lib.memory.queue as queue_mod
+
+    lint = importlib.import_module("skills.wiki-health.lib.lint")
+
+    def fake(proposal):
+        # Exactly what `queue.propose` returns when the rewrite normalizes
+        # equal to what is already on disk (queue.py `_NOOP_DUPLICATE`):
+        # synthetic, never persisted, `prov is None`.
+        entry = queue_mod.QueueEntry(
+            qid="q-SYNTHETIC", ts="2026-08-02T00:00:00Z", proposal=proposal,
+            status="noop-duplicate",
+        )
+        return entry, None
+
+    monkeypatch.setattr(lint, "propose_and_apply", fake)
+
+    result = wiki_health.run_incremental_lint(session="s-noop")
+
+    assert result["held"] == []
+    assert result["fixed"] == []
+    assert result["queued_suggestions"] == 0
+    assert not [s for s in pending_suggestions() if s["payload"]["rule"].startswith("held:")]

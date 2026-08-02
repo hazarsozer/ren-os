@@ -42,6 +42,17 @@ def _path():
     return ren_paths.state_dir() / WATERMARK_FILENAME
 
 
+def watermark_exists() -> bool:
+    """True when a watermark file is PRESENT (readable or not).
+
+    `read_watermark()` flattens "absent" and "corrupt" into `{}`, but the two
+    are different cases for a lint pass: corrupt degrades to "lint everything"
+    by design, while absent means "this wiki has never been linted" — which,
+    on upgrade, is every page the journal ever touched. See
+    `run_incremental_lint`'s seeding path."""
+    return _path().exists()
+
+
 def read_watermark() -> dict:
     """Return the stamped watermark, or `{}` if missing/corrupt."""
     try:
@@ -86,4 +97,10 @@ def unlinted() -> tuple[int, list[str]]:
     return len(fresh), sorted(pages)
 
 
-__all__ = ["read_watermark", "advance_watermark", "unlinted", "WATERMARK_FILENAME"]
+__all__ = [
+    "read_watermark",
+    "watermark_exists",
+    "advance_watermark",
+    "unlinted",
+    "WATERMARK_FILENAME",
+]

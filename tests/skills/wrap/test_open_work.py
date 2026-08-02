@@ -378,3 +378,109 @@ def test_bare_target_in_completed_ptrs_still_closes_fragmentless_line(wiki):
     result = reconcile_open_work("sess-bare", PROJECT, completed_ptrs=["docs/z.md"])
 
     assert result["closed"] == ["spec:docs/z.md"]
+
+
+# --- FINAL REVIEW 2: automated writers must not close open work -------------
+
+
+def _write(session: str, page: str, producer: str, writer: str) -> None:
+    from lib.memory.queue import Proposal, propose_and_apply
+
+    propose_and_apply(
+        Proposal(
+            op="ADD",
+            page=page,
+            content="---\ntitle: x\n---\n\nbody\n",
+            reason="test write",
+            producer=producer,
+            writer=writer,
+            session=session,
+        )
+    )
+
+
+def test_routine_lint_write_does_not_close_an_open_line(wiki):
+    """`ren-wiki-lint` writes with producer="routine", writer="routine" on
+    EVERY session (0.6.5 wrap step 7). A lint touching a page is not evidence
+    that the human's work on that page is done."""
+    _write_ledger(
+        wiki,
+        "## Open\n\n"
+        f"- [ ] rewrite the psychology page — ptr:spec:projects/{PROJECT}/knowledge/psy.md "
+        f"(opened {_days_ago(2)})\n\n"
+        "## Archive\n",
+    )
+    _write("sess-routine", f"projects/{PROJECT}/knowledge/psy.md", "routine", "routine")
+
+    result = reconcile_open_work("sess-routine", PROJECT)
+
+    assert result["closed"] == []
+    assert result["carried"] == 1
+    text = _page(wiki).read_text(encoding="utf-8")
+    assert "- [ ] rewrite the psychology page" in text
+
+
+def test_wrap_overview_write_does_not_close_an_overview_pointer(wiki):
+    """`maintain_overview` writes the overview unconditionally whenever it
+    materially changed — which must not tick off "rewrite the overview"."""
+    _write_ledger(
+        wiki,
+        "## Open\n\n"
+        f"- [ ] rewrite the overview — ptr:spec:projects/{PROJECT}/overview.md "
+        f"(opened {_days_ago(2)})\n\n"
+        "## Archive\n",
+    )
+    _write("sess-ov", f"projects/{PROJECT}/overview.md", "wrap", "llm-auto")
+
+    result = reconcile_open_work("sess-ov", PROJECT)
+
+    assert result["closed"] == []
+    text = _page(wiki).read_text(encoding="utf-8")
+    assert "- [ ] rewrite the overview" in text
+
+
+def test_wrap_l1_write_does_not_close_an_l1_pointer(wiki):
+    _write_ledger(
+        wiki,
+        "## Open\n\n"
+        f"- [ ] revisit the narrative — ptr:spec:projects/{PROJECT}/l1/session-sess-l1.md "
+        f"(opened {_days_ago(2)})\n\n"
+        "## Archive\n",
+    )
+    _write("sess-l1", f"projects/{PROJECT}/l1/session-sess-l1.md", "wrap", "llm-auto")
+
+    result = reconcile_open_work("sess-l1", PROJECT)
+
+    assert result["closed"] == []
+
+
+def test_ledgers_own_write_does_not_close_a_ledger_pointer(wiki):
+    _write_ledger(
+        wiki,
+        "## Open\n\n"
+        f"- [ ] prune the ledger — ptr:spec:projects/{PROJECT}/open-work.md "
+        f"(opened {_days_ago(2)})\n\n"
+        "## Archive\n",
+    )
+    _write("sess-ow2", f"projects/{PROJECT}/open-work.md", "wrap", "llm-auto")
+
+    result = reconcile_open_work("sess-ow2", PROJECT)
+
+    assert result["closed"] == []
+
+
+def test_genuine_session_write_still_closes(wiki):
+    """The channel must stay useful: a real session write to the pointed-at
+    knowledge page still closes the line."""
+    _write_ledger(
+        wiki,
+        "## Open\n\n"
+        f"- [ ] draft the knowledge page — ptr:spec:projects/{PROJECT}/knowledge/z.md "
+        f"(opened {_days_ago(2)})\n\n"
+        "## Archive\n",
+    )
+    _write("sess-real", f"projects/{PROJECT}/knowledge/z.md", "wrap", "llm-auto")
+
+    result = reconcile_open_work("sess-real", PROJECT)
+
+    assert result["closed"] == [f"spec:projects/{PROJECT}/knowledge/z.md"]

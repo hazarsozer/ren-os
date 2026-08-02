@@ -297,6 +297,45 @@ def _inject_section(
     return truncated
 
 
+def _inject_open_work(
+    text: str,
+    budget: int,
+    pointer_rel: str,
+    chars_per_token: float | None = None,
+) -> str:
+    """Budget the open-work ledger HEAD-first, naming what didn't fit.
+
+    `truncate_text_to_tokens` keeps the TAIL, which for this section means an
+    over-budget ledger silently drops the OLDEST open threads — the exact
+    items most at risk of being forgotten, in the one artifact whose job is
+    to not forget them. So this section cuts from the head instead (oldest
+    lines survive) and always states how many items are not shown; silent
+    loss is the thing being eliminated, not truncation itself.
+
+    Section-local, by the same reasoning that produced the compact doctrine
+    card: the shared `truncate_text_to_tokens` is untouched because its
+    tail-keeping is correct for its other callers."""
+    if budget <= 0:
+        return ""
+    max_chars = int(budget * (chars_per_token or _calibrated_chars_per_token()))
+    if len(text) <= max_chars:
+        return text
+
+    lines = text.split("\n")
+    kept: list[str] = []
+    used = 0
+    for line in lines:
+        cost = len(line) + 1
+        if used + cost > max_chars:
+            break
+        kept.append(line)
+        used += cost
+
+    dropped = len(lines) - len(kept)
+    notice = f"*({dropped} more open item(s) not shown; full ledger in `{pointer_rel}`)*"
+    return "\n".join(kept + [notice]) if kept else notice
+
+
 # `resolve_dev_root` and `detect_project` now live in `lib.ren_paths` (codex
 # D4 wiring) — imported above, re-exported here so existing callers of
 # `wakeup.resolve_dev_root` / `wakeup.detect_project` keep working. Shared
@@ -1238,7 +1277,7 @@ def compose_wake_up_context(
         if open_work_text:
             sections.append(SECTION_OPENWORK)
             sections.append(
-                _inject_section(open_work_text, OPENWORK_BUDGET, openwork_rel, chars_per_token)
+                _inject_open_work(open_work_text, OPENWORK_BUDGET, openwork_rel, chars_per_token)
             )
             surfaced_pages.append(openwork_rel)
 

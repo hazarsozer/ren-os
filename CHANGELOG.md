@@ -19,6 +19,11 @@ collision.
   pages, and reports a `held` disposition for proposals the queue leaves
   pending. Spawned non-blocking at wrap close-out, and named in the wake-up
   nudge when journal entries are unlinted.
+  The first run on a wiki that has never been linted (e.g. straight after an
+  upgrade) SEEDS the watermark at the current journal length and checks
+  nothing — reported as `scope: "seeded"` — so upgrading never triggers an
+  unattended rewrite of the whole wiki's history. Run with `full=True` to
+  lint history deliberately.
 - **Open-work ledger** — a new `open-work` page type and template; wrap
   reconciles it (`reconcile_open_work`) and wake-up renders a `## Open work`
   section. Lines are never deleted — closed lines older than 14 days move

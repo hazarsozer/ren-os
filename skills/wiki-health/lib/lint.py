@@ -385,12 +385,35 @@ def run_incremental_lint(session: str, full: bool = False) -> dict:
     """
     wiki_root = ren_paths.wiki_root()
     total_journal_lines = len(journal.entries())
+
+    if not full and not watermark.watermark_exists():
+        # FIRST RUN AFTER UPGRADE. No watermark means "seen 0 lines", which
+        # would make this "incremental" pass expand to every page the journal
+        # has EVER touched (plus their hubs) and auto-fix all of them — an
+        # unattended full-wiki rewrite the friend never asked for, triggered
+        # by the wake-up nudge on their first post-upgrade session. Seed the
+        # watermark at the current journal length and do nothing else: steady
+        # state starts clean from here, and `full=True` remains the deliberate
+        # way to lint history. A CORRUPT-but-present watermark does NOT take
+        # this path — that degrades to "lint everything" by design.
+        watermark.advance_watermark(total_journal_lines, clean=not _pending_lint_findings())
+        return {
+            "scope": "seeded",
+            "watermark_seeded": True,
+            "pages_checked": [],
+            "fixed": [],
+            "held": [],
+            "queued_suggestions": 0,
+            "watermark_advanced": True,
+        }
+
     _, touched = watermark.unlinted()
 
     if not wiki_root.is_dir():
         watermark.advance_watermark(total_journal_lines, clean=not _pending_lint_findings())
         return {
             "scope": "full" if full else "incremental",
+            "watermark_seeded": False,
             "pages_checked": [],
             "fixed": [],
             "held": [],
@@ -440,7 +463,18 @@ def run_incremental_lint(session: str, full: bool = False) -> dict:
                     session=session,
                 )
             )
-            if prov is None:
+            if prov is None and getattr(entry, "status", None) == "noop-duplicate":
+                # NOT a hold: `queue.propose` returns a SYNTHETIC, never-persisted
+                # entry with this status when the rewrite normalizes equal to what
+                # is already on the page (the `_rejoin` trailing-newline path is
+                # the obvious way in). The page is already correct, so there is
+                # nothing to fix and nothing to hold. Reporting it as a hold cited
+                # a qid absent from `state_dir()/queue/` — telling the friend to
+                # inspect something un-inspectable — and left a durable suggestion
+                # that could never resolve, which also pinned `clean=False` and
+                # the wake-up nudge on forever.
+                pass
+            elif prov is None:
                 # The queue HELD it (instruction-plane target, or a
                 # `contradicts` conflict the session must reason about). The
                 # write did NOT land — never claim it did; surface it instead.
@@ -465,6 +499,7 @@ def run_incremental_lint(session: str, full: bool = False) -> dict:
     watermark.advance_watermark(total_journal_lines, clean=not _pending_lint_findings())
     return {
         "scope": "full" if full else "incremental",
+        "watermark_seeded": False,
         "pages_checked": pages,
         "fixed": fixed,
         "held": held,
