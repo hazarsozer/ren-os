@@ -733,6 +733,63 @@ def _suggestions_store_line() -> str:
     return f"{n} instruction suggestion(s) pending — run /ren:suggestions to review."
 
 
+JOURNAL_FILENAME: Final[str] = "journal.jsonl"
+WATERMARK_FILENAME: Final[str] = "wiki_lint_watermark.json"
+
+
+def _unlinted_count() -> int:
+    """Number of append-only journal lines past the wiki-lint watermark —
+    i.e. how many recorded wiki writes no lint pass has looked at yet (0.6.5
+    Task 5).
+
+    Deliberately reads `state_dir()/journal.jsonl` and
+    `state_dir()/wiki_lint_watermark.json` DIRECTLY with stdlib rather than
+    calling `skills.wiki-health.lib.watermark.unlinted()`: the wake-up hook is
+    py3.9-safe, stdlib-only and latency-sensitive, and must not import skill
+    packages (see the layering note in `_is_overview_skeleton_or_empty`). The
+    file shapes are Task 2's contract — one JSON object per journal line, and
+    a flat `{"journal_lines_seen": int, "clean": bool, "stamped_at": str}`
+    stamp.
+
+    Keyed on the COUNT, never on the stamp's `clean` flag: `clean` is
+    wiki-global, so a single unresolved finding anywhere would otherwise make
+    this a permanent nudge.
+
+    Never raises: an absent/unreadable/corrupt journal or watermark yields 0
+    (no nudge), same failure doctrine as every other producer here."""
+    try:
+        with (state_dir() / JOURNAL_FILENAME).open(encoding="utf-8") as handle:
+            # Blank lines are skipped, matching how the journal's own reader
+            # (`lib.memory.journal.entries`) counts entries — the watermark is
+            # stamped in THOSE units, so the two must agree.
+            lines = sum(1 for line in handle if line.strip())
+    except (OSError, UnicodeDecodeError):
+        logger.debug("could not count journal lines", exc_info=True)
+        return 0
+
+    seen = 0
+    try:
+        data = json.loads((state_dir() / WATERMARK_FILENAME).read_text(encoding="utf-8"))
+        seen = int(data["journal_lines_seen"])
+    except Exception:  # noqa: BLE001 - a missing/corrupt stamp means "lint everything"
+        logger.debug("could not read lint watermark", exc_info=True)
+        seen = 0
+
+    return max(0, lines - seen)
+
+
+def unlinted_nudge_line() -> str:
+    """The wake-up nudge naming the shipped `ren-wiki-lint` agent, or "" when
+    the lint watermark is caught up. Appended only alongside REAL content —
+    it must never make an otherwise-empty compose look non-empty (the
+    loud-notice contract); see `compose_wake_up_context`."""
+    n = _unlinted_count()
+    if n <= 0:
+        return ""
+    plural = "y" if n == 1 else "ies"
+    return f"{n} journal entr{plural} unlinted — spawn the ren-wiki-lint agent or run /ren:wrap."
+
+
 def _git(cwd: Path, args: list[str]) -> str:
     """Read-only, bounded git subprocess call. Returns "" on ANY failure
     (not a repo, git absent, timeout, non-zero exit) — never raises."""
@@ -1184,6 +1241,14 @@ def compose_wake_up_context(
         logger.info("nothing to inject from %s; emitting empty context", wiki_root)
         return ""
 
+    # Same rule as the doctrine card below: the unlinted-journal nudge rides
+    # real content and is appended only AFTER the emptiness verdict above, so
+    # journal lines alone can never turn an empty wiki's compose into a
+    # non-empty payload and suppress the loud uninitialized notice.
+    nudge = unlinted_nudge_line()
+    if nudge:
+        sections.append(nudge)
+
     # Doctrine rides real content; empty compose stays "" (loud notice) —
     # the emptiness decision above is made before the card is ever added.
     card = render_doctrine_card(superpowers_installed())
@@ -1240,6 +1305,7 @@ __all__ = [
     "read_l2_map",
     "read_live_routines",
     "suggestion_line",
+    "unlinted_nudge_line",
     "rank_extras",
     "compose_wake_up_context",
 ]

@@ -1923,3 +1923,103 @@ def test_no_project_empty_query_still_reports_held_out_quarantined_pages(wiki, c
     assert "held out of this context" in payload
     assert "Possibly relevant now" not in payload
     assert "--no-verify" not in payload
+
+
+# --------------------------------------------- unlinted-journal nudge (Task 5)
+
+
+def _write_journal(lines: int) -> Path:
+    """Append `lines` ordinary journal entries at state_dir()/journal.jsonl."""
+    path = state_dir() / "journal.jsonl"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        "".join(json.dumps({"page": f"notes/p{i}.md"}) + "\n" for i in range(lines)),
+        encoding="utf-8",
+    )
+    return path
+
+
+def _write_watermark(lines_seen: int, clean: bool = True) -> Path:
+    path = state_dir() / "wiki_lint_watermark.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps({"journal_lines_seen": lines_seen, "clean": clean,
+                    "stamped_at": "2026-08-02T00:00:00+00:00"}),
+        encoding="utf-8",
+    )
+    return path
+
+
+class TestUnlintedNudge:
+    def test_nudge_when_journal_ahead_of_absent_watermark(self, project):
+        _write(project["project_dir"] / "l1" / "session-001.md", _model_stamped("L1 content"))
+        _write_journal(3)
+
+        payload = wakeup.compose_wake_up_context(
+            cwd=project["cwd"], wiki_root=wiki_root(), session="sess-1")
+
+        assert "3 journal entries unlinted" in payload
+        assert "ren-wiki-lint" in payload
+
+    def test_singular_wording_for_one_entry(self, project):
+        _write(project["project_dir"] / "l1" / "session-001.md", _model_stamped("L1 content"))
+        _write_journal(3)
+        _write_watermark(2)
+
+        payload = wakeup.compose_wake_up_context(
+            cwd=project["cwd"], wiki_root=wiki_root(), session="sess-1")
+
+        assert "1 journal entry unlinted" in payload
+
+    def test_no_nudge_when_watermark_caught_up(self, project):
+        _write(project["project_dir"] / "l1" / "session-001.md", _model_stamped("L1 content"))
+        _write_journal(3)
+        _write_watermark(3)
+
+        payload = wakeup.compose_wake_up_context(
+            cwd=project["cwd"], wiki_root=wiki_root(), session="sess-1")
+
+        assert "unlinted" not in payload
+
+    def test_empty_wiki_stays_empty_despite_unlinted_entries(self, wiki, project):
+        """Loud-notice contract: the nudge is never content for the emptiness
+        verdict — an empty wiki must still compose to "" so the hook fires its
+        uninitialized notice."""
+        _write_journal(3)
+
+        payload = wakeup.compose_wake_up_context(
+            cwd=project["cwd"], wiki_root=wiki_root(), session="sess-1")
+
+        assert payload == ""
+
+    def test_unreadable_journal_yields_no_nudge_and_no_crash(self, project):
+        _write(project["project_dir"] / "l1" / "session-001.md", _model_stamped("L1 content"))
+        # A directory at the journal path: every read of it raises OSError.
+        (state_dir() / "journal.jsonl").mkdir(parents=True, exist_ok=True)
+
+        payload = wakeup.compose_wake_up_context(
+            cwd=project["cwd"], wiki_root=wiki_root(), session="sess-1")
+
+        assert "unlinted" not in payload
+        assert "L1 content" in payload
+
+    def test_corrupt_watermark_degrades_to_full_count(self, project):
+        _write(project["project_dir"] / "l1" / "session-001.md", _model_stamped("L1 content"))
+        _write_journal(2)
+        wm = state_dir() / "wiki_lint_watermark.json"
+        wm.parent.mkdir(parents=True, exist_ok=True)
+        wm.write_text("{not json", encoding="utf-8")
+
+        payload = wakeup.compose_wake_up_context(
+            cwd=project["cwd"], wiki_root=wiki_root(), session="sess-1")
+
+        assert "2 journal entries unlinted" in payload
+
+    def test_hooks_do_not_import_skills_wiki_health(self):
+        """The nudge reads the two state files directly; the hook must stay
+        stdlib-only and must never import the wiki-health skill package."""
+        source = (WAKE_UP_DIR / "wakeup" / "__init__.py").read_text(encoding="utf-8")
+        for line in source.splitlines():
+            stripped = line.strip()
+            assert not stripped.startswith(("import skills", "from skills")), line
+        assert 'import_module("skills.wiki-health' not in source
