@@ -72,6 +72,8 @@ from lib.memory.judge import JUDGE_MIN_CONFIDENCE, JUDGE_PAIR_CAP, judge_pairs
 from lib.ren_paths import PathTraversalError
 from skills.recall.lib import rank as _recall_rank
 
+from .lint import run_incremental_lint, walk_wiki_pages
+
 _FRONTMATTER_RE = re.compile(r"\A---\n(.*?)\n---\n?", re.DOTALL)
 _FM_TYPE_RE = re.compile(r"^type:\s*(.+)$", re.MULTILINE)
 _POINTER_RE = re.compile(r"^-\s*\[[^\]]*\]\s*→\s*([^\s#]+)")
@@ -140,12 +142,9 @@ def _knowledge_pages(wiki_root: Path) -> list[tuple[str, str, str | None]]:
     `wiki_health_critical`'s suggestion evidence, so unreviewed ingested
     content must be invisible to it)."""
     pages: list[tuple[str, str, str | None]] = []
-    for md_path in sorted(wiki_root.rglob("*.md")):
-        rel_path = md_path.relative_to(wiki_root)
-        if ".ren" in rel_path.parts:
-            continue
-        if ren_paths.in_project_raw(rel_path.parts):
-            continue
+    for rel in walk_wiki_pages(wiki_root, skip_raw=True):
+        md_path = wiki_root / rel
+        rel_path = Path(rel)
         text = md_path.read_text(encoding="utf-8", errors="replace")
         if "## Knowledge" not in text:
             continue
@@ -784,4 +783,4 @@ def release_page(page: str, session: str) -> tuple:
     return get(entry.qid), prov
 
 
-__all__ = ["sweep", "render_report", "release_page"]
+__all__ = ["sweep", "render_report", "release_page", "run_incremental_lint", "walk_wiki_pages"]

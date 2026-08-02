@@ -145,6 +145,32 @@ used to catch, by sweeping periodically instead of gating continuously.
    a short, specific interview — never a full diff review of everything the
    sweep found.
 
+## Incremental lint (0.6.5)
+
+`sweep()` is the wiki-WIDE audit a human reads. `run_incremental_lint()` is
+the per-session engine the `ren-wiki-lint` agent drives: it looks only at the
+pages the journal says changed since the last pass (the Task 2 watermark),
+applies mechanically safe fixes through `propose_and_apply` (never a direct
+write), routes judgment-shaped findings to the durable suggestion store, and
+stamps the watermark forward (`clean=False` when anything was queued).
+
+```bash
+uv run python -c "import importlib,json; m=importlib.import_module('skills.wiki-health.lib'); print(json.dumps(m.run_incremental_lint(session='$CLAUDE_SESSION_ID'), indent=2))"
+```
+
+Pass `full=True` to ignore the watermark and check every page.
+
+Safe-fix classes (auto-applied): `hub-missing-entry`,
+`dangling-link-repointed`, `stale-link-commented` (commented out, never
+deleted). Everything else — schema violations, ambiguous dangling links —
+becomes a pending suggestion. The lint NEVER writes under
+`projects/<slug>/raw/`, `.ren/`, `log.md`, the instruction plane
+(`global/`·`decisions/`·`patterns/`·`research/`), or `_`-pseudo pages; a
+finding on one of those is reported as a suggestion instead.
+
+Lint fixes carry `producer="routine"` (an automated pass), distinct from the
+`"retrospective"` producer the human-driven sweep repairs below use.
+
 ## What this skill does NOT do
 
 - Schedule itself. No cron/routine wiring in this minimal version — 0.3
