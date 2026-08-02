@@ -58,6 +58,7 @@ def test_run_checks_returns_one_result_per_check(wiki):
         "backup_configured", "execution_tiers", "global_drift", "harness_neutrality", "guard_health",
         "suggestion_store", "apply_integrity", "judge_health", "archive_integrity",
         "routing_audit", "model_map_staleness", "orphaned_projects",
+        "execution_doctrine",
     }
 
 
@@ -734,3 +735,36 @@ def test_check_orphaned_projects_warns_on_orphan(wiki, tmp_path, clean_path_env)
 def test_check_orphaned_projects_skips_without_projects_dir(wiki):
     result = doctor.check_orphaned_projects(wiki)
     assert result.status == "skip"
+
+
+# ------------------------------------------------------ check_execution_doctrine
+
+
+def test_check_execution_doctrine_ok_when_agent_exists_and_no_stopgap(tmp_path, monkeypatch):
+    monkeypatch.setenv("REN_CLAUDE_DIR", str(tmp_path / ".claude"))
+    result = doctor.check_execution_doctrine()
+    assert result.status == "ok"
+
+
+def test_check_execution_doctrine_warns_on_manual_stopgap_block(tmp_path, monkeypatch):
+    claude = tmp_path / ".claude"
+    claude.mkdir(parents=True)
+    (claude / "CLAUDE.md").write_text(
+        "<!-- renos:doctrine-stopgap -->\nold manual card\n<!-- /renos:doctrine-stopgap -->\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("REN_CLAUDE_DIR", str(claude))
+    result = doctor.check_execution_doctrine()
+    assert result.status == "warn"
+    assert "stopgap" in result.message
+
+
+def test_check_execution_doctrine_errors_when_agent_missing(tmp_path, monkeypatch):
+    monkeypatch.setenv("REN_CLAUDE_DIR", str(tmp_path / ".claude"))
+    monkeypatch.setattr(doctor, "_REPO_ROOT", tmp_path)
+    result = doctor.check_execution_doctrine()
+    assert result.status == "error"
+
+
+def test_check_execution_doctrine_registered_in_all_check_names():
+    assert "check_execution_doctrine" in doctor._ALL_CHECK_NAMES

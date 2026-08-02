@@ -69,6 +69,7 @@ Donor's Node/gh/claude-cli checks, activity-feed/RC-channel/fleet checks, and th
 | `check_routing_audit` | 0.6.1 E4: harvested `subagent_spawn` metrics vs. `doctrine/model-classes.md`'s class table — `warn` when >30% of spawns used orchestrator-class models or any `parallel_peak` > 5; `info` with per-class counts otherwise; `info "no spawn data yet"` when empty |
 | `check_model_map_staleness` | 0.6.1 E4: the `renos:model-map-updated` stamp in `doctrine/model-classes.md` — `warn` if older than 180 days, `info` otherwise |
 | `check_orphaned_projects` | issue #19: every `projects/<slug>/` reachable from a repo — `warn` naming each slug with neither a `projects.json` repo mapping nor a `<dev_root>/<slug>/` dir (memory nothing can ever inject) |
+| `check_execution_doctrine` | 0.6.4: `agents/ren-reviewer.md` present (doctrine card references it) → `error` if missing; a manual pre-0.6.4 `<!-- renos:doctrine-stopgap -->` block left in `~/.claude/CLAUDE.md` → `warn` (the wake-up hook injects the card now, the manual block is redundant residue) |
 
 ## Behavior
 

@@ -300,3 +300,25 @@ def test_write_project_claude_md(tmp_path):
     assert path == repo_root / "CLAUDE.md"
     assert result == "added"
     assert "demo-project" in path.read_text(encoding="utf-8")
+
+
+# --- has_doctrine_stopgap ----------------------------------------------------
+
+
+from lib.adapter import claude_md
+
+
+class TestDoctrineStopgap:
+    def test_detects_marker_pair(self):
+        text = "junk\n<!-- renos:doctrine-stopgap -->\nrules\n<!-- /renos:doctrine-stopgap -->\n"
+        assert claude_md.has_doctrine_stopgap(text) is True
+
+    def test_plain_text_negative(self):
+        assert claude_md.has_doctrine_stopgap("no markers here") is False
+
+    def test_managed_ren_block_is_ignored(self):
+        text = (
+            f"{claude_md.MARKER_BEGIN}\n<!-- renos:doctrine-stopgap -->\n"
+            f"<!-- /renos:doctrine-stopgap -->\n{claude_md.MARKER_END}\n"
+        )
+        assert claude_md.has_doctrine_stopgap(text) is False  # only USER-authored text counts

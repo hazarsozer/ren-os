@@ -61,6 +61,21 @@ _MANAGED_BLOCK_RE = re.compile(
 
 _HEADING_RE = re.compile(r"^#\s+(.+)$", re.MULTILINE)
 
+DOCTRINE_STOPGAP_BEGIN = "<!-- renos:doctrine-stopgap -->"
+DOCTRINE_STOPGAP_END = "<!-- /renos:doctrine-stopgap -->"
+
+
+def has_doctrine_stopgap(text: str) -> bool:
+    """True when the USER-authored portion carries a manual doctrine stopgap.
+
+    Pre-0.6.4 installs were told to paste a doctrine block into ~/.claude/CLAUDE.md
+    wrapped in these markers; the wake-up hook now injects the card, so the
+    manual block is redundant. Managed-block content is stripped first so our
+    own renders never count.
+    """
+    user_text = _MANAGED_BLOCK_RE.sub("", text)
+    return DOCTRINE_STOPGAP_BEGIN in user_text and DOCTRINE_STOPGAP_END in user_text
+
 
 # --- behavioral core (tailored Karpathy) -----------------------------------
 
@@ -314,6 +329,9 @@ __all__ = [
     "MARKER_BEGIN",
     "MARKER_END",
     "KARPATHY_SENTINELS",
+    "DOCTRINE_STOPGAP_BEGIN",
+    "DOCTRINE_STOPGAP_END",
+    "has_doctrine_stopgap",
     "render_global_block",
     "render_project_block",
     "spliced_text",

@@ -677,6 +677,31 @@ def check_model_map_staleness() -> CheckResult:
     return CheckResult("model_map_staleness", "info", f"model-classes.md stamp is {age_days} days old")
 
 
+def check_execution_doctrine() -> CheckResult:
+    """RenOS 0.6.4: the wake-up hook now injects the doctrine card
+    (`hooks.wake-up.wakeup.doctrine_card`), referencing `agents/ren-reviewer.md`.
+    Missing agent → error (the doctrine card would reference a dead path).
+    A manual pre-0.6.4 stopgap block left in `~/.claude/CLAUDE.md` is now
+    redundant residue — warn, naming the marker to remove."""
+    name = "execution_doctrine"
+    agent = _REPO_ROOT / "agents" / "ren-reviewer.md"
+    if not agent.is_file():
+        return CheckResult(name, "error", "agents/ren-reviewer.md missing — doctrine card references it")
+
+    claude_md_path = ren_paths.claude_user_dir() / "CLAUDE.md"
+    if claude_md_path.is_file():
+        from lib.adapter import claude_md as _cm
+
+        if _cm.has_doctrine_stopgap(claude_md_path.read_text(encoding="utf-8", errors="replace")):
+            return CheckResult(
+                name, "warn",
+                "manual doctrine stopgap block found in ~/.claude/CLAUDE.md — "
+                "the wake-up hook injects the doctrine now; delete the "
+                "<!-- renos:doctrine-stopgap --> block",
+            )
+    return CheckResult(name, "ok", "doctrine card wired; ren-reviewer shipped; no stopgap residue")
+
+
 _ALL_CHECK_NAMES: tuple[str, ...] = (
     "check_env",
     "check_wiki_structure",
@@ -698,6 +723,7 @@ _ALL_CHECK_NAMES: tuple[str, ...] = (
     "check_routing_audit",
     "check_model_map_staleness",
     "check_orphaned_projects",
+    "check_execution_doctrine",
 )
 
 
@@ -739,5 +765,6 @@ __all__ = [
     "check_routing_audit",
     "check_model_map_staleness",
     "check_orphaned_projects",
+    "check_execution_doctrine",
     "run_checks",
 ]
