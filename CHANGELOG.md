@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.6.4] - <publish-date> — "the harness ships with the plugin"
+## [0.6.4] - 2026-08-02 — "the harness ships with the plugin"
 
 The execution discipline that lived only in the dev machine's local setup now
 ships in the box: every wake-up injects a hard-gate execution doctrine
