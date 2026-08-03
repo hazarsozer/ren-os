@@ -12,12 +12,26 @@ Run with: uv run pytest tests/skills/wiki_health/test_quarantine_screen.py -v
 from __future__ import annotations
 
 import importlib
+from dataclasses import dataclass
 
 import pytest
 
 from lib.memory import quarantine
+from lib.memory import queue as queue_mod
 from lib.memory.judge import JUDGE_MAX_TEXT_CHARS
 from lib.ren_paths import wiki_root
+
+
+@dataclass
+class _FakeConflict:
+    """Mirrors tests/lib/memory/test_queue.py's `_FakeConflict` — the
+    monkeypatched-`_semantics.detect` recipe used there to fabricate a
+    `contradicts` hold without needing a real second contradicting page."""
+
+    kind: str
+    page: str
+    write_id: str | None
+    evidence: str
 
 wiki_health = importlib.import_module("skills.wiki-health.lib")
 
@@ -134,6 +148,28 @@ class TestReleasePageAuto:
         with pytest.raises(ValueError):
             wiki_health.release_page_auto(rel, "sess-1", {})
 
+    def test_held_on_contradicts_conflict_returns_none_provenance(self, wiki, monkeypatch):
+        # Recipe copied from tests/lib/memory/test_queue.py: monkeypatch the
+        # queue's `_semantics` module reference so `propose()` attaches a
+        # fabricated `contradicts` conflict without needing a real second
+        # contradicting page — this is the queue-hold path
+        # `release_page_auto` documents as `held`, never forced.
+        rel = _write_page(wiki, "projects/app/knowledge/stack.md")
+
+        class _FakeSemantics:
+            @staticmethod
+            def detect(op, page, content, wiki_root, exempt_pages=None):
+                return [_FakeConflict(kind="contradicts", page=page, write_id="w-old-1", evidence="stub")]
+
+        monkeypatch.setattr(queue_mod, "_semantics", _FakeSemantics)
+
+        entry, prov = wiki_health.release_page_auto(rel, "sess-1", {"why": "test"})
+        assert prov is None
+        assert entry.status == "pending"
+        assert any(c.get("kind") == "contradicts" for c in entry.conflicts)
+        # never forced: the page stays quarantined
+        assert quarantine.is_quarantined((wiki / rel).read_text(encoding="utf-8"))
+
     def test_evidence_is_recorded_to_metrics_on_release(self, wiki):
         from lib.instrument import collect
 
@@ -230,6 +266,35 @@ class TestRunQuarantineScreen:
         assert len([s for s in pending if s["fingerprint"].startswith("quarantine:")]) == 1
         # second run still REPORTS it (honest count), store just didn't re-record
         assert second["suggested"][0]["page"] == first["suggested"][0]["page"]
+
+    def test_unreadable_page_lands_in_errors(self, wiki):
+        # `quarantine.quarantined_rel_pages` reads with `errors="replace"`
+        # (never raises), so a page with invalid UTF-8 bytes elsewhere in
+        # the body still gets included in the worklist as long as its
+        # ASCII-only banner+frontmatter prefix decodes fine — but
+        # `run_quarantine_screen`'s own STRICT `encoding="utf-8"` read of
+        # the same bytes must fail, exercising the "unreadable" fail-closed
+        # branch rather than a phantom race that can never trigger.
+        rel = "projects/app/knowledge/badbytes.md"
+        page = wiki / rel
+        page.parent.mkdir(parents=True, exist_ok=True)
+        fm = (
+            "---\n"
+            'ren_write_id: "w-01TESTTESTTESTTESTTESTTEST"\n'
+            'ren_ts: "2026-08-01T00:00:00Z"\n'
+            'ren_writer: "llm-auto"\n'
+            'ren_op: "ADD"\n'
+            'ren_trust: "model"\n'
+            "---\n"
+        )
+        header = (fm + quarantine.QUARANTINE_BANNER).encode("utf-8")
+        body = b"clean data here\n\xff\xfe invalid bytes follow\n"
+        page.write_bytes(header + body)
+
+        result = wiki_health.run_quarantine_screen("sess-1")
+        assert result["candidates"] == []
+        assert result["suggested"] == []
+        assert any(rel in e for e in result["errors"])
 
     def test_suggestion_routed_pages_do_not_starve_the_cap(self, wiki):
         # 21 ineligible (foreign) pages sort BEFORE one clean eligible page —

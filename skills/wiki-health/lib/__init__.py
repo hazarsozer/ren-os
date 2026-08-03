@@ -575,7 +575,15 @@ def sweep(wiki_root: Path | None = None, llm_call: Callable[[str], str] | None =
     fixture (independent of this call's `wiki_root`), or
     `{"hit_rate": None, "error": "<msg>"}` if the eval itself fails —
     fail-closed, never crashes the sweep. Also recorded to monthly metrics
-    via `KIND_RETRIEVAL_EVAL`. This is exit criterion 2's instrument."""
+    via `KIND_RETRIEVAL_EVAL`. This is exit criterion 2's instrument.
+
+    An 11th key, `machine_released_total` (quarantine screen, spec
+    2026-08-03-quarantine-screen-design.md): the count of
+    `quarantine-screen-release` queue entries with `status == "applied"`,
+    read via `lib.memory.queue.all_entries()` — the GLOBAL queue directory,
+    not this call's `wiki_root` argument, so it counts the whole queue
+    history regardless of which wiki root was swept. `0` when `wiki_root`
+    doesn't exist (the early-return branch below never reads the queue)."""
     wiki_root = wiki_root or ren_paths.wiki_root()
     if not wiki_root.is_dir():
         return {
@@ -813,13 +821,10 @@ def release_page(page: str, session: str) -> tuple:
 # doubt leaves the page quarantined. `release_page` above remains the human
 # path; `release_page_auto` is reachable only through the screen's gate.
 
-_FM_RE = re.compile(r"\A---\n(.*?)\n---\n?", re.DOTALL)
-
-
 def _page_trust(md_text: str) -> str | None:
     """The page's `ren_trust` frontmatter stamp, or None when absent or the
     frontmatter is malformed (fail closed: None never screens as model)."""
-    match = _FM_RE.match(md_text)
+    match = _FRONTMATTER_RE.match(md_text)
     if match is None:
         return None
     try:
@@ -1053,4 +1058,14 @@ def apply_quarantine_verdicts(session: str, verdicts: dict) -> dict:
     return result
 
 
-__all__ = ["sweep", "render_report", "release_page", "run_incremental_lint", "walk_wiki_pages"]
+__all__ = [
+    "sweep",
+    "render_report",
+    "release_page",
+    "run_incremental_lint",
+    "walk_wiki_pages",
+    "screen_ineligibility",
+    "release_page_auto",
+    "run_quarantine_screen",
+    "apply_quarantine_verdicts",
+]

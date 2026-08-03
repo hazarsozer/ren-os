@@ -33,6 +33,7 @@ from typing import Callable, Final
 
 from lib.adapter.worker import WorkerOutputError, parse_worker_json
 from lib.instrument import collect
+from lib.memory.quarantine import escape_untrusted
 
 VALID_VERDICTS: Final[frozenset[str]] = frozenset(
     {"duplicate", "contradicts", "supersedes", "unrelated"}
@@ -233,8 +234,6 @@ def build_data_only_prompt(text: str) -> str:
     Content is defensively truncated, then escape_untrusted-fenced so a page
     containing its own backtick fences (or injection-shaped prose) reads as
     inert data to the judge."""
-    from lib.memory.quarantine import escape_untrusted  # local import: no cycle
-
     return _DATA_ONLY_PROMPT_TEMPLATE.format(content=escape_untrusted(_truncate(text)))
 
 

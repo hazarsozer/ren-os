@@ -908,7 +908,10 @@ def _quarantine_backlog_count() -> int:
 
 
 def quarantine_backlog_nudge_line() -> str:
-    """One nudge line when quarantined pages await screening; "" otherwise."""
+    """One nudge line when quarantined pages await screening; "" otherwise.
+    Appended only alongside REAL content — it must never make an otherwise-
+    empty compose look non-empty (the loud-notice contract); see
+    `compose_wake_up_context`."""
     n = _quarantine_backlog_count()
     if n <= 0:
         return ""
