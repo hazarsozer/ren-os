@@ -60,12 +60,14 @@ mechanics only — it never writes anything itself.
 from __future__ import annotations
 
 import re
+import yaml
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Callable
 
 from lib import ren_paths
 from lib.evalkit.runner import run_retrieval_eval
+from lib.governance.tiers import is_instruction_plane_page
 from lib.instrument import collect
 from lib.memory import journal, quarantine, semantics
 from lib.memory.judge import JUDGE_MIN_CONFIDENCE, JUDGE_PAIR_CAP, judge_pairs
@@ -780,6 +782,86 @@ def release_page(page: str, session: str) -> tuple:
     if any(c.get("kind") == "contradicts" for c in entry.conflicts):
         return entry, None
     prov = approve_and_apply(entry.qid, who="human:quarantine-release")
+    return get(entry.qid), prov
+
+
+# --------------------------------------------------------------------------
+# Quarantine screen (spec 2026-08-03-quarantine-screen-design.md): the
+# bounded MACHINE exit from quarantine. Everything here fails closed — any
+# doubt leaves the page quarantined. `release_page` above remains the human
+# path; `release_page_auto` is reachable only through the screen's gate.
+
+_FM_RE = re.compile(r"\A---\n(.*?)\n---\n?", re.DOTALL)
+
+
+def _page_trust(md_text: str) -> str | None:
+    """The page's `ren_trust` frontmatter stamp, or None when absent or the
+    frontmatter is malformed (fail closed: None never screens as model)."""
+    match = _FM_RE.match(md_text)
+    if match is None:
+        return None
+    try:
+        data = yaml.safe_load(match.group(1))
+    except yaml.YAMLError:
+        return None
+    if not isinstance(data, dict):
+        return None
+    trust = data.get("ren_trust")
+    return trust if isinstance(trust, str) else None
+
+
+def screen_ineligibility(rel: str, md_text: str) -> str | None:
+    """Why `rel` may NOT be auto-released — or None when it is eligible.
+
+    Reasons: "l1" (wrap's concern, skipped silently by the screen),
+    "instruction-plane" (always a human decision), "non-model-trust"
+    (foreign/unstamped/malformed — always a human decision)."""
+    if "l1" in PurePosixPath(rel).parts:
+        return "l1"
+    if is_instruction_plane_page(rel):
+        return "instruction-plane"
+    if _page_trust(md_text) != "model":
+        return "non-model-trust"
+    return None
+
+
+def release_page_auto(page: str, session: str, evidence: dict) -> tuple:
+    """Machine release — same queue mechanics as `release_page`, different
+    actor. `writer="retrospective"` deliberately: `writer="llm-auto"` content
+    is banner-marked at the queue door (`_quarantined_content`), which would
+    re-quarantine the very page being released. `producer="retrospective"`
+    matches `release_page` (no wiki-health producer class exists).
+    `trust_class("retrospective", ...)` derives "model", so the page's trust
+    stamp is unchanged by the release.
+
+    Returns `(QueueEntry, Provenance | None)` — Provenance is None if held
+    on a `contradicts` conflict or a queue no-op, exactly like
+    `release_page`. Raises FileNotFoundError / ValueError like it too."""
+    from lib.memory.queue import Proposal, approve_and_apply, get, propose
+
+    path = ren_paths.safe_join(ren_paths.wiki_root(), page)
+    if not path.is_file():
+        raise FileNotFoundError(f"no such wiki page: {page!r}")
+    text = path.read_text(encoding="utf-8")
+    if not quarantine.is_quarantined(text):
+        raise ValueError(f"{page!r} is not quarantined — nothing to release")
+
+    entry = propose(
+        Proposal(
+            op="UPDATE",
+            page=page,
+            content=quarantine.release(text),
+            reason="quarantine-screen-release",
+            producer="retrospective",
+            writer="retrospective",
+            session=session,
+        )
+    )
+    if entry.status != "pending":
+        return entry, None
+    if any(c.get("kind") == "contradicts" for c in entry.conflicts):
+        return entry, None
+    prov = approve_and_apply(entry.qid, who="agent:quarantine-screen")
     return get(entry.qid), prov
 
 
