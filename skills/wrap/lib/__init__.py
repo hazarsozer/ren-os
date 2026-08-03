@@ -715,9 +715,10 @@ def wrap_session(
         if project
         else f"l1/session-{session}.md"
     )
+    l1_path = ren_paths.safe_join(ren_paths.wiki_root(), l1_page)
     l1_entry, _ = propose_and_apply(
         Proposal(
-            op="ADD",
+            op="UPDATE" if l1_path.is_file() else "ADD",
             page=l1_page,
             content=narrative_md,
             reason="end-of-session L1 narrative summary",

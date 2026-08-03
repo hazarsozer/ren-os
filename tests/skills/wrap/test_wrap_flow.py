@@ -131,6 +131,30 @@ def test_wrap_invoked_with_cwd_inside_project_writes_project_l1_without_explicit
     assert not global_page.exists()
 
 
+def test_wrap_rerun_same_session_updates_l1(wiki):
+    """#47: a second wrap for the SAME session must propose an UPDATE for the
+    L1 page (it already exists from the first wrap), not a fixed ADD. A fixed
+    `op="ADD"` against an existing target is never exempted from
+    self-conflict in `lib.memory.semantics.detect` (only `op="UPDATE"` is,
+    per #42) — a corrected second pass that negates the first pass's claim
+    trips a self-`contradicts` conflict against its OWN prior L1 write,
+    which `propose_and_apply` holds instead of auto-applying."""
+    first = wrap_session(
+        "---\n---\n\n# S\n\nThe deploy always runs the linter before commit.\n",
+        [], session="s-rerun",
+    )
+    assert queue.get(first["l1_qid"]).status == "applied"
+
+    second = wrap_session(
+        "---\n---\n\n# S\n\nThe deploy never runs the linter before commit, corrected.\n",
+        [], session="s-rerun",
+    )
+    assert queue.get(second["l1_qid"]).status == "applied"  # NOT held on self-contradiction
+
+    l1 = (wiki_root() / "l1/session-s-rerun.md").read_text(encoding="utf-8")
+    assert "corrected" in l1
+
+
 def test_wrap_with_no_durable_items_has_empty_lists(wiki):
     result = wrap_session(narrative_md="Nothing much happened.\n", durable_items=[], session="sess-1")
     assert result["applied"] == []  # v2.2: durable_qids -> applied/held
