@@ -36,14 +36,29 @@ scope + gate above; everything outside it keeps the human gate unchanged.
 
 ## Architecture
 
-One new engine function in `skills/wiki-health/lib/`:
+Two new engine functions in `skills/wiki-health/lib/`, forming a two-phase
+protocol (amended from a single `llm_call`-taking function during planning:
+the ren-wiki-lint agent invokes the engine via a one-shot subprocess — the
+same seam as `run_incremental_lint` — so a Python callable cannot cross the
+process boundary):
 
 ```
-run_quarantine_screen(session: str, llm_call: Callable[[str], str], cap: int = 20) -> dict
+run_quarantine_screen(session: str, cap: int = 20) -> dict
+    # Phase 1: filter + deterministic scan. Routes ineligible and
+    # scanner-hit pages to the suggestions store immediately; returns
+    # `candidates`: [{page, prompt}] — one ready-built judge prompt per
+    # clean eligible page.
+
+apply_quarantine_verdicts(session: str, verdicts: dict[str, dict]) -> dict
+    # Phase 2: strict-parses the agent's per-page verdicts, re-checks
+    # eligibility + scan (state may have changed), then releases or
+    # routes to suggestions. Invalid verdicts fail closed (page stays
+    # quarantined).
 ```
 
-Called by the ren-wiki-lint agent (the framework itself never makes LLM calls;
-the agent supplies `llm_call`, same seam as `sweep`'s contradiction judge).
+The agent judges each `candidates[*].prompt` with its own reasoning (the
+framework itself never makes LLM calls) and passes the verdict objects back
+to phase 2.
 
 ### Eligibility filter
 
@@ -66,9 +81,13 @@ the friend eventually decides them.
 1. **Deterministic scan** — `detect_instruction_shaped(body)`. Any hit →
    suggestion carrying the matched snippets as evidence; the page is never
    judged and never released.
-2. **LLM judge** — page content passed to `llm_call` wrapped in
-   `escape_untrusted()` (fence-breakout-proof), so the page cannot
-   prompt-inject its own judge. Verdict contract: `data_only: bool`,
+2. **LLM judge** — phase 1 builds each candidate's judge prompt via a new
+   `lib.memory.judge.build_data_only_prompt(text)`, which wraps the page
+   content in `escape_untrusted()` (fence-breakout-proof), so the page cannot
+   prompt-inject its own judge. The agent answers each prompt with strict
+   JSON; phase 2 parses via `lib.memory.judge.parse_data_only_verdict`
+   (mirrors `judge_pair`'s strict-parse discipline, raises `JudgeError` on
+   anything malformed). Verdict contract: `data_only: bool`,
    `confidence: float`, `reason: str`. Release requires `data_only == True`
    and `confidence >= JUDGE_MIN_CONFIDENCE`. Anything else → suggestion with
    the verdict as evidence.
@@ -79,8 +98,14 @@ New `release_page_auto(page, session, evidence)` in `skills/wiki-health/lib/`,
 beside the human-only `release_page`:
 
 - proposes the banner-stripped content through the normal queue:
-  `op="UPDATE"`, `producer="wiki-health"`, `writer="llm-auto"`,
-  `reason="quarantine-screen-release"`;
+  `op="UPDATE"`, `producer="retrospective"`, `writer="retrospective"`,
+  `reason="quarantine-screen-release"`. (Amended during planning from
+  `producer="wiki-health"` / `writer="llm-auto"`: the queue's producer
+  whitelist has no wiki-health class — the human `release_page` uses
+  `"retrospective"` for the same reason — and the queue banner-marks ALL
+  `llm-auto` ADD/UPDATE content at the door, so an `llm-auto` release would
+  re-quarantine itself. `trust_class("retrospective", …)` still derives
+  `"model"`, so the released page's trust is unchanged as required.);
 - completes via `approve_and_apply(qid, who="agent:quarantine-screen")` —
   the actor string is the audit handle;
 - `ren_trust` untouched (stays `model`); no residual body marker — the banner
@@ -108,10 +133,11 @@ personally.
 ## Data flow
 
 wrap close-out → spawns ren-wiki-lint (existing seam) → incremental lint
-(unchanged) → `run_quarantine_screen(session, llm_call=agent, cap=20)` → per
-page: filter → scan → judge → queue release **or** suggestion → agent report →
-next wake-up shows the shrunken backlog; next `/ren:suggestions` shows held
-pages.
+(unchanged) → `run_quarantine_screen(session, cap=20)` (filter + scan; hard
+routes → suggestions; clean pages → judge prompts) → the agent judges each
+prompt with its own reasoning → `apply_quarantine_verdicts(session, verdicts)`
+(strict parse → queue release **or** suggestion) → agent report → next
+wake-up shows the shrunken backlog; next `/ren:suggestions` shows held pages.
 
 **Cap:** at most `cap` (default 20) pages screened per run; the remainder is
 explicitly reported in `skipped_remaining` — no silent truncation. The current
