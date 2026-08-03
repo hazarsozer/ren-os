@@ -14,6 +14,7 @@ import pytest
 
 from lib.memory.provenance import new_provenance, stamp_frontmatter
 from lib.memory.quarantine import mark as quarantine_mark
+from lib.memory.quarantine import release as quarantine_release
 from lib.memory.semantics import (
     SHORTLIST_CAP,
     Conflict,
@@ -40,14 +41,16 @@ def _numbered_lines(n: int, start: int = 1) -> list[str]:
 
 
 def test_identical_restated_page_is_duplicate(tmp_path):
+    # issue #42: an UPDATE never self-conflicts with its own target, so this
+    # now exercises a genuine cross-page duplicate (sibling), not self.
     body = "\n".join(_numbered_lines(12)) + "\n"
-    _write(tmp_path, "projects/demo/notes.md", body)
+    _write(tmp_path, "projects/demo/existing.md", body)
 
-    conflicts = detect("UPDATE", "projects/demo/notes.md", body, tmp_path)
+    conflicts = detect("ADD", "projects/demo/notes.md", body, tmp_path)
 
     dup = [c for c in conflicts if c.kind == "duplicate"]
     assert len(dup) == 1
-    assert dup[0].page == "projects/demo/notes.md"
+    assert dup[0].page == "projects/demo/existing.md"
     assert dup[0].evidence == "line number 1 describes topic 1."
 
 
@@ -55,15 +58,16 @@ def test_identical_restated_page_is_duplicate(tmp_path):
 
 
 def test_near_identical_one_line_changed_is_duplicate(tmp_path):
+    # issue #42: sibling, not self — self-duplicate is exempt for UPDATE.
     existing_lines = _numbered_lines(11) + ["Line number 12 describes topic 12."]
     proposed_lines = _numbered_lines(11) + ["A completely rewritten final line."]
-    _write(tmp_path, "projects/demo/notes.md", "\n".join(existing_lines) + "\n")
+    _write(tmp_path, "projects/demo/existing.md", "\n".join(existing_lines) + "\n")
 
     conflicts = detect(
-        "UPDATE", "projects/demo/notes.md", "\n".join(proposed_lines) + "\n", tmp_path
+        "ADD", "projects/demo/notes.md", "\n".join(proposed_lines) + "\n", tmp_path
     )
 
-    dup = [c for c in conflicts if c.kind == "duplicate" and c.page == "projects/demo/notes.md"]
+    dup = [c for c in conflicts if c.kind == "duplicate" and c.page == "projects/demo/existing.md"]
     assert len(dup) == 1
 
 
@@ -109,11 +113,12 @@ def test_add_to_fresh_path_yields_no_supersedes(tmp_path):
 
 
 def test_negated_proposal_contradicts_affirmative_existing_line(tmp_path):
+    # issue #42: sibling, not self — self-contradicts is exempt for UPDATE.
     existing = "Always use spaces for indentation in Python files.\n"
     _write(tmp_path, "projects/demo/style.md", existing)
 
     proposed = "Do not use spaces for indentation in Python files.\n"
-    conflicts = detect("UPDATE", "projects/demo/style.md", proposed, tmp_path)
+    conflicts = detect("ADD", "projects/demo/new-style.md", proposed, tmp_path)
 
     con = [c for c in conflicts if c.kind == "contradicts"]
     assert len(con) == 1
@@ -125,11 +130,12 @@ def test_negated_proposal_contradicts_affirmative_existing_line(tmp_path):
 
 
 def test_negated_existing_contradicts_affirmative_proposal(tmp_path):
+    # issue #42: sibling, not self — self-contradicts is exempt for UPDATE.
     existing = "Do not use tabs for indentation in Python files.\n"
     _write(tmp_path, "projects/demo/style.md", existing)
 
     proposed = "Use tabs for indentation in Python files.\n"
-    conflicts = detect("UPDATE", "projects/demo/style.md", proposed, tmp_path)
+    conflicts = detect("ADD", "projects/demo/new-style.md", proposed, tmp_path)
 
     con = [c for c in conflicts if c.kind == "contradicts"]
     assert len(con) == 1
@@ -194,11 +200,12 @@ def test_cannot_is_not_treated_as_not(tmp_path):
 
 def test_standalone_never_still_contradicts(tmp_path):
     # The word-boundary fix must not weaken real "never" detection.
+    # issue #42: sibling, not self — self-contradicts is exempt for UPDATE.
     existing = "Always use spaces for indentation in Python files.\n"
     _write(tmp_path, "projects/demo/style.md", existing)
 
     proposed = "Never use spaces for indentation in Python files.\n"
-    conflicts = detect("UPDATE", "projects/demo/style.md", proposed, tmp_path)
+    conflicts = detect("ADD", "projects/demo/new-style.md", proposed, tmp_path)
 
     con = [c for c in conflicts if c.kind == "contradicts"]
     assert len(con) == 1
@@ -222,16 +229,21 @@ def test_unstamped_existing_page_yields_supersedes_with_none_write_id(tmp_path):
 
 
 def test_all_three_conflict_kinds_can_co_occur(tmp_path):
+    # issue #42: the duplicate signal now comes from a sibling, not the
+    # UPDATE's own target — self-duplicate/self-contradicts are exempt, but
+    # supersedes (target-only) is unaffected and still fires alongside them.
     prov = new_provenance("human", "sess-1", "ADD", "projects/combo/target.md")
-    target_lines = _numbered_lines(11) + ["Line number 12 describes topic 12."]
-    target_text = stamp_frontmatter("\n".join(target_lines) + "\n", prov)
+    target_text = stamp_frontmatter("Original target body, unrelated to duplicate check.\n", prov)
     _write(tmp_path, "projects/combo/target.md", target_text)
 
-    sibling_text = (
+    dup_sibling_lines = _numbered_lines(11) + ["Line number 12 describes topic 12."]
+    _write(tmp_path, "projects/combo/dup-sibling.md", "\n".join(dup_sibling_lines) + "\n")
+
+    contradiction_sibling_text = (
         "Always use tabs for indentation in Python files.\n"
         "Some other unrelated sibling sentence here.\n"
     )
-    _write(tmp_path, "projects/combo/sibling.md", sibling_text)
+    _write(tmp_path, "projects/combo/sibling.md", contradiction_sibling_text)
 
     proposed_lines = _numbered_lines(11) + [
         "Do not use tabs for indentation in Python files."
@@ -244,7 +256,7 @@ def test_all_three_conflict_kinds_can_co_occur(tmp_path):
     assert kinds == {"duplicate", "supersedes", "contradicts"}
 
     dup = [c for c in conflicts if c.kind == "duplicate"]
-    assert any(c.page == "projects/combo/target.md" for c in dup)
+    assert any(c.page == "projects/combo/dup-sibling.md" for c in dup)
 
     sup = [c for c in conflicts if c.kind == "supersedes"]
     assert sup[0].write_id == prov.write_id
@@ -740,3 +752,46 @@ def test_numeric_divergence_is_exempt_within_a_batch(tmp_path):
     )
 
     assert [c for c in conflicts if c.kind == "contradicts"] == []
+
+
+# --- issue #42: an UPDATE never self-conflicts with its own target ----------
+
+
+def test_update_target_page_never_self_conflicts(tmp_path):
+    # release-shaped UPDATE: a quarantine-review release proposes content
+    # identical to the target save for the stripped quarantine banner. This
+    # must never fire as a duplicate-of-self or contradicts-self — only the
+    # supersedes provenance chain (queue.approve_and_apply reads it) survives.
+    prov = new_provenance("human", "sess-1", "ADD", "projects/p/knowledge/a.md")
+    body = "\n".join(f"- fact line {i}: the system holds {i} widgets" for i in range(10)) + "\n"
+    existing = quarantine_mark(stamp_frontmatter(body, prov))
+    _write(tmp_path, "projects/p/knowledge/a.md", existing)
+
+    proposed = quarantine_release(existing)
+
+    conflicts = detect(
+        "UPDATE", "projects/p/knowledge/a.md", proposed, tmp_path, exempt_pages=set()
+    )
+
+    self_kinds = {c.kind for c in conflicts if c.page == "projects/p/knowledge/a.md"}
+    assert "duplicate" not in self_kinds
+    assert "contradicts" not in self_kinds
+    assert "supersedes" in self_kinds  # provenance chain must survive
+
+
+def test_update_cross_page_conflicts_still_detected(tmp_path):
+    _write(tmp_path, "projects/p/knowledge/a.md", "---\ntitle: \"A\"\n---\n\n# A\n\n- old\n")
+    sibling_body = "\n".join(f"- shared fact line {i}: value {i}" for i in range(10))
+    _write(
+        tmp_path, "projects/p/knowledge/b.md",
+        f"---\ntitle: \"B\"\nren_write_id: \"w-B\"\n---\n\n# B\n\n{sibling_body}\n",
+    )
+
+    # propose A's UPDATE to be a near-copy of sibling B → duplicate vs B must still fire
+    conflicts = detect(
+        "UPDATE", "projects/p/knowledge/a.md",
+        f"---\ntitle: \"A\"\n---\n\n# B\n\n{sibling_body}\n",
+        tmp_path, exempt_pages=set(),
+    )
+
+    assert any(c.kind == "duplicate" and c.page == "projects/p/knowledge/b.md" for c in conflicts)

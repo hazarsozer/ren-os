@@ -462,8 +462,13 @@ def detect(
         candidate_lines = _normalized_lines(_strip_frontmatter(raw))
         write_id = _write_id_of(raw)
 
-        # 1. duplicate
-        if min(len(proposed_lines), len(candidate_lines)) >= _MIN_DUPLICATE_LINES:
+        # issue #42: an UPDATE's target is what the proposal is REPLACING, not
+        # a sibling it could duplicate or contradict — `supersedes` below is
+        # the correct (and only) relationship to the page being updated.
+        is_self = op == "UPDATE" and candidate == target_path
+
+        # 1. duplicate — an UPDATE cannot duplicate its own target
+        if not is_self and min(len(proposed_lines), len(candidate_lines)) >= _MIN_DUPLICATE_LINES:
             ratio = _shared_line_ratio(proposed_lines, candidate_lines)
             if ratio >= _DUPLICATE_RATIO_THRESHOLD:
                 evidence = _first_shared_line(proposed_lines, candidate_lines)
@@ -472,7 +477,8 @@ def detect(
         # 3. contradicts (checked per-candidate; collected below with the others).
         # Two signals qualify: a negated restatement of the same claim, or a
         # same-fact numeric divergence. Pure topic overlap never does.
-        if not _contradicts_exempt(page, content, rel, raw, exempt):
+        # An UPDATE cannot contradict the page it replaces (issue #42).
+        if not is_self and not _contradicts_exempt(page, content, rel, raw, exempt):
             evidence_lines = _detect_contradictions(proposed_lines, candidate_lines)
             evidence_lines += [
                 line
