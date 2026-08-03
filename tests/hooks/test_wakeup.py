@@ -1039,6 +1039,29 @@ class TestStructuredSections:
         assert wakeup.DOCTRINE_POINTER in segment
         assert "[...truncated" not in segment
 
+    def test_final_truncation_preserves_doctrine_card(self, project, caplog):
+        """#48: the final whole-payload budget guard used to keep the payload
+        TAIL, silently eliding the seed header + doctrine card at the head.
+        Over-budget payloads must keep sections[0]/[1] (seed header +
+        doctrine card) verbatim and only tail-truncate content sections, with
+        a visible WARNING log."""
+        import logging
+
+        big = "\n".join(f"- filler fact number {i} with several words" for i in range(400))
+        _write(project["project_dir"] / "l1" / "session-001.md", _model_stamped(big))
+
+        with caplog.at_level(logging.WARNING):
+            out = wakeup.compose_wake_up_context(
+                cwd=project["cwd"], wiki_root=wiki_root(), session="s-trunc",
+                max_tokens=500,
+            )
+
+        assert wakeup.SECTION_DOCTRINE in out
+        assert "1. **Brainstorm gate.**" in out  # gate 1 survived
+        assert "4. **Review gate.**" in out       # gate 4 survived
+        assert out.startswith("## RenOS wake-up context")  # seed header survived
+        assert any("over budget" in r.message for r in caplog.records)
+
     def test_absent_sources_omit_headers(self, project):
         _write(project["project_dir"] / "l1" / "session-001.md", _model_stamped("L1 content"))
 

@@ -1416,12 +1416,26 @@ def compose_wake_up_context(
     card = card or full_card
     sections.insert(1, card)
 
-    composed = "\n\n".join(s for s in sections if s.strip())
+    # #48: the generic truncator keeps the TAIL, which would silently elide
+    # the seed header (sections[0]) and doctrine card (sections[1]) — the
+    # exact content this guard exists to protect. Split head from body so
+    # ANY over-budget payload truncates only the content sections, never the
+    # head, and logs the loss instead of eating it silently.
+    head = "\n\n".join(s for s in sections[:2] if s.strip())   # seed header + doctrine card
+    body = "\n\n".join(s for s in sections[2:] if s.strip())
+    composed = f"{head}\n\n{body}" if body else head
 
     final_tokens = _budget_tokens(composed, chars_per_token)
     if final_tokens > max_tokens:
-        logger.info("composed %d tokens; truncating to %d", final_tokens, max_tokens)
-        composed = truncate_text_to_tokens(composed, max_tokens, chars_per_token)
+        head_tokens = _budget_tokens(head, chars_per_token)
+        body_budget = max(0, max_tokens - head_tokens)
+        truncated_body = truncate_text_to_tokens(body, body_budget, chars_per_token)
+        logger.warning(
+            "wake-up payload over budget (%d > %d tokens); elided %d chars from "
+            "content sections — doctrine card preserved",
+            final_tokens, max_tokens, len(body) - len(truncated_body),
+        )
+        composed = f"{head}\n\n{truncated_body}" if truncated_body else head
 
     try:
         if surfaced_pages:
