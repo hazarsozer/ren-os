@@ -256,3 +256,13 @@ class TestApplyQuarantineVerdicts:
         # the banner-stripped body plus new frontmatter fully replaced the old
         assert quarantine.QUARANTINE_BANNER in before
         assert quarantine.QUARANTINE_BANNER not in after
+
+
+class TestSweepMachineReleasedCount:
+    def test_sweep_counts_machine_releases(self, wiki):
+        rel = _write_page(wiki, "projects/app/knowledge/stack.md")
+        wiki_health.apply_quarantine_verdicts("sess-1", {rel: _good_verdict()})
+        report = wiki_health.sweep()
+        assert report["machine_released_total"] == 1
+        rendered = wiki_health.render_report(report)
+        assert "Machine-released" in rendered

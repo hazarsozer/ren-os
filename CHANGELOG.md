@@ -1,5 +1,14 @@
 # Changelog
 
+## [Unreleased]
+
+- **Quarantine screen** — bounded machine exit from quarantine: ren-wiki-lint
+  screens model-trust data-plane pages at wrap close-out (deterministic
+  injection scan + data-only judge, fail-closed); clean pages auto-release
+  through the queue (`who="agent:quarantine-screen"`, revertible), everything
+  else routes to /ren:suggestions. Wake-up nudges on backlog; sweep reports
+  machine-released totals. Spec: docs/superpowers/specs/2026-08-03-quarantine-screen-design.md.
+
 ## [0.6.5] - 2026-08-02 — "the OS knows what's open and what's checked"
 
 Two more shipped agents (`ren-wiki-lint`, `ren-planner`) join `ren-reviewer`,

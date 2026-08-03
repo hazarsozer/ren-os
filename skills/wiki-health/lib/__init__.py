@@ -585,6 +585,7 @@ def sweep(wiki_root: Path | None = None, llm_call: Callable[[str], str] | None =
             "judge_dismissed": [],
             "judge_supersedes": [],
             "retrieval_eval": _retrieval_eval(),
+            "machine_released_total": 0,
             "generated_at": _now_iso(),
         }
     contradiction_pairs, duplicate_pairs, numeric_drift_pairs, contradiction_scan_note = _pair_findings(wiki_root)
@@ -604,6 +605,15 @@ def sweep(wiki_root: Path | None = None, llm_call: Callable[[str], str] | None =
         except Exception:  # noqa: BLE001 - fail-closed: keep the no-llm result already computed
             pass
     hubless_knowledge_dirs, unlinked_knowledge_pages = _knowledge_tree_findings(wiki_root)
+
+    from lib.memory.queue import all_entries
+
+    machine_released_total = sum(
+        1
+        for e in all_entries()
+        if e.proposal.reason == "quarantine-screen-release" and e.status == "applied"
+    )
+
     return {
         "dangling_pointers": _dangling_pointers(wiki_root),
         "contradiction_pairs": contradiction_pairs,
@@ -618,6 +628,7 @@ def sweep(wiki_root: Path | None = None, llm_call: Callable[[str], str] | None =
         "judge_dismissed": judge_dismissed,
         "judge_supersedes": judge_supersedes,
         "retrieval_eval": _retrieval_eval(),
+        "machine_released_total": machine_released_total,
         "generated_at": _now_iso(),
     }
 
@@ -708,6 +719,10 @@ def render_report(findings: dict) -> str:
     quarantined = findings.get("quarantined_pages") or {"count": 0, "pages": []}
     lines.append(f"- {quarantined['count']} page(s)")
     lines.extend(f"  - {p}" for p in quarantined.get("pages", []))
+
+    lines.append("")
+    lines.append("## Machine-released (quarantine screen)")
+    lines.append(f"- {findings.get('machine_released_total', 0)} page(s) total")
 
     dismissed = findings.get("judge_dismissed") or []
     if dismissed:
