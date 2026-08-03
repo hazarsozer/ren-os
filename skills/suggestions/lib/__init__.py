@@ -208,8 +208,11 @@ def accept(sid: str, session: str) -> dict:
     deduped by a decision that didn't happen) and surfaces the error in
     `"detail"`, plus `"decision_recorded": False` (decide() was never
     reached). Intentional non-write outcomes (duplicate content,
-    review_contradiction handoff, unknown kind) still count as decided —
-    retrying them cannot change the outcome.
+    review_contradiction handoff, quarantine_release held-on-contradicts,
+    review_lint_finding handoff) still count as decided — retrying them
+    cannot change the outcome. An unknown kind/action is NOT one of these:
+    `_apply()` raises for it, so it takes the same apply-raised path as any
+    other failure — pending, retryable, `decision_recorded: False`.
 
     P3/P2: the post-apply `decide()` call has its own try/except. If it
     raises, the apply result is returned as-is with `"decision_recorded":
