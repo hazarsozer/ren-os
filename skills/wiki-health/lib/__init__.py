@@ -70,7 +70,14 @@ from lib.evalkit.runner import run_retrieval_eval
 from lib.governance.tiers import is_instruction_plane_page
 from lib.instrument import collect
 from lib.memory import journal, quarantine, semantics
-from lib.memory.judge import JUDGE_MIN_CONFIDENCE, JUDGE_PAIR_CAP, JudgeError, judge_pairs, parse_data_only_verdict
+from lib.memory.judge import (
+    JUDGE_MAX_TEXT_CHARS,
+    JUDGE_MIN_CONFIDENCE,
+    JUDGE_PAIR_CAP,
+    JudgeError,
+    judge_pairs,
+    parse_data_only_verdict,
+)
 from lib.ren_paths import PathTraversalError
 from skills.recall.lib import rank as _recall_rank
 
@@ -851,7 +858,14 @@ def release_page_auto(page: str, session: str, evidence: dict) -> tuple:
 
     Returns `(QueueEntry, Provenance | None)` — Provenance is None if held
     on a `contradicts` conflict or a queue no-op, exactly like
-    `release_page`. Raises FileNotFoundError / ValueError like it too."""
+    `release_page`. Raises FileNotFoundError / ValueError like it too.
+
+    `evidence` (the judge verdict or ineligibility reason that justified the
+    release) is recorded to the metrics stream (`KIND_QUARANTINE_RELEASE`)
+    on a successful release — `approve_and_apply`/`apply` have no `extra`
+    dict reachable without widening the queue's own contract, so this is the
+    audit trail for WHY, alongside the journal's record of WHAT and WHO."""
+    from lib.instrument import collect
     from lib.memory.queue import Proposal, approve_and_apply, get, propose
 
     path = ren_paths.safe_join(ren_paths.wiki_root(), page)
@@ -877,6 +891,10 @@ def release_page_auto(page: str, session: str, evidence: dict) -> tuple:
     if any(c.get("kind") == "contradicts" for c in entry.conflicts):
         return entry, None
     prov = approve_and_apply(entry.qid, who="agent:quarantine-screen")
+    collect.record(
+        collect.KIND_QUARANTINE_RELEASE,
+        {"page": page, "session": session, "evidence": evidence},
+    )
     return get(entry.qid), prov
 
 
@@ -911,9 +929,22 @@ def run_quarantine_screen(session: str, cap: int = 20) -> dict:
       - clean eligible pages: returned under `candidates`, each with a
         ready-built judge prompt for the agent (phase 2 applies verdicts).
 
-    At most `cap` non-l1 pages are screened per run; the remainder is
-    reported in `skipped_remaining` — never silently dropped. Unreadable
-    pages land in `errors` and stay quarantined."""
+    At most `cap` pages that would otherwise become CANDIDATES are screened
+    per run; suggestion-routed pages (ineligible or scanner-hit) never
+    consume the cap — fingerprint dedup already makes re-recording free, so
+    routing them costs nothing, while letting them eat cap slots would let a
+    sorted run of ineligible pages permanently starve every candidate that
+    sorts after them. The remainder of would-be candidates is reported in
+    `skipped_remaining` — never silently dropped. Unreadable pages land in
+    `errors` and stay quarantined.
+
+    A page whose full text exceeds the judge's truncation window
+    (`lib.memory.judge.JUDGE_MAX_TEXT_CHARS`) is routed to suggestions with
+    `why="too-long"` before either the scanner or the judge sees it: the
+    judge prompt only ever carries the text's TAIL (see `_truncate`), so an
+    unjudged head must never ride to release on a tail-only verdict — this
+    check runs before the scanner so the routing reason names the real
+    cause."""
     from lib.memory.judge import build_data_only_prompt
 
     root = ren_paths.wiki_root()
@@ -924,7 +955,7 @@ def run_quarantine_screen(session: str, cap: int = 20) -> dict:
         "skipped_remaining": 0,
         "errors": [],
     }
-    screened = 0
+    candidates_taken = 0
     for rel in sorted(quarantine.quarantined_rel_pages(root)):
         try:
             text = (root / rel).read_text(encoding="utf-8")
@@ -935,19 +966,24 @@ def run_quarantine_screen(session: str, cap: int = 20) -> dict:
         if why == "l1":
             continue
         result["backlog_total"] += 1
-        if screened >= cap:
-            result["skipped_remaining"] += 1
-            continue
-        screened += 1
         if why is not None:
             _record_release_suggestion(rel, why, {"ineligible": why})
             result["suggested"].append({"page": rel, "why": why})
+            continue
+        if len(text) > JUDGE_MAX_TEXT_CHARS:
+            evidence = {"length": len(text), "limit": JUDGE_MAX_TEXT_CHARS}
+            _record_release_suggestion(rel, "too-long", evidence)
+            result["suggested"].append({"page": rel, "why": "too-long"})
             continue
         hits = quarantine.detect_instruction_shaped(text)
         if hits:
             _record_release_suggestion(rel, "instruction-shaped", {"scanner_hits": hits})
             result["suggested"].append({"page": rel, "why": "instruction-shaped"})
             continue
+        if candidates_taken >= cap:
+            result["skipped_remaining"] += 1
+            continue
+        candidates_taken += 1
         result["candidates"].append({"page": rel, "prompt": build_data_only_prompt(text)})
     return result
 
@@ -956,10 +992,15 @@ def apply_quarantine_verdicts(session: str, verdicts: dict) -> dict:
     """Phase 2 of the quarantine screen: apply the agent's per-page verdicts.
 
     Every page is RE-CHECKED before release (still quarantined, still
-    eligible, still scanner-clean) — phase 1's snapshot is advisory, the
-    state at apply time is what counts. Fail-closed on every path: a
-    malformed verdict, a failed re-check, or a queue hold leaves the page
-    quarantined (`errors` / `suggested` / `held` respectively)."""
+    eligible, still under the judge's text-length window, still
+    scanner-clean) — phase 1's snapshot is advisory, the state at apply time
+    is what counts. A page whose full text now exceeds
+    `lib.memory.judge.JUDGE_MAX_TEXT_CHARS` is routed to suggestions with
+    `why="too-long"` regardless of the verdict passed in — a verdict built
+    from a tail-only judge prompt says nothing about an unjudged head.
+    Fail-closed on every path: a malformed verdict, a failed re-check, or a
+    queue hold leaves the page quarantined (`errors` / `suggested` / `held`
+    respectively)."""
     root = ren_paths.wiki_root()
     result: dict = {"released": [], "held": [], "suggested": [], "errors": []}
     for rel, raw in sorted(verdicts.items()):
@@ -975,6 +1016,11 @@ def apply_quarantine_verdicts(session: str, verdicts: dict) -> dict:
             if why != "l1":
                 _record_release_suggestion(rel, why, {"ineligible": why})
                 result["suggested"].append({"page": rel, "why": why})
+            continue
+        if len(text) > JUDGE_MAX_TEXT_CHARS:
+            evidence = {"length": len(text), "limit": JUDGE_MAX_TEXT_CHARS}
+            _record_release_suggestion(rel, "too-long", evidence)
+            result["suggested"].append({"page": rel, "why": "too-long"})
             continue
         hits = quarantine.detect_instruction_shaped(text)
         if hits:

@@ -90,7 +90,11 @@ the friend eventually decides them.
    anything malformed). Verdict contract: `data_only: bool`,
    `confidence: float`, `reason: str`. Release requires `data_only == True`
    and `confidence >= JUDGE_MIN_CONFIDENCE`. Anything else → suggestion with
-   the verdict as evidence.
+   the verdict as evidence. A page whose full text exceeds the judge's
+   truncation window (`JUDGE_MAX_TEXT_CHARS`) is routed to a suggestion with
+   `why="too-long"` before either stage runs — the judge only ever sees the
+   text's tail, so an unjudged head must never ride a tail-only verdict to
+   release.
 
 ### Machine release path
 

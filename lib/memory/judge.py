@@ -46,6 +46,14 @@ JUDGE_PAIR_CAP: Final[int] = 10
 JUDGE_MIN_CONFIDENCE: Final[float] = 0.7
 
 _MAX_TEXT_CHARS: Final[int] = 4_000
+# Public alias (quarantine screen, F1 0.6.5 final review): the screen needs
+# the judge's real truncation window to decide whether a page's FULL text
+# even fits before it can trust a judge verdict about it — `_truncate` only
+# keeps the text's tail, so a page longer than this limit has an unjudged
+# head that must never be silently released on the strength of a tail-only
+# verdict. Same value as `_MAX_TEXT_CHARS`; exported so no caller hardcodes
+# the number.
+JUDGE_MAX_TEXT_CHARS: Final[int] = _MAX_TEXT_CHARS
 
 _JUDGE_PROMPT_TEMPLATE: Final[str] = """\
 You are comparing TWO pieces of memory text to decide how they relate.
@@ -261,6 +269,7 @@ __all__ = [
     "VALID_VERDICTS",
     "JUDGE_PAIR_CAP",
     "JUDGE_MIN_CONFIDENCE",
+    "JUDGE_MAX_TEXT_CHARS",
     "Verdict",
     "JudgeError",
     "build_judge_prompt",

@@ -81,6 +81,13 @@ KIND_RETRIEVAL_EVAL = "retrieval_eval"
 #: snapshots. Rows are snapshots, not deltas — the LATEST row for a session
 #: supersedes earlier ones (a second wrap in the same session re-snapshots).
 KIND_SESSION_USAGE = "session_usage"
+#: One per machine-auto release from quarantine
+#: (`skills.wiki-health.lib.release_page_auto`), carrying the page, the
+#: session, and the judge/ineligibility evidence that justified the release.
+#: The queue's `approve_and_apply` seam has no `extra`-dict hook reachable
+#: without widening the queue's own contract, so the audit trail for WHY a
+#: page was auto-released lives here instead of on the journal line.
+KIND_QUARANTINE_RELEASE = "quarantine_release"
 
 
 def _now_iso() -> str:
@@ -257,6 +264,7 @@ __all__ = [
     "KIND_SUBAGENT_SPAWN",
     "KIND_SESSION_USAGE",
     "KIND_RETRIEVAL_EVAL",
+    "KIND_QUARANTINE_RELEASE",
     "record",
     "read",
     "harvest_session_usage",
