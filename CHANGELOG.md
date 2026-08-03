@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.6.6] - 2026-08-03 — "the quarantine gets a bounded exit"
 
 - **Quarantine screen** — bounded machine exit from quarantine: ren-wiki-lint
   screens model-trust data-plane pages at wrap close-out (deterministic
