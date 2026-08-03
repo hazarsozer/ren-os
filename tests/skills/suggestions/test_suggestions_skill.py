@@ -12,10 +12,10 @@ from __future__ import annotations
 
 import pytest
 
-from lib.memory import queue
+from lib.memory import queue, quarantine
 from lib.memory.journal import entries as journal_entries
 from lib.ren_paths import wiki_root
-from lib.suggestions import SuggestionSpec, record
+from lib.suggestions import SuggestionSpec, get_suggestion, record
 from skills.suggestions.lib import accept, decline, render_list, render_suggestion
 
 
@@ -300,3 +300,82 @@ def test_accept_success_records_decision_recorded_true(wiki):
     entry = record(_page_write_spec())
     result = accept(entry["sid"], "s-test")
     assert result["decision_recorded"] is True
+
+
+# --- #41: quarantine_release / review_lint_finding / unknown kind ----------
+
+
+def _make_quarantined_page(wiki_root, rel="projects/p/knowledge/a.md"):
+    page = wiki_root / rel
+    page.parent.mkdir(parents=True, exist_ok=True)
+    body = "## Knowledge\n- something durable\n"
+    page.write_text(quarantine.mark(body), encoding="utf-8")
+    return rel
+
+
+def test_accept_quarantine_release_actually_releases(wiki):
+    rel = _make_quarantined_page(wiki)
+    entry = record(
+        SuggestionSpec(
+            producer="wiki-health",
+            title=f"Release {rel} from quarantine",
+            rationale="screen cleared it",
+            evidence={},
+            kind="structured_action",
+            payload={"action": "quarantine_release", "page": rel, "evidence": {}},
+            fingerprint=f"wiki-health:quarantine-release:{rel}",
+        )
+    )
+
+    result = accept(entry["sid"], "s-test")
+
+    assert result["applied"] is True
+    page_text = (wiki / rel).read_text(encoding="utf-8")
+    assert "[!ren-quarantine]" not in page_text  # banner gone — release really applied
+    assert result["decision_recorded"] is True
+
+
+def test_accept_review_lint_finding_hands_off_decided(wiki):
+    entry = record(
+        SuggestionSpec(
+            producer="wiki-health",
+            title="Lint finding: missing-frontmatter-type",
+            rationale="judgment call — needs the friend",
+            evidence={},
+            kind="structured_action",
+            payload={
+                "action": "review_lint_finding",
+                "page": "l1/x.md",
+                "rule": "missing-frontmatter-type",
+                "detail": "no `type:` key in frontmatter",
+            },
+            fingerprint="wiki-health:lint:l1/x.md:missing-frontmatter-type",
+        )
+    )
+
+    result = accept(entry["sid"], "s-test")
+
+    assert result["applied"] is False
+    assert result["detail"]["rule"] == "missing-frontmatter-type"
+    assert result["decision_recorded"] is True  # handoff counts as decided
+
+
+def test_accept_unknown_kind_strands_loudly(wiki):
+    entry = record(
+        SuggestionSpec(
+            producer="wiki-health",
+            title="Not a thing",
+            rationale="n/a",
+            evidence={},
+            kind="structured_action",
+            payload={"action": "not-a-thing"},
+            fingerprint="wiki-health:not-a-thing",
+        )
+    )
+
+    result = accept(entry["sid"], "s-test")
+
+    assert result["applied"] is False
+    assert "unknown suggestion" in str(result["detail"])
+    assert result["decision_recorded"] is False
+    assert get_suggestion(entry["sid"])["status"] == "pending"  # retryable, never silently decided

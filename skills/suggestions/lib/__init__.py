@@ -17,6 +17,10 @@ this module is what turns an "accepted" decision into a real write, by
   refresh_claude_md → `lib.adapter.claude_md.write_global_claude_md`.
   review_contradiction → applies nothing; returns the two page paths +
                        evidence for the session to reconcile conversationally.
+  quarantine_release → `skills.wiki-health.lib.release_page` (imported via
+                       `importlib` — hyphenated skill dir).
+  review_lint_finding → applies nothing; hands the finding off to the
+                       session, same convention as review_contradiction.
 
 Failure contract (0.4.5): "accepted" means the change actually landed. The
 apply runs FIRST; only a successful apply (including intentional no-op
@@ -56,6 +60,7 @@ On a successful `decide()`, `"decision_recorded": True` is added instead.
 
 from __future__ import annotations
 
+import importlib
 import re
 
 from lib.adapter import claude_md
@@ -109,7 +114,9 @@ def render_list() -> str:
 
 def _apply(sid: str, kind: str, payload: dict, session: str) -> dict:
     """Perform the accepted suggestion's real effect. Raising is the ONLY
-    failure signal — `accept()` records the decision iff this returns."""
+    failure signal — `accept()` records the decision iff this returns. An
+    unknown `kind`/`action` also raises: it must strand the suggestion
+    pending (never silently "decided"), same as any other apply failure."""
     if kind == "page_write":
         new_entry = queue.propose(Proposal(**payload))
         if new_entry.status == _NOOP_DUPLICATE:
@@ -147,7 +154,41 @@ def _apply(sid: str, kind: str, payload: dict, session: str) -> dict:
             },
         }
 
-    return {"sid": sid, "applied": False, "detail": f"unknown suggestion kind {kind!r} / action {action!r}"}
+    if action == "quarantine_release":
+        wiki_health = importlib.import_module("skills.wiki-health.lib")
+        entry, prov = wiki_health.release_page(payload["page"], session)
+        if prov is None:
+            # held on contradicts (or no-op) — the hold is visible in the queue;
+            # retrying accept cannot change it, so this counts as decided.
+            return {
+                "sid": sid,
+                "applied": False,
+                "detail": {
+                    "page": payload["page"],
+                    "qid": entry.qid,
+                    "held_on": [c for c in entry.conflicts if c.get("kind") == "contradicts"],
+                },
+            }
+        return {
+            "sid": sid,
+            "applied": True,
+            "detail": {"qid": entry.qid, "write_id": prov.write_id, "page": prov.page},
+        }
+
+    if action == "review_lint_finding":
+        # judgment finding — the live session applies the fix with the friend;
+        # accepting records the review handoff (same convention as review_contradiction).
+        return {
+            "sid": sid,
+            "applied": False,
+            "detail": {
+                "page": payload.get("page"),
+                "rule": payload.get("rule"),
+                "detail": payload.get("detail"),
+            },
+        }
+
+    raise ValueError(f"unknown suggestion kind {kind!r} / action {action!r}")
 
 
 def accept(sid: str, session: str) -> dict:
