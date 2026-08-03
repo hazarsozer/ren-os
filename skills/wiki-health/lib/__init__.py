@@ -865,4 +865,76 @@ def release_page_auto(page: str, session: str, evidence: dict) -> tuple:
     return get(entry.qid), prov
 
 
+def _record_release_suggestion(rel: str, why: str, evidence: dict) -> None:
+    """File (fingerprint-deduped) 'release this page?' into the suggestions
+    store. A page the friend already declined never re-nags (`record`
+    returns None for known fingerprints — that is the dedup, not an error)."""
+    from lib.suggestions import SuggestionSpec, record
+
+    record(
+        SuggestionSpec(
+            producer="wiki-health",
+            title=f"Release {rel} from quarantine?",
+            rationale=f"quarantine screen routed this page to you: {why}",
+            evidence=evidence,
+            kind="structured_action",
+            payload={"action": "quarantine_release", "page": rel, "evidence": evidence},
+            fingerprint=f"quarantine:release:{rel}",
+        )
+    )
+
+
+def run_quarantine_screen(session: str, cap: int = 20) -> dict:
+    """Phase 1 of the quarantine screen: filter + deterministic scan.
+
+    Walks every quarantined page (sorted, so runs are deterministic):
+      - l1 pages: skipped silently (wrap's concern, not the screen's);
+      - ineligible pages (non-model trust, instruction-plane): routed to the
+        suggestions store, reported under `suggested`;
+      - scanner hits (`detect_instruction_shaped`): routed to suggestions,
+        never judged;
+      - clean eligible pages: returned under `candidates`, each with a
+        ready-built judge prompt for the agent (phase 2 applies verdicts).
+
+    At most `cap` non-l1 pages are screened per run; the remainder is
+    reported in `skipped_remaining` — never silently dropped. Unreadable
+    pages land in `errors` and stay quarantined."""
+    from lib.memory.judge import build_data_only_prompt
+
+    root = ren_paths.wiki_root()
+    result: dict = {
+        "backlog_total": 0,
+        "candidates": [],
+        "suggested": [],
+        "skipped_remaining": 0,
+        "errors": [],
+    }
+    screened = 0
+    for rel in sorted(quarantine.quarantined_rel_pages(root)):
+        try:
+            text = (root / rel).read_text(encoding="utf-8")
+        except Exception as exc:  # noqa: BLE001 - unreadable stays quarantined
+            result["errors"].append(f"{rel}: unreadable ({exc})")
+            continue
+        why = screen_ineligibility(rel, text)
+        if why == "l1":
+            continue
+        result["backlog_total"] += 1
+        if screened >= cap:
+            result["skipped_remaining"] += 1
+            continue
+        screened += 1
+        if why is not None:
+            _record_release_suggestion(rel, why, {"ineligible": why})
+            result["suggested"].append({"page": rel, "why": why})
+            continue
+        hits = quarantine.detect_instruction_shaped(text)
+        if hits:
+            _record_release_suggestion(rel, "instruction-shaped", {"scanner_hits": hits})
+            result["suggested"].append({"page": rel, "why": "instruction-shaped"})
+            continue
+        result["candidates"].append({"page": rel, "prompt": build_data_only_prompt(text)})
+    return result
+
+
 __all__ = ["sweep", "render_report", "release_page", "run_incremental_lint", "walk_wiki_pages"]
