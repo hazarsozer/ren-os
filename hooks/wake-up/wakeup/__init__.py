@@ -124,7 +124,7 @@ from lib.instrument import collect, miss_log
 from lib.instrument.calibration import PLAUSIBLE_RATIO_BAND
 from lib.memory import archive, queue, quarantine
 from lib.memory.provenance import read_frontmatter_provenance
-from lib.ren_paths import DEFAULT_DEV_ROOT_REL, detect_project, resolve_dev_root, state_dir
+from lib.ren_paths import DEFAULT_DEV_ROOT_REL, detect_project, resolve_dev_root, state_dir, wiki_root
 from lib.skeleton import wiki_stamped
 
 logger = logging.getLogger(__name__)
@@ -894,6 +894,30 @@ def unlinted_nudge_line() -> str:
     return f"{n} journal entr{plural} unlinted — spawn the ren-wiki-lint agent or run /ren:wrap."
 
 
+def _quarantine_backlog_count() -> int:
+    """Non-l1 quarantined pages — the screen's worklist size. Never raises
+    (same discipline as _unlinted_count): any error reads as 0, wake-up
+    must not die over a nudge."""
+    try:
+        from pathlib import PurePosixPath
+
+        pages = quarantine.quarantined_rel_pages(wiki_root())
+        return sum(1 for rel in pages if "l1" not in PurePosixPath(rel).parts)
+    except Exception:  # noqa: BLE001
+        return 0
+
+
+def quarantine_backlog_nudge_line() -> str:
+    """One nudge line when quarantined pages await screening; "" otherwise."""
+    n = _quarantine_backlog_count()
+    if n <= 0:
+        return ""
+    return (
+        f"{n} page(s) in quarantine backlog — the ren-wiki-lint agent screens "
+        f"them at /ren:wrap; run /ren:suggestions for ones already held for you."
+    )
+
+
 def _git(cwd: Path, args: list[str]) -> str:
     """Read-only, bounded git subprocess call. Returns "" on ANY failure
     (not a repo, git absent, timeout, non-zero exit) — never raises."""
@@ -1367,6 +1391,10 @@ def compose_wake_up_context(
     nudge = unlinted_nudge_line()
     if nudge:
         sections.append(nudge)
+
+    backlog_nudge = quarantine_backlog_nudge_line()
+    if backlog_nudge:
+        sections.append(backlog_nudge)
 
     # Doctrine rides real content; empty compose stays "" (loud notice) —
     # the emptiness decision above is made before the card is ever added.

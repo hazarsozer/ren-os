@@ -2074,6 +2074,30 @@ class TestUnlintedNudge:
         assert 'import_module("skills.wiki-health' not in source
 
 
+# ------------------------------------------- quarantine-backlog nudge (screen)
+class TestQuarantineBacklogNudge:
+    def test_no_backlog_no_line(self, project):
+        payload = wakeup.compose_wake_up_context(
+            cwd=project["cwd"], wiki_root=wiki_root(), session="sess-1")
+        assert "quarantine backlog" not in payload
+
+    def test_backlog_counts_non_l1_quarantined_pages(self, project):
+        from lib.memory import quarantine
+        for rel in ("projects/app/knowledge/a.md", "projects/app/knowledge/b.md"):
+            page = wiki_root() / rel
+            page.parent.mkdir(parents=True, exist_ok=True)
+            _write(page, quarantine.mark(_model_stamped("data page")))
+        # l1 page: quarantined but excluded from the backlog count
+        _write(project["project_dir"] / "l1" / "session-z.md",
+               quarantine.mark(_model_stamped("L1 content")))
+
+        payload = wakeup.compose_wake_up_context(
+            cwd=project["cwd"], wiki_root=wiki_root(), session="sess-1")
+
+        assert "2 page(s) in quarantine backlog" in payload
+        assert "ren-wiki-lint" in payload
+
+
 class TestOpenWorkSection:
     """0.6.5 Task 6: the open-work ledger's wake-up section."""
 
