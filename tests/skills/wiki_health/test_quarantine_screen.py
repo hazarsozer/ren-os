@@ -190,3 +190,69 @@ class TestRunQuarantineScreen:
         assert len([s for s in pending if s["fingerprint"].startswith("quarantine:")]) == 1
         # second run still REPORTS it (honest count), store just didn't re-record
         assert second["suggested"][0]["page"] == first["suggested"][0]["page"]
+
+
+def _good_verdict(conf=0.95):
+    return {"data_only": True, "confidence": conf, "reason": "facts only"}
+
+
+class TestApplyQuarantineVerdicts:
+    def test_passing_verdict_releases_page(self, wiki):
+        rel = _write_page(wiki, "projects/app/knowledge/stack.md")
+        result = wiki_health.apply_quarantine_verdicts("sess-1", {rel: _good_verdict()})
+        assert result["released"] == [rel]
+        text = (wiki / rel).read_text(encoding="utf-8")
+        assert not quarantine.is_quarantined(text)
+
+    def test_not_data_only_routes_to_suggestions(self, wiki):
+        rel = _write_page(wiki, "projects/app/knowledge/rules.md")
+        verdict = {"data_only": False, "confidence": 0.9, "reason": "doctrine-like"}
+        result = wiki_health.apply_quarantine_verdicts("sess-1", {rel: verdict})
+        assert result["released"] == []
+        assert result["suggested"][0]["page"] == rel
+        assert quarantine.is_quarantined((wiki / rel).read_text(encoding="utf-8"))
+
+    def test_low_confidence_routes_to_suggestions(self, wiki):
+        rel = _write_page(wiki, "projects/app/knowledge/meh.md")
+        result = wiki_health.apply_quarantine_verdicts(
+            "sess-1", {rel: _good_verdict(conf=0.5)}
+        )
+        assert result["released"] == []
+        assert result["suggested"][0]["page"] == rel
+
+    def test_malformed_verdict_fails_closed(self, wiki):
+        rel = _write_page(wiki, "projects/app/knowledge/stack.md")
+        result = wiki_health.apply_quarantine_verdicts(
+            "sess-1", {rel: {"data_only": "yes", "confidence": 2}}
+        )
+        assert result["released"] == []
+        assert result["errors"]
+        assert quarantine.is_quarantined((wiki / rel).read_text(encoding="utf-8"))
+
+    def test_verdict_for_now_ineligible_page_is_refused(self, wiki):
+        # page mutated to foreign between phase 1 and phase 2 -> refuse
+        rel = _write_page(wiki, "projects/app/knowledge/flip.md", trust="foreign")
+        result = wiki_health.apply_quarantine_verdicts("sess-1", {rel: _good_verdict()})
+        assert result["released"] == []
+        assert result["suggested"][0]["why"] == "non-model-trust"
+
+    def test_verdict_for_unquarantined_page_is_noop(self, wiki):
+        rel = _write_page(wiki, "projects/app/knowledge/done.md", banner=False)
+        result = wiki_health.apply_quarantine_verdicts("sess-1", {rel: _good_verdict()})
+        assert result["released"] == []
+        assert result["suggested"] == []
+        assert not result["errors"]
+
+    def test_release_is_revertible_banner_restored(self, wiki):
+        # revert = re-apply the superseded content through the queue door;
+        # asserts the release write minted provenance that carries the old
+        # write id (the one-step revert handle)
+        rel = _write_page(wiki, "projects/app/knowledge/stack.md")
+        before = (wiki / rel).read_text(encoding="utf-8")
+        result = wiki_health.apply_quarantine_verdicts("sess-1", {rel: _good_verdict()})
+        assert result["released"] == [rel]
+        after = (wiki / rel).read_text(encoding="utf-8")
+        assert "ren_supersedes" in after
+        # the banner-stripped body plus new frontmatter fully replaced the old
+        assert quarantine.QUARANTINE_BANNER in before
+        assert quarantine.QUARANTINE_BANNER not in after

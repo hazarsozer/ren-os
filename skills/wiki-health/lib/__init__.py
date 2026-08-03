@@ -70,7 +70,7 @@ from lib.evalkit.runner import run_retrieval_eval
 from lib.governance.tiers import is_instruction_plane_page
 from lib.instrument import collect
 from lib.memory import journal, quarantine, semantics
-from lib.memory.judge import JUDGE_MIN_CONFIDENCE, JUDGE_PAIR_CAP, judge_pairs
+from lib.memory.judge import JUDGE_MIN_CONFIDENCE, JUDGE_PAIR_CAP, JudgeError, judge_pairs, parse_data_only_verdict
 from lib.ren_paths import PathTraversalError
 from skills.recall.lib import rank as _recall_rank
 
@@ -934,6 +934,61 @@ def run_quarantine_screen(session: str, cap: int = 20) -> dict:
             result["suggested"].append({"page": rel, "why": "instruction-shaped"})
             continue
         result["candidates"].append({"page": rel, "prompt": build_data_only_prompt(text)})
+    return result
+
+
+def apply_quarantine_verdicts(session: str, verdicts: dict) -> dict:
+    """Phase 2 of the quarantine screen: apply the agent's per-page verdicts.
+
+    Every page is RE-CHECKED before release (still quarantined, still
+    eligible, still scanner-clean) — phase 1's snapshot is advisory, the
+    state at apply time is what counts. Fail-closed on every path: a
+    malformed verdict, a failed re-check, or a queue hold leaves the page
+    quarantined (`errors` / `suggested` / `held` respectively)."""
+    root = ren_paths.wiki_root()
+    result: dict = {"released": [], "held": [], "suggested": [], "errors": []}
+    for rel, raw in sorted(verdicts.items()):
+        try:
+            text = ren_paths.safe_join(root, rel).read_text(encoding="utf-8")
+        except Exception as exc:  # noqa: BLE001 - missing/unreadable/traversal: fail closed
+            result["errors"].append(f"{rel}: unreadable ({exc})")
+            continue
+        if not quarantine.is_quarantined(text):
+            continue  # already released or never quarantined: clean no-op
+        why = screen_ineligibility(rel, text)
+        if why is not None:
+            if why != "l1":
+                _record_release_suggestion(rel, why, {"ineligible": why})
+                result["suggested"].append({"page": rel, "why": why})
+            continue
+        hits = quarantine.detect_instruction_shaped(text)
+        if hits:
+            _record_release_suggestion(rel, "instruction-shaped", {"scanner_hits": hits})
+            result["suggested"].append({"page": rel, "why": "instruction-shaped"})
+            continue
+        try:
+            verdict = parse_data_only_verdict(raw)
+        except JudgeError as exc:
+            result["errors"].append(f"{rel}: invalid verdict ({exc})")
+            continue
+        if not (verdict.data_only and verdict.confidence >= JUDGE_MIN_CONFIDENCE):
+            evidence = {
+                "judge": {
+                    "data_only": verdict.data_only,
+                    "confidence": verdict.confidence,
+                    "reason": verdict.reason,
+                }
+            }
+            _record_release_suggestion(rel, "judge-objected", evidence)
+            result["suggested"].append({"page": rel, "why": "judge-objected"})
+            continue
+        entry, prov = release_page_auto(
+            rel, session, {"judge": {"confidence": verdict.confidence, "reason": verdict.reason}}
+        )
+        if prov is None:
+            result["held"].append(rel)
+        else:
+            result["released"].append(rel)
     return result
 
 
