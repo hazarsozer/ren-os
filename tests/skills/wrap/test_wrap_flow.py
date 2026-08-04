@@ -18,6 +18,7 @@ from lib import ren_paths
 from lib.memory import queue, quarantine
 from lib.memory.provenance import read_frontmatter_provenance
 from lib.memory.queue import Proposal
+from lib.memory.revert import revert
 from lib.ren_paths import state_dir, wiki_root
 from skills.wrap.lib import _ensure_l1_type, render_wrap_screen, wrap_session
 
@@ -462,6 +463,39 @@ def test_wrap_screen_saved_and_suggestions_sections(wiki):
 
     suggestions_idx = screen.index("## Suggestions")
     assert global_entry.qid in screen[suggestions_idx:]
+
+
+def test_wrap_screen_hides_reverted_writes(wiki):
+    # #44: a reverted write keeps status "applied" in the queue — only the
+    # journal records the revert (extra={"revert_of": write_id}). The screen
+    # must not offer a ghost "undo w-..." for a write already undone.
+    session = "sess-screen-ghost"
+
+    auto_entry = queue.propose(
+        Proposal(
+            op="ADD",
+            page="projects/demo/routine-note.md",
+            content="Routine bounded note.\n",
+            reason="routine check-in",
+            producer="routine",
+            writer="routine",
+            session=session,
+        )
+    )
+    auto_prov = queue.apply_auto(auto_entry.qid)
+    revert(auto_prov.write_id)
+
+    result = {
+        "l1_qid": None,
+        "applied": [],
+        "held": [],
+        "gated_out": [],
+        "refused": [],
+        "fail_closed": False,
+    }
+    screen = render_wrap_screen(result, session)
+
+    assert auto_prov.write_id not in screen  # no ghost "undo w-..." offer
 
 
 def test_wrap_screen_supersedes_conflict_flag_present(wiki):

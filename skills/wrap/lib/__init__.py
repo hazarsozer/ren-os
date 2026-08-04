@@ -1133,9 +1133,12 @@ def render_wrap_screen(wrap_result: dict, session: str) -> str:
 
     # --- Saved this session (revertible) ---
     lines.append("## Saved this session (revertible)")
+    reverted = {j["revert_of"] for j in journal.entries() if j.get("revert_of")}
     saved_entries = [
         e for e in entries
-        if e.get("status") == "applied" and e.get("approved_by") in ("auto-tier", "model-resolved")
+        if e.get("status") == "applied"
+        and e.get("approved_by") in ("auto-tier", "model-resolved")
+        and e.get("write_id") not in reverted
     ]
     if saved_entries:
         for entry in saved_entries:
