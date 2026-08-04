@@ -74,7 +74,7 @@ def _ensure_l1_type(narrative_md: str) -> str:
     the narrative and reliably forgets it. Normalize at the write door."""
     if not narrative_md.startswith("---\n"):
         return f"---\ntype: l1\n---\n\n{narrative_md}"
-    end = narrative_md.find("\n---", 4)
+    end = narrative_md.find("\n---", 3)
     if end == -1:
         return narrative_md  # malformed frontmatter — leave for lint to flag
     fm = narrative_md[4:end]

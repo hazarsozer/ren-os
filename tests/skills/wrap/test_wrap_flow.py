@@ -204,6 +204,18 @@ def test_l1_no_frontmatter_gets_block():
     assert out.startswith("---\ntype: l1\n---\n")
 
 
+def test_l1_empty_frontmatter_gains_type():
+    """Reviewer-found bug: an EMPTY frontmatter fence ("---\n---\n...") has
+    its closing "\n---" at index 3, but the original search started at index
+    4 — one past it — so `end` came back -1 and this shape was wrongly
+    treated as malformed, silently reproducing #43. The closing fence must
+    still be present and valid after the fix."""
+    out = _ensure_l1_type("---\n---\n\n# S\n\nx\n")
+    assert "type: l1" in out
+    fm = out.split("---")[1]
+    assert "type: l1" in fm
+
+
 def test_wrap_with_no_durable_items_has_empty_lists(wiki):
     result = wrap_session(narrative_md="Nothing much happened.\n", durable_items=[], session="sess-1")
     assert result["applied"] == []  # v2.2: durable_qids -> applied/held
