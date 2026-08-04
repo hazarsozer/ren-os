@@ -171,10 +171,15 @@ def test_budget_decision_uses_the_same_ratio_as_the_cut(project):
     read but never governed a single cut. Here a calibrated ratio of 3.0 (below
     the constant, so a fixed-ratio cut would leave the payload OVER budget in
     the calibrated units the guard now judges in) must be honoured by both the
-    guard and the truncation."""
+    guard and the truncation.
+
+    Fix round 4 (#48): a calibrated ratio only governs once it clears
+    `_MIN_CALIBRATION_SAMPLES` (5) — five identical ("x" * 300, 100) pairs
+    (still ratio => 3.0) give it that weight, matching what the seasoned
+    (not single-sample) calibration loop actually produces."""
     from lib.instrument import estimator
 
-    estimator.calibrate([("x" * 300, 100)])  # ratio => 3.0, != CHARS_PER_TOKEN
+    estimator.calibrate([("x" * 300, 100)] * 5)  # ratio => 3.0, samples => 5
     assert wakeup._calibrated_chars_per_token() == pytest.approx(3.0)
     _write(project["project_dir"] / "l1" / "session-001.md",
            _model_stamped("y" * 50_000))
@@ -195,6 +200,41 @@ def test_budget_decision_uses_the_same_ratio_as_the_cut(project):
     assert wakeup.estimate_tokens("y" * 900) == 300
     assert wakeup._budget_tokens("y" * 900) == 300
     assert len(wakeup.truncate_text_to_tokens("y" * 900, 100)) <= 300 + 60
+
+
+def write_estimator_json(data: dict) -> Path:
+    """Write `data` as `state_dir()/metrics/estimator.json`, following the same
+    inline-write pattern the existing calibration tests use (no separate
+    `tmp_state` fixture exists in this file — `project`/`wiki` already
+    monkeypatch the state dir via `clean_path_env`/`REN_FRAMEWORK_ROOT`)."""
+    estimator_path = wakeup.state_dir() / "metrics" / "estimator.json"
+    estimator_path.parent.mkdir(parents=True, exist_ok=True)
+    estimator_path.write_text(json.dumps(data), encoding="utf-8")
+    return estimator_path
+
+
+def test_single_sample_ratio_does_not_govern(project, caplog):
+    """#48: the live estimator.json on 2026-08-03 held a ONE-sample ratio
+    (2.1813929..., roughly halving CHARS_PER_TOKEN) that governed every
+    wake-up char budget despite having no statistical weight behind it. A
+    ratio backed by fewer than 5 samples must never displace the fallback
+    constant, however "plausible" the number looks."""
+    write_estimator_json({"chars_per_token": 2.1813929, "samples": 1})
+    assert wakeup._calibrated_chars_per_token() == wakeup.CHARS_PER_TOKEN
+
+
+def test_seasoned_low_ratio_governs_but_warns(project, caplog):
+    """#48: once a ratio has enough samples (>=5) it's allowed to govern
+    again — but if it shifts every budget by more than 25% vs the
+    CHARS_PER_TOKEN fallback, that's loud enough to warrant a WARNING log
+    (silent 2x-ish budget swings were exactly how #48 surfaced)."""
+    import logging
+
+    write_estimator_json({"chars_per_token": 2.18, "samples": 9})
+    with caplog.at_level(logging.WARNING):
+        ratio = wakeup._calibrated_chars_per_token()
+    assert ratio == pytest.approx(2.18)
+    assert any("budget" in r.message for r in caplog.records)
 
 
 @pytest.mark.parametrize("corrupt_ratio", [0.5, 50.0])

@@ -445,7 +445,10 @@ def _wakeup_module():
 
 
 def test_wakeup_estimator_uses_persisted_ratio(isolated_state):
-    estimator.calibrate([("x" * 800, 100)])  # 8.0 chars per token
+    # Ratio must also clear wakeup's _MIN_CALIBRATION_SAMPLES (5, #48) to
+    # govern — five identical pairs give it that weight while keeping the
+    # same 8.0 chars-per-token ratio.
+    estimator.calibrate([("x" * 800, 100)] * 5)
     wakeup = _wakeup_module()
 
     assert wakeup.estimate_tokens("y" * 800) == 100

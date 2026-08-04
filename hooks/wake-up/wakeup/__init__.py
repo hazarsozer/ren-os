@@ -205,6 +205,10 @@ def _strip_frontmatter(text: str) -> str:
     return text[match.end():] if match else text
 
 
+_MIN_CALIBRATION_SAMPLES: Final[int] = 5
+_BUDGET_SHIFT_WARN_FRACTION: Final[float] = 0.25
+
+
 def _calibrated_chars_per_token() -> float:
     """The calibrated chars-per-token ratio if `lib.instrument.calibration`'s
     loop (0.6.1 E5a) has persisted one, else `CHARS_PER_TOKEN`.
@@ -220,15 +224,37 @@ def _calibrated_chars_per_token() -> float:
     already imports cleanly here) is the same band that module uses to reject
     calibration inputs it never measured; a corrupt or hand-edited
     estimator.json (0.5, 50.0, ...) would otherwise silently crush or
-    10x-inflate every char budget this ratio now governs."""
+    10x-inflate every char budget this ratio now governs.
+
+    Fix round 4 (#48): plausible still isn't enough — it must also be
+    SEASONED. A single-sample ratio (the live 2026-08-03 estimator.json held
+    exactly one: 2.1813929..., roughly halving every wake-up char budget)
+    carries no statistical weight and must never displace the fallback
+    constant; `_MIN_CALIBRATION_SAMPLES` is the floor. Once a ratio clears
+    that floor and the plausibility band, it's allowed to govern — but if it
+    still shifts every budget by more than `_BUDGET_SHIFT_WARN_FRACTION`
+    (25%) vs `CHARS_PER_TOKEN`, that swing is logged at WARNING so a
+    silently-halved (or doubled) injection budget is visible, not just
+    "technically working as designed"."""
     try:
         path = state_dir() / "metrics" / "estimator.json"
         data = json.loads(path.read_text(encoding="utf-8"))
         ratio = float(data["chars_per_token"])
+        samples = int(data.get("samples", 0))
     except Exception:  # noqa: BLE001 - a calibration read must never break wake-up
         return CHARS_PER_TOKEN
+    if samples < _MIN_CALIBRATION_SAMPLES:
+        return CHARS_PER_TOKEN
     low, high = PLAUSIBLE_RATIO_BAND
-    return ratio if low <= ratio <= high else CHARS_PER_TOKEN
+    if not (low <= ratio <= high):
+        return CHARS_PER_TOKEN
+    shift = abs(ratio - CHARS_PER_TOKEN) / CHARS_PER_TOKEN
+    if shift > _BUDGET_SHIFT_WARN_FRACTION:
+        logger.warning(
+            "calibrated chars-per-token %.3f shifts every wake-up budget %.0f%% "
+            "vs the %.1f fallback", ratio, 100 * shift, CHARS_PER_TOKEN,
+        )
+    return ratio
 
 
 def estimate_tokens(text: str) -> int:
