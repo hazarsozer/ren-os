@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.6.7] - 2026-08-04 — "the fix train"
+
+Bug-fix release: eight issues from the 0.6.6 live smoke and verification
+waves, in three reviewed clusters. Spec:
+docs/superpowers/specs/2026-08-03-0.6.7-fix-train-design.md.
+
+- **#41 (CRITICAL)** — suggestions `accept()` now applies the quarantine
+  screen's `quarantine_release` (via `release_page`) and `review_lint_finding`
+  (decided handoff) actions; an unknown kind/action now RAISES and leaves the
+  suggestion pending/retryable instead of silently deciding it.
+- **#48 (CRITICAL)** — wake-up's final payload budget guard is
+  head-preserving: the seed header + doctrine card survive any over-budget
+  compose, only content sections are tail-truncated, and the elision is
+  logged at WARNING. Calibration hardening: a chars-per-token ratio needs
+  ≥5 samples to displace the fallback, and a >25% budget shift warns.
+- **#42 (HIGH)** — the conflict detector no longer self-conflicts an UPDATE
+  with its own target page (duplicate/contradicts exempted; the supersedes
+  provenance chain unchanged) — quarantine releases stop holding on noise.
+- **#47** — a wrap re-run for the same session proposes its L1 as UPDATE, not
+  ADD; the ADD-race guard stays as backstop.
+- **#45** — wrap SKILL.md passes the session's working directory explicitly;
+  the wrap screen shouts when the L1 files under global `l1/` (no silent
+  misfiling); result records `project` + `wrap_cwd`.
+- **#43** — wrap normalizes L1 frontmatter to always carry `type: l1`
+  (including the empty-frontmatter shape found in cluster review).
+- **#44** — the wrap screen no longer offers "undo" for writes already
+  reverted (filters against the journal's `revert_of` records).
+- **#35** — the doctrine card's truncation pointer names the shipped file
+  path instead of a prose phrase.
+
 ## [0.6.6] - 2026-08-03 — "the quarantine gets a bounded exit"
 
 - **Quarantine screen** — bounded machine exit from quarantine: ren-wiki-lint
