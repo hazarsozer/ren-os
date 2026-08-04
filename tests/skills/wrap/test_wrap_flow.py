@@ -19,7 +19,7 @@ from lib.memory import queue, quarantine
 from lib.memory.provenance import read_frontmatter_provenance
 from lib.memory.queue import Proposal
 from lib.ren_paths import state_dir, wiki_root
-from skills.wrap.lib import render_wrap_screen, wrap_session
+from skills.wrap.lib import _ensure_l1_type, render_wrap_screen, wrap_session
 
 
 @pytest.fixture
@@ -177,6 +177,30 @@ def test_wrap_rerun_same_session_updates_l1(wiki):
 
     l1 = (wiki_root() / "l1/session-s-rerun.md").read_text(encoding="utf-8")
     assert "corrected" in l1
+
+
+def test_l1_frontmatter_gains_type(wiki):
+    """#43: the live session reliably omits frontmatter `type:` from the L1
+    narrative it authors — wiki-lint's missing-frontmatter-type rule then
+    flags every wrap's own output. `_ensure_l1_type` normalizes at the write
+    door, so the L1 page actually written to disk always carries `type: l1`
+    even though the caller's narrative_md didn't."""
+    wrap_session(
+        "---\ntitle: \"S\"\n---\n\n# S\n\nx\n", [], session="s-type", project="p",
+    )
+    l1 = (wiki_root() / "projects/p/l1/session-s-type.md").read_text(encoding="utf-8")
+    fm = l1.split("---")[1]
+    assert "type: l1" in fm
+
+
+def test_l1_existing_type_untouched():
+    out = _ensure_l1_type("---\ntype: session-note\n---\n\n# S\n")
+    assert "type: session-note" in out and "type: l1" not in out
+
+
+def test_l1_no_frontmatter_gets_block():
+    out = _ensure_l1_type("# S\n\nbody\n")
+    assert out.startswith("---\ntype: l1\n---\n")
 
 
 def test_wrap_with_no_durable_items_has_empty_lists(wiki):

@@ -66,6 +66,22 @@ _SLUG_WORD_RE = re.compile(r"[a-z0-9]+")
 _PREVIEW_MAX_CHARS = 100
 _PREVIEW_FRONTMATTER_RE = re.compile(r"\A---\n.*?\n---\n?", re.DOTALL)
 
+_L1_TYPE_RE = re.compile(r"^type:\s*\S", re.MULTILINE)
+
+
+def _ensure_l1_type(narrative_md: str) -> str:
+    """#43: wiki-lint requires a frontmatter `type:`; the live session authors
+    the narrative and reliably forgets it. Normalize at the write door."""
+    if not narrative_md.startswith("---\n"):
+        return f"---\ntype: l1\n---\n\n{narrative_md}"
+    end = narrative_md.find("\n---", 4)
+    if end == -1:
+        return narrative_md  # malformed frontmatter — leave for lint to flag
+    fm = narrative_md[4:end]
+    if _L1_TYPE_RE.search(fm):
+        return narrative_md
+    return f"---\ntype: l1\n{fm}\n---{narrative_md[end + 4:]}"
+
 
 def _content_preview(content: str | None) -> str:
     """First meaningful body line of a proposal's content — what the friend
@@ -726,7 +742,7 @@ def wrap_session(
         Proposal(
             op="UPDATE" if l1_path.is_file() else "ADD",
             page=l1_page,
-            content=narrative_md,
+            content=_ensure_l1_type(narrative_md),
             reason="end-of-session L1 narrative summary",
             producer="wrap",
             writer="llm-auto",
