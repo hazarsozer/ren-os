@@ -131,6 +131,30 @@ def test_wrap_invoked_with_cwd_inside_project_writes_project_l1_without_explicit
     assert not global_page.exists()
 
 
+def test_wrap_result_records_project_scope(wiki):
+    """#45: the result dict must name which project scope the L1 landed
+    under (or None for the global fallback) — the same signal
+    `render_wrap_screen` uses to decide whether to shout."""
+    result = wrap_session(
+        "---\n---\n\n# S\n\nx\n", [], session="s-scope", project="p",
+    )
+    assert result["project"] == "p"
+
+
+def test_wrap_screen_shouts_on_global_fallback(wiki, tmp_path):
+    """#45: when `cwd` maps to no project, `detect_project` returns None and
+    the L1 silently misfiles under global `l1/` unless the wrap screen names
+    it loudly, with the cwd it detected from."""
+    result = wrap_session(
+        "---\n---\n\n# S\n\nx\n", [], session="s-global",
+        cwd=tmp_path,  # a dir belonging to no project -> detection fails
+    )
+    assert result["project"] is None
+    screen = render_wrap_screen(result, session="s-global")
+    assert "GLOBAL l1/" in screen
+    assert str(tmp_path) in screen  # names the path detection ran from
+
+
 def test_wrap_rerun_same_session_updates_l1(wiki):
     """#47: a second wrap for the SAME session must propose an UPDATE for the
     L1 page (it already exists from the first wrap), not a fixed ADD. A fixed

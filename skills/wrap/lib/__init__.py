@@ -631,6 +631,12 @@ def wrap_session(
 
     Returns a dict:
       - "l1_qid": qid of the (already applied + quarantined) L1 entry
+      - "project": the resolved project slug the L1 was scoped under, or
+        `None` for the global fallback (#45) — `render_wrap_screen` shouts
+        when this is `None`, since a global misfile from an unrecognized
+        `cwd` is silent otherwise.
+      - "wrap_cwd": `str(cwd or Path.cwd())` — the cwd project detection
+        actually ran from, surfaced so the fallback warning can name it.
       - "applied": [{"qid", "write_id", "page"}] for items gated "durable"
         that auto-applied through the data-plane door
       - "held": [{"qid", "page", "conflicts"}] for items gated "durable" that
@@ -828,8 +834,12 @@ def wrap_session(
     except Exception:  # noqa: BLE001 - instrumentation must never fail wrap close-out
         pass
 
+    wrap_cwd = str(cwd or Path.cwd())
+
     result = {
         "l1_qid": l1_entry.qid,
+        "project": project,
+        "wrap_cwd": wrap_cwd,
         "applied": applied,
         "held": held,
         "gated_out": gated_out,
@@ -1062,7 +1072,10 @@ def render_wrap_screen(wrap_result: dict, session: str) -> str:
     and the given `wrap_result` (the return value of `wrap_session`); writes
     NOTHING. Per the v2.2 two-plane pivot's conversational gate (no
     slash-command hints anywhere on this screen):
-      - "What I learned" — the L1 entry's qid + one-line status.
+      - "What I learned" — the L1 entry's qid + one-line status, plus a loud
+        ⚠ line (#45) when `wrap_result["project"]` is `None`: the L1 filed
+        under the GLOBAL `l1/` because `cwd` matched no project, and that
+        misfile is otherwise silent.
       - "Saved this session (revertible)" — this session's entries with
         `status == "applied"` and `approved_by in ("auto-tier",
         "model-resolved")`, each with its write_id and a spoken revert hint
@@ -1093,6 +1106,12 @@ def render_wrap_screen(wrap_result: dict, session: str) -> str:
         lines.append(f"- session summary ({l1_entry['qid']}): {status_label}")
     else:
         lines.append("- session summary: (not found)")
+    if not wrap_result.get("project"):
+        lines.append(
+            f"- ⚠ session summary filed under GLOBAL l1/ — no project detected "
+            f"from {wrap_result.get('wrap_cwd', 'unknown cwd')}; pass cwd= or register "
+            f"the project in projects.json"
+        )
     lines.append(f"- project overview: {wrap_result.get('overview', 'skipped')}")
     lines.append("")
 
