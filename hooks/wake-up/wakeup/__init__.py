@@ -150,7 +150,7 @@ OPENWORK_BUDGET: Final[int] = 400
 DOCTRINE_BUDGET: Final[int] = 500
 # The doctrine card ships in the plugin rather than living in the wiki, so its
 # `_inject_section` pointer names the source in prose instead of a page rel.
-DOCTRINE_POINTER: Final[str] = "the full doctrine card, which ships in the plugin"
+DOCTRINE_POINTER: Final[str] = "hooks/wake-up/wakeup/doctrine_card.py (in the installed ren plugin)"
 EXTRAS_BUDGET: Final[int] = 1_600   # ranked additional pages, split across however many fit
 EXTRA_PAGE_BUDGET: Final[int] = 400  # per-page cap within the extras budget
 DEFAULT_EXTRAS_COUNT: Final[int] = 3

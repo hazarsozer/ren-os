@@ -6,6 +6,7 @@ import pytest
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "hooks" / "wake-up"))
 
+from wakeup import DOCTRINE_POINTER  # noqa: E402
 from wakeup.doctrine_card import (  # noqa: E402
     SECTION_DOCTRINE,
     render_doctrine_card,
@@ -191,3 +192,7 @@ class TestBudgetAndStructure:
         cap = DOCTRINE_BUDGET * 4.0 - 150
         for sp in (True, False):
             assert len(render_doctrine_card(sp)) <= cap
+
+
+def test_doctrine_pointer_is_a_path():
+    assert "doctrine_card.py" in DOCTRINE_POINTER
