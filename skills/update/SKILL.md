@@ -144,6 +144,56 @@ Carried near-verbatim from donor `skills/update/` (Task 7.3) — the migration s
   previews what would be reminted with zero writes. Idempotent — safe to
   (re-)run even if a friend already updated once without it.
 
+## 0.7.0 update notes
+
+- **l2-map-1-to-2 (issue #53):** a friend upgrading from before 0.7.0 has L2
+  pointer-maps still in schema 1 — arrow-form wiki pointers
+  (`- [Topic] → path (write_id)`) instead of Obsidian-native markdown links
+  (`- [Topic](path) (write_id)`). Unlike the standalone global migrations
+  above, this one IS part of `skills/wiki-migration`'s ordinary page-type
+  chain (`l2-map` is a registered page type in `skills/wiki-migration/schemas.json`,
+  currently at schema 2), so it's driven the same way `/ren:doctor`'s
+  `check_schema_versions` discovers pending work, not a one-off script
+  invoked by hand. Walk it as follows, under the update flow's existing
+  pre-migration snapshot (`REN_SNAPSHOT_DIR` already pointed at that run's
+  `wiki-snapshots/v<from>-pre-update-<ISO8601>/`):
+  1. Enumerate wiki pages via `wiki_root.rglob("*.md")`, skipping
+     `projects/<slug>/raw/` (write-once source material — never a migration
+     target; `lib.ren_paths.in_project_raw` is the existing predicate,
+     see `skills/doctor/lib/check_schema_versions` for the same walk).
+  2. Read each page's frontmatter `type`. The master `wiki/index.md` is
+     `type: l2-map` too — it is NOT special-cased out of this walk, per-
+     project maps (`projects/<slug>/map.md`) and the master index are
+     migrated the same way.
+  3. For pages whose `type` is `l2-map`, read `schema_version`; an absent
+     value means the page predates schema-stamping (issue #20) — treat it
+     as `1`, not as "skip me".
+  4. Compute `migration_chain("l2-map", <version>)` — via
+     `importlib.import_module("skills.wiki-migration.lib")`, same as
+     `/ren:doctor`'s `check_schema_versions` — for that page. A non-empty
+     chain today is always exactly `["l2-map-1-to-2"]`.
+  5. For each pending page, run `run_migration(Path("migrations/l2-map-1-to-2"),
+     <page_path>, wiki_root, snapshot_dir)` (same `skills.wiki-migration.lib`
+     import) — same primitive `/ren:doctor` verifies against, same
+     `SF_*`/`REN_*` env-mapping shim. Inspect the returned
+     `MigrationRunResult`: `skipped=True` (stdout carried `SKIP`) means
+     transform.py itself declined (wrong type, no frontmatter, or already
+     at schema 2 — see `migrations/l2-map-1-to-2/README.md`); a non-zero
+     `returncode` with `skipped=False` is a genuine transform failure
+     (page left untouched, rolled back from the snapshot like any other
+     failed page).
+  6. Verify each migrated page with `verify_page(
+     Path("migrations/l2-map-1-to-2/verify.json"), <page_path>)` (same
+     import) before counting it as applied.
+  7. Show the friend the per-page diff summary, per this skill's usual
+     diff-approval contract, before the migrated content is treated as
+     final.
+  Idempotent — re-running is always safe: `migrate.sh` (via `transform.py`)
+  `SKIP`s any page already at `schema_version: 2`, scoped to the
+  frontmatter block only (a body line that happens to read
+  `schema_version: 2` cannot false-SKIP a stale page). See
+  `migrations/l2-map-1-to-2/README.md` for the full transform contract.
+
 ## Overlap note: snapshot substrate vs. Task 1.2's per-write snapshots
 
 `lib/memory/snapshot.py` (Task 1.2, G9) is a DIFFERENT snapshot mechanism: per-write-id, page-granularity snapshots for the write-safety substrate (revert a single memory write in one step). `scripts/snapshot.sh` here is whole-wiki, version-bump-granularity, for migration rollback. They serve genuinely different purposes at different granularities — this skill's carried snapshot logic is NOT rewritten to unify with Task 1.2's substrate; that unification (if it's ever worth doing) is a 0.3-scoped ADR decision, not something to improvise here. Noted per the task brief's explicit instruction not to rewrite working carried code.
@@ -171,5 +221,6 @@ Carried near-verbatim from donor `skills/update/` (Task 7.3) — the migration s
 - `skills/wiki-migration/` — the migration registry + verify/apply primitive this skill drives
 - `migrations/queue-governance-2-to-3/` — the standalone (non-chain) queue-state migration named in the 0.3 update notes above
 - `migrations/trust-backfill-1/` — the standalone (non-chain) wiki-wide migration named in the 0.5.1 update notes above
+- `migrations/l2-map-1-to-2/` — the ordinary page-type-chain migration named in the 0.7.0 update notes above
 - `lib/memory/snapshot.py` (Task 1.2) — the OTHER snapshot mechanism (per-write, not whole-wiki); see overlap note above
 - `skills/doctor/` — the post-update health check this skill's flow ends with
