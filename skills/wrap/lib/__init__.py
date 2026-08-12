@@ -812,7 +812,9 @@ def wrap_session(
             continue
 
         if prov is not None:
-            applied.append({"qid": entry.qid, "write_id": prov.write_id, "page": page})
+            applied.append(
+                {"qid": entry.qid, "write_id": prov.write_id, "page": page, "op": prov.op}
+            )
         else:
             held.append({"qid": entry.qid, "page": page, "conflicts": entry.conflicts})
 
@@ -866,6 +868,10 @@ def wrap_session(
         "consolidated": consolidated,
         "overview": overview_status,
         "open_work": {"closed": [], "opened": [], "carried": 0},
+        "links": {
+            "l1_touched": 0, "log_entry": False, "sessions_entry": False,
+            "auto_pointers": [], "warnings": [],
+        },
     }
 
     try:
@@ -887,7 +893,168 @@ def wrap_session(
         except Exception:  # noqa: BLE001 - the ledger must never break wrap close-out
             pass
 
+    # #54: the link duties (D1-D4) — L1 gains a "## Touched pages" section
+    # over this session's OWN queue writes (D1), log.md gets a session entry
+    # (D2), the project map's "## Sessions" section gets this session (D3),
+    # and every newly-ADDed durable page under this project gets an
+    # auto-pointer from the map plus a spine pointer from index.md (D4). Runs
+    # LAST (after open-work, so its own writes don't chase their tail) and is
+    # isolated exactly like decay/consolidate above — link bookkeeping must
+    # never fail a session's close-out. "links" is ALWAYS present on the
+    # result (seeded into the dict literal above), so a total failure here
+    # still leaves callers a well-shaped, all-zero/warned value.
+    try:
+        result["links"] = _run_link_duties(
+            session=session,
+            project=project,
+            l1_page=l1_page,
+            l1_path=l1_path,
+            applied=applied,
+            wiki_root=ren_paths.wiki_root(),
+        )
+    except Exception as exc:  # noqa: BLE001 - link bookkeeping must never break wrap close-out
+        result["links"]["warnings"].append(f"link duties failed: {exc}")
+
     return result
+
+
+def _run_link_duties(
+    *, session: str, project: str | None, l1_page: str, l1_path: Path,
+    applied: list[dict], wiki_root: Path,
+) -> dict:
+    """#54's link duties, run at the very end of `wrap_session`'s close-out —
+    the queue plumbing (building/queuing `Proposal`s) lives HERE, keeping
+    `skills.wrap.lib.links` a pure text-transform module tests can hammer
+    directly. Each duty is isolated in its own try/except so one duty's
+    failure never starves the others; the whole call is ALSO wrapped by its
+    caller, so a bug in THIS function's own control flow (not just inside a
+    duty) still degrades to a warning rather than failing wrap.
+
+    Returns `{"l1_touched": int, "log_entry": bool, "sessions_entry": bool,
+    "auto_pointers": list[str], "warnings": list[str]}` — never raises.
+    """
+    from skills.wrap.lib import links as _links
+
+    out = {
+        "l1_touched": 0, "log_entry": False, "sessions_entry": False,
+        "auto_pointers": [], "warnings": [],
+    }
+    today = date.today().isoformat()
+
+    def _queue_update(page: str, content: str, reason: str) -> None:
+        propose_and_apply(
+            Proposal(
+                op="UPDATE", page=page, content=content, reason=reason,
+                producer="wrap", writer="llm-auto", session=session,
+            )
+        )
+
+    # D1 — touched pages: every OTHER page this session's own queue writes
+    # landed on (excluding the L1 page itself and `_`-prefixed pseudo-pages
+    # such as the "_wrap-session" journal marker), appended to the L1 as a
+    # "## Touched pages" section. Read via `_session_queue_entries` — by this
+    # point in `wrap_session`, `applied`/overview/open-work have ALL already
+    # run, so this reflects the full session, not just the durable-items
+    # loop. Ordering fix vs. the naive approach: `applied` alone is
+    # incomplete (overview/open-work pages wouldn't show), and running this
+    # BEFORE the D2-D4 writes below means log.md/the map itself never show up
+    # in "pages this session's WORK touched" (they're wrap's own bookkeeping,
+    # not narrative content).
+    try:
+        touched_pages = sorted(
+            {
+                e["proposal"]["page"]
+                for e in _session_queue_entries(session)
+                if e["proposal"]["page"] != l1_page
+                and not e["proposal"]["page"].startswith("_")
+            }
+        )
+        if touched_pages:
+            section = _links.touched_section(wiki_root, touched_pages)
+            if section and l1_path.is_file():
+                current_l1 = l1_path.read_text(encoding="utf-8")
+                _queue_update(
+                    l1_page,
+                    current_l1.rstrip("\n") + "\n\n" + section,
+                    "touched-pages section (link duty D1)",
+                )
+                out["l1_touched"] = len(touched_pages)
+    except Exception as exc:  # noqa: BLE001
+        out["warnings"].append(f"touched-pages section failed: {exc}")
+
+    # D2 — log.md session entry
+    try:
+        log_path = wiki_root / "log.md"
+        if log_path.is_file():
+            entry = _links.log_entry_line(today, project, l1_page, session)
+            _queue_update(
+                "log.md",
+                _links.append_log_entry(log_path.read_text(encoding="utf-8"), entry),
+                "session log entry (link duty D2)",
+            )
+            out["log_entry"] = True
+        else:
+            out["warnings"].append("log.md missing — session entry skipped")
+    except Exception as exc:  # noqa: BLE001
+        out["warnings"].append(f"log entry failed: {exc}")
+
+    # D3 — map "## Sessions" + D4 — auto-pointers + spine (project scope only)
+    if project:
+        map_page = f"projects/{project}/map.md"
+        map_path = wiki_root / map_page
+        try:
+            if map_path.is_file():
+                new_text = _links.upsert_sessions_section(
+                    map_path.read_text(encoding="utf-8"), l1_page, session
+                )
+                if new_text is not None:
+                    _queue_update(map_page, new_text, "map Sessions entry (link duty D3)")
+                out["sessions_entry"] = True
+            else:
+                out["warnings"].append(f"{map_page} missing — Sessions entry skipped")
+        except Exception as exc:  # noqa: BLE001
+            out["warnings"].append(f"Sessions entry failed: {exc}")
+
+        _EXCLUDE_NAMES = {"map.md", "overview.md", "open-work.md"}
+        _EXCLUDE_PARTS = {"l1", "raw", "archive"}
+        for item in applied:
+            page = item.get("page", "")
+            parts = PurePosixPath(page).parts
+            if (
+                not page.startswith(f"projects/{project}/")
+                or PurePosixPath(page).name in _EXCLUDE_NAMES
+                or _EXCLUDE_PARTS & set(parts)
+                or item.get("op", "ADD") != "ADD"
+            ):
+                continue
+            try:
+                current = (wiki_root / map_page).read_text(encoding="utf-8")
+                new_text = _links.add_map_pointer(
+                    current, _links.page_title(wiki_root, page), page, item.get("write_id")
+                )
+                if new_text is not None:
+                    _queue_update(
+                        map_page, new_text, "auto-pointer for new durable page (link duty D4)"
+                    )
+                    out["auto_pointers"].append(page)
+            except Exception as exc:  # noqa: BLE001
+                out["warnings"].append(f"auto-pointer for {page} failed: {exc}")
+
+        # spine: index.md links this project's map
+        try:
+            index_path = wiki_root / "index.md"
+            if index_path.is_file():
+                new_text = _links.ensure_index_spine(
+                    index_path.read_text(encoding="utf-8"), project, map_page, None
+                )
+                if new_text is not None:
+                    _queue_update("index.md", new_text, "index spine pointer (link duty D4)")
+        except Exception as exc:  # noqa: BLE001
+            out["warnings"].append(f"index spine failed: {exc}")
+    else:
+        out["warnings"].append("no project in scope — map/pointer duties skipped")
+
+    return out
 
 
 def _run_wiki_health_sweep() -> dict:
@@ -1160,6 +1327,23 @@ def render_wrap_screen(wrap_result: dict, session: str) -> str:
     if partial:
         n = len(partial)
         lines.append(f"- {n} consolidation{'s' if n != 1 else ''} partial — see journal")
+    lines.append("")
+
+    # --- Link duties (#54) — one clean line, or the details when something
+    # was skipped/failed. `links` is always present on `wrap_result` per
+    # `wrap_session`'s contract, but `.get`/`or {}` keeps this screen honest
+    # for hand-built result dicts in tests too.
+    links = wrap_result.get("links") or {}
+    lines.append(
+        "links: L1 ✥{l1} · log {log} · sessions {sess} · pointers {ptrs}".format(
+            l1=links.get("l1_touched", 0),
+            log="✓" if links.get("log_entry") else "✗",
+            sess="✓" if links.get("sessions_entry") else "✗",
+            ptrs=len(links.get("auto_pointers") or []),
+        )
+    )
+    for warning in links.get("warnings") or []:
+        lines.append(f"⚠ {warning}")
     lines.append("")
 
     # --- Live pins (#25) — omitted entirely when none ---
