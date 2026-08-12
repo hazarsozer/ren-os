@@ -70,6 +70,10 @@ used to catch, by sweeping periodically instead of gating continuously.
    hub or the map; top-level `knowledge/*.md` pages are exempt.
    `projects/<slug>/raw/` is immutable source material and is SKIPPED by
    the contradiction/duplicate/drift scans — sources, not claims),
+   `orphan_pages` (#55: wiki-WIDE walk — every durable page with no
+   incoming link, markdown-link or arrow-pointer resolved, plus a
+   word-bounded filename-mention fallback; `raw/`, `archive/`, and the root
+   entry points `index.md`/`log.md`/`identity.md`/`LICENSES.md` are exempt),
    plus
    `retrieval_eval` (0.6.1: `{"hit_rate", "cases"}` from scoring the shipped
    ranker against the frozen retrieval-eval fixture, independent of this
@@ -111,6 +115,13 @@ used to catch, by sweeping periodically instead of gating continuously.
    - **Unlinked knowledge page**: link it from the right hub (or the map,
      if top-level in spirit) — or, if it's genuinely dead, propose
      archiving it to the friend. Never delete on your own judgment.
+   - **Orphan page** (#55): judgment-shaped, same doctrine as unlinked
+     knowledge pages — where a page belongs (a hub, the map, or a log
+     entry) is a placement call, not a mechanical fix. Call
+     `record_orphan_suggestions(orphans, session)` after showing the
+     friend the report, so each orphan lands in the suggestions store
+     (fingerprint-deduped, never re-nags once declined); never auto-link
+     an orphan into a hub or map on your own.
    - **Mass-deletion anomaly**: never auto-fix. This is a "look at this"
      signal, not a repair target — surface the window (count, pages, start
      time) and ask the friend if it was intentional.

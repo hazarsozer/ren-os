@@ -54,7 +54,7 @@ def test_sweep_returns_all_dict_keys(wiki):
         "numeric_drift_pairs", "contradiction_scan_note",
         "mass_deletions", "quarantined_pages", "judge_dismissed", "judge_supersedes",
         "retrieval_eval", "single_project_global_pages",
-        "hubless_knowledge_dirs", "unlinked_knowledge_pages",
+        "hubless_knowledge_dirs", "unlinked_knowledge_pages", "orphan_pages",
         "machine_released_total", "generated_at",
     }
     assert result["generated_at"]

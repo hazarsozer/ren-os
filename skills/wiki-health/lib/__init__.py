@@ -59,6 +59,7 @@ mechanics only — it never writes anything itself.
 
 from __future__ import annotations
 
+import os
 import re
 import yaml
 from datetime import datetime, timedelta, timezone
@@ -382,6 +383,118 @@ def _knowledge_tree_findings(wiki_root: Path) -> tuple[list[str], list[str]]:
     return hubless, unlinked
 
 
+_MD_LINK_RE = re.compile(r"\]\(([^)\s#]+\.md)(?:#[^)]*)?\)")
+
+
+def _orphan_pages(wiki_root: Path) -> list[str]:
+    """#55 — durable pages with no incoming links, wiki-wide (spec
+    2026-08-12-orphan-detection-design.md; the design's Candidates/Corpus
+    rules are the contract).
+
+    Candidates: every `*.md` under `wiki_root` except dot-dirs, `raw/` or
+    `archive/` path components, and the root files `index.md`, `log.md`,
+    `identity.md`, `LICENSES.md`.
+
+    A candidate is linked (saved from orphan status) if ANY other page:
+      (a) has a markdown link `](target)` that resolves to it — tried both
+          relative-to-the-linking-file and wiki-root-relative, `#fragment`
+          stripped; or
+      (b) has an arrow pointer (`parse_pointer_line`, form "arrow") whose
+          root-relative path resolves to it; or
+      (c) mentions its filename word-bounded in PROSE — same cheap
+          name-based fallback as `_knowledge_tree_findings`, except pages
+          named `index.md` are never mention-saved (too generic a name to
+          trust a bare mention).
+
+    Link/arrow markup is stripped out of the mention corpus before fallback
+    (c) runs, so a link's target string (which may share a filename with an
+    unrelated page elsewhere, e.g. two different `map.md`s) never doubles as
+    a prose mention of that OTHER page — mentions (c) is prose-only, exactly
+    like `_knowledge_tree_findings`' fallback. Self-links never count, but
+    exempt pages still contribute both links and mentions to the corpus."""
+    pages: dict[str, str] = {}  # rel posix path -> raw text, ALL pages incl. exempt
+    for md in sorted(wiki_root.rglob("*.md")):
+        rel = md.relative_to(wiki_root)
+        if any(part.startswith(".") for part in rel.parts):
+            continue
+        pages[rel.as_posix()] = md.read_text(encoding="utf-8", errors="replace")
+
+    linked: set[str] = set()
+    corpus: dict[str, str] = {}  # rel -> text with link/arrow markup stripped, for mention (c)
+    for src, text in pages.items():
+        src_dir = Path(src).parent
+        for target in _MD_LINK_RE.findall(text):
+            for cand in (
+                (src_dir / target),  # relative to linking file
+                Path(target),  # wiki-root-relative
+            ):
+                norm = Path(os.path.normpath(cand.as_posix())).as_posix()
+                if norm in pages and norm != src:
+                    linked.add(norm)
+
+        mention_lines: list[str] = []
+        for line in text.splitlines():
+            ptr = parse_pointer_line(line)
+            if ptr and ptr.form == "arrow" and ptr.path:
+                if ptr.path in pages and ptr.path != src:
+                    linked.add(ptr.path)
+                line = line.replace(ptr.path, "")
+            mention_lines.append(line)
+        corpus[src] = _MD_LINK_RE.sub("]()", "\n".join(mention_lines))
+
+    _EXEMPT_ROOT = {"index.md", "log.md", "identity.md", "LICENSES.md"}
+    orphans: list[str] = []
+    for rel in pages:
+        parts = Path(rel).parts
+        if rel in _EXEMPT_ROOT or "raw" in parts or "archive" in parts:
+            continue
+        if rel in linked:
+            continue
+        name = Path(rel).name
+        if name != "index.md":
+            name_re = re.compile(
+                rf"(?<![A-Za-z0-9._-]){re.escape(name)}(?![A-Za-z0-9_])"
+            )
+            # a page's own text must not mention-save it: exclude its own
+            # corpus entry by KEY, not by string removal — two pages with
+            # byte-identical text would make a text-based `str.replace`
+            # remove the wrong copy.
+            others = "\n".join(t for r2, t in corpus.items() if r2 != rel)
+            if name_re.search(others):
+                continue
+        orphans.append(rel)
+    return sorted(orphans)
+
+
+def record_orphan_suggestions(orphans: list[str], session: str) -> int:
+    """File (fingerprint-deduped) 'orphan page' suggestions into the
+    suggestions store — one per page in `orphans`, mirroring
+    `_record_release_suggestion`'s shape. Judgment-shaped (SKILL.md): never
+    auto-links, just surfaces the page for the friend to place. Returns the
+    count of suggestions actually newly recorded (a page already declined or
+    already pending never re-nags — `record`'s own dedup, not reimplemented
+    here)."""
+    from lib.suggestions import SuggestionSpec, record
+
+    recorded = 0
+    for rel in sorted(orphans):
+        why = "no incoming links wiki-wide — needs a home in a hub, map, or log"
+        entry = record(
+            SuggestionSpec(
+                producer="wiki-health",
+                title=f"Orphan page: {rel}",
+                rationale=why,
+                evidence={"page": rel, "session": session},
+                kind="structured_action",
+                payload={"action": "orphan_page", "page": rel},
+                fingerprint=f"orphan:{rel}",
+            )
+        )
+        if entry is not None:
+            recorded += 1
+    return recorded
+
+
 def _now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -578,7 +691,14 @@ def sweep(wiki_root: Path | None = None, llm_call: Callable[[str], str] | None =
     read via `lib.memory.queue.all_entries()` — the GLOBAL queue directory,
     not this call's `wiki_root` argument, so it counts the whole queue
     history regardless of which wiki root was swept. `0` when `wiki_root`
-    doesn't exist (the early-return branch below never reads the queue)."""
+    doesn't exist (the early-return branch below never reads the queue).
+
+    A 12th key, `orphan_pages` (#55, wiki-wide orphan detection): sorted
+    wiki-relative paths of every durable page nothing links to (see
+    `_orphan_pages`). Judgment-shaped, same as `hubless_knowledge_dirs` and
+    `unlinked_knowledge_pages` — the sweep only reports it; routing an
+    orphan to the suggestions store is `record_orphan_suggestions`, called
+    by the live session, never by `sweep` itself."""
     wiki_root = wiki_root or ren_paths.wiki_root()
     if not wiki_root.is_dir():
         return {
@@ -592,6 +712,7 @@ def sweep(wiki_root: Path | None = None, llm_call: Callable[[str], str] | None =
             "single_project_global_pages": [],
             "hubless_knowledge_dirs": [],
             "unlinked_knowledge_pages": [],
+            "orphan_pages": [],
             "judge_dismissed": [],
             "judge_supersedes": [],
             "retrieval_eval": _retrieval_eval(),
@@ -635,6 +756,7 @@ def sweep(wiki_root: Path | None = None, llm_call: Callable[[str], str] | None =
         "single_project_global_pages": _single_project_global_pages(wiki_root),
         "hubless_knowledge_dirs": hubless_knowledge_dirs,
         "unlinked_knowledge_pages": unlinked_knowledge_pages,
+        "orphan_pages": _orphan_pages(wiki_root),
         "judge_dismissed": judge_dismissed,
         "judge_supersedes": judge_supersedes,
         "retrieval_eval": _retrieval_eval(),
@@ -721,6 +843,14 @@ def render_report(findings: dict) -> str:
     unlinked = findings.get("unlinked_knowledge_pages") or []
     if unlinked:
         lines.extend(f"- {p}: linked from no hub and no map" for p in unlinked)
+    else:
+        lines.append("- none")
+    lines.append("")
+
+    lines.append("## Orphan pages (no incoming links)")
+    orphans = findings.get("orphan_pages") or []
+    if orphans:
+        lines.extend(f"- {p}" for p in orphans)
     else:
         lines.append("- none")
     lines.append("")
