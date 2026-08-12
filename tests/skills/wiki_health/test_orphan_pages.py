@@ -216,3 +216,23 @@ def test_record_orphan_suggestions_dedups(wiki, clean_path_env, tmp_path):
     n1 = wiki_health.record_orphan_suggestions(["projects/demo/l1/session-orphan.md"], session="s1")
     n2 = wiki_health.record_orphan_suggestions(["projects/demo/l1/session-orphan.md"], session="s2")
     assert n1 == 1 and n2 == 0
+
+
+def test_arrow_pointer_label_does_not_mention_save_unrelated_page(wiki):
+    # #55: an arrow pointer's LABEL (e.g. [victim.md]) must not double as a
+    # prose mention of an unrelated page sharing that filename. The entire
+    # arrow line must be stripped from the mention corpus, not just the path.
+    _w(wiki, "victim.md", "---\ntype: project-knowledge\n---\n# unrelated victim\n")
+    _w(
+        wiki,
+        "projects/demo/arrow-label.md",
+        "# Arrow with label\n- [victim.md] → projects/demo/knowledge/stack.md\n",
+    )
+    _w(wiki, "index.md", (wiki / "index.md").read_text(encoding="utf-8")
+       .replace("(unstamped)", "(unstamped)\n- [arrow-label](projects/demo/arrow-label.md) (w-al)"))
+
+    orphans = wiki_health._orphan_pages(wiki)
+    # arrow's actual target must not be flagged
+    assert "projects/demo/knowledge/stack.md" not in orphans
+    # arrow's label as a file must not save unrelated victim.md
+    assert "victim.md" in orphans

@@ -474,12 +474,13 @@ def _orphan_pages(wiki_root: Path) -> list[str]:
             if ptr and ptr.form == "arrow" and ptr.path:
                 if ptr.path in pages and ptr.path != src:
                     linked.add(ptr.path)
-                line = line.replace(ptr.path, "")
+                line = ""
             mention_lines.append(line)
         # Strip the WHOLE link construct — label included (M5) — not just the
         # target: a link's label text can itself be `.md`-shaped (e.g.
         # `[foo.md](bar.md)`) and must not double as a prose mention of an
-        # unrelated `foo.md` elsewhere.
+        # unrelated `foo.md` elsewhere. Arrow pointers are also stripped
+        # entirely (target AND label) for the same reason.
         corpus[src] = _MD_FULL_LINK_RE.sub(" ", "\n".join(mention_lines))
 
     _EXEMPT_ROOT = {"index.md", "log.md", "identity.md", "LICENSES.md"}
