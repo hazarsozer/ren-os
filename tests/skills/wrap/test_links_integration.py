@@ -90,15 +90,22 @@ def read(wiki_env, rel_path):
     return (wiki_env / rel_path).read_text(encoding="utf-8")
 
 
-def _wrap_with_durable_page(wiki_env, *, session):
+def _wrap_with_durable_page(wiki_env, *, session, fact_word):
     """Run a real end-of-session wrap: one durable item (forced "durable"
     by the fake llm_call, same stub `test_wrap_links_wiring.py` uses),
     scoped to project "demo". The durable item lands under the global
     `lessons/` tree (see module docstring), so it also feeds D1's
-    touched-pages section for this session's own L1."""
+    touched-pages section for this session's own L1.
+
+    `fact_word` (rather than embedding `session`, e.g. "s1"/"s2", straight
+    into the fact text) keeps the two calls' durable items from reading as a
+    same-fact numeric divergence to `lib.memory.semantics.detect` — "s1" vs
+    "s2" both mask to the same template with one digit changed, which is
+    exactly the deterministic `contradicts` signal, and a held (not applied)
+    second item would starve this test's D1 assertions of a page to link."""
     return wrap_session(
         f"---\n---\n\n# S\n\nSession {session} narrative.\n",
-        [f"We decided thing {session} is durable for the record."],
+        [f"We decided {fact_word} is durable for the record."],
         session=session,
         project="demo",
         llm_call=_DURABLE_LLM_CALL,
@@ -112,8 +119,8 @@ def test_two_wraps_weave_and_never_duplicate(wiki_env):
     """Spec §Testing: full wrap on a temp wiki -> L1 linked from log + map,
     index spine present; second wrap adds a second session line but
     duplicates neither the map's Sessions entries nor the index spine."""
-    r1 = _wrap_with_durable_page(wiki_env, session="s1")
-    r2 = _wrap_with_durable_page(wiki_env, session="s2")
+    r1 = _wrap_with_durable_page(wiki_env, session="s1", fact_word="alpha")
+    r2 = _wrap_with_durable_page(wiki_env, session="s2", fact_word="beta")
 
     assert r1["links"]["warnings"] == []
     assert r2["links"]["warnings"] == []

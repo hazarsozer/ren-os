@@ -121,7 +121,7 @@ def test_wrap_held_log_entry_does_not_report_success(wiki_env, monkeypatch):
 
     assert result["links"]["log_entry"] is False
     assert any(
-        "log.md" in w and "held" in w for w in result["links"]["warnings"]
+        "log.md" in w and "not applied" in w for w in result["links"]["warnings"]
     ), result["links"]["warnings"]
     assert (wiki_env / "log.md").read_text(encoding="utf-8") == _LOG_SKELETON
     assert result["l1_qid"]  # wrap still completed normally
@@ -285,3 +285,60 @@ def test_wrap_screen_renders_link_warnings(wiki_env):
     screen = render_wrap_screen(result, session=session)
     assert "⚠" in screen
     assert "log.md" in screen
+
+
+# --- spine write_id (finding 3) -----------------------------------------------
+
+
+def test_spine_pointer_carries_the_maps_write_id(wiki_env):
+    """The spine line index.md gets for a project's map must carry that
+    map's OWN current `ren_write_id` (stamped by the D3 Sessions-section
+    UPDATE that runs just before the spine write), not the `unstamped`
+    literal — spec: "write_id = the map's current ren_write_id if
+    readable"."""
+    import re
+
+    (wiki_env / "index.md").write_text(
+        "---\ntype: l2-map\n---\n# Master\n## Decision map\n", encoding="utf-8"
+    )
+    session = "s-spine-wid"
+    result = _run_minimal_wrap(wiki_env, project="demo", session=session)
+    assert result["links"]["warnings"] == []
+
+    index_text = (wiki_env / "index.md").read_text(encoding="utf-8")
+    spine_line = next(l for l in index_text.splitlines() if "projects/demo/map.md" in l)
+    assert "(unstamped)" not in spine_line
+    assert re.search(r"\(w-[^)]+\)$", spine_line), spine_line
+
+
+# --- touched pages excludes held/pending entries (finding 4) ----------------
+
+
+def test_touched_pages_excludes_a_held_durable_item(wiki_env):
+    """A held (not-applied) durable item — instruction-plane target, or a
+    detected conflict, `propose_and_apply` returning `(entry, None)` — must
+    never show up in the L1's "## Touched pages" section; linking it would
+    dangle, since the page was never actually written."""
+    real_propose_and_apply = _wraplib.propose_and_apply
+
+    def _fake(proposal):
+        if proposal.op == "ADD" and proposal.page.startswith("lessons/"):
+            entry = _queue.propose(proposal)
+            return entry, None  # held, never applied
+        return real_propose_and_apply(proposal)
+
+    session = "s-touched-held"
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(_wraplib, "propose_and_apply", _fake)
+        result = wrap_session(
+            "---\n---\n\n# S\n\nDid some work.\n",
+            ["We decided to standardize on Postgres for order-history joins."],
+            session=session,
+            project="demo",
+            llm_call=lambda prompt: '{"verdict": "durable", "reason": "stub"}',
+        )
+
+    assert result["held"], "the durable item must actually be held for this test to mean anything"
+    held_page = result["held"][0]["page"]
+    l1_text = (wiki_env / "projects/demo/l1" / f"session-{session}.md").read_text(encoding="utf-8")
+    assert held_page not in l1_text

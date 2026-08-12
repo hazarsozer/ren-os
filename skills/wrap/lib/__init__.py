@@ -48,7 +48,7 @@ from lib.memory import journal, queue
 from lib.memory import quarantine
 from lib.memory.judge import JUDGE_MIN_CONFIDENCE, JUDGE_PAIR_CAP, judge_pairs
 from lib.memory.lifecycle import consolidate_duplicates, run_decay
-from lib.memory.provenance import new_provenance
+from lib.memory.provenance import new_provenance, read_frontmatter_provenance
 from lib.memory.queue import Proposal, propose_and_apply
 from lib.memory.scrub import SecretsFound
 from lib.memory.semantics import shortlist_pairs
@@ -988,7 +988,11 @@ def _run_link_duties(
             {
                 e["proposal"]["page"]
                 for e in _session_queue_entries(session)
-                if e["proposal"]["page"] != l1_page
+                # Only pages this session actually WROTE — a held/pending
+                # entry (instruction-plane target, or a detected conflict)
+                # never landed, so linking it from the L1 would dangle.
+                if e["status"] == "applied"
+                and e["proposal"]["page"] != l1_page
                 and not e["proposal"]["page"].startswith("_")
             }
         )
@@ -1027,7 +1031,7 @@ def _run_link_duties(
             if write_applied:
                 out["log_entry"] = True
             else:
-                out["warnings"].append("log.md entry held pending (conflict) — not applied")
+                out["warnings"].append("log.md entry not applied (held or already current)")
         else:
             out["warnings"].append("log.md missing — session entry skipped")
     except Exception as exc:  # noqa: BLE001
@@ -1048,7 +1052,7 @@ def _run_link_duties(
                     out["sessions_entry"] = True
                 else:
                     out["warnings"].append(
-                        f"{map_page} Sessions entry held pending (conflict) — not applied"
+                        f"{map_page} Sessions entry not applied (held or already current)"
                     )
             else:
                 out["warnings"].append(f"{map_page} missing — Sessions entry skipped")
@@ -1079,23 +1083,36 @@ def _run_link_duties(
                         out["auto_pointers"].append(page)
                     else:
                         out["warnings"].append(
-                            f"auto-pointer for {page} held pending (conflict) — not applied"
+                            f"auto-pointer for {page} not applied (held or already current)"
                         )
             except Exception as exc:  # noqa: BLE001
                 out["warnings"].append(f"auto-pointer for {page} failed: {exc}")
 
-        # spine: index.md links this project's map
+        # spine: index.md links this project's map. write_id = the map's
+        # OWN current `ren_write_id` frontmatter stamp when readable (per
+        # spec: "the map's current ren_write_id if readable"), read AFTER
+        # the D3/D4 writes above so it reflects the map's latest apply —
+        # `render_pointer_line`/`ensure_index_spine` fall back to the
+        # "(unstamped)" literal on `None`, e.g. a brand-new/unreadable map.
         try:
             index_path = wiki_root / "index.md"
             if index_path.is_file():
+                map_write_id = None
+                try:
+                    map_prov = read_frontmatter_provenance(
+                        (wiki_root / map_page).read_text(encoding="utf-8")
+                    )
+                    map_write_id = map_prov.get("write_id") if map_prov else None
+                except OSError:
+                    map_write_id = None
                 new_text = _links.ensure_index_spine(
-                    index_path.read_text(encoding="utf-8"), project, map_page, None
+                    index_path.read_text(encoding="utf-8"), project, map_page, map_write_id
                 )
                 if new_text is not None and not _queue_update(
                     "index.md", new_text, "index spine pointer (link duty D4)"
                 ):
                     out["warnings"].append(
-                        "index.md spine pointer held pending (conflict) — not applied"
+                        "index.md spine pointer not applied (held or already current)"
                     )
         except Exception as exc:  # noqa: BLE001
             out["warnings"].append(f"index spine failed: {exc}")
