@@ -154,9 +154,12 @@ def test_pointer_grammar_single_source():
     from lib import pointer
     wh = importlib.import_module("skills.wiki-health.lib")
     dr = importlib.import_module("skills.doctor.lib")
+    rm = importlib.import_module("skills.remember.lib")
     assert not hasattr(wh, "_POINTER_RE")
     assert wh.parse_pointer_line is pointer.parse_pointer_line
     assert dr.parse_pointer_line is pointer.parse_pointer_line
+    assert not hasattr(rm, "_POINTER_RE")
+    assert rm.parse_pointer_line is pointer.parse_pointer_line
 
 
 def test_sweep_finds_contradiction_pair(wiki):

@@ -141,3 +141,35 @@ def test_remember_no_slug_with_index_present_renders_master_map(wiki):
 
     assert "Here's what I remember about this wiki:" in output
     assert "0 facts" in output
+
+
+# --- _humanize_pointer tests (Task 3: rewire to use lib.pointer.parse_pointer_line)
+
+
+def test_humanize_link_form():
+    lib = importlib.import_module("skills.remember.lib")
+    out = lib._humanize_pointer("[Stack decisions](projects/flux/knowledge/stack.md) (w-01ABC)")
+    assert out == "Stack decisions — see projects/flux/knowledge/stack.md"
+
+
+def test_humanize_link_form_with_anchor():
+    lib = importlib.import_module("skills.remember.lib")
+    out = lib._humanize_pointer("[Schema](projects/x/schema.md#conventions) (unstamped)")
+    assert out == "Schema — see projects/x/schema.md#conventions"
+
+
+def test_humanize_arrow_form_still_works():
+    lib = importlib.import_module("skills.remember.lib")
+    out = lib._humanize_pointer("[Architecture] → projects/ren-os/knowledge/architecture/index.md (w-01Y)")
+    assert out == "Architecture — see projects/ren-os/knowledge/architecture/index.md"
+
+
+def test_humanize_repo_ref():
+    lib = importlib.import_module("skills.remember.lib")
+    out = lib._humanize_pointer("[Specs] → repo:idea-generator:analyses (w-01Z)")
+    assert out == "Specs — see repo:idea-generator:analyses"
+
+
+def test_humanize_unparseable_falls_back_to_raw():
+    lib = importlib.import_module("skills.remember.lib")
+    assert lib._humanize_pointer("just some text (note)") == "just some text"

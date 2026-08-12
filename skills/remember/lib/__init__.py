@@ -27,6 +27,7 @@ from pathlib import Path
 
 from lib import ren_paths
 from lib.memory.quarantine import is_quarantined
+from lib.pointer import parse_pointer_line
 
 _KNOWLEDGE_HEADER = "## Knowledge"
 _DECISION_HEADER = "## Decision map"
@@ -34,7 +35,6 @@ _LOG_HEADER = "## Log"
 _KNOWN_HEADERS = (_KNOWLEDGE_HEADER, _DECISION_HEADER, _LOG_HEADER)
 
 _FRONTMATTER_RE = re.compile(r"\A---\n(.*?)\n---\n?", re.DOTALL)
-_POINTER_RE = re.compile(r"^\[(?P<topic>[^\]]*)\]\s*→\s*(?P<path>.+)$")
 _TRAILING_PAREN_RE = re.compile(r"\s*\([^)]*\)\s*$")
 
 
@@ -67,13 +67,13 @@ def _bullets(lines: list[str]) -> list[str]:
 
 
 def _humanize_pointer(bullet: str) -> str:
-    """`"[topic] → path#anchor (write_id)"` -> `"topic — see path#anchor"` —
-    drops the write_id parenthetical entirely; that's provenance plumbing."""
-    without_paren = _TRAILING_PAREN_RE.sub("", bullet).strip()
-    match = _POINTER_RE.match(without_paren)
-    if match:
-        return f"{match.group('topic')} — see {match.group('path')}"
-    return without_paren
+    """`"[topic](path#anchor) (write_id)"` (or the legacy arrow form) ->
+    `"topic — see path#anchor"` — drops the write_id parenthetical entirely;
+    that's provenance plumbing. `bullet` arrives without its leading `- `."""
+    ptr = parse_pointer_line(f"- {bullet}")
+    if ptr is not None:
+        return f"{ptr.topic} — see {ptr.target}"
+    return _TRAILING_PAREN_RE.sub("", bullet).strip()
 
 
 def _resolve_map_path(project_slug: str | None) -> Path:
