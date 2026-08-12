@@ -91,6 +91,48 @@ def test_sweep_degraded_path_has_key(tmp_path):
     assert findings["orphan_pages"] == []
 
 
+def test_quarantined_page_not_orphan_candidate_until_released(wiki):
+    from lib.memory import quarantine
+
+    rel = "projects/demo/knowledge/quarantined.md"
+    _w(wiki, rel, quarantine.mark("---\ntype: project-knowledge\n---\n# Q\nunreviewed\n"))
+
+    orphans = wiki_health._orphan_pages(wiki)
+    assert rel not in orphans  # still quarantined — not a placement candidate
+
+    _w(wiki, rel, quarantine.release((wiki / rel).read_text(encoding="utf-8")))
+    orphans = wiki_health._orphan_pages(wiki)
+    assert rel in orphans  # banner removed — flags like any other orphan
+
+
+def test_archive_exemption_is_depth_exact(wiki):
+    # root-level archive/: exempt at any depth.
+    _w(wiki, "archive/deep/sub/old.md", "# Old\n")
+    # projects/<slug>/archive/: exempt.
+    _w(wiki, "projects/demo/archive/old-note.md", "# Old note\n")
+    # archive as a dir under knowledge/ (not root, not projects/<slug>/archive/
+    # directly) must NOT be exempt — the spec's exact-depth rule, not a bare
+    # "archive" in parts check.
+    _w(wiki, "projects/demo/knowledge/archive/deep-archive.md", "# Deep archive\n")
+
+    orphans = wiki_health._orphan_pages(wiki)
+    assert "archive/deep/sub/old.md" not in orphans
+    assert "projects/demo/archive/old-note.md" not in orphans
+    assert "projects/demo/knowledge/archive/deep-archive.md" in orphans
+
+
+def test_raw_exemption_is_depth_exact(wiki):
+    # projects/<slug>/raw/ (canonical `in_project_raw` shape): exempt.
+    _w(wiki, "projects/demo/raw/deep/dump2.md", "# Raw2\n")
+    # a `raw/` dir nested deeper (not directly under projects/<slug>/) must
+    # NOT be exempt — the old `"raw" in parts` check silently exempted this.
+    _w(wiki, "projects/demo/knowledge/raw/notes.md", "# Notes\n")
+
+    orphans = wiki_health._orphan_pages(wiki)
+    assert "projects/demo/raw/deep/dump2.md" not in orphans
+    assert "projects/demo/knowledge/raw/notes.md" in orphans
+
+
 def test_record_orphan_suggestions_dedups(wiki, monkeypatch, tmp_path):
     # point the suggestions store at a temp dir per the store's own test pattern
     # (READ tests for lib.suggestions and reuse its fixture/monkeypatch approach)

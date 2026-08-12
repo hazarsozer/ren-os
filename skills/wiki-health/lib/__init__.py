@@ -386,14 +386,28 @@ def _knowledge_tree_findings(wiki_root: Path) -> tuple[list[str], list[str]]:
 _MD_LINK_RE = re.compile(r"\]\(([^)\s#]+\.md)(?:#[^)]*)?\)")
 
 
+def _in_archive(parts: tuple[str, ...]) -> bool:
+    """Spec-exact archive exemption: `archive/` at the wiki root, or
+    `projects/<slug>/archive/` — NOT an `archive` dir at arbitrary depth
+    (that would silently exempt e.g. `projects/x/knowledge/archive/n.md`).
+    Mirrors `ren_paths.in_project_raw`'s shape for the project-scoped case."""
+    if parts and parts[0] == "archive":
+        return True
+    return len(parts) >= 3 and parts[0] == "projects" and parts[2] == "archive"
+
+
 def _orphan_pages(wiki_root: Path) -> list[str]:
     """#55 — durable pages with no incoming links, wiki-wide (spec
     2026-08-12-orphan-detection-design.md; the design's Candidates/Corpus
     rules are the contract).
 
-    Candidates: every `*.md` under `wiki_root` except dot-dirs, `raw/` or
-    `archive/` path components, and the root files `index.md`, `log.md`,
-    `identity.md`, `LICENSES.md`.
+    Candidates: every `*.md` under `wiki_root` except dot-dirs,
+    `projects/<slug>/raw/` (`ren_paths.in_project_raw` — canonical, do not
+    re-implement), `archive/`/`projects/<slug>/archive/` (`_in_archive`,
+    exact depth per the spec), quarantined pages (still unreviewed — not a
+    candidate for placement, but they still contribute links/mentions to the
+    corpus below, same as any other exempt page), and the root files
+    `index.md`, `log.md`, `identity.md`, `LICENSES.md`.
 
     A candidate is linked (saved from orphan status) if ANY other page:
       (a) has a markdown link `](target)` that resolves to it — tried both
@@ -412,6 +426,10 @@ def _orphan_pages(wiki_root: Path) -> list[str]:
     a prose mention of that OTHER page — mentions (c) is prose-only, exactly
     like `_knowledge_tree_findings`' fallback. Self-links never count, but
     exempt pages still contribute both links and mentions to the corpus."""
+    # Deliberately NOT `walk_wiki_pages` here: this needs every page, incl.
+    # `raw/`, in the corpus (an exempt/quarantined page can still legitimately
+    # link or mention a candidate — see the docstring above), and skips ALL
+    # dot-dirs rather than only `.ren/` — a stricter walk than the lint's.
     pages: dict[str, str] = {}  # rel posix path -> raw text, ALL pages incl. exempt
     for md in sorted(wiki_root.rglob("*.md")):
         rel = md.relative_to(wiki_root)
@@ -446,7 +464,12 @@ def _orphan_pages(wiki_root: Path) -> list[str]:
     orphans: list[str] = []
     for rel in pages:
         parts = Path(rel).parts
-        if rel in _EXEMPT_ROOT or "raw" in parts or "archive" in parts:
+        if rel in _EXEMPT_ROOT or ren_paths.in_project_raw(parts) or _in_archive(parts):
+            continue
+        if quarantine.is_quarantined(pages[rel]):
+            # unreviewed content isn't a placement candidate — the release
+            # flow (quarantined_pages/suggestions) already surfaces it; it
+            # still contributed links/mentions to the corpus above.
             continue
         if rel in linked:
             continue

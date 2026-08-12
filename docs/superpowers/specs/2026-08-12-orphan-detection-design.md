@@ -26,7 +26,15 @@ graph tiers #53/#54 connect need an auditor that sees the whole wiki.
 
 Every `*.md` under `wiki_root`, EXCLUDING:
 - `.ren/` (machine state) and any dot-directory
-- `projects/*/raw/` (immutable sources), `archive/` and `projects/*/archive/`
+- `projects/<slug>/raw/` (immutable sources — `ren_paths.in_project_raw`,
+  canonical, never re-implemented locally) and `archive/` /
+  `projects/<slug>/archive/` (exact depth: `archive/` at the wiki root or
+  directly under a project — NOT an `archive`/`raw` dir at arbitrary depth,
+  e.g. `projects/x/knowledge/raw/notes.md` is a candidate, not exempt)
+- quarantined pages (`lib.memory.quarantine.is_quarantined`) — unreviewed
+  content is not a placement candidate; it surfaces via the Quarantined
+  section and the release flow instead. A quarantined page still
+  contributes links/mentions to the corpus, like any other exempt page.
 - designed entry points: `index.md`, `log.md`, `identity.md` (wiki roots)
 - `LICENSES.md` (repo hygiene page, not knowledge)
 
