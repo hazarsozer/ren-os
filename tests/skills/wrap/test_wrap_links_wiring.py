@@ -16,8 +16,10 @@ from __future__ import annotations
 
 import pytest
 
+from lib.memory import queue as _queue
 from lib.ren_paths import wiki_root
 from skills.wrap.lib import _run_link_duties, render_wrap_screen, wrap_session
+import skills.wrap.lib as _wraplib
 
 _MAP_SKELETON = "# demo — knowledge map\n\n## Knowledge\n- nothing yet\n"
 _LOG_SKELETON = "# Wiki Log\n\n## [2026-08-01] init | x\n"
@@ -96,6 +98,33 @@ def test_wrap_links_l1_into_log_and_map(wiki_env):
     assert result["links"]["log_entry"] is True
     assert result["links"]["sessions_entry"] is True
     assert result["links"]["warnings"] == []
+
+
+def test_wrap_held_log_entry_does_not_report_success(wiki_env, monkeypatch):
+    """A held write (instruction-plane target, or a `contradicts` conflict —
+    `propose_and_apply` returns `(entry, None)` in either case) must NOT be
+    reported as a success: the flag stays False, a warning names it, and the
+    page on disk is left untouched. Simulated here by making the log.md
+    UPDATE hold: `queue.propose` alone (never `apply_auto`) leaves the entry
+    pending and the page unwritten, exactly what a real hold looks like."""
+    real_propose_and_apply = _wraplib.propose_and_apply
+
+    def _fake(proposal):
+        if proposal.page == "log.md":
+            entry = _queue.propose(proposal)
+            return entry, None
+        return real_propose_and_apply(proposal)
+
+    monkeypatch.setattr(_wraplib, "propose_and_apply", _fake)
+
+    result = _run_minimal_wrap(wiki_env, project="demo")
+
+    assert result["links"]["log_entry"] is False
+    assert any(
+        "log.md" in w and "held" in w for w in result["links"]["warnings"]
+    ), result["links"]["warnings"]
+    assert (wiki_env / "log.md").read_text(encoding="utf-8") == _LOG_SKELETON
+    assert result["l1_qid"]  # wrap still completed normally
 
 
 def test_wrap_missing_log_md_warns_not_raises(wiki_env):

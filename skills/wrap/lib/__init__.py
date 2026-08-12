@@ -941,13 +941,22 @@ def _run_link_duties(
     }
     today = date.today().isoformat()
 
-    def _queue_update(page: str, content: str, reason: str) -> None:
-        propose_and_apply(
+    def _queue_update(page: str, content: str, reason: str) -> bool:
+        """Queue an UPDATE and report whether it actually APPLIED.
+
+        `propose_and_apply` returns `(entry, None)` when it HOLDS instead of
+        applying (instruction-plane target, or a detected `contradicts`
+        conflict — see its docstring) — same shape `wrap_session`'s own
+        `applied`/`held` split already reads (`prov is not None` there means
+        applied). Mirrored here so a held link-duty write can never be
+        reported as a success."""
+        _, prov = propose_and_apply(
             Proposal(
                 op="UPDATE", page=page, content=content, reason=reason,
                 producer="wrap", writer="llm-auto", session=session,
             )
         )
+        return prov is not None
 
     # D1 — touched pages: every OTHER page this session's own queue writes
     # landed on (excluding the L1 page itself and `_`-prefixed pseudo-pages
@@ -973,12 +982,17 @@ def _run_link_duties(
             section = _links.touched_section(wiki_root, touched_pages)
             if section and l1_path.is_file():
                 current_l1 = l1_path.read_text(encoding="utf-8")
-                _queue_update(
+                write_applied = _queue_update(
                     l1_page,
                     current_l1.rstrip("\n") + "\n\n" + section,
                     "touched-pages section (link duty D1)",
                 )
-                out["l1_touched"] = len(touched_pages)
+                if write_applied:
+                    out["l1_touched"] = len(touched_pages)
+                else:
+                    out["warnings"].append(
+                        f"touched-pages section for {l1_page} held pending (conflict) — not applied"
+                    )
     except Exception as exc:  # noqa: BLE001
         out["warnings"].append(f"touched-pages section failed: {exc}")
 
@@ -987,12 +1001,15 @@ def _run_link_duties(
         log_path = wiki_root / "log.md"
         if log_path.is_file():
             entry = _links.log_entry_line(today, project, l1_page, session)
-            _queue_update(
+            write_applied = _queue_update(
                 "log.md",
                 _links.append_log_entry(log_path.read_text(encoding="utf-8"), entry),
                 "session log entry (link duty D2)",
             )
-            out["log_entry"] = True
+            if write_applied:
+                out["log_entry"] = True
+            else:
+                out["warnings"].append("log.md entry held pending (conflict) — not applied")
         else:
             out["warnings"].append("log.md missing — session entry skipped")
     except Exception as exc:  # noqa: BLE001
@@ -1007,9 +1024,14 @@ def _run_link_duties(
                 new_text = _links.upsert_sessions_section(
                     map_path.read_text(encoding="utf-8"), l1_page, session
                 )
-                if new_text is not None:
-                    _queue_update(map_page, new_text, "map Sessions entry (link duty D3)")
-                out["sessions_entry"] = True
+                if new_text is None:
+                    out["sessions_entry"] = True  # already recorded — nothing to write
+                elif _queue_update(map_page, new_text, "map Sessions entry (link duty D3)"):
+                    out["sessions_entry"] = True
+                else:
+                    out["warnings"].append(
+                        f"{map_page} Sessions entry held pending (conflict) — not applied"
+                    )
             else:
                 out["warnings"].append(f"{map_page} missing — Sessions entry skipped")
         except Exception as exc:  # noqa: BLE001
@@ -1033,10 +1055,14 @@ def _run_link_duties(
                     current, _links.page_title(wiki_root, page), page, item.get("write_id")
                 )
                 if new_text is not None:
-                    _queue_update(
+                    if _queue_update(
                         map_page, new_text, "auto-pointer for new durable page (link duty D4)"
-                    )
-                    out["auto_pointers"].append(page)
+                    ):
+                        out["auto_pointers"].append(page)
+                    else:
+                        out["warnings"].append(
+                            f"auto-pointer for {page} held pending (conflict) — not applied"
+                        )
             except Exception as exc:  # noqa: BLE001
                 out["warnings"].append(f"auto-pointer for {page} failed: {exc}")
 
@@ -1047,8 +1073,12 @@ def _run_link_duties(
                 new_text = _links.ensure_index_spine(
                     index_path.read_text(encoding="utf-8"), project, map_page, None
                 )
-                if new_text is not None:
-                    _queue_update("index.md", new_text, "index spine pointer (link duty D4)")
+                if new_text is not None and not _queue_update(
+                    "index.md", new_text, "index spine pointer (link duty D4)"
+                ):
+                    out["warnings"].append(
+                        "index.md spine pointer held pending (conflict) — not applied"
+                    )
         except Exception as exc:  # noqa: BLE001
             out["warnings"].append(f"index spine failed: {exc}")
     else:
