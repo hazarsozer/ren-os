@@ -941,7 +941,7 @@ def _run_link_duties(
     }
     today = date.today().isoformat()
 
-    def _queue_update(page: str, content: str, reason: str) -> bool:
+    def _queue_update(page: str, content: str, reason: str, *, writer: str = "routine") -> bool:
         """Queue an UPDATE and report whether it actually APPLIED.
 
         `propose_and_apply` returns `(entry, None)` when it HOLDS instead of
@@ -949,11 +949,25 @@ def _run_link_duties(
         conflict — see its docstring) — same shape `wrap_session`'s own
         `applied`/`held` split already reads (`prov is not None` there means
         applied). Mirrored here so a held link-duty write can never be
-        reported as a success."""
+        reported as a success.
+
+        `writer="routine"` by default (D2/D3/D4): these are mechanical,
+        wrap's-own-bookkeeping edits to pages a human may already own
+        (log.md, a project map, index.md) — `writer="llm-auto"` would
+        banner-mark the whole page `> [!ren-quarantine]` at the queue door
+        (`lib.memory.queue._quarantined_content`), quarantining pages that
+        were never LLM-authored data in the first place (and re-quarantining
+        a map a human already released). Both tiers resolve to the "auto"
+        risk tier on these non-global pages either way
+        (`lib.governance.tiers.tier_of`), so switching away from
+        `llm-auto` costs nothing on the apply path — same precedent as
+        `skills/wiki-health/lib/__init__.py`'s `release_page_auto`. D1 is
+        the one call site that passes `writer="llm-auto"` explicitly: it
+        edits the L1 page itself, which is quarantined by design."""
         _, prov = propose_and_apply(
             Proposal(
                 op="UPDATE", page=page, content=content, reason=reason,
-                producer="wrap", writer="llm-auto", session=session,
+                producer="wrap", writer=writer, session=session,
             )
         )
         return prov is not None
@@ -986,12 +1000,16 @@ def _run_link_duties(
                     l1_page,
                     current_l1.rstrip("\n") + "\n\n" + section,
                     "touched-pages section (link duty D1)",
+                    # L1 pages are quarantined by design (unreviewed narrative
+                    # data) — unlike D2/D3/D4's default, this UPDATE keeps
+                    # `writer="llm-auto"` so the banner semantics don't change.
+                    writer="llm-auto",
                 )
                 if write_applied:
                     out["l1_touched"] = len(touched_pages)
                 else:
                     out["warnings"].append(
-                        f"touched-pages section for {l1_page} held pending (conflict) — not applied"
+                        f"touched-pages section for {l1_page} not applied (held or already current)"
                     )
     except Exception as exc:  # noqa: BLE001
         out["warnings"].append(f"touched-pages section failed: {exc}")
