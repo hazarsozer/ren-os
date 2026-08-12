@@ -32,10 +32,12 @@ from lib.pointer import parse_pointer_line
 _KNOWLEDGE_HEADER = "## Knowledge"
 _DECISION_HEADER = "## Decision map"
 _LOG_HEADER = "## Log"
-_KNOWN_HEADERS = (_KNOWLEDGE_HEADER, _DECISION_HEADER, _LOG_HEADER)
+_SESSIONS_HEADER = "## Sessions"
+_KNOWN_HEADERS = (_KNOWLEDGE_HEADER, _DECISION_HEADER, _SESSIONS_HEADER, _LOG_HEADER)
 
 _FRONTMATTER_RE = re.compile(r"\A---\n(.*?)\n---\n?", re.DOTALL)
 _TRAILING_PAREN_RE = re.compile(r"\s*\([^)]*\)\s*$")
+_SESSION_LINK_RE = re.compile(r"^\s*\[([^\]]+)\]\s*\([^)]+\)\s*$")
 
 
 def _strip_frontmatter(text: str) -> str:
@@ -74,6 +76,14 @@ def _humanize_pointer(bullet: str) -> str:
     if ptr is not None:
         return f"{ptr.topic} — see {ptr.target}"
     return _TRAILING_PAREN_RE.sub("", bullet).strip()
+
+
+def _extract_session_link_text(line: str) -> str | None:
+    """Extract the link text (e.g., 'session-abc') from a markdown link line.
+    Line format: `- [session-abc](path/to/l1.md)`.
+    Returns the link text, or None if line doesn't match the pattern."""
+    match = _SESSION_LINK_RE.match(line)
+    return match.group(1) if match else None
 
 
 def _resolve_map_path(project_slug: str | None) -> Path:
@@ -128,6 +138,7 @@ def remember(project_slug: str | None = None) -> str:
     knowledge = _bullets(sections[_KNOWLEDGE_HEADER])
     pointer_bullets = _bullets(sections[_DECISION_HEADER])
     pointers = [_humanize_pointer(b) for b in pointer_bullets]
+    session_lines = _bullets(sections[_SESSIONS_HEADER])
     log_bullets = _bullets(sections[_LOG_HEADER])[-3:]
 
     quarantined = is_quarantined(text)
@@ -150,6 +161,19 @@ def remember(project_slug: str | None = None) -> str:
         lines.append("Decision map:")
         lines.extend(f"- {pointer}" for pointer in pointers)
         lines.append("")
+
+    # Render Sessions section: extract latest session link text from the last entry
+    if session_lines:
+        latest_link_text = None
+        for line in reversed(session_lines):
+            latest_link_text = _extract_session_link_text(line)
+            if latest_link_text:
+                break
+        if latest_link_text:
+            session_count = len(session_lines)
+            session_word = "session" if session_count == 1 else "sessions"
+            lines.append(f"{session_count} recent {session_word} — latest: {latest_link_text}")
+            lines.append("")
 
     if log_bullets:
         lines.append("Recent log:")

@@ -173,3 +173,60 @@ def test_humanize_repo_ref():
 def test_humanize_unparseable_falls_back_to_raw():
     lib = importlib.import_module("skills.remember.lib")
     assert lib._humanize_pointer("just some text (note)") == "just some text"
+
+
+# --- Sessions section rendering (Task 3) ------------------------------------
+
+
+def test_remember_renders_sessions_line(wiki):
+    """When a map has ## Sessions section with entries, render a summary line."""
+    _ingest_and_apply(
+        "demo",
+        knowledge=["Fact one"],
+        pointers=[],
+    )
+
+    # Manually add Sessions section to the map
+    map_path = wiki / "projects" / "demo" / "map.md"
+    text = map_path.read_text(encoding="utf-8")
+    # Insert Sessions section before Log if it exists
+    lines = text.split("\n")
+    insert_idx = None
+    for i, line in enumerate(lines):
+        if line.strip() == "## Log":
+            insert_idx = i
+            break
+    if insert_idx is None:
+        # No Log section, append before any other headers or at end
+        insert_idx = len(lines)
+
+    sessions_lines = [
+        "## Sessions",
+        "- [session-2024-01-02](projects/demo/l1/session-2024-01-02.md)",
+        "- [session-abc](projects/demo/l1/session-abc.md)",
+    ]
+    for sess_line in reversed(sessions_lines):
+        lines.insert(insert_idx, sess_line)
+    map_path.write_text("\n".join(lines), encoding="utf-8")
+
+    output = remember("demo")
+
+    assert "2 recent session" in output
+    assert "session-abc" in output
+
+
+def test_remember_without_sessions_section_unchanged(wiki):
+    """When a map has no ## Sessions section, output is unchanged."""
+    _ingest_and_apply(
+        "demo",
+        knowledge=["Fact one"],
+        pointers=[],
+    )
+
+    output = remember("demo")
+
+    # Should still have the normal output
+    assert "Here's what I remember about demo:" in output
+    assert "Fact one" in output
+    # Should NOT have sessions line
+    assert "recent session" not in output
