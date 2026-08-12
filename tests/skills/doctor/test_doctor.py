@@ -170,6 +170,22 @@ def test_check_schema_versions_warns_when_l2_map_behind(wiki):
     assert "l2-map-1-to-2" in result.message
 
 
+def test_check_schema_versions_warns_when_l2_map_unstamped(wiki):
+    """Issue #20: unstamped l2-map pages (predating schema_version emission)
+    must be flagged as behind, not hidden from migration discovery. Absent
+    schema_version is treated as v1 for registered types."""
+    (wiki / "projects").mkdir(parents=True)
+    (wiki / "projects" / "legacy" / "map.md").parent.mkdir(parents=True)
+    (wiki / "projects" / "legacy" / "map.md").write_text(
+        '---\ntype: l2-map\nproject: legacy\n---\n# Legacy — knowledge map\n',
+        encoding="utf-8"
+    )
+    result = doctor.check_schema_versions(wiki)
+    assert result.status == "warn"
+    assert "l2-map-1-to-2" in result.message
+    assert "legacy/map.md" in result.message
+
+
 # --------------------------------------------------------------- check_budget_lint
 
 

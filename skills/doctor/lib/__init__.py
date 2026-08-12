@@ -149,13 +149,20 @@ def check_schema_versions(wiki_root: Path | None = None) -> CheckResult:
             continue
         text = md_path.read_text(encoding="utf-8", errors="replace")
         page_type = _frontmatter_field(text, "type")
+        # Skip unregistered types (no migration path exists).
+        if not page_type or page_type not in registry.get("page_types", {}):
+            continue
         version_str = _frontmatter_field(text, "schema_version")
-        if not page_type or page_type not in registry.get("page_types", {}) or not version_str:
-            continue
-        try:
-            version = int(version_str)
-        except ValueError:
-            continue
+        # Unstamped pages predate schema-versioning (issue #20) — treat absent
+        # version as 1, not as "skip me". This ensures they're visible to
+        # migration discovery, not hidden from the upgrade path.
+        if not version_str:
+            version = 1
+        else:
+            try:
+                version = int(version_str)
+            except ValueError:
+                continue
         chain = wiki_migration.migration_chain(page_type, version, registry)
         if chain:
             rel = md_path.relative_to(wiki_root)
