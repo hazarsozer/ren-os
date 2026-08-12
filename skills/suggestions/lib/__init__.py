@@ -21,6 +21,9 @@ this module is what turns an "accepted" decision into a real write, by
                        `importlib` — hyphenated skill dir).
   review_lint_finding → applies nothing; hands the finding off to the
                        session, same convention as review_contradiction.
+  orphan_page       → applies nothing; hands the orphan page off to the
+                       session to place, same convention as
+                       review_lint_finding.
 
 Failure contract (0.4.5): "accepted" means the change actually landed. The
 apply runs FIRST; only a successful apply (including intentional no-op
@@ -186,6 +189,16 @@ def _apply(sid: str, kind: str, payload: dict, session: str) -> dict:
                 "rule": payload.get("rule"),
                 "detail": payload.get("detail"),
             },
+        }
+
+    if action == "orphan_page":
+        # judgment finding (#55) — the live session places the page (a hub,
+        # a map, log.md); accepting records the review handoff, same
+        # convention as review_lint_finding.
+        return {
+            "sid": sid,
+            "applied": False,
+            "detail": {"page": payload.get("page")},
         }
 
     raise ValueError(f"unknown suggestion kind {kind!r} / action {action!r}")

@@ -379,3 +379,24 @@ def test_accept_unknown_kind_strands_loudly(wiki):
     assert "unknown suggestion" in str(result["detail"])
     assert result["decision_recorded"] is False
     assert get_suggestion(entry["sid"])["status"] == "pending"  # retryable, never silently decided
+
+
+def test_accept_orphan_page_hands_off_decided(wiki):
+    entry = record(
+        SuggestionSpec(
+            producer="wiki-health",
+            title="Orphan page: projects/x/notes.md",
+            rationale="no incoming links wiki-wide — needs a home in a hub, map, or log",
+            evidence={"page": "projects/x/notes.md", "session": "s-test"},
+            kind="structured_action",
+            payload={"action": "orphan_page", "page": "projects/x/notes.md"},
+            fingerprint="orphan:projects/x/notes.md",
+        )
+    )
+
+    result = accept(entry["sid"], "s-test")
+
+    assert result["applied"] is False
+    assert result["detail"]["page"] == "projects/x/notes.md"
+    assert result["decision_recorded"] is True  # handoff counts as decided
+    assert get_suggestion(entry["sid"])["status"] not in ("pending",)

@@ -105,6 +105,9 @@ skill's `accept()` is what turns an "accepted" decision into a real write.
 - `refresh_claude_md` → `lib.adapter.claude_md.write_global_claude_md()`.
 - `review_contradiction` → applies nothing; returns the two page paths and
   evidence so the session can reconcile them conversationally.
+- `orphan_page` (#55) → applies nothing; hands the orphan page off to the
+  session to place (a hub, a map, `log.md`), same convention as
+  `review_contradiction`.
 
 Any apply failure is caught inside `accept()` and surfaced in `detail` —
 the decision stays recorded either way.
