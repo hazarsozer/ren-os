@@ -1,5 +1,44 @@
 # Changelog
 
+## [0.7.0] - 2026-08-12 — "the connected wiki"
+
+The graph release: the wiki becomes Obsidian-native. Three issues, each with
+its own spec under docs/superpowers/specs/ (2026-08-12).
+
+- **#53 — Obsidian-native pointer format.** L2 decision-map pointers are now
+  markdown links (`- [topic](path#anchor) (write_id)`); `repo:` refs keep the
+  arrow form; the legacy arrow-with-wiki-path stays parse-accepted until the
+  next MAJOR. One shared grammar module (`lib/pointer.py`) replaces the three
+  per-consumer regexes (wiki-health, doctor, remember — drift now structurally
+  impossible). `assemble_l2` emits link form and stamps `l2-map` schema 2;
+  `migrations/l2-map-1-to-2/` (the repo's first body-rewriting migration)
+  converts existing maps, self-verifying every rewritten line with the same
+  parser and driven by `/ren:update` (see its 0.7.0 update notes). Doctor now
+  treats an absent `schema_version` on registered page types as v1, so
+  unstamped maps are discoverable. The wiki-skeleton index template teaches
+  the new grammar and stamps schema 2.
+- **#54 — producer link duties.** Wrap mechanically weaves what it writes:
+  the L1 narrative gains a `## Touched pages` section (applied writes only);
+  `log.md` gains a linked session entry; the project map gains a capped
+  `## Sessions` section; new durable project pages get auto-pointered into
+  the map's Decision map, and the master index's spine links every project
+  map. All duties are isolated (a failure warns, never fails the wrap),
+  success flags are gated on applied-vs-held queue writes, and the
+  bookkeeping writes use the `routine` writer class so they never quarantine
+  human-owned pages. `remember` renders the Sessions section as a
+  recent-sessions line.
+- **#55 — wiki-wide orphan detection.** New `orphan_pages` sweep finding:
+  every durable page nothing links to, path-resolved across both link
+  conventions plus arrow pointers, with a word-bounded filename-mention
+  fallback (index.md-named files excluded). Exemptions are exact-depth
+  (`projects/<slug>/raw/`, root/project `archive/`) and quarantined pages
+  route to the quarantine flow instead. Orphans become suggestions
+  (`orphan:<page>`, deduped), with a proper accept route (decided handoff).
+- **#57 filed** (follow-up): wrap durable items land in `lessons/`, so the
+  #54 auto-pointer duty is dormant until durable pages can target project
+  scope; carries two LOW rides-along (D2 same-session log dedup, migration
+  quoted-`type:` tolerance).
+
 ## [0.6.7] - 2026-08-04 — "the fix train"
 
 Bug-fix release: eight issues from the 0.6.6 live smoke and verification
