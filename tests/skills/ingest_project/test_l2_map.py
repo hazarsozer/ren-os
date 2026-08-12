@@ -341,6 +341,30 @@ def test_assemble_l2_output_round_trips_through_parser():
     assert len(lines) == 1
 
 
+def test_assemble_l2_raises_on_topic_that_cannot_round_trip():
+    """A topic containing `]` renders a line `parse_pointer_line` can't read
+    back — assemble_l2 must refuse to emit it (#53 review finding)."""
+    lib = importlib.import_module("skills.ingest-project.lib")
+    with pytest.raises(ValueError, match="round-trip"):
+        lib.assemble_l2(
+            "demo", [],
+            [{"topic": "Bad]Topic", "path": "projects/demo/a.md", "anchor": None, "write_id": "w-01"}],
+            "2026-08-12: t",
+        )
+
+
+def test_assemble_l2_raises_on_target_that_cannot_round_trip():
+    """A target containing `)` (or a space) renders a line that doesn't
+    re-parse to the same target — assemble_l2 must refuse to emit it."""
+    lib = importlib.import_module("skills.ingest-project.lib")
+    with pytest.raises(ValueError, match="round-trip"):
+        lib.assemble_l2(
+            "demo", [],
+            [{"topic": "T", "path": "projects/demo/a)b.md", "anchor": None, "write_id": "w-01"}],
+            "2026-08-12: t",
+        )
+
+
 def test_map_decision_section_states_pointer_base():
     """Task 5: L2 maps must state their pointer base explicitly (Codex D6)."""
     text = assemble_l2(

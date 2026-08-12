@@ -20,6 +20,12 @@ from dataclasses import dataclass
 
 REPO_REF_PREFIX = "repo:"
 
+# Strict whole-line match is deliberate (#53 review): a malformed pointer is
+# a non-pointer, never a half-parsed one. Trailing prose, an extra paren
+# group, or a space in the target all fail the match rather than partially
+# extract — wiki-health/doctor then treat the line as prose, same as any
+# other non-pointer bullet. Do not loosen these to "helpfully" tolerate
+# near-miss shapes; that trades a clean miss for a silently wrong parse.
 _LINK_RE = re.compile(
     r"^-\s*\[(?P<topic>[^\]]*)\]\((?P<target>[^)\s]+)\)(?:\s*\((?P<wid>[^)]*)\))?\s*$"
 )

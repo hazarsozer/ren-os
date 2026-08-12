@@ -46,7 +46,7 @@ from lib.adapter.claude_md import write_project_claude_md
 from lib.governance.backup_gate import require_backup
 from lib.memory import quarantine
 from lib.memory.queue import Proposal, QueueEntry, propose_and_apply
-from lib.pointer import render_pointer_line
+from lib.pointer import parse_pointer_line, render_pointer_line
 
 from . import scan as _scan_module
 
@@ -92,6 +92,12 @@ def assemble_l2(
     wiki-target pointers in link form (`[topic](path#anchor) (write_id)`) via
     `lib.pointer.render_pointer_line` — `repo:` targets still render arrow
     form automatically, since Obsidian can't resolve them as links anyway.
+
+    Self-verifies: every rendered pointer line is re-parsed with
+    `lib.pointer.parse_pointer_line` before being emitted, and raises
+    `ValueError` if it doesn't round-trip (e.g. a topic containing `]` or a
+    target containing `)`/a space) — this function must never silently emit
+    a line no consumer can read.
     """
     lines = [
         "---",
@@ -110,7 +116,10 @@ def assemble_l2(
         write_id = pointer_entry.get("write_id") or None
         anchor = pointer_entry.get("anchor")
         target = f"{pointer_entry['path']}#{anchor}" if anchor else pointer_entry["path"]
-        lines.append(render_pointer_line(pointer_entry["topic"], target, write_id))
+        line = render_pointer_line(pointer_entry["topic"], target, write_id)
+        if parse_pointer_line(line) is None:
+            raise ValueError(f"pointer does not round-trip: {line!r}")
+        lines.append(line)
     lines.append("## Log")
     lines.append(f"- {log_line}")
     return "\n".join(lines) + "\n"

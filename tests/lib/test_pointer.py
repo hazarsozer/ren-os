@@ -57,6 +57,9 @@ class TestParseArrowForm:
     "- [unclosed](projects/x/a.md",
     "- [no target] →",
     "[not a bullet] → projects/x/a.md (w-01)",
+    "- [T] → projects/x/a.md (w-1) — note",       # trailing prose
+    "- [T] → projects/x/a.md (w-1) (extra)",      # double paren tail
+    "- [T] → projects/my notes/a.md (w-1)",       # space in target
 ])
 def test_non_pointer_lines_return_none(line):
     assert pointer.parse_pointer_line(line) is None
