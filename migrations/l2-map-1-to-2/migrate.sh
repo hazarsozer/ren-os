@@ -26,16 +26,18 @@ if [[ -z "${REN_WIKI_ROOT:-}" || -z "${REN_SNAPSHOT_DIR:-}" ]]; then
   echo "FAIL: REN_WIKI_ROOT and REN_SNAPSHOT_DIR must be set" >&2; exit 2
 fi
 
-TARGET_SCHEMA=2
-
-# Idempotency guard — already migrated → nothing to do.
-if grep -q "^schema_version: ${TARGET_SCHEMA}\$" "$PAGE"; then
-  echo "SKIP: already at schema ${TARGET_SCHEMA}"
-  exit 0
-fi
-
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-PYTHONPATH="$REPO_ROOT" python3 "$SCRIPT_DIR/transform.py" "$PAGE"
-echo "OK"
+# Idempotency + page-type guarding now live in transform.py (#53 review
+# finding 6) — a whole-file grep here false-SKIPped on a BODY line that
+# happened to read "schema_version: 2" (e.g. quoted in a knowledge bullet).
+# transform.py prints a single "SKIP: <reason>" line and exits 0 when it
+# declines to touch the page; otherwise it's silent on success and this
+# script prints the single "OK" line the driver expects.
+OUTPUT="$(PYTHONPATH="$REPO_ROOT" python3 "$SCRIPT_DIR/transform.py" "$PAGE")"
+if [[ "$OUTPUT" == SKIP:* ]]; then
+  echo "$OUTPUT"
+else
+  echo "OK"
+fi

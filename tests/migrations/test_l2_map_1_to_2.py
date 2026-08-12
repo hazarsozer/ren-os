@@ -99,3 +99,47 @@ def test_transform_failure_leaves_page_byte_identical(page, tmp_path):
         assert text_after == before
     else:
         assert b"](topic]" in text_after   # untouched garbage, no corruption
+
+
+def test_non_l2_map_page_is_skipped_untouched(tmp_path):
+    """Finding 4: the README promises this migration never touches other
+    page types — transform.py must guard on `type:` itself, not rely on
+    every caller checking first."""
+    p = tmp_path / "overview.md"
+    text = V1_MAP.replace("type: l2-map", "type: overview")
+    p.write_text(text, encoding="utf-8")
+    before = p.read_bytes()
+    result = run_migration(p, tmp_path)
+    assert result.returncode == 0
+    assert result.stdout.strip() == "SKIP: not an l2-map page"
+    assert p.read_bytes() == before
+
+
+def test_page_with_no_frontmatter_is_skipped_not_failed(tmp_path):
+    """Finding 5: a frontmatter-less file isn't a migration candidate — it's
+    a SKIP (exit 0), not a transform FAILURE (exit 1, which could trigger
+    the driver's rollback path)."""
+    p = tmp_path / "no-frontmatter.md"
+    p.write_text("# just a heading\n\nsome body text\n", encoding="utf-8")
+    before = p.read_bytes()
+    result = run_migration(p, tmp_path)
+    assert result.returncode == 0
+    assert result.stdout.strip() == "SKIP: no frontmatter block"
+    assert p.read_bytes() == before
+
+
+def test_body_line_matching_schema_version_2_does_not_false_skip(page, tmp_path):
+    """Finding 6: the old idempotency guard grepped the WHOLE file, so a
+    body line that happens to read "schema_version: 2" (e.g. quoted inside
+    a knowledge bullet) false-SKIPped a page that's still at v1. The guard
+    must be scoped to the frontmatter block only."""
+    text = V1_MAP.replace(
+        "## Knowledge",
+        "## Knowledge\n- a note quoting `schema_version: 2` from another page",
+    )
+    page.write_text(text, encoding="utf-8")
+    result = run_migration(page, tmp_path)
+    assert result.returncode == 0
+    assert result.stdout.strip() == "OK"
+    migrated = page.read_text(encoding="utf-8")
+    assert "- [Stack](projects/demo/knowledge/stack.md) (w-01A)" in migrated
