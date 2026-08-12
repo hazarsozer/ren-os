@@ -78,6 +78,7 @@ from lib.memory.judge import (
     judge_pairs,
     parse_data_only_verdict,
 )
+from lib.pointer import REPO_REF_PREFIX as _REPO_REF_PREFIX, parse_pointer_line
 from lib.ren_paths import PathTraversalError
 from skills.recall.lib import rank as _recall_rank
 
@@ -85,11 +86,6 @@ from .lint import run_incremental_lint, walk_wiki_pages
 
 _FRONTMATTER_RE = re.compile(r"\A---\n(.*?)\n---\n?", re.DOTALL)
 _FM_TYPE_RE = re.compile(r"^type:\s*(.+)$", re.MULTILINE)
-_POINTER_RE = re.compile(r"^-\s*\[[^\]]*\]\s*→\s*([^\s#]+)")
-# External repository reference (issue #20): `repo:<name>:<path>`. Kept
-# byte-identical with `skills.doctor.lib._REPO_REF_PREFIX` — the drift test
-# `tests/skills/wiki_health/test_sweep.py` asserts the two agree.
-_REPO_REF_PREFIX = "repo:"
 
 _MASS_DELETION_WINDOW = timedelta(hours=24)
 _MASS_DELETION_THRESHOLD = 5  # anomaly when a rolling window has MORE than this many
@@ -118,15 +114,14 @@ def _dangling_pointers(wiki_root: Path) -> list[dict]:
                 continue
             if not in_decision_map:
                 continue
-            m = _POINTER_RE.match(line.strip())
-            if not m:
+            ptr = parse_pointer_line(line)
+            if ptr is None:
                 continue
-            target = m.group(1)
+            target = ptr.path            # anchor already stripped, "" for repo refs
             page = str(md_path.relative_to(wiki_root))
-            if target.startswith(_REPO_REF_PREFIX):
+            if ptr.target.startswith(_REPO_REF_PREFIX):
                 # `repo:<name>:<path>` — an external repository reference
-                # (issue #20). Not a wiki page, so not resolvable in-wiki and
-                # never "dangling". Missing IN-WIKI targets are still flagged.
+                # (issue #20). Not a wiki page, so never "dangling".
                 continue
             if target.startswith("/"):
                 dangling.append({"page": page, "target": target})

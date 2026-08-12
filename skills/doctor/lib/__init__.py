@@ -55,6 +55,7 @@ from pathlib import Path
 from lib import ren_paths
 from lib.instrument import collect
 from lib.memory import promotion
+from lib.pointer import REPO_REF_PREFIX as _REPO_REF_PREFIX, parse_pointer_line
 from lib.ren_paths import PathTraversalError
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]  # lib -> doctor -> skills -> repo root
@@ -170,11 +171,6 @@ def check_schema_versions(wiki_root: Path | None = None) -> CheckResult:
 
 _DECLARED_TOKENS_RE = re.compile(r"^\s*tokens:\s*(\d+)\s*$", re.MULTILINE)
 
-# External repository reference in an L2 Decision-map pointer (issue #20):
-# `repo:<name>:<path>`. Mirrored in `skills.wiki-health.lib`; a drift test
-# asserts the two constants agree.
-_REPO_REF_PREFIX = "repo:"
-
 
 def check_budget_lint(wiki_root: Path | None = None) -> CheckResult:
     """Declared SKILL.md `budgets:` blocks vs. measured `capability_tokens`
@@ -218,12 +214,12 @@ def check_budget_lint(wiki_root: Path | None = None) -> CheckResult:
 
 def check_dangling_pointers(wiki_root: Path | None = None) -> CheckResult:
     """Every l2-map page's "## Decision map" pointer lines
-    (`- [topic] → path#anchor (write_id)`) — do their targets exist?"""
+    (`- [topic](path#anchor) (write_id)`, legacy `→` form accepted) — do
+    their targets exist?"""
     wiki_root = wiki_root or ren_paths.wiki_root()
     if not wiki_root.is_dir():
         return CheckResult("dangling_pointers", "skip", "no wiki to check")
 
-    pointer_re = re.compile(r"^-\s*\[[^\]]*\]\s*→\s*([^\s#]+)")
     dangling: list[str] = []
 
     for md_path in sorted(wiki_root.rglob("*.md")):
@@ -237,12 +233,12 @@ def check_dangling_pointers(wiki_root: Path | None = None) -> CheckResult:
                 continue
             if not in_decision_map:
                 continue
-            m = pointer_re.match(line.strip())
-            if not m:
+            ptr = parse_pointer_line(line)
+            if ptr is None:
                 continue
-            target = m.group(1)
+            target = ptr.path
             rel = md_path.relative_to(wiki_root)
-            if target.startswith(_REPO_REF_PREFIX):
+            if ptr.target.startswith(_REPO_REF_PREFIX):
                 # `repo:<name>:<path>` external repo reference (issue #20) —
                 # not an in-wiki page, so never dangling. Mirrors
                 # `skills.wiki-health.lib._dangling_pointers`.

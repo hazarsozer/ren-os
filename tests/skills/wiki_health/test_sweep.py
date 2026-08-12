@@ -127,13 +127,36 @@ def test_sweep_accepts_an_existing_project_knowledge_pointer(wiki):
     assert wiki_health.sweep()["dangling_pointers"] == []
 
 
-def test_repo_ref_prefix_does_not_drift_between_wiki_health_and_doctor():
-    """Both dangling-pointer implementations must agree on what a repo ref is
-    (the module docstring's reimplemented-walk contract)."""
-    import importlib
+def test_dangling_walk_reads_link_form(tmp_path):
+    (tmp_path / "projects/demo").mkdir(parents=True)
+    (tmp_path / "projects/demo/map.md").write_text(
+        "---\ntype: l2-map\nproject: demo\n---\n"
+        "# demo — knowledge map\n## Decision map\n"
+        "- [Missing](projects/demo/gone.md) (w-01A)\n"
+        "- [Present](projects/demo/here.md) (w-01B)\n"
+        "- [Legacy missing] → projects/demo/also-gone.md (unstamped)\n"
+        "- [External] → repo:other:some/path (w-01C)\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "projects/demo/here.md").write_text("x\n", encoding="utf-8")
+    dangling = wiki_health._dangling_pointers(tmp_path)
+    targets = {d["target"] for d in dangling}
+    assert "projects/demo/gone.md" in targets          # link form is parsed
+    assert "projects/demo/also-gone.md" in targets     # arrow form still parsed
+    assert "projects/demo/here.md" not in targets
+    assert not any(t.startswith("repo:") for t in targets)
 
-    doctor = importlib.import_module("skills.doctor.lib")
-    assert wiki_health._REPO_REF_PREFIX == doctor._REPO_REF_PREFIX
+
+def test_pointer_grammar_single_source():
+    """Replaces the old byte-identical-regex drift test: the grammar has ONE
+    home now, so the drift it guarded cannot occur."""
+    import importlib
+    from lib import pointer
+    wh = importlib.import_module("skills.wiki-health.lib")
+    dr = importlib.import_module("skills.doctor.lib")
+    assert not hasattr(wh, "_POINTER_RE")
+    assert wh.parse_pointer_line is pointer.parse_pointer_line
+    assert dr.parse_pointer_line is pointer.parse_pointer_line
 
 
 def test_sweep_finds_contradiction_pair(wiki):
