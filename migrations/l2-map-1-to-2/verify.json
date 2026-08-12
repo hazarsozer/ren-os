@@ -1,0 +1,27 @@
+{
+  "$schema": "../../verify.schema.json",
+  "migration": "l2-map-1-to-2",
+  "page_type": "l2-map",
+  "assertions": [
+    {
+      "id": "yaml-valid",
+      "description": "Output file has valid YAML frontmatter delimited by ---",
+      "predicate": "yaml.valid",
+      "target": "frontmatter"
+    },
+    {
+      "id": "schema-bumped",
+      "description": "schema_version is exactly 2",
+      "predicate": "yaml.equals",
+      "field": "schema_version",
+      "value": 2
+    },
+    {
+      "id": "type-preserved",
+      "description": "type is l2-map",
+      "predicate": "yaml.equals",
+      "field": "type",
+      "value": "l2-map"
+    }
+  ]
+}
