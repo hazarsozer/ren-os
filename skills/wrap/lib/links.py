@@ -71,7 +71,15 @@ def _split_section(text: str, header: str) -> tuple[str, list[str], str] | None:
     if start is None:
         return None
     end = next(
-        (i for i in range(start + 1, len(lines)) if lines[i].startswith("## ")),
+        (
+            i for i in range(start + 1, len(lines))
+            # A later "## " section header ends the body as before; a "# "
+            # H1 (a fresh top-level heading, e.g. a page's own title
+            # re-asserted mid-body) also ends it — without this, a splice
+            # could run past an H1 and corrupt content that belongs to a
+            # different logical page section.
+            if lines[i].startswith("## ") or lines[i].startswith("# ")
+        ),
         len(lines),
     )
     return "".join(lines[: start + 1]), [l.rstrip("\n") for l in lines[start + 1 : end]], "".join(lines[end:])
@@ -95,12 +103,19 @@ def upsert_sessions_section(page_text: str, l1_page: str, session: str, cap: int
     before, section_lines, after = split
     if entry in section_lines:
         return None
-    kept = [l for l in section_lines if l.startswith("- [session-")]
-    other = [l for l in section_lines if not l.startswith("- [session-") and l.strip()]
-    kept.append(entry)
-    kept = kept[-cap:]
-    body_lines = other + kept
-    body = "".join(l + "\n" for l in body_lines)
+    # The section is session-entries-first by convention: session lines get
+    # the cap/trim treatment (oldest dropped on overflow), while every other
+    # line in the body (including blank lines separating placeholder prose)
+    # stays exactly where it is — only TRAILING blank lines, right before
+    # the newly appended entry, are ever dropped.
+    session_indices = [i for i, l in enumerate(section_lines) if l.startswith("- [session-")]
+    overflow = len(session_indices) + 1 - cap
+    drop = set(session_indices[: max(overflow, 0)])
+    kept_lines = [l for i, l in enumerate(section_lines) if i not in drop]
+    while kept_lines and not kept_lines[-1].strip():
+        kept_lines.pop()
+    kept_lines.append(entry)
+    body = "".join(l + "\n" for l in kept_lines)
     return before + body + after
 
 
@@ -112,7 +127,12 @@ def _append_pointer(page_text: str, topic: str, path: str, write_id: str | None)
     if split is None:
         return page_text.rstrip("\n") + f"\n{_DECISION_HEADER}\n{line}\n"
     before, section_lines, after = split
-    section_lines = [l for l in section_lines if l.strip()]
+    # Keep the section body verbatim (placeholder prose, blank lines and
+    # all) — only trailing blank lines right before the append point are
+    # dropped, so the splice never reflows or discards existing content.
+    section_lines = list(section_lines)
+    while section_lines and not section_lines[-1].strip():
+        section_lines.pop()
     section_lines.append(line)
     body = "".join(l + "\n" for l in section_lines)
     return before + body + after

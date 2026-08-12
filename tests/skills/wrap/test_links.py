@@ -84,8 +84,61 @@ class TestSessionsSection:
         once = links.upsert_sessions_section(MAP_V2, "projects/demo/l1/session-abc.md", "abc")
         assert links.upsert_sessions_section(once, "projects/demo/l1/session-abc.md", "abc") is None
 
+    def test_preserves_non_session_placeholder_prose_in_place(self):
+        """Finding 2: a pre-existing "## Sessions" section that carries
+        placeholder prose (not just session-link bullets) must keep that
+        prose in place, blank lines and all — only the new session entry is
+        appended, and only a trailing blank line right before it is dropped."""
+        text = (
+            "---\ntype: l2-map\n---\n# demo\n## Sessions\n\n"
+            "Placeholder prose about recent sessions.\n\n## Log\n- x\n"
+        )
+        out = links.upsert_sessions_section(text, "projects/demo/l1/session-abc.md", "abc")
+        assert "\nPlaceholder prose about recent sessions.\n" in out
+        assert "Placeholder prose about recent sessions.\n- [session-abc](projects/demo/l1/session-abc.md)\n## Log" in out
+
+
+MAP_WITH_PLACEHOLDER_PROSE = """---
+type: l2-map
+---
+# demo — knowledge map
+## Decision map
+
+Placeholder paragraph one.
+
+Placeholder paragraph two.
+
+## Log
+- 2026-08-12: ingested
+"""
+
+
+class TestSplitSectionH1Guard:
+    def test_h1_heading_also_terminates_a_section(self):
+        """A stray `# ` H1 mid-body (a page's own title re-asserted) must end
+        the section just like a `## ` header does — otherwise a splice could
+        run past it and corrupt content belonging to a different logical
+        chunk of the page."""
+        text = "## Decision map\n- a pointer\n# Some Other Title\nafter\n"
+        split = links._split_section(text, "## Decision map")
+        assert split is not None
+        before, section_lines, after = split
+        assert section_lines == ["- a pointer"]
+        assert after == "# Some Other Title\nafter\n"
+
 
 class TestMapPointer:
+    def test_preserves_placeholder_prose_blank_lines(self):
+        """Finding 2: the splice must keep the section body verbatim (blank
+        lines between placeholder paragraphs included) — only a TRAILING
+        blank line right before the append point is ever dropped."""
+        out = links.add_map_pointer(
+            MAP_WITH_PLACEHOLDER_PROSE, "New", "projects/demo/new.md", "w-1"
+        )
+        assert "Placeholder paragraph one.\n\nPlaceholder paragraph two.\n" in out
+        expected = pointer.render_pointer_line("New", "projects/demo/new.md", "w-1")
+        assert f"Placeholder paragraph two.\n{expected}\n## Log" in out
+
     def test_appends_pointer_line(self):
         out = links.add_map_pointer(MAP_V2, "New Page", "projects/demo/knowledge/new.md", "w-01B")
         expected = pointer.render_pointer_line("New Page", "projects/demo/knowledge/new.md", "w-01B")
