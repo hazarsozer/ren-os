@@ -97,7 +97,7 @@ def test_assemble_l2_renders_exact_schema():
     expected = (
         "---\n"
         "type: l2-map\n"
-        "schema_version: 1\n"
+        "schema_version: 2\n"
         "project: demo-project\n"
         "---\n"
         "# demo-project — knowledge map\n"
@@ -106,8 +106,8 @@ def test_assemble_l2_renders_exact_schema():
         "- fact two\n"
         "## Decision map\n"
         "_All pointer paths are relative to the wiki root, not this file._\n"
-        "- [database] → decisions/db-choice.md#postgres (w-abc123)\n"
-        "- [unstamped-topic] → research/todo.md#todo (unstamped)\n"
+        "- [database](decisions/db-choice.md#postgres) (w-abc123)\n"
+        "- [unstamped-topic](research/todo.md#todo) (unstamped)\n"
         "## Log\n"
         "- 2026-01-01: ingested from existing repository\n"
     )
@@ -124,7 +124,7 @@ def test_assemble_l2_stamps_schema_version_so_doctor_stops_skipping_maps():
     content = assemble_l2("p", knowledge=[], pointers=[], log_line="l")
 
     assert doctor._frontmatter_field(content, "type") == "l2-map"
-    assert doctor._frontmatter_field(content, "schema_version") == "1"
+    assert doctor._frontmatter_field(content, "schema_version") == "2"
 
     registry = importlib.import_module("skills.wiki-migration.lib").load_registry()
     assert registry["page_types"]["l2-map"]["current"] == 1
@@ -143,7 +143,7 @@ def test_assemble_l2_accepts_knowledge_and_repo_pointer_targets():
         log_line="l",
     )
 
-    assert "- [stack] → projects/flux/knowledge/stack.md (w-1)" in content
+    assert "- [stack](projects/flux/knowledge/stack.md) (w-1)" in content
     assert "- [entrypoint] → repo:flux:src/main.rs (w-2)" in content
 
 
@@ -153,7 +153,7 @@ def test_assemble_l2_empty_knowledge_and_pointers_still_valid():
     expected = (
         "---\n"
         "type: l2-map\n"
-        "schema_version: 1\n"
+        "schema_version: 2\n"
         "project: empty-project\n"
         "---\n"
         "# empty-project — knowledge map\n"
@@ -291,7 +291,7 @@ def test_assemble_l2_omits_fragment_for_null_anchor():
         log_line="2026-01-01: ingested from existing repository",
     )
     assert "#None" not in content
-    assert "- [arch] → decisions/architecture.md (unstamped)" in content
+    assert "- [arch](decisions/architecture.md) (unstamped)" in content
 
 
 def test_ingest_surfaces_instruction_shaped_hit_in_result_and_artifact(wiki):
@@ -312,6 +312,33 @@ def test_ingest_surfaces_instruction_shaped_hit_in_result_and_artifact(wiki):
 def test_ingest_no_instruction_shaped_hits_when_knowledge_is_clean(wiki):
     result = ingest("clean-project", ["a normal fact"], [], session="sess-1")
     assert result["instruction_shaped"] == []
+
+
+def test_assemble_l2_emits_link_form_and_schema_2():
+    lib = importlib.import_module("skills.ingest-project.lib")
+    text = lib.assemble_l2(
+        "demo",
+        knowledge=["a fact"],
+        pointers=[
+            {"topic": "Stack", "path": "projects/demo/knowledge/stack.md", "anchor": None, "write_id": "w-01A"},
+            {"topic": "Schema", "path": "projects/demo/schema.md", "anchor": "naming", "write_id": None},
+            {"topic": "Specs", "path": "repo:idea-generator:analyses", "anchor": None, "write_id": "w-01B"},
+        ],
+        log_line="2026-08-12: test",
+    )
+    assert "schema_version: 2" in text
+    assert "- [Stack](projects/demo/knowledge/stack.md) (w-01A)" in text
+    assert "- [Schema](projects/demo/schema.md#naming) (unstamped)" in text
+    assert "- [Specs] → repo:idea-generator:analyses (w-01B)" in text
+    assert "] → projects/" not in text   # no legacy-form wiki pointers emitted
+
+
+def test_assemble_l2_output_round_trips_through_parser():
+    from lib import pointer
+    lib = importlib.import_module("skills.ingest-project.lib")
+    text = lib.assemble_l2("demo", [], [{"topic": "T", "path": "projects/demo/a.md", "anchor": None, "write_id": "w-01"}], "2026-08-12: t")
+    lines = [l for l in text.splitlines() if pointer.parse_pointer_line(l)]
+    assert len(lines) == 1
 
 
 def test_map_decision_section_states_pointer_base():

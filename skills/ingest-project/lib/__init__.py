@@ -46,6 +46,7 @@ from lib.adapter.claude_md import write_project_claude_md
 from lib.governance.backup_gate import require_backup
 from lib.memory import quarantine
 from lib.memory.queue import Proposal, QueueEntry, propose_and_apply
+from lib.pointer import render_pointer_line
 
 from . import scan as _scan_module
 
@@ -86,14 +87,16 @@ def assemble_l2(
     `/ren:doctor` and `/ren:wiki-health` skip rather than report dangling.
     Durable project pages belong under `projects/<slug>/knowledge/`.
 
-    The frontmatter carries `schema_version: 1` (issue #20): `l2-map` has
-    been a registered page type since 0.2 but the emission never stamped a
-    version, so `doctor.check_schema_versions` silently skipped every map.
+    The frontmatter carries `schema_version: 2` (#53): version 1 stamped the
+    version but emitted wiki-target pointers in arrow form; version 2 renders
+    wiki-target pointers in link form (`[topic](path#anchor) (write_id)`) via
+    `lib.pointer.render_pointer_line` — `repo:` targets still render arrow
+    form automatically, since Obsidian can't resolve them as links anyway.
     """
     lines = [
         "---",
         "type: l2-map",
-        "schema_version: 1",
+        "schema_version: 2",
         f"project: {project_slug}",
         "---",
         f"# {project_slug} — knowledge map",
@@ -103,11 +106,11 @@ def assemble_l2(
         lines.append(f"- {fact}")
     lines.append("## Decision map")
     lines.append("_All pointer paths are relative to the wiki root, not this file._")
-    for pointer in pointers:
-        write_id = pointer.get("write_id") or "unstamped"
-        anchor = pointer.get("anchor")
-        target = f"{pointer['path']}#{anchor}" if anchor else pointer["path"]
-        lines.append(f"- [{pointer['topic']}] → {target} ({write_id})")
+    for pointer_entry in pointers:
+        write_id = pointer_entry.get("write_id") or None
+        anchor = pointer_entry.get("anchor")
+        target = f"{pointer_entry['path']}#{anchor}" if anchor else pointer_entry["path"]
+        lines.append(render_pointer_line(pointer_entry["topic"], target, write_id))
     lines.append("## Log")
     lines.append(f"- {log_line}")
     return "\n".join(lines) + "\n"
