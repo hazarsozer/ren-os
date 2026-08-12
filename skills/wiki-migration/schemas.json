@@ -10,8 +10,8 @@
       "migrations": []
     },
     "l2-map": {
-      "current": 1,
-      "migrations": []
+      "current": 2,
+      "migrations": ["l2-map-1-to-2"]
     },
     "overview": {
       "current": 1,

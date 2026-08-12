@@ -159,6 +159,17 @@ def test_check_schema_versions_skips_project_raw(wiki):
     assert result.status == "ok"
 
 
+def test_check_schema_versions_warns_when_l2_map_behind(wiki):
+    (wiki / "projects").mkdir(parents=True)
+    (wiki / "projects" / "demo" / "map.md").parent.mkdir(parents=True)
+    (wiki / "projects" / "demo" / "map.md").write_text(
+        '---\ntype: l2-map\nschema_version: 1\n---\n', encoding="utf-8"
+    )
+    result = doctor.check_schema_versions(wiki)
+    assert result.status == "warn"
+    assert "l2-map-1-to-2" in result.message
+
+
 # --------------------------------------------------------------- check_budget_lint
 
 

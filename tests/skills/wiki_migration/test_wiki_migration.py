@@ -77,6 +77,13 @@ def test_migration_chain_unknown_page_type_returns_empty():
     assert wiki_migration.migration_chain("no-such-type", from_version=1) == []
 
 
+def test_l2_map_chain_from_v1():
+    lib = importlib.import_module("skills.wiki-migration.lib")
+    assert lib.migration_chain("l2-map", 1) == ["l2-map-1-to-2"]
+    assert lib.migration_chain("l2-map", 2) == []
+    assert lib.load_registry()["page_types"]["l2-map"]["current"] == 2
+
+
 # -------------------------------------------------------------- run_migration
 
 

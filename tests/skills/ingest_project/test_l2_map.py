@@ -127,7 +127,7 @@ def test_assemble_l2_stamps_schema_version_so_doctor_stops_skipping_maps():
     assert doctor._frontmatter_field(content, "schema_version") == "2"
 
     registry = importlib.import_module("skills.wiki-migration.lib").load_registry()
-    assert registry["page_types"]["l2-map"]["current"] == 1
+    assert registry["page_types"]["l2-map"]["current"] == 2
 
 
 def test_assemble_l2_accepts_knowledge_and_repo_pointer_targets():
