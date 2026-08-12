@@ -28,11 +28,29 @@ Run with: uv run pytest tests/skills/wrap/test_links_integration.py -v
 """
 from __future__ import annotations
 
+import re
+
 import pytest
 
 from lib.pointer import parse_pointer_line
 from lib.ren_paths import wiki_root
 from skills.wrap.lib import _run_link_duties, wrap_session
+
+# A genuine D4 pointer line (`add_map_pointer`/`ensure_index_spine`, via
+# `lib.pointer.render_pointer_line`) always ends in a trailing paren group
+# that is either "(w-<write_id>)" or the literal "(unstamped)" — that's what
+# distinguishes it from a plain D1/D3 narrative link (`- [topic](page)`,
+# no trailing paren group). Filtering on "(w-" alone (as an earlier draft of
+# this file did) silently missed every unstamped pointer, INCLUDING the
+# spine line `_run_link_duties` renders via `ensure_index_spine(..., None)`
+# — making 3 of the 4 round-trip loops in this file vacuous. Fixed here by
+# matching either tail, and every caller below asserts a minimum match count
+# so a future filter regression fails loud instead of silently no-op'ing.
+_POINTER_LINE_RE = re.compile(r"^-\s*\[.*\]\(.+\)\s*\((?:w-[^)]*|unstamped)\)\s*$")
+
+
+def _pointer_lines(text: str) -> list[str]:
+    return [line for line in text.splitlines() if _POINTER_LINE_RE.match(line)]
 
 _MAP_SKELETON = "# demo — knowledge map\n\n## Knowledge\n- nothing yet\n"
 _LOG_SKELETON = "# Wiki Log\n\n## [2026-08-01] init | x\n"
@@ -103,23 +121,42 @@ def test_two_wraps_weave_and_never_duplicate(wiki_env):
     map_text = read(wiki_env, "projects/demo/map.md")
     index_text = read(wiki_env, "index.md")
     log_text = read(wiki_env, "log.md")
-    l1_text = read(wiki_env, "projects/demo/l1/session-s1.md")
+    l1_s1_text = read(wiki_env, "projects/demo/l1/session-s1.md")
+    l1_s2_text = read(wiki_env, "projects/demo/l1/session-s2.md")
 
-    assert "## Touched pages" in l1_text
+    assert "## Touched pages" in l1_s1_text
+    assert "## Touched pages" in l1_s2_text
     assert log_text.count("] session | demo") == 2
     assert map_text.count("- [session-") == 2
+
+    # session-distinctness: both sessions' own lines are present (a plain
+    # count()==2 would also pass if s1 were written twice and s2 dropped) —
+    # assert each FULL link target, not just the topic text, so a swapped or
+    # truncated l1_page would also be caught.
+    assert "[session-s1](projects/demo/l1/session-s1.md)" in log_text
+    assert "[session-s2](projects/demo/l1/session-s2.md)" in log_text
+    assert "- [session-s1](projects/demo/l1/session-s1.md)" in map_text
+    assert "- [session-s2](projects/demo/l1/session-s2.md)" in map_text
+
     # spine: index.md points at the project's map.md exactly once across
     # both wraps — `ensure_index_spine` is a no-op once the target line is
     # already present (see `_append_pointer`'s `if path in page_text` guard).
     assert index_text.count("projects/demo/map.md") == 1
 
-    # every generated pointer line parses through the shared grammar:
-    for line in map_text.splitlines():
-        if line.startswith("- [") and "(w-" in line:
-            assert parse_pointer_line(line) is not None
-    for line in index_text.splitlines():
-        if line.startswith("- [") and "(w-" in line:
-            assert parse_pointer_line(line) is not None
+    # every generated pointer line parses through the shared grammar. The
+    # spine line in index.md is the one genuine pointer line reachable
+    # end-to-end through `wrap_session` (see module docstring) — assert the
+    # loop actually found it, not just that whatever it found parses.
+    index_pointer_lines = _pointer_lines(index_text)
+    assert len(index_pointer_lines) >= 1
+    for line in index_pointer_lines:
+        assert parse_pointer_line(line) is not None
+
+    # map.md has NO genuine pointer line in this flow — D4's auto-pointer
+    # branch never fires from `wrap_session`'s own durable-items loop (see
+    # module docstring); asserted explicitly so this is a documented zero,
+    # not a silently vacuous loop.
+    assert _pointer_lines(map_text) == []
 
 
 # --- D4 auto-pointer: only reachable by calling _run_link_duties directly ---
@@ -173,9 +210,12 @@ def test_run_link_duties_pointer_not_duplicated_across_repeat_calls(wiki_env):
     assert map_text.count("knowledge/auto-page.md") == 1
     assert index_text.count("projects/demo/map.md") == 1
 
-    for line in map_text.splitlines():
-        if line.startswith("- [") and "(w-" in line:
-            assert parse_pointer_line(line) is not None
-    for line in index_text.splitlines():
-        if line.startswith("- [") and "(w-" in line:
-            assert parse_pointer_line(line) is not None
+    map_pointer_lines = _pointer_lines(map_text)
+    assert len(map_pointer_lines) >= 1
+    for line in map_pointer_lines:
+        assert parse_pointer_line(line) is not None
+
+    index_pointer_lines = _pointer_lines(index_text)
+    assert len(index_pointer_lines) >= 1
+    for line in index_pointer_lines:
+        assert parse_pointer_line(line) is not None
