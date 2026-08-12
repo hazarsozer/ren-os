@@ -29,7 +29,15 @@ def _w(root, rel, text):
 
 
 @pytest.fixture
-def dogfood_pre_54(tmp_path):
+def clean_path_env(monkeypatch):
+    for var in ("REN_WIKI_ROOT", "CLAUDE_PLUGIN_OPTION_WIKIROOT", "REN_FRAMEWORK_ROOT"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.delenv("CLAUDE_SESSION_ID", raising=False)
+    return monkeypatch
+
+
+@pytest.fixture
+def dogfood_pre_54(clean_path_env, tmp_path):
     """Pre-#54 dogfood shape: log.md mentions sessions in prose without .md extension.
 
     Expected orphans:
@@ -93,6 +101,7 @@ def dogfood_pre_54(tmp_path):
     # Archive l1 page (exempt from orphan detection)
     _w(tmp_path, "archive/l1/old-session.md", "---\ntype: l1\n---\n# Old session\n")
 
+    clean_path_env.setenv("REN_WIKI_ROOT", str(tmp_path))
     return tmp_path
 
 
@@ -128,7 +137,7 @@ def dogfood_post_54(dogfood_pre_54):
     return dogfood_pre_54
 
 
-def test_pre_54_orphan_counts_exact(dogfood_pre_54, monkeypatch):
+def test_pre_54_orphan_counts_exact(dogfood_pre_54):
     """Pre-#54: exact counts to catch filter regressions.
 
     5 orphans expected:
@@ -136,11 +145,6 @@ def test_pre_54_orphan_counts_exact(dogfood_pre_54, monkeypatch):
       - 2 study standalone pages (no incoming links at all)
       - 1 project l1 page (not linked)
     """
-    for var in ("REN_WIKI_ROOT", "CLAUDE_PLUGIN_OPTION_WIKIROOT", "REN_FRAMEWORK_ROOT"):
-        monkeypatch.delenv(var, raising=False)
-    monkeypatch.delenv("CLAUDE_SESSION_ID", raising=False)
-    monkeypatch.setenv("REN_WIKI_ROOT", str(dogfood_pre_54))
-
     orphans = wiki_health._orphan_pages(dogfood_pre_54)
 
     # Exact count check so filter regressions can't pass silently
@@ -158,26 +162,16 @@ def test_pre_54_orphan_counts_exact(dogfood_pre_54, monkeypatch):
     assert "projects/study/l1/session-z.md" in orphans
 
 
-def test_pre_54_archive_exempt(dogfood_pre_54, monkeypatch):
+def test_pre_54_archive_exempt(dogfood_pre_54):
     """Pre-#54: archive/l1/ pages are exempt from orphan detection."""
-    for var in ("REN_WIKI_ROOT", "CLAUDE_PLUGIN_OPTION_WIKIROOT", "REN_FRAMEWORK_ROOT"):
-        monkeypatch.delenv(var, raising=False)
-    monkeypatch.delenv("CLAUDE_SESSION_ID", raising=False)
-    monkeypatch.setenv("REN_WIKI_ROOT", str(dogfood_pre_54))
-
     orphans = wiki_health._orphan_pages(dogfood_pre_54)
 
     # archive/ pages never flagged as orphans
     assert "archive/l1/old-session.md" not in orphans
 
 
-def test_pre_54_root_exempts(dogfood_pre_54, monkeypatch):
+def test_pre_54_root_exempts(dogfood_pre_54):
     """Pre-#54: root-level exempts (index.md, log.md, identity.md) are never orphans."""
-    for var in ("REN_WIKI_ROOT", "CLAUDE_PLUGIN_OPTION_WIKIROOT", "REN_FRAMEWORK_ROOT"):
-        monkeypatch.delenv(var, raising=False)
-    monkeypatch.delenv("CLAUDE_SESSION_ID", raising=False)
-    monkeypatch.setenv("REN_WIKI_ROOT", str(dogfood_pre_54))
-
     orphans = wiki_health._orphan_pages(dogfood_pre_54)
 
     # Root exempts never appear in orphan list
@@ -185,13 +179,8 @@ def test_pre_54_root_exempts(dogfood_pre_54, monkeypatch):
         assert exempt not in orphans
 
 
-def test_pre_54_linked_pages_not_orphaned(dogfood_pre_54, monkeypatch):
+def test_pre_54_linked_pages_not_orphaned(dogfood_pre_54):
     """Pre-#54: pages linked from map.md (guides/ pages) are not orphaned."""
-    for var in ("REN_WIKI_ROOT", "CLAUDE_PLUGIN_OPTION_WIKIROOT", "REN_FRAMEWORK_ROOT"):
-        monkeypatch.delenv(var, raising=False)
-    monkeypatch.delenv("CLAUDE_SESSION_ID", raising=False)
-    monkeypatch.setenv("REN_WIKI_ROOT", str(dogfood_pre_54))
-
     orphans = wiki_health._orphan_pages(dogfood_pre_54)
 
     # Guide pages linked from map are not orphans
@@ -199,18 +188,13 @@ def test_pre_54_linked_pages_not_orphaned(dogfood_pre_54, monkeypatch):
     assert "projects/study/guides/assignment-template.md" not in orphans
 
 
-def test_post_54_l1_pages_linked_by_sessions(dogfood_post_54, monkeypatch):
+def test_post_54_l1_pages_linked_by_sessions(dogfood_post_54):
     """Post-#54: log.md Sessions section links now save l1 pages from orphan status.
 
     Expected: 2 orphans (the standalone study pages).
     The l1 pages are no longer orphaned due to Sessions section links.
     The guide pages remain not orphaned (already linked from map).
     """
-    for var in ("REN_WIKI_ROOT", "CLAUDE_PLUGIN_OPTION_WIKIROOT", "REN_FRAMEWORK_ROOT"):
-        monkeypatch.delenv(var, raising=False)
-    monkeypatch.delenv("CLAUDE_SESSION_ID", raising=False)
-    monkeypatch.setenv("REN_WIKI_ROOT", str(dogfood_post_54))
-
     orphans = wiki_health._orphan_pages(dogfood_post_54)
 
     # Exact count: only the 2 standalone study pages remain orphaned
@@ -226,13 +210,8 @@ def test_post_54_l1_pages_linked_by_sessions(dogfood_post_54, monkeypatch):
     assert "projects/study/team-assignment.md" in orphans
 
 
-def test_sweep_includes_dogfood_orphans(dogfood_pre_54, monkeypatch):
+def test_sweep_includes_dogfood_orphans(dogfood_pre_54):
     """Dogfood sweep includes orphan_pages and renders correctly."""
-    for var in ("REN_WIKI_ROOT", "CLAUDE_PLUGIN_OPTION_WIKIROOT", "REN_FRAMEWORK_ROOT"):
-        monkeypatch.delenv(var, raising=False)
-    monkeypatch.delenv("CLAUDE_SESSION_ID", raising=False)
-    monkeypatch.setenv("REN_WIKI_ROOT", str(dogfood_pre_54))
-
     findings = wiki_health.sweep(dogfood_pre_54)
 
     assert "orphan_pages" in findings

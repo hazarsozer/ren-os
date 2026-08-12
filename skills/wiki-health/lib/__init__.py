@@ -8,7 +8,7 @@ what it can (through the existing write-safety substrate: `propose_and_apply`
 See `SKILL.md` for the full behavior contract; this module is the sweep
 mechanics only — it never writes anything itself.
 
-`sweep()` returns seven findings + a timestamp:
+`sweep()` returns the findings below + a timestamp:
   - `dangling_pointers` — every l2-map page's "## Decision map" pointer
     lines, target existence. Same question `skills.doctor.lib
     .check_dangling_pointers` answers, reimplemented here (not imported)
@@ -55,6 +55,10 @@ mechanics only — it never writes anything itself.
     leaf page in a subdirectory must be linked from some hub or project-root
     page. `projects/<slug>/raw/` (immutable source material) is skipped by
     the pairwise scans — sources, not claims.
+  - `orphan_pages` (#55) — wiki-WIDE walk, not scoped to
+    `projects/<slug>/knowledge/`: every durable page with no incoming
+    markdown link, arrow pointer, or word-bounded filename mention. See
+    `_orphan_pages` for the exemption/link/mention rules.
 """
 
 from __future__ import annotations
@@ -383,7 +387,20 @@ def _knowledge_tree_findings(wiki_root: Path) -> tuple[list[str], list[str]]:
     return hubless, unlinked
 
 
-_MD_LINK_RE = re.compile(r"\]\(([^)\s#]+\.md)(?:#[^)]*)?\)")
+#: Matches the `](target[...])` tail of a markdown link, capturing just the
+#: `.md` target. Handles the plain form, `#fragment`, an angle-bracketed
+#: target (`](<path.md>)`, needed when the path has spaces/parens), and a
+#: trailing title (`](path.md "Title")`) — any combination.
+_MD_LINK_RE = re.compile(
+    r"\]\(\s*<?([^()\s#>]+\.md)>?(?:#[^()\s]*)?(?:\s+\"[^\"]*\")?\s*\)"
+)
+#: Same link forms as `_MD_LINK_RE`, but matching the WHOLE `[label](...)`
+#: construct (label included) — used only to scrub the mention corpus (M5):
+#: a link's label text (e.g. `[foo.md](bar.md)`) must not itself read as a
+#: prose mention of an unrelated `foo.md` elsewhere in the wiki.
+_MD_FULL_LINK_RE = re.compile(
+    r"\[[^\]\n]*\]\(\s*<?[^()\s#>]+\.md>?(?:#[^()\s]*)?(?:\s+\"[^\"]*\")?\s*\)"
+)
 
 
 def _in_archive(parts: tuple[str, ...]) -> bool:
@@ -420,10 +437,11 @@ def _orphan_pages(wiki_root: Path) -> list[str]:
           named `index.md` are never mention-saved (too generic a name to
           trust a bare mention).
 
-    Link/arrow markup is stripped out of the mention corpus before fallback
-    (c) runs, so a link's target string (which may share a filename with an
-    unrelated page elsewhere, e.g. two different `map.md`s) never doubles as
-    a prose mention of that OTHER page — mentions (c) is prose-only, exactly
+    Link/arrow markup — target AND label — is stripped out of the mention
+    corpus before fallback (c) runs, so neither a link's target string nor
+    its label (which may itself be `.md`-shaped, e.g. `[foo.md](bar.md)`,
+    and share a filename with an unrelated page elsewhere) ever doubles as a
+    prose mention of that OTHER page — mentions (c) is prose-only, exactly
     like `_knowledge_tree_findings`' fallback. Self-links never count, but
     exempt pages still contribute both links and mentions to the corpus."""
     # Deliberately NOT `walk_wiki_pages` here: this needs every page, incl.
@@ -458,7 +476,11 @@ def _orphan_pages(wiki_root: Path) -> list[str]:
                     linked.add(ptr.path)
                 line = line.replace(ptr.path, "")
             mention_lines.append(line)
-        corpus[src] = _MD_LINK_RE.sub("]()", "\n".join(mention_lines))
+        # Strip the WHOLE link construct — label included (M5) — not just the
+        # target: a link's label text can itself be `.md`-shaped (e.g.
+        # `[foo.md](bar.md)`) and must not double as a prose mention of an
+        # unrelated `foo.md` elsewhere.
+        corpus[src] = _MD_FULL_LINK_RE.sub(" ", "\n".join(mention_lines))
 
     _EXEMPT_ROOT = {"index.md", "log.md", "identity.md", "LICENSES.md"}
     orphans: list[str] = []
@@ -482,6 +504,9 @@ def _orphan_pages(wiki_root: Path) -> list[str]:
             # corpus entry by KEY, not by string removal — two pages with
             # byte-identical text would make a text-based `str.replace`
             # remove the wrong copy.
+            # O(corpus size) rejoin + scan PER unlinked candidate — the
+            # quadratic term only runs here, gated on `rel not in linked`
+            # above, so a wiki that's mostly linked stays cheap.
             others = "\n".join(t for r2, t in corpus.items() if r2 != rel)
             if name_re.search(others):
                 continue
@@ -499,6 +524,10 @@ def record_orphan_suggestions(orphans: list[str], session: str) -> int:
     here)."""
     from lib.suggestions import SuggestionSpec, record
 
+    # `record()` recomputes the dedup set (ledger + pending) from disk on
+    # EVERY call — O(N orphans × store size) here, not batched. Fine at
+    # today's store/orphan-list sizes; worth a batch dedup pass if either
+    # grows large enough to matter.
     recorded = 0
     for rel in sorted(orphans):
         why = "no incoming links wiki-wide — needs a home in a hub, map, or log"
@@ -874,6 +903,8 @@ def render_report(findings: dict) -> str:
     orphans = findings.get("orphan_pages") or []
     if orphans:
         lines.extend(f"- {p}" for p in orphans)
+        if unlinked:
+            lines.append("- (pages above may also appear under Unlinked knowledge pages)")
     else:
         lines.append("- none")
     lines.append("")

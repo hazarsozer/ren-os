@@ -16,7 +16,15 @@ def _w(root, rel, text):
 
 
 @pytest.fixture
-def wiki(tmp_path):
+def clean_path_env(monkeypatch):
+    for var in ("REN_WIKI_ROOT", "CLAUDE_PLUGIN_OPTION_WIKIROOT", "REN_FRAMEWORK_ROOT"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.delenv("CLAUDE_SESSION_ID", raising=False)
+    return monkeypatch
+
+
+@pytest.fixture
+def wiki(clean_path_env, tmp_path):
     _w(tmp_path, "index.md", "---\ntype: l2-map\n---\n# Master\n## Decision map\n- [demo](projects/demo/map.md) (unstamped)\n")
     _w(tmp_path, "log.md", "---\ntype: log-entry\n---\n# Wiki Log\n## [2026-08-12] session | demo — [session-linked](projects/demo/l1/session-linked.md)\n")
     _w(tmp_path, "identity.md", "---\ntype: identity\n---\n# Me\n")
@@ -74,11 +82,8 @@ def test_map_md_is_a_candidate(wiki):
     assert "projects/lone/map.md" in orphans
 
 
-def test_sweep_carries_key_and_report_renders(wiki, monkeypatch):
-    for var in ("REN_WIKI_ROOT", "CLAUDE_PLUGIN_OPTION_WIKIROOT", "REN_FRAMEWORK_ROOT"):
-        monkeypatch.delenv(var, raising=False)
-    monkeypatch.delenv("CLAUDE_SESSION_ID", raising=False)
-    monkeypatch.setenv("REN_WIKI_ROOT", str(wiki))
+def test_sweep_carries_key_and_report_renders(wiki, clean_path_env):
+    clean_path_env.setenv("REN_WIKI_ROOT", str(wiki))
     findings = wiki_health.sweep(wiki)
     assert "orphan_pages" in findings
     report = wiki_health.render_report(findings)
@@ -86,7 +91,11 @@ def test_sweep_carries_key_and_report_renders(wiki, monkeypatch):
     assert "session-orphan.md" in report
 
 
-def test_sweep_degraded_path_has_key(tmp_path):
+def test_sweep_degraded_path_has_key(clean_path_env, tmp_path):
+    # M9: a clean env so the degraded (no-wiki-root) path's other sweep
+    # calls (e.g. `_mass_deletions`' journal read) hit tmp_path, never the
+    # real ~/.renos state.
+    clean_path_env.setenv("REN_FRAMEWORK_ROOT", str(tmp_path))
     findings = wiki_health.sweep(tmp_path / "nope")
     assert findings["orphan_pages"] == []
 
@@ -133,13 +142,76 @@ def test_raw_exemption_is_depth_exact(wiki):
     assert "projects/demo/knowledge/raw/notes.md" in orphans
 
 
-def test_record_orphan_suggestions_dedups(wiki, monkeypatch, tmp_path):
+def test_link_forms_titled_and_angle_bracketed(wiki):
+    # M4: `](path.md "Title")` and `](<path.md>)` must resolve as links too,
+    # not just the plain `](path.md)` form.
+    _w(wiki, "projects/demo/knowledge/titled-target.md", "# Titled target\n")
+    _w(wiki, "projects/demo/knowledge/angle-target.md", "# Angle target\n")
+    _w(
+        wiki,
+        "projects/demo/link-forms.md",
+        "# Link forms\n"
+        "- [titled](projects/demo/knowledge/titled-target.md \"Titled target\")\n"
+        "- [angled](<projects/demo/knowledge/angle-target.md>)\n"
+        "[self](projects/demo/link-forms.md)\n",
+    )
+    _w(wiki, "index.md", (wiki / "index.md").read_text(encoding="utf-8")
+       .replace("(unstamped)", "(unstamped)\n- [link-forms](projects/demo/link-forms.md) (w-lf)"))
+
+    orphans = wiki_health._orphan_pages(wiki)
+    assert "projects/demo/knowledge/titled-target.md" not in orphans
+    assert "projects/demo/knowledge/angle-target.md" not in orphans
+
+
+def test_link_label_does_not_mention_save_unrelated_page(wiki):
+    # M5: a link's LABEL text must not double as a prose mention of an
+    # unrelated page sharing that filename — only the strip covers labels too.
+    _w(wiki, "foo.md", "---\ntype: project-knowledge\n---\n# unrelated foo\n")
+    _w(
+        wiki,
+        "projects/demo/label-link.md",
+        "# Label link\nSee [foo.md](projects/demo/knowledge/stack.md) for details.\n",
+    )
+    _w(wiki, "index.md", (wiki / "index.md").read_text(encoding="utf-8")
+       .replace("(unstamped)", "(unstamped)\n- [label-link](projects/demo/label-link.md) (w-ll)"))
+
+    orphans = wiki_health._orphan_pages(wiki)
+    assert "foo.md" in orphans  # label "foo.md" must not mention-save the real foo.md
+
+
+def _empty_findings(**overrides):
+    base = {
+        "dangling_pointers": [], "contradiction_pairs": [], "duplicate_pairs": [],
+        "numeric_drift_pairs": [], "contradiction_scan_note": None, "mass_deletions": [],
+        "quarantined_pages": {"count": 0, "pages": []}, "single_project_global_pages": [],
+        "hubless_knowledge_dirs": [], "unlinked_knowledge_pages": [], "orphan_pages": [],
+        "judge_dismissed": [], "judge_supersedes": [], "retrieval_eval": {"hit_rate": None},
+        "machine_released_total": 0, "generated_at": "2026-08-12T00:00:00Z",
+    }
+    base.update(overrides)
+    return base
+
+
+def test_render_report_cross_references_unlinked_when_both_nonempty():
+    # M7: the cross-reference note only appears when BOTH sections are non-empty.
+    findings = _empty_findings(
+        orphan_pages=["projects/demo/orphan.md"],
+        unlinked_knowledge_pages=["projects/demo/knowledge/sub/leaf.md"],
+    )
+    report = wiki_health.render_report(findings)
+    assert "(pages above may also appear under Unlinked knowledge pages)" in report
+
+
+def test_render_report_no_cross_reference_when_unlinked_empty():
+    findings = _empty_findings(orphan_pages=["projects/demo/orphan.md"])
+    report = wiki_health.render_report(findings)
+    assert "(pages above may also appear under Unlinked knowledge pages)" not in report
+
+
+def test_record_orphan_suggestions_dedups(wiki, clean_path_env, tmp_path):
     # point the suggestions store at a temp dir per the store's own test pattern
     # (READ tests for lib.suggestions and reuse its fixture/monkeypatch approach)
-    for var in ("REN_WIKI_ROOT", "CLAUDE_PLUGIN_OPTION_WIKIROOT", "REN_FRAMEWORK_ROOT"):
-        monkeypatch.delenv(var, raising=False)
-    monkeypatch.delenv("CLAUDE_SESSION_ID", raising=False)
-    monkeypatch.setenv("REN_FRAMEWORK_ROOT", str(tmp_path))
+    clean_path_env.setenv("REN_FRAMEWORK_ROOT", str(tmp_path))
 
     n1 = wiki_health.record_orphan_suggestions(["projects/demo/l1/session-orphan.md"], session="s1")
     n2 = wiki_health.record_orphan_suggestions(["projects/demo/l1/session-orphan.md"], session="s2")
