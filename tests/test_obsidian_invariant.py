@@ -109,3 +109,16 @@ def test_manifest_and_readme_also_relative_links_only():
     for match in _MD_LINK_RE.finditer(text):
         target = match.group(1).strip()
         assert not target.startswith("file://"), f"README.md: file:// link {target}"
+
+
+def test_skeleton_documents_link_form_pointers():
+    """The index template teaches the pointer grammar; post-#53 it must teach
+    the link form — a template showing the arrow form regenerates the orphan
+    graph on every new install."""
+    index_templates = [p for p in _template_files() if p.name == "index.md.tmpl"]
+    assert index_templates, "wiki-skeleton index template not found"
+    for tpl in index_templates:
+        text = tpl.read_text(encoding="utf-8")
+        if "Decision map" in text:
+            assert "] → <wiki-relative-path>" not in text
+            assert "](<wiki-relative-path>" in text

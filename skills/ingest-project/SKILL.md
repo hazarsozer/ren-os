@@ -47,7 +47,7 @@ references_on_demand: []
 
 # ingest-project
 
-Bringing an existing repo's context into the wiki, in one visible artifact. `scan_repo` mines the repo for facts (never writes, never touches the project); the live session turns those facts into `knowledge` (compact facts) and `pointers` (topic → wiki-path#anchor); `ingest` assembles the frozen L2 schema from that and queues it, then hands back the exact text to show the friend.
+Bringing an existing repo's context into the wiki, in one visible artifact. `scan_repo` mines the repo for facts (never writes, never touches the project); the live session turns those facts into `knowledge` (compact facts) and `pointers` (topic → wiki-path#anchor, rendered as `[topic](wiki-path#anchor)`; external `repo:` references keep the arrow form); `ingest` assembles the frozen L2 schema from that and queues it, then hands back the exact text to show the friend.
 
 ## When to use this skill
 

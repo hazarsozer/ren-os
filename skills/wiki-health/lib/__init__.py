@@ -15,8 +15,8 @@ mechanics only — it never writes anything itself.
     because that check returns one joined `CheckResult.message` string —
     this needs one structured `{"page", "target"}` record per finding so a
     live session can act on each individually. Keep the two walks in sync if
-    the L2 pointer-map schema (`## Decision map` / `- [x] → path#anchor`)
-    ever changes.
+    the L2 pointer-map schema (`## Decision map` / `- [x](path#anchor)
+    (write_id)`, legacy `→ path#anchor` accepted on read) ever changes.
   - `contradiction_pairs` — wiki-WIDE, not sibling-directory-only: every
     pair of pages whose body has a "## Knowledge" section is compared via
     `lib.memory.semantics.contradiction_evidence` (the pairwise core factored
