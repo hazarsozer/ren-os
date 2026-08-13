@@ -153,6 +153,34 @@ def stamp_wiki(profile: str = "master") -> StampResult:
     )
 
 
+# Okabe-Ito, colour-vision-safe; tier naming is the second signal (never colour alone).
+# Group order matters: Obsidian applies the first matching group, so the
+# quarantine content-match outranks the path-based tiers.
+DEFAULT_GRAPH_CONFIG = {
+    "search": "-path:raw -path:archive",
+    "colorGroups": [
+        {"query": '"ren-quarantine"', "color": {"a": 1, "rgb": 0xE69F00}},   # orange: quarantined
+        {"query": "file:index.md OR file:map.md", "color": {"a": 1, "rgb": 0x0072B2}},  # blue: spine
+        {"query": "path:knowledge", "color": {"a": 1, "rgb": 0x009E73}},     # green: knowledge
+        {"query": "path:l1", "color": {"a": 1, "rgb": 0x56B4E9}},            # sky: session narratives
+    ],
+    "showTags": False,
+    "showAttachments": False,
+    "showOrphans": True,
+}
+
+
+def write_default_graph_config(wiki_root_path: Path | None = None) -> bool:
+    """Write .obsidian/graph.json with the default tier view — only if absent."""
+    root = wiki_root_path or ren_paths.wiki_root()
+    dest = root / ".obsidian" / "graph.json"
+    if dest.exists():
+        return False
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_text(json.dumps(DEFAULT_GRAPH_CONFIG, indent=2) + "\n", encoding="utf-8")
+    return True
+
+
 def record_install(version: str) -> None:
     """Record that install completed at `version`, at
     `state_dir()/install.json` (atomic temp-file + `os.replace`)."""
@@ -244,8 +272,10 @@ def warm_environment() -> dict:
 
 __all__ = [
     "QUESTION_BUDGET",
+    "DEFAULT_GRAPH_CONFIG",
     "install_state",
     "stamp_wiki",
+    "write_default_graph_config",
     "record_install",
     "warm_environment",
 ]

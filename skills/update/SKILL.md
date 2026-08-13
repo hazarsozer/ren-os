@@ -199,11 +199,12 @@ Carried near-verbatim from donor `skills/update/` (Task 7.3) — the migration s
   the friend the pending rename list (the gate's paths), get approval (this
   is a MAJOR-classified structural change), then run `uv run python
   migrations/folder-note-hubs-1/migrate.py` followed by `uv run python
-  migrations/folder-note-hubs-1/verify.py`. On verify failure: stop, show
-  the FAIL lines, offer whole-wiki restore via
-  `skills/update/scripts/restore.sh --whole <snapshot>` (the snapshot taken
-  at the start of this update). Never proceed to the closing summary with a
-  failed verify.
+  migrations/folder-note-hubs-1/verify.py`. On verify success, call
+  `skills.install.lib.write_default_graph_config()` (the new Obsidian tier
+  view written during the migration). On verify failure: stop, show the FAIL
+  lines, offer whole-wiki restore via `skills/update/scripts/restore.sh --whole <snapshot>`
+  (the snapshot taken at the start of this update). Never proceed to the closing
+  summary with a failed verify.
 
 ## Overlap note: snapshot substrate vs. Task 1.2's per-write snapshots
 
