@@ -89,7 +89,7 @@ def test_project_named_knowledge_not_false_positive(tmp_path, monkeypatch):
     root = _migrated_wiki(tmp_path, monkeypatch)
     page = root / "projects/knowledge/notes/index.md"
     page.parent.mkdir(parents=True)
-    page.write_text("---\ntype: project-knowledge\n---\n# Notes index\n", encoding="utf-8")
+    page.write_text("---\ntype: project-knowledge\nhub: true\n---\n# Notes index\n", encoding="utf-8")
     other = root / "projects/knowledge/other.md"
     other.write_text("---\ntype: project-knowledge\n---\n[n](notes/index.md)\n", encoding="utf-8")
     assert _load(VERIFY).main() == 0

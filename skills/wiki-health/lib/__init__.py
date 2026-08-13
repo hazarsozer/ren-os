@@ -51,9 +51,10 @@ mechanics only — it never writes anything itself.
     including hand-authored ones the queue never saw.
   - `hubless_knowledge_dirs` / `unlinked_knowledge_pages` — structural audit
     of the hierarchical `projects/<slug>/knowledge/` trees (issue #20
-    amendment): a knowledge subdirectory must carry a hub `index.md`, and a
-    leaf page in a subdirectory must be linked from some hub or project-root
-    page. `projects/<slug>/raw/` (immutable source material) is skipped by
+    amendment): a knowledge subdirectory must carry a hub (the folder note
+    `<topic>/<topic>.md`, or legacy `index.md`), and a leaf page in a
+    subdirectory must be linked from some hub or project-root page.
+    `projects/<slug>/raw/` (immutable source material) is skipped by
     the pairwise scans — sources, not claims.
   - `orphan_pages` (#55) — wiki-WIDE walk, not scoped to
     `projects/<slug>/knowledge/`: every durable page with no incoming
@@ -339,11 +340,11 @@ def _knowledge_tree_findings(wiki_root: Path) -> tuple[list[str], list[str]]:
 
     Returns `(hubless_knowledge_dirs, unlinked_knowledge_pages)`:
       - every subdirectory (any depth) of a project's `knowledge/` without a
-        hub `index.md`;
-      - every leaf page (non-`index.md` `*.md` in a SUBDIRECTORY of
-        `knowledge/`) whose filename appears in no hub page and no page
-        directly under `projects/<slug>/` (map/overview/schema). Top-level
-        `knowledge/*.md` pages are exempt — the map indexes them directly.
+        hub (the folder note `<topic>/<topic>.md` or legacy `index.md`);
+      - every leaf page (non-`index.md` and non-folder-note-naming `*.md` in
+        a SUBDIRECTORY of `knowledge/`) whose filename appears in no hub page
+        and no page directly under `projects/<slug>/` (map/overview/schema).
+        Top-level `knowledge/*.md` pages are exempt — the map indexes them directly.
 
     Deliberately cheap and name-based (same spirit as
     `_single_project_global_pages`): a leaf counts as linked if its filename
@@ -360,9 +361,9 @@ def _knowledge_tree_findings(wiki_root: Path) -> tuple[list[str], list[str]]:
         if not knowledge.is_dir():
             continue
 
-        # Text that can legitimately link a leaf: every hub index.md in the
-        # knowledge tree, plus every page directly under the project root
-        # (map.md's Decision map, overview.md, schema.md).
+        # Text that can legitimately link a leaf: every hub (folder note or
+        # legacy index.md) in the knowledge tree, plus every page directly
+        # under the project root (map.md's Decision map, overview.md, schema.md).
         link_text: list[str] = []
         for page in sorted(project_dir.glob("*.md")):
             link_text.append(page.read_text(encoding="utf-8", errors="replace"))

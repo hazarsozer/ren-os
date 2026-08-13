@@ -57,9 +57,10 @@ def stale_hub_links(root: Path) -> list[str]:
 
 
 def misnamed_hubs(root: Path) -> list[str]:
+    knowledge_roots = [k.resolve() for k in root.glob("projects/*/knowledge")]
     out = []
     for page in _pages(root):
-        if "knowledge" not in page.relative_to(root).parts:
+        if not any(page.resolve().is_relative_to(k) for k in knowledge_roots):
             continue
         if re.search(r"^hub:\s*true\s*$", _fm(page.read_text(encoding="utf-8")), re.MULTILINE):
             if page.name != f"{page.parent.name}.md":
