@@ -23,6 +23,18 @@ from lib.ren_paths import state_dir, wiki_root  # noqa: E402
 
 _FRONTMATTER_RE = re.compile(r"\A---\n(.*?)\n---\n", re.DOTALL)
 _SKIP_PARTS = {"raw", "archive"}
+_MD_LINK_RE = re.compile(
+    r"(\]\(\s*<?)"                       # opener through optional <
+    r"([^()\s#>]+\.md)"                  # target path (no anchor)
+    r"((?:#[^()\s>]*)?>?(?:\s+\"[^\"]*\")?\s*\))"  # anchor/title/closer
+)
+_SCHEMA_HUB_LINE_RE = re.compile(
+    r"^- Hub files are always named `index\.md`\.\s*$", re.MULTILINE
+)
+_SCHEMA_HUB_REPLACEMENT = (
+    "- Hub files are folder notes named after their folder "
+    "(`<topic>/<topic>.md`), with `hub: true` in frontmatter."
+)
 
 
 def _skipped(path: Path, root: Path) -> bool:
@@ -56,6 +68,30 @@ def stamp_hub_true(text: str) -> str:
     return f"---\n{block}\nhub: true\n---\n" + text[m.end():]
 
 
+def rewrite_links(text: str, page: Path, root: Path,
+                  renames: dict[Path, Path]) -> tuple[str, int]:
+    """Rewrite md-link targets that resolve (file- or root-relative) to a renamed hub."""
+    count = 0
+
+    def _sub(m: re.Match) -> str:
+        nonlocal count
+        target = m.group(2)
+        if not target.endswith("index.md") or target.startswith(("http://", "https://", "repo:", "/")):
+            return m.group(0)
+        for base in (page.parent, root):
+            try:
+                cand = (base / target).resolve()
+            except OSError:
+                continue
+            if cand in renames:
+                count += 1
+                new_target = target[: -len("index.md")] + renames[cand].name
+                return m.group(1) + new_target + m.group(3)
+        return m.group(0)
+
+    return _MD_LINK_RE.sub(_sub, text), count
+
+
 def _journal(entries: list[dict]) -> None:
     path = state_dir() / "migrations" / "folder-note-hubs-1.jsonl"
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -71,6 +107,18 @@ def main() -> int:
         print("SKIP: no knowledge hubs named index.md")
         return 0
     # Task 2 inserts the link-rewrite pass here, before any rename.
+    rewrites = 0
+    for page in sorted(root.rglob("*.md")):
+        if _skipped(page, root):
+            continue
+        text = page.read_text(encoding="utf-8")
+        new_text, n = rewrite_links(text, page, root, renames)
+        if page.name == "schema.md":
+            new_text, n2 = _SCHEMA_HUB_LINE_RE.subn(_SCHEMA_HUB_REPLACEMENT, new_text)
+            n += n2
+        if n:
+            page.write_text(new_text, encoding="utf-8")
+            rewrites += n
     entries = []
     for old, new in sorted(renames.items()):
         new.write_text(stamp_hub_true(old.read_text(encoding="utf-8")), encoding="utf-8")
@@ -80,6 +128,10 @@ def main() -> int:
             "from": str(old.relative_to(root)),
             "to": str(new.relative_to(root)),
         })
+    entries.append({
+        "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "rewrites": rewrites,
+    })
     _journal(entries)
     print("OK")
     return 0

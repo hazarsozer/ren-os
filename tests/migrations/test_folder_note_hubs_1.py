@@ -102,3 +102,101 @@ def test_main_skips_when_already_migrated(tmp_path, monkeypatch, capsys):
     mod = _load()
     assert mod.main() == 0
     assert capsys.readouterr().out.startswith("SKIP:")
+
+
+MAP = """---
+type: l2-map
+schema_version: 2
+project: demo
+---
+# demo — map
+
+## Decision map
+- [Research](projects/demo/knowledge/research/index.md) (w-01ABC)
+- [External](repo:demo:src/main.py) (w-01DEF)
+
+## Sessions
+- [session-1](projects/demo/l1/session-1.md)
+"""
+
+LEAF = """---
+type: project-knowledge
+schema_version: 1
+project: demo
+---
+# Body Doubling
+
+Back to the [hub](index.md), or [up](../research/index.md#anchor).
+See also [interventions](interventions/index.md).
+"""
+
+
+def _full_wiki(tmp_path, monkeypatch):
+    root = _mk_wiki(tmp_path, monkeypatch)
+    hub = root / "projects/demo/knowledge/research/index.md"
+    hub.parent.mkdir(parents=True)
+    hub.write_text(HUB, encoding="utf-8")
+    nested = root / "projects/demo/knowledge/research/interventions/index.md"
+    nested.parent.mkdir(parents=True)
+    nested.write_text(HUB, encoding="utf-8")
+    (root / "projects/demo/knowledge/research/body-doubling.md").write_text(LEAF, encoding="utf-8")
+    (root / "projects/demo/map.md").write_text(MAP, encoding="utf-8")
+    return root
+
+
+def test_rewrite_root_relative_pointer(tmp_path, monkeypatch):
+    root = _full_wiki(tmp_path, monkeypatch)
+    mod = _load()
+    renames = mod.build_rename_map(root)
+    text, n = mod.rewrite_links(MAP, root / "projects/demo/map.md", root, renames)
+    assert "- [Research](projects/demo/knowledge/research/research.md) (w-01ABC)" in text
+    assert "repo:demo:src/main.py" in text          # repo pointer untouched
+    assert "l1/session-1.md" in text                # non-hub link untouched
+    assert n == 1
+
+
+def test_rewrite_file_relative_variants_preserve_style_and_anchor(tmp_path, monkeypatch):
+    root = _full_wiki(tmp_path, monkeypatch)
+    mod = _load()
+    renames = mod.build_rename_map(root)
+    leaf = root / "projects/demo/knowledge/research/body-doubling.md"
+    text, n = mod.rewrite_links(LEAF, leaf, root, renames)
+    assert "[hub](research.md)" in text
+    assert "[up](../research/research.md#anchor)" in text
+    assert "[interventions](interventions/interventions.md)" in text
+    assert n == 3
+
+
+def test_main_full_run_rewrites_then_renames(tmp_path, monkeypatch, capsys):
+    root = _full_wiki(tmp_path, monkeypatch)
+    mod = _load()
+    assert mod.main() == 0
+    map_text = (root / "projects/demo/map.md").read_text(encoding="utf-8")
+    assert "research/research.md" in map_text and "research/index.md" not in map_text
+    assert (root / "projects/demo/knowledge/research/research.md").exists()
+    assert (root / "projects/demo/knowledge/research/interventions/interventions.md").exists()
+
+
+def test_schema_md_convention_line_rewritten(tmp_path, monkeypatch):
+    root = _full_wiki(tmp_path, monkeypatch)
+    schema = root / "projects/demo/schema.md"
+    schema.write_text(
+        "---\ntype: project-schema\nschema_version: 1\n---\n"
+        "# Schema\n\n- Hub files are always named `index.md`.\n",
+        encoding="utf-8",
+    )
+    mod = _load()
+    assert mod.main() == 0
+    text = schema.read_text(encoding="utf-8")
+    assert "always named `index.md`" not in text
+    assert "folder notes" in text
+
+
+def test_second_run_is_noop_skip(tmp_path, monkeypatch, capsys):
+    root = _full_wiki(tmp_path, monkeypatch)
+    mod = _load()
+    assert mod.main() == 0
+    before = {p: p.read_text(encoding="utf-8") for p in root.rglob("*.md")}
+    assert mod.main() == 0
+    assert capsys.readouterr().out.strip().endswith("SKIP: no knowledge hubs named index.md")
+    assert {p: p.read_text(encoding="utf-8") for p in root.rglob("*.md")} == before
