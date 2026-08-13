@@ -95,6 +95,16 @@ def test_project_named_knowledge_not_false_positive(tmp_path, monkeypatch):
     assert _load(VERIFY).main() == 0
 
 
+def test_leaf_named_like_index_suffix_not_false_positive(tmp_path, monkeypatch):
+    root = _migrated_wiki(tmp_path, monkeypatch)
+    leaf = root / "projects/demo/knowledge/research/specs-index.md"
+    leaf.write_text("---\ntype: project-knowledge\n---\n# Specs\n", encoding="utf-8")
+    (root / "projects/demo/map.md").write_text(
+        GOOD_MAP + "- [Specs](projects/demo/knowledge/research/specs-index.md) (w-01XYZ)\n",
+        encoding="utf-8")
+    assert _load(VERIFY).main() == 0
+
+
 def test_registry_lists_migration():
     import json
     registry = json.loads((REPO_ROOT / "skills/wiki-migration/schemas.json").read_text())

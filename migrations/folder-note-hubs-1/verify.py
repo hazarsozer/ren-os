@@ -46,7 +46,7 @@ def stale_hub_links(root: Path) -> list[str]:
     out = []
     for page in _pages(root):
         for target in _MD_LINK_RE.findall(page.read_text(encoding="utf-8")):
-            if not target.endswith("index.md") or target.startswith(("http", "repo:", "/")):
+            if Path(target).name != "index.md" or target.startswith(("http", "repo:", "/")):
                 continue
             for base in (page.parent, root):
                 cand = (base / target).resolve()
