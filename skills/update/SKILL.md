@@ -194,6 +194,17 @@ Carried near-verbatim from donor `skills/update/` (Task 7.3) — the migration s
   `schema_version: 2` cannot false-SKIP a stale page). See
   `migrations/l2-map-1-to-2/README.md` for the full transform contract.
 
+- **Global migration: folder-note-hubs-1.** Gate:
+  `should_run_folder_note_hubs_1()` from `skills.update.lib`. If true — show
+  the friend the pending rename list (the gate's paths), get approval (this
+  is a MAJOR-classified structural change), then run `uv run python
+  migrations/folder-note-hubs-1/migrate.py` followed by `uv run python
+  migrations/folder-note-hubs-1/verify.py`. On verify failure: stop, show
+  the FAIL lines, offer whole-wiki restore via
+  `skills/update/scripts/restore.sh --whole <snapshot>` (the snapshot taken
+  at the start of this update). Never proceed to the closing summary with a
+  failed verify.
+
 ## Overlap note: snapshot substrate vs. Task 1.2's per-write snapshots
 
 `lib/memory/snapshot.py` (Task 1.2, G9) is a DIFFERENT snapshot mechanism: per-write-id, page-granularity snapshots for the write-safety substrate (revert a single memory write in one step). `scripts/snapshot.sh` here is whole-wiki, version-bump-granularity, for migration rollback. They serve genuinely different purposes at different granularities — this skill's carried snapshot logic is NOT rewritten to unify with Task 1.2's substrate; that unification (if it's ever worth doing) is a 0.3-scoped ADR decision, not something to improvise here. Noted per the task brief's explicit instruction not to rewrite working carried code.

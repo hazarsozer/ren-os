@@ -54,7 +54,7 @@ def test_run_checks_returns_one_result_per_check(wiki):
     names = {r.name for r in results}
     assert names == {
         "env", "wiki_structure", "frontmatter", "schema_versions",
-        "budget_lint", "dangling_pointers", "graphify_status", "companions",
+        "budget_lint", "dangling_pointers", "hub_convention", "graphify_status", "companions",
         "backup_configured", "execution_tiers", "global_drift", "harness_neutrality", "guard_health",
         "suggestion_store", "apply_integrity", "judge_health", "archive_integrity",
         "routing_audit", "model_map_staleness", "orphaned_projects",

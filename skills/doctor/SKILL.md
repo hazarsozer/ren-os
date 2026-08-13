@@ -61,6 +61,7 @@ Donor's Node/gh/claude-cli checks, activity-feed/RC-channel/fleet checks, and th
 |---|---|
 | `check_budget_lint` | measured `capability_tokens` (Task 3.1) vs. any SKILL.md-declared `tokens:` ceiling — `info` when nothing's declared to compare against yet, `skip` when no measured data exists |
 | `check_dangling_pointers` | every l2-map page's "## Decision map" pointer targets actually exist |
+| `check_hub_convention` | legacy `projects/*/knowledge/**/index.md` knowledge hubs still pending the folder-note-hubs-1 migration (#56) — names the first 5 |
 | `check_graphify_status` | `importlib.import_module("skills.code-map.lib").status()` — not installed → `info` w/ companions.md pointer; version outside pin → `warn`; stale graph → `info` |
 | `check_companions` | registry choices vs reality (lib/companions) — accepted-but-missing → warn; undecided-and-absent → info; consistent → ok |
 | `check_backup_configured` | `skills.backup.lib.backup_configured()` |

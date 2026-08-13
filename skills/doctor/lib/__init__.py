@@ -32,6 +32,8 @@ NEW (Task 7.3, all warn-not-block):
     `capability_tokens` data (`lib.instrument.collect`).
   - `check_dangling_pointers` — every l2-map page's "## Decision map" lines,
     target existence.
+  - `check_hub_convention` — legacy `index.md` knowledge hubs pending the
+    folder-note-hubs-1 migration (#56).
   - `check_graphify_status` — `skills.code-map.lib.status()`.
   - `check_backup_configured` — `skills.backup.lib.backup_configured()`.
   - `check_global_drift` — `lib.memory.promotion.demote_check()`.
@@ -264,6 +266,24 @@ def check_dangling_pointers(wiki_root: Path | None = None) -> CheckResult:
     if dangling:
         return CheckResult("dangling_pointers", "warn", f"{len(dangling)} dangling pointer(s): {'; '.join(dangling[:5])}")
     return CheckResult("dangling_pointers", "ok", "no dangling L2 pointers")
+
+
+def check_hub_convention(wiki_root: Path | None = None) -> CheckResult:
+    """Warn on knowledge hubs still named index.md (pre folder-note-hubs-1, #56)."""
+    wiki_root = wiki_root or ren_paths.wiki_root()
+    legacy = []
+    for knowledge in sorted(wiki_root.glob("projects/*/knowledge")):
+        for p in sorted(knowledge.rglob("index.md")):
+            rel = p.relative_to(wiki_root)
+            if any(part.startswith(".") or part in ("raw", "archive") for part in rel.parts):
+                continue
+            legacy.append(str(rel))
+    if legacy:
+        shown = ", ".join(legacy[:5])
+        more = f" (+{len(legacy) - 5} more)" if len(legacy) > 5 else ""
+        return CheckResult("hub_convention", "warn",
+                           f"legacy index.md hubs pending folder-note-hubs-1: {shown}{more}")
+    return CheckResult("hub_convention", "ok", "all knowledge hubs are folder notes")
 
 
 def check_graphify_status(repo_root: Path | None = None) -> CheckResult:
@@ -768,6 +788,7 @@ _ALL_CHECK_NAMES: tuple[str, ...] = (
     "check_schema_versions",
     "check_budget_lint",
     "check_dangling_pointers",
+    "check_hub_convention",
     "check_graphify_status",
     "check_companions",
     "check_backup_configured",
@@ -812,6 +833,7 @@ __all__ = [
     "check_schema_versions",
     "check_budget_lint",
     "check_dangling_pointers",
+    "check_hub_convention",
     "check_graphify_status",
     "check_companions",
     "check_backup_configured",

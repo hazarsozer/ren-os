@@ -11,6 +11,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from lib.ren_paths import wiki_root
+
 _HEADER_RE = re.compile(r"^## \[(\d+\.\d+\.\d+)\]", re.MULTILINE)
 _ANY_HEADER_RE = re.compile(r"^## \[", re.MULTILINE)
 
@@ -118,3 +120,24 @@ def should_run_foreign_remint_1(old: str, new: str) -> bool:
     except ValueError:
         return False
     return old_key < gate_key <= new_key
+
+
+def should_run_folder_note_hubs_1(wiki_root_path: Path | None = None) -> bool:
+    """True if any legacy knowledge-hub index.md remains (raw/, archive/, dot-dirs excluded).
+
+    Unlike ``should_run_trust_backfill``/``should_run_project_knowledge_1``/
+    ``should_run_foreign_remint_1``, this gate is idempotent-by-inspection
+    rather than version-crossing: ``migrations/folder-note-hubs-1/migrate.py``
+    (issue #56) renames `projects/*/knowledge/**/index.md` to
+    `<parent-dir>.md`, so the gate just checks whether any such legacy hub
+    still exists — same fail-safe reasoning as the migration's own verifier
+    (`migrations/folder-note-hubs-1/verify.py`).
+    """
+    root = wiki_root_path or wiki_root()
+    for knowledge in root.glob("projects/*/knowledge"):
+        for p in knowledge.rglob("index.md"):
+            rel = p.relative_to(root)
+            if any(part.startswith(".") or part in ("raw", "archive") for part in rel.parts):
+                continue
+            return True
+    return False
