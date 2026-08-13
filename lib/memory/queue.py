@@ -498,7 +498,11 @@ def apply(qid: str) -> Provenance:
         trust=trust_class(proposal.writer, proposal.producer),
     )
 
-    write_apply.apply_write(proposal.page, _quarantined_content(proposal), prov)
+    # allow_existing_add: ADD-over-existing was already adjudicated by
+    # _check_add_race above (#58 door guard opt-in).
+    write_apply.apply_write(
+        proposal.page, _quarantined_content(proposal), prov, allow_existing_add=True
+    )
 
     entry.status = _APPLIED
     entry.write_id = prov.write_id
@@ -567,8 +571,14 @@ def apply_auto(qid: str) -> Provenance:
         trust=trust_class(proposal.writer, proposal.producer),
     )
 
+    # allow_existing_add: propose-time dedup plus the documented same-session
+    # L1 re-ADD upsert own ADD semantics on this path (#58 door guard opt-in).
     write_apply.apply_write(
-        proposal.page, _quarantined_content(proposal), prov, journal_extra={"auto": True}
+        proposal.page,
+        _quarantined_content(proposal),
+        prov,
+        journal_extra={"auto": True},
+        allow_existing_add=True,
     )
 
     entry.status = _APPLIED
@@ -623,10 +633,13 @@ def resolve_and_apply(qid: str, resolution: str) -> Provenance:
         trust=trust_class(proposal.writer, proposal.producer),
     )
 
+    # allow_existing_add: a contradiction resolution replaces the held page by
+    # design (#58 door guard opt-in).
     write_apply.apply_write(
         proposal.page,
         _quarantined_content(proposal),
         prov,
+        allow_existing_add=True,
         journal_extra={"auto": True, "contradiction_resolution": resolution.strip()},
     )
 

@@ -328,7 +328,9 @@ class TestSnapshotPruneOnWrite:
     def test_apply_write_prunes_to_retain(self, wiki, monkeypatch):
         monkeypatch.setenv("REN_SNAPSHOT_RETAIN", "2")
         for i in range(4):  # 4 writes -> 4 snapshot dirs, retain 2
-            prov = _prov(op="ADD", page="facts.md")
+            # first write creates the page (ADD), later ones replace (UPDATE) —
+            # bare re-ADD is refused by the #58 door guard
+            prov = _prov(op="ADD" if i == 0 else "UPDATE", page="facts.md")
             write_apply.apply_write("facts.md", f"## Knowledge\n- v{i}\n", prov)
 
         from lib.ren_paths import state_dir

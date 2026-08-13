@@ -56,12 +56,25 @@ logger = logging.getLogger("ren-write-apply")
 QUEUE_APPLY_ENV = "REN_QUEUE_APPLY"
 
 
+class ExistingPageError(Exception):
+    """#58: an op="ADD" write targeted a page that already exists on disk.
+
+    ADD means "this page is new" — silently os.replace-ing an existing page
+    clobbers it (the 2026-08-12 install-clobber incident wrote skeleton pages
+    over a populated wiki exactly this way, via direct apply_write calls).
+    Callers that genuinely mean replace use op="UPDATE"; the queue's apply
+    paths opt in via allow_existing_add=True because their ADD semantics are
+    handled upstream (_check_add_race on apply(), propose-time dedup plus the
+    documented same-session L1 re-ADD upsert on apply_auto())."""
+
+
 def apply_write(
     page: str,
     new_content: str | None,
     prov: Provenance,
     expect_token: str | None = None,
     journal_extra: dict | None = None,
+    allow_existing_add: bool = False,
 ) -> None:
     """Apply one provenance-stamped write to `page` under an exclusive lease.
 
@@ -78,6 +91,13 @@ def apply_write(
     page_abs = ren_paths.safe_join(ren_paths.wiki_root(), page)
 
     with locks.lease(page):
+        # #58 door guard, checked under the lease so two concurrent ADDs to
+        # the same absent page cannot both pass (TOCTOU).
+        if prov.op == "ADD" and not allow_existing_add and page_abs.exists():
+            raise ExistingPageError(
+                f"op=ADD refused: {page!r} already exists — use op=UPDATE to "
+                "replace it, or route through the write queue"
+            )
         if expect_token is not None:
             locks.check_token(page_abs, expect_token)
 

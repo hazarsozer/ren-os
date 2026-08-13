@@ -89,6 +89,21 @@ def archive_page(rel: str, session: str, *, reason: str) -> dict:
     original_trust = original_prov.get("trust") if original_prov else None
 
     archive_rel = ARCHIVE_PREFIX + rel
+    # #58 door guard: the archive slot may already be occupied (page archived,
+    # recreated, archived again). Never clobber the older copy — suffix the
+    # new one with a numeric generation instead.
+    archive_abs = ren_paths.safe_join(ren_paths.wiki_root(), archive_rel)
+    if archive_abs.exists():
+        dirname, _, basename = archive_rel.rpartition("/")
+        stem, dot, ext = basename.rpartition(".")
+        generation = 2
+        while True:
+            suffixed = f"{stem}-{generation}{dot}{ext}" if dot else f"{basename}-{generation}"
+            candidate = f"{dirname}/{suffixed}" if dirname else suffixed
+            if not ren_paths.safe_join(ren_paths.wiki_root(), candidate).exists():
+                archive_rel = candidate
+                break
+            generation += 1
     archived_content = _upsert_archive_frontmatter(original_content, rel, reason)
 
     add_prov = new_provenance("routine", session, "ADD", archive_rel, trust=original_trust)

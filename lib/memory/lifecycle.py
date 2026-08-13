@@ -192,7 +192,7 @@ def run_decay(session: str) -> list[dict]:
     for rel in decay_candidates(now)[:DECAY_MAX_PER_WRAP]:
         try:
             moves.append(archive.archive_page(rel, session, reason="decay-90d"))
-        except (locks.LostUpdate, ValueError, OSError):
+        except (locks.LostUpdate, ValueError, OSError, write_apply.ExistingPageError):
             continue
     return moves
 
@@ -297,7 +297,7 @@ def consolidate_duplicates(findings: list[dict], session: str) -> list[dict]:
 
         try:
             archive_move = archive.archive_page(older_rel, session, reason="consolidated")
-        except (locks.LostUpdate, ValueError, OSError):
+        except (locks.LostUpdate, ValueError, OSError, write_apply.ExistingPageError):
             continue
 
         date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
