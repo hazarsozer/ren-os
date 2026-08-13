@@ -21,7 +21,7 @@ contract:
   required_outputs:
     - "One Proposal queued: ADD (or UPDATE) projects/<slug>/map.md, populated from real repo facts"
     - "projects/<slug>/schema.md queued first (type: project-schema) — the project's own taxonomy/conventions, drafted before any knowledge page"
-    - "Any distilled durable pages queued under projects/<slug>/knowledge/ (type: project-knowledge; nested paths allowed, every subdirectory with a hub index.md), in the same batch, before the map"
+    - "Any distilled durable pages queued under projects/<slug>/knowledge/ (type: project-knowledge; nested paths allowed, every subdirectory with a hub named after the folder, <topic>/<topic>.md), in the same batch, before the map"
     - "The first-session artifact text shown to the user verbatim"
   budgets:
     turns: 4
@@ -71,15 +71,15 @@ Bringing an existing repo's context into the wiki, in one visible artifact. `sca
    Draft in this order (each stage feeds the next):
    1. **Propose the taxonomy** from what the repo/domain actually contains — which `knowledge/` subdirectories exist and what belongs in each (e.g. a game project: `knowledge/entities/characters/`, `knowledge/mechanics/`; a web app: `knowledge/api/`, `knowledge/infra/`). Depth is project-determined; don't force flat, don't force deep.
    2. **Write `projects/<slug>/schema.md` FIRST** (`type: project-schema`, `schema_version: 1`, `project: <slug>`) — the project's own wiki conventions: the taxonomy tree, naming conventions, what `raw/` holds. Bootstrap may have stamped a template stub; ingest's draft is a normal `UPDATE` over it. Future sessions read `schema.md` and follow it; evolving it later is a normal wiki write.
-   3. **Hub pages**: every `knowledge/` subdirectory gets a hub `index.md` (`type: project-knowledge` — no new type — with `hub: true` in frontmatter) that summarizes and links its children.
+   3. **Hub pages**: every `knowledge/` subdirectory gets a hub named after the folder (`<topic>/<topic>.md`) (`type: project-knowledge` — no new type — with `hub: true` in frontmatter) that summarizes and links its children.
    4. **Leaf pages** at their nested paths (`knowledge/<dir>/<topic>.md`, any depth), frontmatter `type: project-knowledge`, `schema_version: 1`, `project: <slug>`. **Cross-reference sibling pages** — link related leaves to each other, not just up to the hub.
    5. **The map points at hubs** (and top-level `knowledge/*.md` pages), never deep leaves — the map stays a compact index; hubs carry the fan-out.
 
    Write every page through the same door as the map (`lib.memory.queue.propose_and_apply` with `producer="ingest"`, `writer="llm-auto"`, `op="ADD"`), in the SAME batch as the map, BEFORE calling `ingest` — so the map's pointers can name real, already-written pages and carry their real `write_id`s. What the worker returns:
    - `knowledge: list[str]` — compact, general facts worth remembering (e.g. "Python project using FastAPI + PostgreSQL", "138 commits since 2025-03")
    - `schema_page: dict` — `{"body": "<markdown>"}` for `projects/<slug>/schema.md`, drafted before any knowledge page
-   - `knowledge_pages: list[dict]` — hubs + leaves, each `{"name": "<relative path under knowledge/>", "body": "<markdown>"}` (e.g. `"mechanics/index.md"`, `"mechanics/combat.md"`)
-   - `pointers: list[dict]` — `{"topic": ..., "path": ..., "anchor": ..., "write_id": ...}` entries indexing the HUB and top-level pages just written (`"path": "projects/<slug>/knowledge/<dir>/index.md"`, `write_id` from the queue entry).
+   - `knowledge_pages: list[dict]` — hubs + leaves, each `{"name": "<relative path under knowledge/>", "body": "<markdown>"}` (e.g. `"mechanics/mechanics.md"`, `"mechanics/combat.md"`)
+   - `pointers: list[dict]` — `{"topic": ..., "path": ..., "anchor": ..., "write_id": ...}` entries indexing the HUB and top-level pages just written (`"path": "projects/<slug>/knowledge/<dir>/<dir>.md"`, `write_id` from the queue entry).
    - `projects/<slug>/raw/` is for the friend's source material (write-once by convention — nothing enforces it — and human-curated); ingest doesn't populate it, but pointers may target existing files there.
    - **Pointer existence rule (founder ruling, issue #20): every pointer must target something that exists.** Either (a) an in-wiki page that already exists or is being created in this same batch, or (b) an external repository reference written `repo:<name>:<path>` (e.g. `repo:flux:src/main.rs`) — those are skipped by the dangling-pointer checks because they are not resolvable in-wiki. **Never invent a future filename.** A pointer at a page nobody has written is a dangling pointer, not a placeholder; `write_id: None` (`unstamped`) is only for a real page that has not been through the queue, never a licence to name a file that does not exist.
    - Do NOT draft project-specific pages into root-level `decisions/` · `patterns/` · `research/`. Those are the instruction plane — general practice only, promotion-gated for every producer (`docs/decisions/2026-08-01-global-tier-promotion-gate.md`); a write there holds pending instead of applying. Project-specific durable knowledge goes under `projects/<slug>/knowledge/`.

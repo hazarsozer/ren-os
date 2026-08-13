@@ -66,7 +66,7 @@ used to catch, by sweeping periodically instead of gating continuously.
    `hubless_knowledge_dirs` + `unlinked_knowledge_pages` (issue #20
    amendment: structural audit of the hierarchical
    `projects/<slug>/knowledge/` trees — every subdirectory needs a hub
-   `index.md`, and a leaf page in a subdirectory must be linked from some
+   named after the folder (`<topic>/<topic>.md`), and a leaf page in a subdirectory must be linked from some
    hub or the map; top-level `knowledge/*.md` pages are exempt.
    `projects/<slug>/raw/` is immutable source material and is SKIPPED by
    the contradiction/duplicate/drift scans — sources, not claims),
@@ -108,7 +108,7 @@ used to catch, by sweeping periodically instead of gating continuously.
      stale value. The live session asks the friend which number is
      current, then fixes via `resolve_and_apply` with a note.
    - **Hubless knowledge dir**: mechanically fixable — draft the missing
-     hub `index.md` (`type: project-knowledge`, `hub: true`) summarizing
+     hub `<dir>/<dir>.md` (`type: project-knowledge`, `hub: true`) summarizing
      and linking the directory's children, through `propose_and_apply`
      (same producer as other repairs). Consult the project's `schema.md`
      for what the directory is FOR before writing the summary.
