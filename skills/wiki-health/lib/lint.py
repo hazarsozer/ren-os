@@ -148,14 +148,33 @@ def _title_of(path: Path) -> str:
     return m.group(1).strip() if m else path.stem
 
 
+def _hub_candidates(directory: Path) -> tuple[Path, Path]:
+    """The two paths that could be `directory`'s hub page: the folder-note
+    convention (`<dir-name>.md`) first, the legacy `index.md` convention
+    second. A directory's hub is the first of these that exists — dual-accept
+    is deliberate; doctor's `check_hub_convention` is the single voice for
+    "you haven't migrated", not this lint."""
+    return (directory / f"{directory.name}.md", directory / "index.md")
+
+
+def _is_hub_page(page: str) -> bool:
+    p = Path(page)
+    if p.name == "index.md":  # root index + legacy hubs
+        return True
+    return p.name == f"{p.parent.name}.md" and "knowledge" in p.parts
+
+
 def _hub_missing_entries(wiki_root: Path, page: str, text: str) -> tuple[str, list[str]]:
-    """For a hub `index.md`: append a bullet for every sibling page it doesn't
-    already mention. Returns `(new_text, added_names)`."""
+    """For a hub page (folder-note or legacy `index.md`): append a bullet for
+    every sibling page it doesn't already mention. Returns
+    `(new_text, added_names)`."""
     directory = (wiki_root / page).parent
+    hub_name = Path(page).name
     missing = [
         sib
         for sib in sorted(directory.glob("*.md"))
-        if sib.name != "index.md"
+        if sib.name != hub_name
+        and sib.name != "index.md"
         and sib.name != "log.md"  # the chronology is not a hub entry
         and not _is_pseudo(sib.name)
         and not _is_quarantined(sib)  # unreviewed content isn't advertised by a hub
@@ -313,7 +332,7 @@ def _lint_page(
             "page has no frontmatter `type:` — schema violation, needs a human's read",
         ))
 
-    if Path(page).name == "index.md":
+    if _is_hub_page(page):
         text, added = _hub_missing_entries(wiki_root, page, text)
         if added:
             fixes.append("hub-missing-entry")
@@ -353,17 +372,19 @@ def _pending_lint_findings() -> bool:
 
 
 def _incremental_scope(wiki_root: Path, touched: list[str]) -> list[str]:
-    """The pages `unlinted()` named (that still exist), plus the hub
-    `index.md` of each one's directory — a page landing next to a hub is
-    exactly what makes the hub stale."""
+    """The pages `unlinted()` named (that still exist), plus the hub page(s)
+    of each one's directory — a page landing next to a hub is exactly what
+    makes the hub stale. Both the folder-note and legacy `index.md`
+    candidates are added if present, so a not-yet-migrated wiki's hub still
+    gets re-checked."""
     scope: set[str] = set()
     for page in touched:
         if _is_pseudo(page) or not (wiki_root / page).is_file():
             continue
         scope.add(page)
-        hub = (Path(page).parent / "index.md").as_posix()
-        if (wiki_root / hub).is_file():
-            scope.add(hub)
+        for candidate in _hub_candidates((wiki_root / page).parent):
+            if candidate.is_file():
+                scope.add(candidate.relative_to(wiki_root).as_posix())
     return sorted(scope)
 
 

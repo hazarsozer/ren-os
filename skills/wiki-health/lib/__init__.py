@@ -325,6 +325,14 @@ def _single_project_global_pages(wiki_root: Path) -> list[dict]:
     return findings
 
 
+def _hub_candidates(directory: Path) -> tuple[Path, Path]:
+    """The two paths that could be `directory`'s hub page: the folder-note
+    convention (`<dir-name>.md`) first, the legacy `index.md` convention
+    second. A directory's hub is the first of these that exists; dual-accept
+    is deliberate — see module docstring / task-5 brief for why."""
+    return (directory / f"{directory.name}.md", directory / "index.md")
+
+
 def _knowledge_tree_findings(wiki_root: Path) -> tuple[list[str], list[str]]:
     """Structural audit of the hierarchical `projects/<slug>/knowledge/`
     trees (issue #20 amendment — Karpathy LLM-wiki pattern).
@@ -358,8 +366,12 @@ def _knowledge_tree_findings(wiki_root: Path) -> tuple[list[str], list[str]]:
         link_text: list[str] = []
         for page in sorted(project_dir.glob("*.md")):
             link_text.append(page.read_text(encoding="utf-8", errors="replace"))
-        for hub in sorted(knowledge.rglob("index.md")):
-            link_text.append(hub.read_text(encoding="utf-8", errors="replace"))
+        for sub in sorted(p for p in knowledge.rglob("*") if p.is_dir()):
+            for candidate in _hub_candidates(sub):
+                if candidate.is_file():
+                    link_text.append(
+                        candidate.read_text(encoding="utf-8", errors="replace")
+                    )
         joined = "\n".join(link_text)
 
         for sub in sorted(p for p in knowledge.rglob("*") if p.is_dir()):
@@ -368,11 +380,11 @@ def _knowledge_tree_findings(wiki_root: Path) -> tuple[list[str], list[str]]:
             # (knowledge/img/) have no children a hub could summarize.
             if next(sub.rglob("*.md"), None) is None:
                 continue
-            if not (sub / "index.md").is_file():
+            if not any(c.is_file() for c in _hub_candidates(sub)):
                 hubless.append(sub.relative_to(wiki_root).as_posix())
 
         for leaf in sorted(knowledge.rglob("*.md")):
-            if leaf.name == "index.md" or leaf.parent == knowledge:
+            if leaf.name in (f"{leaf.parent.name}.md", "index.md") or leaf.parent == knowledge:
                 continue
             # Word-bounded filename match: a bare substring check let `a.md`
             # count as linked via `schema.md` and `map.md` via
@@ -887,7 +899,9 @@ def render_report(findings: dict) -> str:
     lines.append("## Knowledge dirs without a hub")
     hubless = findings.get("hubless_knowledge_dirs") or []
     if hubless:
-        lines.extend(f"- {d}: missing index.md hub page" for d in hubless)
+        lines.extend(
+            f"- {d}: missing hub page ({Path(d).name}.md)" for d in hubless
+        )
     else:
         lines.append("- none")
     lines.append("")
