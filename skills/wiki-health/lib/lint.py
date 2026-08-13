@@ -161,7 +161,18 @@ def _is_hub_page(page: str) -> bool:
     p = Path(page)
     if p.name == "index.md":  # root index + legacy hubs
         return True
-    return p.name == f"{p.parent.name}.md" and "knowledge" in p.parts
+    # Folder-note branch: string-scoped so a project literally named
+    # "knowledge" (projects/knowledge/notes/notes.md) or an archived/raw
+    # knowledge-named dir can't false-positive — same over-match class Task 3
+    # already fixed elsewhere in this plan.
+    parts = p.parts
+    return (
+        p.name == f"{p.parent.name}.md"
+        and len(parts) > 2
+        and parts[0] == "projects"
+        and "knowledge" in parts[2:-1]
+        and not any(part.startswith(".") or part in ("raw", "archive") for part in parts)
+    )
 
 
 def _hub_missing_entries(wiki_root: Path, page: str, text: str) -> tuple[str, list[str]]:
@@ -173,8 +184,11 @@ def _hub_missing_entries(wiki_root: Path, page: str, text: str) -> tuple[str, li
     missing = [
         sib
         for sib in sorted(directory.glob("*.md"))
-        if sib.name != hub_name
-        and sib.name != "index.md"
+        # Exclude BOTH hub candidates generically — not just the page being
+        # linted — so a mid-collision dir (both `research.md` and
+        # `index.md` present) never has one hub list the other as an
+        # ordinary sibling entry.
+        if sib.name not in {hub_name, "index.md", f"{sib.parent.name}.md"}
         and sib.name != "log.md"  # the chronology is not a hub entry
         and not _is_pseudo(sib.name)
         and not _is_quarantined(sib)  # unreviewed content isn't advertised by a hub

@@ -139,3 +139,65 @@ def test_is_hub_page_folder_note_requires_knowledge_ancestor():
     # A same-named file outside `knowledge/` is not a hub by accident.
     assert not lint._is_hub_page("projects/demo/demo.md")
     assert lint._is_hub_page("projects/demo/knowledge/research/research.md")
+
+
+# ------------------------------------------- review findings (#56 round 2)
+
+
+def test_is_hub_page_rejects_project_literally_named_knowledge():
+    # FINDING 1: a project named "knowledge" must not false-positive just
+    # because "knowledge" appears in the path string.
+    assert not lint._is_hub_page("projects/knowledge/notes/notes.md")
+
+
+def test_is_hub_page_rejects_archive_knowledge_dir():
+    # FINDING 1: an archived dir named "knowledge" must not false-positive.
+    assert not lint._is_hub_page("archive/knowledge/misc/misc.md")
+
+
+def test_is_hub_page_accepts_real_folder_note_hub():
+    assert lint._is_hub_page("projects/demo/knowledge/research/research.md")
+
+
+def test_is_hub_page_accepts_root_index():
+    assert lint._is_hub_page("index.md")
+
+
+def test_hub_missing_entries_collision_dir_never_lists_the_other_hub(migrated_wiki):
+    # FINDING 2: both research.md (folder-note) and index.md (legacy) exist
+    # in the same dir — linting either must never list the other as an
+    # ordinary sibling entry.
+    directory = migrated_wiki / "projects/demo/knowledge/research"
+    directory.mkdir(parents=True, exist_ok=True)
+    hub_a = directory / "research.md"
+    hub_a.write_text(
+        "---\ntype: project-knowledge\nhub: true\n---\n# Research\n\n## Pages\n",
+        encoding="utf-8",
+    )
+    hub_b = directory / "index.md"
+    hub_b.write_text(
+        "---\ntype: project-knowledge\nhub: true\n---\n# Research (legacy)\n\n## Pages\n",
+        encoding="utf-8",
+    )
+
+    text_a, added_a = lint._hub_missing_entries(
+        migrated_wiki, "projects/demo/knowledge/research/research.md",
+        hub_a.read_text(encoding="utf-8"),
+    )
+    assert "index.md" not in "".join(added_a)
+    assert "index.md" not in text_a.replace(hub_a.name, "")
+
+    text_b, added_b = lint._hub_missing_entries(
+        migrated_wiki, "projects/demo/knowledge/research/index.md",
+        hub_b.read_text(encoding="utf-8"),
+    )
+    assert "research.md" not in "".join(added_b)
+
+
+def test_leaf_linked_only_from_folder_note_hub_is_not_unlinked(migrated_wiki):
+    # FINDING 3: the link_text corpus extension (collecting both hub
+    # candidates, not just legacy `index.md`) is load-bearing — without it,
+    # a leaf mentioned only inside its folder-note hub (not the project map)
+    # is a false-positive "unlinked" finding.
+    hubless, unlinked = wiki_health._knowledge_tree_findings(migrated_wiki)
+    assert "projects/demo/knowledge/research/alpha.md" not in unlinked
