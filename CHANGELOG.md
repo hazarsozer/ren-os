@@ -1,5 +1,57 @@
 # Changelog
 
+## [0.7.2] - 2026-08-13 — "the legible wiki"
+
+The graph becomes readable: hubs get names, tiers get colors. Spec:
+docs/superpowers/specs/2026-08-13-folder-note-hubs-design.md.
+
+- **#56 — folder-note hubs.** Every knowledge hub `index.md` becomes a folder
+  note named after its directory (`knowledge/research/research.md`), so
+  Obsidian's graph — which labels nodes by filename — shows twelve named hubs
+  instead of twelve identical "index" dots. `migrations/folder-note-hubs-1/`
+  (global, tree-wide, in the project-knowledge-1 mold) renames hubs, stamps
+  missing `hub: true`, rewrites every inbound link style-preservingly
+  (root-relative, file-relative, anchored, angle-bracketed), and rewrites the
+  per-project schema.md convention line. Its `verify.py` asserts the four
+  tree invariants; `/ren:update` drives it behind
+  `should_run_folder_note_hubs_1()` with approval, and doctor's new
+  `hub_convention` check is the single "not yet migrated" voice. wiki-health
+  and lint dual-accept both hub forms during the transition. Collisions are
+  left in place for manual repair, surfaced by verify. Dry-run against a copy
+  of the live dogfood wiki: OK + OK.
+- **Default Obsidian graph config.** Install (and update, post-migration)
+  write `.obsidian/graph.json` once — only when absent, never clobbering a
+  tuned config: `raw/`/`archive/` filtered out, Okabe-Ito tier colors
+  (quarantined content, spine, knowledge, L1 narratives), quarantine keyed on
+  the `ren-quarantine` banner token.
+- **#59 resolved by decision.** The wiki's rendering target is Obsidian only;
+  wiki-root-relative link paths stay (Obsidian resolves vault-absolute
+  markdown links — verified live). GitHub browsability is a non-goal.
+- **Review-hardened.** The train's reviews caught and fixed three over-broad
+  matcher bugs in plan-mandated code (`"knowledge"`-segment matching twice,
+  `endswith("index.md")` once — the last found only by the real-wiki
+  dry-run, false-positiving on flux's `specs-index.md`).
+
+## [0.7.1] - 2026-08-13 — "the door guard"
+
+Hotfix for the #58 install-clobber incident (2026-08-12: a test /ren:install
+run re-ADDed skeleton pages over the populated live wiki; both damaged pages
+were restored from per-write snapshots).
+
+- **#58 — apply_write refuses ADD-over-existing.** Root cause: the single
+  sanctioned write door treated `ADD` and `UPDATE` identically, so any direct
+  caller could silently clobber an existing page with fresh ADD provenance —
+  the caller-side skeleton exists-check and the queue's `_check_add_race`/
+  propose dedup never fire on that path. The door now raises
+  `ExistingPageError` (checked under the page lease); the three queue apply
+  paths opt in via `allow_existing_add=True` because their ADD semantics are
+  adjudicated upstream (including wrap's documented same-session L1 re-ADD
+  upsert). Re-archiving a recreated page suffixes the archive slot
+  (`archive/notes-2.md`) instead of clobbering the older copy; lifecycle
+  sweeps treat the refusal as a skip, never a crash. Residual #58 follow-ups
+  (stage-level populated-wiki confirmation, identity-handle doctor check,
+  test-run isolation) stay open on the issue.
+
 ## [0.7.0] - 2026-08-12 — "the connected wiki"
 
 The graph release: the wiki becomes Obsidian-native. Three issues, each with
