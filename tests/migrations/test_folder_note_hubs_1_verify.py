@@ -85,6 +85,16 @@ def test_end_to_end_migrate_then_verify(tmp_path, monkeypatch):
     assert _load(VERIFY).main() == 0
 
 
+def test_project_named_knowledge_not_false_positive(tmp_path, monkeypatch):
+    root = _migrated_wiki(tmp_path, monkeypatch)
+    page = root / "projects/knowledge/notes/index.md"
+    page.parent.mkdir(parents=True)
+    page.write_text("---\ntype: project-knowledge\n---\n# Notes index\n", encoding="utf-8")
+    other = root / "projects/knowledge/other.md"
+    other.write_text("---\ntype: project-knowledge\n---\n[n](notes/index.md)\n", encoding="utf-8")
+    assert _load(VERIFY).main() == 0
+
+
 def test_registry_lists_migration():
     import json
     registry = json.loads((REPO_ROOT / "skills/wiki-migration/schemas.json").read_text())

@@ -42,6 +42,7 @@ def leftover_hubs(root: Path) -> list[str]:
 
 
 def stale_hub_links(root: Path) -> list[str]:
+    knowledge_roots = [k.resolve() for k in root.glob("projects/*/knowledge")]
     out = []
     for page in _pages(root):
         for target in _MD_LINK_RE.findall(page.read_text(encoding="utf-8")):
@@ -49,7 +50,7 @@ def stale_hub_links(root: Path) -> list[str]:
                 continue
             for base in (page.parent, root):
                 cand = (base / target).resolve()
-                if "knowledge" in cand.parts:
+                if any(cand.is_relative_to(k) for k in knowledge_roots):
                     out.append(f"{page.relative_to(root)} -> {target}")
                     break
     return out
