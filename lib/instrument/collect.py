@@ -88,6 +88,10 @@ KIND_SESSION_USAGE = "session_usage"
 #: without widening the queue's own contract, so the audit trail for WHY a
 #: page was auto-released lives here instead of on the journal line.
 KIND_QUARANTINE_RELEASE = "quarantine_release"
+#: One per `/ren:wrap` durable loop, summarizing this run's classifier/merge
+#: outcomes: created/updated/gated_out/suggested/held/refused counts (Task 4,
+#: 0.7.x knowledge-flow train) — the outcome metric for the durable loop.
+KIND_DURABLE_OUTCOME = "durable_outcome"
 
 
 def _now_iso() -> str:
@@ -265,6 +269,7 @@ __all__ = [
     "KIND_SESSION_USAGE",
     "KIND_RETRIEVAL_EVAL",
     "KIND_QUARANTINE_RELEASE",
+    "KIND_DURABLE_OUTCOME",
     "record",
     "read",
     "harvest_session_usage",

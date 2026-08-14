@@ -54,6 +54,7 @@ from lib.memory.scrub import SecretsFound
 from lib.memory.semantics import shortlist_pairs
 from lib.suggestions import expire_stale_pending, prune_decided
 from lib.suggestions import record as record_suggestion
+from lib.suggestions import SuggestionSpec
 from lib.suggestions.producers import (
     doctrine_shaping,
     promotion_candidates,
@@ -61,6 +62,7 @@ from lib.suggestions.producers import (
 )
 
 from .classifier import gate
+from .merge import merge_update, MergeError
 
 _SLUG_WORD_RE = re.compile(r"[a-z0-9]+")
 _PREVIEW_MAX_CHARS = 100
@@ -632,6 +634,28 @@ def maintain_overview(
     return {"qid": entry.qid, "write_id": prov.write_id, "page": page}
 
 
+def _target_trust(page: str) -> str | None:
+    """`ren_trust` frontmatter of a wiki page, or None (unreadable/unstamped).
+    Mirrors skills/wiki-health/lib `_page_trust` — fail closed: None is
+    treated as NOT user-trust (auto path), because an unstamped page was
+    never human-released."""
+    try:
+        text = ren_paths.safe_join(ren_paths.wiki_root(), page).read_text(encoding="utf-8")
+    except OSError:
+        return None
+    data = _split_overview_frontmatter(text)[0]  # existing frontmatter parser
+    trust = data.get("ren_trust")
+    return trust if isinstance(trust, str) else None
+
+
+def _durable_create_page(item: str, scope: str, project: str | None) -> str:
+    """Placement for a durable CREATE (spec §2): project-scoped when the
+    classifier said so AND a project is in scope; global lessons/ otherwise."""
+    if scope == "project" and project:
+        return f"projects/{project}/knowledge/lessons/{_slugify(item)}.md"
+    return f"lessons/{_slugify(item)}.md"
+
+
 def wrap_session(
     narrative_md: str,
     durable_items: list[str],
@@ -784,9 +808,13 @@ def wrap_session(
     held: list[dict] = []
     gated_out: list[dict] = []
     refused: list[dict] = []
+    updated: list[dict] = []
+    suggested: list[dict] = []
+
+    eligible = _eligible_update_targets(session)
 
     for item in durable_items:
-        decision = gate(item, llm_call)
+        decision = gate(item, llm_call, eligible_targets=eligible, project=project)
 
         if decision.verdict != "durable":
             gated_out.append(
@@ -794,7 +822,53 @@ def wrap_session(
             )
             continue
 
-        page = f"lessons/{_slugify(item)}.md"
+        if decision.action == "update":
+            target = decision.target_page
+            try:
+                current = ren_paths.safe_join(
+                    ren_paths.wiki_root(), target
+                ).read_text(encoding="utf-8")
+                merged = merge_update(current, item, llm_call)
+            except (OSError, MergeError) as exc:
+                gated_out.append(
+                    {"item": item, "verdict": "durable",
+                     "reason": f"update to {target} gated out (merge): {exc}"}
+                )
+                continue
+
+            proposal_kwargs = dict(
+                op="UPDATE", page=target, content=merged,
+                reason=decision.reason, producer="wrap",
+                writer="llm-auto", session=session,
+            )
+            if _target_trust(target) == "user":
+                entry = record_suggestion(
+                    SuggestionSpec(
+                        producer="wrap",
+                        title=f"Update human-authored page: {target}",
+                        rationale=decision.reason,
+                        evidence={"item": item, "session": session, "page": target},
+                        kind="page_write",
+                        payload=proposal_kwargs,
+                        fingerprint=f"wrap-update:{session}:{target}",
+                    )
+                )
+                suggested.append({"page": target, "sid": entry["sid"] if entry else None})
+                continue
+            try:
+                entry, prov = propose_and_apply(Proposal(**proposal_kwargs))
+            except SecretsFound as exc:
+                refused.append({"item": item, "reason": str(exc)})
+                continue
+            if prov is not None:
+                updated.append({"qid": entry.qid, "write_id": prov.write_id,
+                                "page": target, "op": prov.op})
+            else:
+                held.append({"qid": entry.qid, "page": target,
+                             "conflicts": entry.conflicts})
+            continue
+
+        page = _durable_create_page(item, decision.scope, project)
         try:
             entry, prov = propose_and_apply(
                 Proposal(
@@ -821,6 +895,13 @@ def wrap_session(
     events_after = collect.read(kind=collect.KIND_CLASSIFIER_EVENT)
     new_events = events_after[len(events_before):]
     fail_closed = any(e.get("event") == "fail_closed" for e in new_events)
+
+    collect.record(
+        collect.KIND_DURABLE_OUTCOME,
+        {"session": session, "created": len(applied), "updated": len(updated),
+         "gated_out": len(gated_out), "suggested": len(suggested),
+         "held": len(held), "refused": len(refused)},
+    )
 
     semantic_findings = _judge_semantic_findings(
         [a["page"] for a in applied], llm_call
@@ -862,6 +943,8 @@ def wrap_session(
         "held": held,
         "gated_out": gated_out,
         "refused": refused,
+        "updated": updated,
+        "suggested": suggested,
         "fail_closed": fail_closed,
         "semantic_findings": semantic_findings,
         "decayed": decayed,
@@ -1397,6 +1480,16 @@ def render_wrap_screen(wrap_result: dict, session: str) -> str:
             lines.append(f'- {page} (write_id={write_id}) — say "undo {write_id}" to revert')
     else:
         lines.append("- (none this session)")
+    updated = wrap_result.get("updated") or []
+    if updated:
+        n = len(updated)
+        lines.append(f"- {n} page{'s' if n != 1 else ''} updated (durable item merged)")
+    suggested = wrap_result.get("suggested") or []
+    if suggested:
+        n = len(suggested)
+        lines.append(
+            f"- {n} update{'s' if n != 1 else ''} to a human-authored page held as a suggestion"
+        )
     decayed = wrap_result.get("decayed") or []
     if decayed:
         n = len(decayed)
