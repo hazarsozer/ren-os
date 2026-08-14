@@ -656,6 +656,65 @@ def _durable_create_page(item: str, scope: str, project: str | None) -> str:
     return f"lessons/{_slugify(item)}.md"
 
 
+_HUB_LINK_RE = re.compile(r"^- \[[^\]]+\]\([^)]+\)$", re.MULTILINE)
+
+
+def _hub_links(text: str) -> list[str]:
+    """The `- [name](file.md)` link lines carried by a rendered/on-disk hub
+    body. Used to detect whether a hub write is actually needed: the write
+    door stamps `ren_*` provenance frontmatter onto every applied page, so
+    the on-disk file never byte-equals a freshly rendered body — comparing
+    link lists (the only part that can meaningfully change here) is what
+    makes `_ensure_lessons_hub` idempotent."""
+    return _HUB_LINK_RE.findall(text)
+
+
+def _ensure_lessons_hub(dir_rel: str, session: str, project: str | None) -> bool:
+    """Folder-note hub for a lessons/ directory (spec §2, 0.7.2 hub
+    convention: `<dir>/<dirname>.md`, `hub: true`). Rebuilds the link list
+    from disk every call and writes ONLY when the link list differs from
+    what's already on disk — idempotent, and the first call backfills links
+    to every pre-existing lesson page. Isolated-duty posture: never raises;
+    returns False on any failure (caller appends a warning)."""
+    try:
+        wiki = ren_paths.wiki_root()
+        dirname = PurePosixPath(dir_rel).name
+        hub_rel = f"{dir_rel}/{dirname}.md"
+        hub_path = ren_paths.safe_join(wiki, hub_rel)
+        dir_path = ren_paths.safe_join(wiki, dir_rel)
+
+        entries = sorted(
+            p.name for p in dir_path.glob("*.md")
+            if p.is_file() and p.name != f"{dirname}.md"
+        ) if dir_path.is_dir() else []
+        links = "\n".join(f"- [{PurePosixPath(n).stem}]({n})" for n in entries)
+
+        if project:
+            fm = (f"---\ntype: project-knowledge\nschema_version: 1\n"
+                  f"project: {project}\nhub: true\ntitle: \"Lessons Hub\"\n---\n")
+        else:
+            fm = "---\nhub: true\ntitle: \"Lessons\"\n---\n"
+        body = f"{fm}\n# Lessons\n\nDurable lessons in this folder:\n\n{links}\n"
+
+        hub_exists = hub_path.is_file()
+        if hub_exists:
+            existing_text = hub_path.read_text(encoding="utf-8")
+            if _hub_links(existing_text) == _hub_links(body):
+                return False
+
+        _, prov = propose_and_apply(
+            Proposal(
+                op="UPDATE" if hub_exists else "ADD",
+                page=hub_rel, content=body,
+                reason="lessons folder-note hub (spec 2026-08-14 §2)",
+                producer="wrap", writer="routine", session=session,
+            )
+        )
+        return prov is not None
+    except Exception:  # noqa: BLE001 - hub upkeep must never fail wrap close-out
+        return False
+
+
 def wrap_session(
     narrative_md: str,
     durable_items: list[str],
@@ -888,6 +947,10 @@ def wrap_session(
         if prov is not None:
             applied.append(
                 {"qid": entry.qid, "write_id": prov.write_id, "page": page, "op": prov.op}
+            )
+            hub_dir = str(PurePosixPath(page).parent)
+            _ensure_lessons_hub(
+                hub_dir, session, project if page.startswith("projects/") else None
             )
         else:
             held.append({"qid": entry.qid, "page": page, "conflicts": entry.conflicts})
