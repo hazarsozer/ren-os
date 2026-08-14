@@ -1071,7 +1071,10 @@ def _discover_extra_candidates(
     pages remain included, per the deliberate scope decision in `_is_foreign_stamped`),
     `archive/`-prefixed pages (Task 16, 0.5.3 — archived pages are held
     out of ranking, same as quarantined/foreign, since they're no longer
-    live), and skeleton/empty-body pages (Codex F1, 0.5.5 live drill — see
+    live), every `projects/<slug>/instructions.md` (#63 — already injected
+    into every session via the repo's CLAUDE.md managed block, so surfacing
+    it here would be a duplicate; not counted in held_count, nothing is
+    withheld), and skeleton/empty-body pages (Codex F1, 0.5.5 live drill — see
     `_is_skeleton_or_empty_page`). Skeleton/empty exclusions are NOT counted
     in `held_count` — that count and its "N quarantined page(s) held out"
     message describe withheld TRUST signal; an empty/placeholder page has no
@@ -1100,6 +1103,13 @@ def _discover_extra_candidates(
         if rel in exclude:
             continue
         if _is_project_raw(rel):
+            continue
+        rel_parts = rel.split("/")
+        if len(rel_parts) == 3 and rel_parts[0] == "projects" and rel_parts[2] == "instructions.md":
+            # #63: standing instructions are already in every session via the
+            # repo's CLAUDE.md managed block — surfacing them here would spend
+            # extras budget on a duplicate. Not counted in held_count: nothing
+            # is being withheld, the content is injected by another channel.
             continue
         if archive.is_archived(rel):
             held_count += 1

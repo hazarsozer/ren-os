@@ -14,6 +14,13 @@ this module is what turns an "accepted" decision into a real write, by
                        suggestion decision IS the human approval.
   promote_to_global → `lib.memory.promotion.promote_to_global` then
                        `approve_and_apply`.
+  promote_to_project → `lib.memory.promotion.promote_to_project` (#63) then
+                       `approve_and_apply` — accepting the suggestion IS the
+                       human approval that completes the Task-5
+                       instruction-plane hold, same reasoning as pin's
+                       `_complete_if_held`. A `contradicts` hold is left
+                       pending instead (the live session must reason about
+                       it first).
   refresh_claude_md → `lib.adapter.claude_md.write_global_claude_md`.
   review_contradiction → applies nothing; returns the two page paths +
                        evidence for the session to reconcile conversationally.
@@ -142,6 +149,26 @@ def _apply(sid: str, kind: str, payload: dict, session: str) -> dict:
             "detail": {"qid": qe.qid, "write_id": prov.write_id, "page": prov.page},
         }
 
+    if action == "promote_to_project":
+        entry = promotion.promote_to_project(
+            payload["text"], payload["slug"], session
+        )
+        if entry.status == "pending" and not any(
+            c.get("kind") == "contradicts" for c in entry.conflicts
+        ):
+            prov = queue.approve_and_apply(entry.qid, who="human:suggestion-promote")
+            return {
+                "sid": sid,
+                "applied": True,
+                "detail": {"qid": entry.qid, "write_id": prov.write_id, "page": prov.page},
+            }
+        return {
+            "sid": sid,
+            "applied": False,
+            "detail": {"qid": entry.qid, "status": entry.status,
+                       "held_on": [c for c in entry.conflicts if c.get("kind") == "contradicts"]},
+        }
+
     if action == "refresh_claude_md":
         path, result = claude_md.write_global_claude_md()
         return {"sid": sid, "applied": True, "detail": {"path": str(path), "result": result}}
@@ -159,7 +186,10 @@ def _apply(sid: str, kind: str, payload: dict, session: str) -> dict:
 
     if action == "quarantine_release":
         wiki_health = importlib.import_module("skills.wiki-health.lib")
-        entry, prov = wiki_health.release_page(payload["page"], session)
+        entry, prov = wiki_health.release_page(
+            payload["page"], session,
+            via="suggestion-accepted", evidence=payload.get("evidence") or {},
+        )
         if prov is None:
             # held on contradicts (or no-op) — the hold is visible in the queue;
             # retrying accept cannot change it, so this counts as decided.

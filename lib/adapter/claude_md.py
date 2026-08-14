@@ -40,12 +40,19 @@ from __future__ import annotations
 import os
 import re
 from pathlib import Path
+from typing import Final
 
 from lib import ren_paths
 from lib.doctrine.loader import DoctrineFile, load_all
 
 MARKER_BEGIN = "<!-- ren:begin -->"
 MARKER_END = "<!-- ren:end -->"
+
+STANDING_INSTRUCTIONS_CAP: Final[int] = 3_000
+_STANDING_TRUNCATION_MARKER: Final[str] = (
+    "\n\n*(truncated at 3,000 characters — the full page lives in the wiki)*"
+)
+_FRONTMATTER_RE = re.compile(r"\A---\n.*?\n---\n?", re.DOTALL)
 
 KARPATHY_SENTINELS: tuple[str, ...] = (
     "reduce common LLM coding mistakes",
@@ -210,18 +217,47 @@ def render_global_block(
     return "\n".join(parts)
 
 
+def _standing_instructions_section(project_slug: str, wiki: Path) -> str:
+    """The `## Standing instructions` section for the project block (#63),
+    or "" — fail-closed: a missing, unreadable, quarantine-bannered, or
+    empty-bodied page renders NOTHING (quarantined content must never
+    become standing instructions). Body only (frontmatter stripped),
+    capped at STANDING_INSTRUCTIONS_CAP with a truncation marker; the wiki
+    page itself is never capped."""
+    from lib.memory import quarantine
+
+    page = wiki / "projects" / project_slug / "instructions.md"
+    try:
+        text = page.read_text(encoding="utf-8")
+    except OSError:
+        return ""
+    if quarantine.is_quarantined(text):
+        return ""
+    body = _FRONTMATTER_RE.sub("", text).strip()
+    if not body:
+        return ""
+    if len(body) > STANDING_INSTRUCTIONS_CAP:
+        body = body[:STANDING_INSTRUCTIONS_CAP] + _STANDING_TRUNCATION_MARKER
+    return (
+        "\n\n## Standing instructions\n\n"
+        "Sourced from the governed wiki page — change it via /ren:pin, never by editing here.\n\n"
+        f"{body}"
+    )
+
+
 def render_project_block(project_slug: str, *, wiki_root: Path | None = None) -> str:
     """Render the project-tier pointer block (WITHOUT markers). Thin by
     design: it points at the project's L2 map and defers everything else to
     the global tier — never duplicating its content."""
     wiki = (Path(wiki_root) if wiki_root is not None else ren_paths.wiki_root()).resolve()
     map_path = wiki / "projects" / project_slug / "map.md"
-    return f"""\
+    base = f"""\
 # RenOS — project memory pointer
 
 - This project's knowledge map: `{map_path}` — recall its contents via `/ren:recall` (agent-initiated); never raw-Read wiki pages to answer memory questions.
 - Global RenOS doctrine (behavioral core, recall rules, wiki navigation) lives in the user-level CLAUDE.md — it is not repeated here.
 - Durable changes to the wiki save themselves (revertible), never a direct file edit."""
+    return base + _standing_instructions_section(project_slug, wiki)
 
 
 def spliced_text(existing_text: str, content: str) -> str:
@@ -331,6 +367,7 @@ __all__ = [
     "KARPATHY_SENTINELS",
     "DOCTRINE_STOPGAP_BEGIN",
     "DOCTRINE_STOPGAP_END",
+    "STANDING_INSTRUCTIONS_CAP",
     "has_doctrine_stopgap",
     "render_global_block",
     "render_project_block",

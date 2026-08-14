@@ -336,3 +336,47 @@ def test_promotion_to_global_tier_still_reaches_the_page_via_human_approval(wiki
     queue.approve_and_apply(entry.qid, who="hazar")
 
     assert (wiki / "decisions" / "tdd-everywhere.md").is_file()
+
+
+# -------------------- #63: projects/<slug>/instructions.md joins the instruction plane
+
+
+def test_project_instructions_page_is_instruction_plane():
+    from lib.governance.tiers import is_instruction_plane_page
+
+    assert is_instruction_plane_page("projects/ren-os/instructions.md")
+
+
+def test_project_instructions_normalized_form_is_gated():
+    from lib.governance.tiers import is_instruction_plane_page
+
+    assert is_instruction_plane_page("./projects/ren-os/instructions.md")
+
+
+def test_project_non_instructions_pages_stay_data_plane():
+    from lib.governance.tiers import is_instruction_plane_page
+
+    assert not is_instruction_plane_page("projects/ren-os/map.md")
+    assert not is_instruction_plane_page("projects/ren-os/knowledge/instructions.md")
+    assert not is_instruction_plane_page("projects/ren-os/instructions/notes.md")
+
+
+def test_project_instructions_write_holds_pending(wiki):
+    entry, prov = queue.propose_and_apply(
+        Proposal(
+            op="ADD",
+            page="projects/ren-os/instructions.md",
+            content="# Standing instructions\n",
+            reason="update",
+            producer="routine",
+            writer="llm-auto",
+            session="sess-instructions",
+        )
+    )
+
+    assert prov is None
+    assert entry.status == "pending"
+    assert entry.write_id is None
+    assert not (wiki / "projects" / "ren-os" / "instructions.md").exists()
+    with pytest.raises(QueueStateError):
+        queue.apply_auto(entry.qid)

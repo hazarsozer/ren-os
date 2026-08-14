@@ -46,7 +46,7 @@ JUDGE_PAIR_CAP: Final[int] = 10
 # but the verdict is too uncertain to show a human.
 JUDGE_MIN_CONFIDENCE: Final[float] = 0.7
 
-_MAX_TEXT_CHARS: Final[int] = 4_000
+_MAX_TEXT_CHARS: Final[int] = 8_000
 # Public alias (quarantine screen, F1 0.6.5 final review): the screen needs
 # the judge's real truncation window to decide whether a page's FULL text
 # even fits before it can trust a judge verdict about it — `_truncate` only
