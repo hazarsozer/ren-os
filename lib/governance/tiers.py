@@ -79,7 +79,10 @@ Every other module that needs "is this the instruction plane?" delegates to
 `is_instruction_plane_page` rather than re-spelling the prefixes
 (`lib.suggestions.gate.is_critical_page`, `lib.memory.lifecycle
 ._data_plane_pages`, `skills.wiki-health.lib`) — see
-`tests/lib/governance/test_tiers.py`'s drift test."""
+`tests/lib/governance/test_tiers.py`'s drift test. Issue #63: a project's
+standing-instructions page (`projects/<slug>/instructions.md`) is also part
+of the instruction plane, encoded as a path pattern in `is_instruction_plane_page`
+rather than as a prefix."""
 
 
 class UnattendedBlocked(Exception):
@@ -124,6 +127,12 @@ def is_instruction_plane_page(page: str | None) -> bool:
         return True  # fail closed: a traversal path never auto-applies
     normalized = "/".join(parts)
     if any(normalized.startswith(prefix) for prefix in INSTRUCTION_PLANE_PREFIXES):
+        return True
+    # #63: a project's standing-instructions page is instruction-plane —
+    # it renders into that repo's CLAUDE.md managed block, so its writes
+    # are always human diff-approved, same as global/. Exactly
+    # projects/<slug>/instructions.md — never a nested path.
+    if len(parts) == 3 and parts[0] == "projects" and parts[2] == "instructions.md":
         return True
     # A bare dir name with no trailing slash ("global", "decisions") is the
     # tier page itself, not a data-plane page that merely starts with it.
