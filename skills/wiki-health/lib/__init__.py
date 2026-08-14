@@ -535,10 +535,12 @@ def _stale_facts(wiki_root: Path, session: str) -> dict:
     writer="routine" (mechanical bookkeeping; never quarantines), trust-user
     targets routed to the suggestions store instead. Warn-not-block: any
     per-page/per-marker failure is skipped, never raises. The naive
-    number-substitution correction only fires when the marked line contains
-    a number to replace; otherwise the finding is report-only (no NLP
-    guessing)."""
-    from lib.memory.volatile import check_marker, find_markers
+    number-substitution correction only fires when the substring BEFORE the
+    `ren-volatile` marker contains EXACTLY ONE digit sequence to replace —
+    zero, or two-plus (an earlier unrelated number on the same line), fall
+    back to report-only. The marker comment itself and anything after it
+    are never touched. No NLP guessing, per spec."""
+    from lib.memory.volatile import MARKER_RE, check_marker, find_markers
     from lib.memory.queue import Proposal, propose_and_apply
     from lib.suggestions import SuggestionSpec, record
 
@@ -571,7 +573,16 @@ def _stale_facts(wiki_root: Path, session: str) -> dict:
             try:
                 lines = text.splitlines(keepends=True)
                 old_line = lines[marker.line_no - 1]
-                new_line = re.sub(r"\d+(?:\.\d+)*", truth, old_line, count=1)
+                marker_match = MARKER_RE.search(old_line)
+                if marker_match is None:
+                    continue  # marker moved between find_markers and here — report only
+                before = old_line[:marker_match.start()]
+                after = old_line[marker_match.start():]
+                numbers = re.findall(r"\d+(?:\.\d+)*", before)
+                if len(numbers) != 1:
+                    continue  # zero, or 2+ ambiguous candidates — report only
+                new_before = re.sub(r"\d+(?:\.\d+)*", truth, before, count=1)
+                new_line = new_before + after
                 if new_line == old_line:
                     continue  # nothing mechanically replaceable — report only
                 lines[marker.line_no - 1] = new_line

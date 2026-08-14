@@ -68,6 +68,30 @@ def test_stale_fact_detected_and_correction_queued(wiki, monkeypatch):
     assert "12" not in corrected_line
 
 
+def test_two_numbers_before_marker_falls_back_to_report_only(wiki, monkeypatch):
+    # An earlier unrelated number ("2020") before the marker must never be
+    # confused for the volatile fact — ambiguous (2+ candidates) falls back
+    # to report-only, not a confidently-wrong correction.
+    from lib.memory.volatile import CHECKERS
+
+    monkeypatch.setitem(CHECKERS, "release-count", lambda root: "30")
+    rel = _write_page(
+        wiki, "projects/app/knowledge/versions.md",
+        "# Versions\nAs of 2020, RenOS has shipped 12 releases. "
+        "<!-- ren-volatile: release-count -->\n",
+    )
+    text_before = (wiki / rel).read_text(encoding="utf-8")
+
+    result = wiki_health.sweep(wiki)
+    stale = result["stale_facts"]["stale"]
+    assert len(stale) == 1
+    assert stale[0]["ground_truth"] == "30"
+    assert result["stale_facts"]["corrections_queued"] == 0
+
+    # page is byte-identical — no correction was applied
+    assert (wiki / rel).read_text(encoding="utf-8") == text_before
+
+
 def test_user_trust_page_routes_to_suggestion(wiki, monkeypatch):
     from lib.memory.volatile import CHECKERS
     from lib import suggestions
