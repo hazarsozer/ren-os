@@ -1114,7 +1114,7 @@ git commit -m "feat(wiki-health): stale_facts sweep over ren-volatile markers (#
 2. Create-project-scoped: item "lesson: always run the RSD linter before committing iOS snapshot baselines", project `flux`, empty targets → expect `durable/project/create`.
 3. Create-global-fallback: item "lesson: uv run, never system python3, on macOS", no project → expect `durable/global/create`.
 4. Session-only chatter: item "we ran the tests three times today" → expect `session-only`.
-5. Secret-shaped: item containing `token=abc123...` → expect `discard`.
+5. Secret-shaped: item referencing a pasted credential (no literal secret-shaped pair in the fixture — the push guard's secrets scan blocks `key=value` literals; see tests/lib/memory/test_scrub.py's concatenation convention) → expect `discard`.
 
 - [ ] **Step 3: Run whatever suite covers the eval file** (the grep from Step 1 tells you the command; typically `uv run pytest tests/evalkit/ -v` plus any wrap eval test).
 Expected: PASS.

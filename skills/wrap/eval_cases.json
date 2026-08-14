@@ -79,7 +79,7 @@
       "expect_verdict": "session-only"
     },
     {
-      "input": "session notes: token=abc123secretvaluevaluevaluevalue, remember to rotate it",
+      "input": "session notes: the deploy credential pasted in chat earlier must be rotated — never write the value down anywhere",
       "expect": "refuse",
       "expect_verdict": "discard"
     }
