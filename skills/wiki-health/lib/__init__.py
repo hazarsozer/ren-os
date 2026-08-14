@@ -67,6 +67,7 @@ caller such as wrap's close-out.
 
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 import yaml
@@ -1218,6 +1219,32 @@ def screen_ineligibility(rel: str, md_text: str) -> str | None:
     return None
 
 
+def declined_release_holds(rel: str, text: str) -> bool:
+    """#52: True when a recorded HUMAN decline of releasing `rel` must hold
+    it out of the machine exit. Judge nondeterminism re-sampled a declined,
+    unchanged page and released it around the decline (2026-08-04 incident);
+    a decline now sticks until the page content actually changes.
+
+    Fail-closed ordering: any declined ledger line for this page that
+    carries no content hash (pre-train declines) holds unconditionally —
+    change can't be proven, so it isn't assumed. With hashes present, the
+    hold applies exactly while the current text's sha256 matches a declined
+    one. The human path (`release_page`) is never gated by this."""
+    from lib.suggestions import ledger_entries
+
+    fingerprint = f"quarantine:release:{rel}"
+    declined = [
+        e for e in ledger_entries()
+        if e.get("fingerprint") == fingerprint and e.get("decision") == "declined"
+    ]
+    if not declined:
+        return False
+    hashes = {e.get("content_sha256") for e in declined}
+    if None in hashes:
+        return True
+    return hashlib.sha256(text.encode("utf-8")).hexdigest() in hashes
+
+
 def release_page_auto(page: str, session: str, evidence: dict) -> tuple:
     """Machine release — same queue mechanics as `release_page`, different
     actor. `writer="retrospective"` deliberately: `writer="llm-auto"` content
@@ -1269,10 +1296,15 @@ def release_page_auto(page: str, session: str, evidence: dict) -> tuple:
     return get(entry.qid), prov
 
 
-def _record_release_suggestion(rel: str, why: str, evidence: dict) -> None:
+def _record_release_suggestion(rel: str, why: str, evidence: dict, text: str = "") -> None:
     """File (fingerprint-deduped) 'release this page?' into the suggestions
     store. A page the friend already declined never re-nags (`record`
-    returns None for known fingerprints — that is the dedup, not an error)."""
+    returns None for known fingerprints — that is the dedup, not an error).
+
+    `text` is the page's current content — hashed into the payload
+    (`content_sha256`) so a later decline can be matched, via
+    `declined_release_holds` (#52), to "this exact content" rather than "this
+    page forever": if the page changes, the hold lifts."""
     from lib.suggestions import SuggestionSpec, record
 
     record(
@@ -1282,7 +1314,12 @@ def _record_release_suggestion(rel: str, why: str, evidence: dict) -> None:
             rationale=f"quarantine screen routed this page to you: {why}",
             evidence=evidence,
             kind="structured_action",
-            payload={"action": "quarantine_release", "page": rel, "evidence": evidence},
+            payload={
+                "action": "quarantine_release",
+                "page": rel,
+                "evidence": evidence,
+                "content_sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
+            },
             fingerprint=f"quarantine:release:{rel}",
         )
     )
@@ -1325,6 +1362,7 @@ def run_quarantine_screen(session: str, cap: int = 20) -> dict:
         "suggested": [],
         "skipped_remaining": 0,
         "errors": [],
+        "held_declined": [],
     }
     candidates_taken = 0
     for rel in sorted(quarantine.quarantined_rel_pages(root)):
@@ -1338,17 +1376,20 @@ def run_quarantine_screen(session: str, cap: int = 20) -> dict:
             continue
         result["backlog_total"] += 1
         if why is not None:
-            _record_release_suggestion(rel, why, {"ineligible": why})
+            _record_release_suggestion(rel, why, {"ineligible": why}, text=text)
             result["suggested"].append({"page": rel, "why": why})
+            continue
+        if declined_release_holds(rel, text):
+            result["held_declined"].append(rel)
             continue
         if len(text) > JUDGE_MAX_TEXT_CHARS:
             evidence = {"length": len(text), "limit": JUDGE_MAX_TEXT_CHARS}
-            _record_release_suggestion(rel, "too-long", evidence)
+            _record_release_suggestion(rel, "too-long", evidence, text=text)
             result["suggested"].append({"page": rel, "why": "too-long"})
             continue
         hits = quarantine.detect_instruction_shaped(text)
         if hits:
-            _record_release_suggestion(rel, "instruction-shaped", {"scanner_hits": hits})
+            _record_release_suggestion(rel, "instruction-shaped", {"scanner_hits": hits}, text=text)
             result["suggested"].append({"page": rel, "why": "instruction-shaped"})
             continue
         if candidates_taken >= cap:
@@ -1373,7 +1414,7 @@ def apply_quarantine_verdicts(session: str, verdicts: dict) -> dict:
     queue hold leaves the page quarantined (`errors` / `suggested` / `held`
     respectively)."""
     root = ren_paths.wiki_root()
-    result: dict = {"released": [], "held": [], "suggested": [], "errors": []}
+    result: dict = {"released": [], "held": [], "suggested": [], "errors": [], "held_declined": []}
     for rel, raw in sorted(verdicts.items()):
         try:
             text = ren_paths.safe_join(root, rel).read_text(encoding="utf-8")
@@ -1385,17 +1426,20 @@ def apply_quarantine_verdicts(session: str, verdicts: dict) -> dict:
         why = screen_ineligibility(rel, text)
         if why is not None:
             if why != "l1":
-                _record_release_suggestion(rel, why, {"ineligible": why})
+                _record_release_suggestion(rel, why, {"ineligible": why}, text=text)
                 result["suggested"].append({"page": rel, "why": why})
+            continue
+        if declined_release_holds(rel, text):
+            result["held_declined"].append(rel)
             continue
         if len(text) > JUDGE_MAX_TEXT_CHARS:
             evidence = {"length": len(text), "limit": JUDGE_MAX_TEXT_CHARS}
-            _record_release_suggestion(rel, "too-long", evidence)
+            _record_release_suggestion(rel, "too-long", evidence, text=text)
             result["suggested"].append({"page": rel, "why": "too-long"})
             continue
         hits = quarantine.detect_instruction_shaped(text)
         if hits:
-            _record_release_suggestion(rel, "instruction-shaped", {"scanner_hits": hits})
+            _record_release_suggestion(rel, "instruction-shaped", {"scanner_hits": hits}, text=text)
             result["suggested"].append({"page": rel, "why": "instruction-shaped"})
             continue
         try:
@@ -1411,7 +1455,7 @@ def apply_quarantine_verdicts(session: str, verdicts: dict) -> dict:
                     "reason": verdict.reason,
                 }
             }
-            _record_release_suggestion(rel, "judge-objected", evidence)
+            _record_release_suggestion(rel, "judge-objected", evidence, text=text)
             result["suggested"].append({"page": rel, "why": "judge-objected"})
             continue
         entry, prov = release_page_auto(
@@ -1431,6 +1475,7 @@ __all__ = [
     "run_incremental_lint",
     "walk_wiki_pages",
     "screen_ineligibility",
+    "declined_release_holds",
     "release_page_auto",
     "run_quarantine_screen",
     "apply_quarantine_verdicts",

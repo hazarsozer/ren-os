@@ -146,6 +146,27 @@ def ledger_fingerprints() -> set[str]:
     return fingerprints
 
 
+def ledger_entries() -> list[dict]:
+    """Every decision-ledger line, parsed. Calls `ledger_fingerprints()`
+    first so the pre-0.5.0 backfill path runs; unparsable lines are skipped
+    with a stderr warning (same torn-file tolerance as everywhere else).
+    Consumers: the #52 declined-release hold, which needs `decision` and the
+    optional `content_sha256` alongside the fingerprint."""
+    ledger_fingerprints()
+    path = _ledger_path()
+    if not path.exists():
+        return []
+    entries: list[dict] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            entries.append(json.loads(line))
+        except (json.JSONDecodeError, TypeError, ValueError) as exc:
+            print(f"ren suggestions: skipping unparsable ledger line: {exc}", file=sys.stderr)
+    return entries
+
+
 def record(spec: SuggestionSpec) -> dict | None:
     """Record `spec` as a new pending suggestion, unless its fingerprint is
     already pending or decided — in which case returns None (never re-nag)."""
@@ -191,12 +212,16 @@ def decide(sid: str, decision: str) -> dict:
     entry["status"] = decision
     entry["decided_at"] = _now_iso()
     _persist(entry)
-    _append_ledger_line({
+    line = {
         "fingerprint": entry["fingerprint"],
         "decision": decision,
         "sid": entry["sid"],
         "ts": entry["decided_at"],
-    })
+    }
+    payload = entry.get("payload")
+    if isinstance(payload, dict) and isinstance(payload.get("content_sha256"), str):
+        line["content_sha256"] = payload["content_sha256"]
+    _append_ledger_line(line)
     return entry
 
 
@@ -260,6 +285,7 @@ __all__ = [
     "pending_suggestions",
     "decided_fingerprints",
     "ledger_fingerprints",
+    "ledger_entries",
     "decide",
     "prune_decided",
     "expire_stale_pending",
