@@ -52,7 +52,10 @@ def merge_update(
     current_text: str, item_text: str, llm_call: Callable[[str], str]
 ) -> str:
     prompt = _MERGE_PROMPT_TEMPLATE.format(item_text=item_text, page_text=current_text)
-    raw = llm_call(prompt)
+    try:
+        raw = llm_call(prompt)
+    except Exception as exc:  # noqa: BLE001 - any llm_call failure gates the item out, never crashes wrap
+        raise MergeError(f"merge llm call failed: {exc}") from exc
     if not isinstance(raw, str) or not raw.strip():
         raise MergeError("merge output empty or not a string")
     if _frontmatter_block(raw) != _frontmatter_block(current_text):

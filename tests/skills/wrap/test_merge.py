@@ -38,6 +38,14 @@ def test_merge_rejects_unchanged_output():
         merge_update(PAGE, "item", lambda p: PAGE)
 
 
+def test_merge_wraps_llm_call_failure_as_merge_error():
+    def crashing_llm(prompt):
+        raise RuntimeError("llm backend down")
+
+    with pytest.raises(MergeError):
+        merge_update(PAGE, "item", crashing_llm)
+
+
 def test_merge_prompt_contains_page_and_item():
     seen = {}
     def llm(prompt):

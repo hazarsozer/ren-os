@@ -636,9 +636,9 @@ def maintain_overview(
 
 def _target_trust(page: str) -> str | None:
     """`ren_trust` frontmatter of a wiki page, or None (unreadable/unstamped).
-    Mirrors skills/wiki-health/lib `_page_trust` — fail closed: None is
-    treated as NOT user-trust (auto path), because an unstamped page was
-    never human-released."""
+    Mirrors skills/wiki-health/lib `_page_trust` — None is deliberately
+    treated as NOT user-trust: an unstamped page was never human-released,
+    so it takes the auto path."""
     try:
         text = ren_paths.safe_join(ren_paths.wiki_root(), page).read_text(encoding="utf-8")
     except OSError:
