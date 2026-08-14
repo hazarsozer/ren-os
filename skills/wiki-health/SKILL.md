@@ -80,7 +80,14 @@ used to catch, by sweeping periodically instead of gating continuously.
    sweep's `wiki_root` — degrades to `{"hit_rate": None, "error": "<msg>"}`
    on failure, never crashes the sweep, and is also recorded to monthly
    metrics as `KIND_RETRIEVAL_EVAL`; this is exit criterion 2's instrument,
-   not a repair target — nothing in this skill acts on it) and
+   not a repair target — nothing in this skill acts on it),
+   `stale_facts` (#39: scans durable pages for `<!-- ren-volatile: <kind> -->`
+   markers, verifies checkable kinds — `"framework-version"` against
+   `pyproject`, `"release-count"` against git tags — against ground truth,
+   and mechanically queues a correction through the write queue when the
+   marked line has exactly one unambiguous number to replace (trust-user
+   pages route to the suggestions store instead); everything else, and any
+   unknown marker kind, reports as unverifiable rather than guessing) and
    `generated_at`.
 2. Call `render_report(findings)` and show the friend the full report
    **before** touching anything — the friend sees what was found even if
