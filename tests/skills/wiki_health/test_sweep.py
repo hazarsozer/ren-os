@@ -55,7 +55,7 @@ def test_sweep_returns_all_dict_keys(wiki):
         "mass_deletions", "quarantined_pages", "judge_dismissed", "judge_supersedes",
         "retrieval_eval", "single_project_global_pages",
         "hubless_knowledge_dirs", "unlinked_knowledge_pages", "orphan_pages",
-        "machine_released_total", "generated_at",
+        "stale_facts", "machine_released_total", "generated_at",
     }
     assert result["generated_at"]
     assert result["contradiction_scan_note"] is None

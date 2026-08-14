@@ -528,6 +528,81 @@ def _orphan_pages(wiki_root: Path) -> list[str]:
     return sorted(orphans)
 
 
+def _stale_facts(wiki_root: Path, session: str) -> dict:
+    """#39's freshness sweep (spec 2026-08-14 §3): scan durable pages for
+    `ren-volatile` markers, verify checkable kinds against ground truth, and
+    queue a correction through the write queue for each stale line —
+    writer="routine" (mechanical bookkeeping; never quarantines), trust-user
+    targets routed to the suggestions store instead. Warn-not-block: any
+    per-page/per-marker failure is skipped, never raises. The naive
+    number-substitution correction only fires when the marked line contains
+    a number to replace; otherwise the finding is report-only (no NLP
+    guessing)."""
+    from lib.memory.volatile import check_marker, find_markers
+    from lib.memory.queue import Proposal, propose_and_apply
+    from lib.suggestions import SuggestionSpec, record
+
+    stale: list[dict] = []
+    unverifiable: list[dict] = []
+    queued = 0
+
+    for path in sorted(wiki_root.rglob("*.md")):
+        rel = path.relative_to(wiki_root).as_posix()
+        parts = tuple(PurePosixPath(rel).parts)
+        if _in_archive(parts) or "raw" in parts:
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        for marker in find_markers(text):
+            try:
+                status, truth = check_marker(marker)
+            except Exception:  # noqa: BLE001 - warn-not-block
+                continue
+            if status == "ok":
+                continue
+            item = {"page": rel, "line_no": marker.line_no, "kind": marker.kind,
+                    "line": marker.line_text.strip(), "ground_truth": truth}
+            if status == "unverifiable":
+                unverifiable.append(item)
+                continue
+            stale.append(item)
+            try:
+                lines = text.splitlines(keepends=True)
+                old_line = lines[marker.line_no - 1]
+                new_line = re.sub(r"\d+(?:\.\d+)*", truth, old_line, count=1)
+                if new_line == old_line:
+                    continue  # nothing mechanically replaceable — report only
+                lines[marker.line_no - 1] = new_line
+                corrected = "".join(lines)
+                if _page_trust(text) == "user":
+                    record(SuggestionSpec(
+                        producer="wiki-health",
+                        title=f"Stale fact on human-authored page: {rel}",
+                        rationale=f"{marker.kind} ground truth is {truth}",
+                        evidence=item,
+                        kind="page_write",
+                        payload=dict(op="UPDATE", page=rel, content=corrected,
+                                     reason=f"stale-fact refresh ({marker.kind})",
+                                     producer="routine", writer="routine",
+                                     session=session),
+                        fingerprint=f"stale-fact:{rel}:{marker.line_no}",
+                    ))
+                    continue
+                _, prov = propose_and_apply(Proposal(
+                    op="UPDATE", page=rel, content=corrected,
+                    reason=f"stale-fact refresh ({marker.kind}: {truth})",
+                    producer="routine", writer="routine", session=session,
+                ))
+                if prov is not None:
+                    queued += 1
+            except Exception:  # noqa: BLE001 - warn-not-block
+                continue
+
+    return {"stale": stale, "unverifiable": unverifiable, "corrections_queued": queued}
+
+
 def record_orphan_suggestions(orphans: list[str], session: str) -> int:
     """File (fingerprint-deduped) 'orphan page' suggestions into the
     suggestions store — one per page in `orphans`, mirroring
@@ -712,7 +787,11 @@ def _judge_annotate(
     return contradiction_pairs, duplicate_pairs, numeric_drift_pairs, judge_dismissed, judge_supersedes
 
 
-def sweep(wiki_root: Path | None = None, llm_call: Callable[[str], str] | None = None) -> dict:
+def sweep(
+    wiki_root: Path | None = None,
+    llm_call: Callable[[str], str] | None = None,
+    session: str = "wiki-health-sweep",
+) -> dict:
     """Run the full read-only coherence sweep. Never writes anything —
     fixing findings is the live session's job (see SKILL.md).
 
@@ -764,7 +843,13 @@ def sweep(wiki_root: Path | None = None, llm_call: Callable[[str], str] | None =
     `_orphan_pages`). Judgment-shaped, same as `hubless_knowledge_dirs` and
     `unlinked_knowledge_pages` — the sweep only reports it; routing an
     orphan to the suggestions store is `record_orphan_suggestions`, called
-    by the live session, never by `sweep` itself."""
+    by the live session, never by `sweep` itself.
+
+    A 13th key, `stale_facts` (#39, spec 2026-08-14 §3): `{"stale": [...],
+    "unverifiable": [...], "corrections_queued": int}` from scanning every
+    durable page's `ren-volatile` markers (see `_stale_facts`). `session`
+    (default `"wiki-health-sweep"`) threads through to the correction
+    proposals/suggestions this raises."""
     wiki_root = wiki_root or ren_paths.wiki_root()
     if not wiki_root.is_dir():
         return {
@@ -779,6 +864,7 @@ def sweep(wiki_root: Path | None = None, llm_call: Callable[[str], str] | None =
             "hubless_knowledge_dirs": [],
             "unlinked_knowledge_pages": [],
             "orphan_pages": [],
+            "stale_facts": {"stale": [], "unverifiable": [], "corrections_queued": 0},
             "judge_dismissed": [],
             "judge_supersedes": [],
             "retrieval_eval": _retrieval_eval(),
@@ -823,6 +909,7 @@ def sweep(wiki_root: Path | None = None, llm_call: Callable[[str], str] | None =
         "hubless_knowledge_dirs": hubless_knowledge_dirs,
         "unlinked_knowledge_pages": unlinked_knowledge_pages,
         "orphan_pages": _orphan_pages(wiki_root),
+        "stale_facts": _stale_facts(wiki_root, session),
         "judge_dismissed": judge_dismissed,
         "judge_supersedes": judge_supersedes,
         "retrieval_eval": _retrieval_eval(),
@@ -923,6 +1010,21 @@ def render_report(findings: dict) -> str:
             lines.append("- (pages above may also appear under Unlinked knowledge pages)")
     else:
         lines.append("- none")
+    lines.append("")
+
+    lines.append("## Stale facts (ren-volatile)")
+    stale_facts = findings.get("stale_facts") or {"stale": [], "unverifiable": [], "corrections_queued": 0}
+    stale_list = stale_facts.get("stale") or []
+    unverifiable_list = stale_facts.get("unverifiable") or []
+    corrected = stale_facts.get("corrections_queued", 0)
+    lines.append(
+        f"- {len(stale_list)} stale ({corrected} corrected), {len(unverifiable_list)} unverifiable"
+    )
+    if stale_list:
+        lines.extend(
+            f"  - {s['page']}:{s['line_no']} [{s['kind']}] ground truth: {s['ground_truth']}"
+            for s in stale_list
+        )
     lines.append("")
 
     lines.append("## Quarantined (unreviewed)")

@@ -1,0 +1,147 @@
+"""#39 — wiki-health `stale_facts` check: scan durable pages for `ren-volatile`
+markers, verify checkable kinds against ground truth, and queue a correction
+for each stale line (trust-user targets route to suggestions instead).
+
+Fixture convention copied from tests/skills/wiki_health/test_quarantine_screen.py
+(REN_FRAMEWORK_ROOT points `wiki_root()` at a tmp dir so both the sweep and
+the write queue operate on the same tree) — no shared isolated_wiki fixture
+exists in this codebase.
+"""
+from __future__ import annotations
+
+import importlib
+
+import pytest
+
+from lib.ren_paths import wiki_root
+
+wiki_health = importlib.import_module("skills.wiki-health.lib")
+
+
+@pytest.fixture
+def clean_path_env(monkeypatch):
+    for var in ("REN_WIKI_ROOT", "CLAUDE_PLUGIN_OPTION_WIKIROOT", "REN_FRAMEWORK_ROOT"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.delenv("CLAUDE_SESSION_ID", raising=False)
+    return monkeypatch
+
+
+@pytest.fixture
+def wiki(clean_path_env, tmp_path):
+    clean_path_env.setenv("REN_FRAMEWORK_ROOT", str(tmp_path))
+    root = wiki_root()
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
+def _write_page(root, rel, body, trust=None):
+    page = root / rel
+    page.parent.mkdir(parents=True, exist_ok=True)
+    fm = "---\ntype: model-trust\n"
+    if trust is not None:
+        fm += f'ren_trust: "{trust}"\n'
+    fm += "---\n"
+    page.write_text(fm + body, encoding="utf-8")
+    return rel
+
+
+def test_stale_fact_detected_and_correction_queued(wiki, monkeypatch):
+    from lib.memory.volatile import CHECKERS
+
+    monkeypatch.setitem(CHECKERS, "release-count", lambda root: "30")
+    rel = _write_page(
+        wiki, "projects/app/knowledge/versions.md",
+        "# Versions\nRenOS has shipped 12 releases. <!-- ren-volatile: release-count -->\n",
+    )
+
+    result = wiki_health.sweep(wiki)
+    stale = result["stale_facts"]["stale"]
+    assert len(stale) == 1
+    assert stale[0]["page"] == rel
+    assert stale[0]["ground_truth"] == "30"
+    assert result["stale_facts"]["corrections_queued"] == 1
+
+    text = (wiki / rel).read_text(encoding="utf-8")
+    lines = text.splitlines()
+    corrected_line = next(l for l in lines if "ren-volatile: release-count" in l)
+    assert "30" in corrected_line
+    assert "12" not in corrected_line
+
+
+def test_user_trust_page_routes_to_suggestion(wiki, monkeypatch):
+    from lib.memory.volatile import CHECKERS
+    from lib import suggestions
+
+    monkeypatch.setitem(CHECKERS, "release-count", lambda root: "30")
+    rel = _write_page(
+        wiki, "projects/app/knowledge/versions.md",
+        "# Versions\nRenOS has shipped 12 releases. <!-- ren-volatile: release-count -->\n",
+        trust="user",
+    )
+
+    result = wiki_health.sweep(wiki)
+    assert result["stale_facts"]["stale"] == [] or result["stale_facts"]["corrections_queued"] == 0
+    assert result["stale_facts"]["corrections_queued"] == 0
+
+    text_before = (wiki / rel).read_text(encoding="utf-8")
+    line_no = next(
+        i for i, l in enumerate(text_before.splitlines(), start=1)
+        if "ren-volatile: release-count" in l
+    )
+    pending = suggestions.pending_suggestions()
+    hit = next(
+        s for s in pending
+        if s["producer"] == "wiki-health" and s["fingerprint"] == f"stale-fact:{rel}:{line_no}"
+    )
+    assert hit["fingerprint"] == f"stale-fact:{rel}:{line_no}"
+
+    # page itself is untouched — correction never applied directly
+    text = (wiki / rel).read_text(encoding="utf-8")
+    assert "12 releases" in text
+
+
+def test_unverifiable_kind_inventoried_only(wiki):
+    from lib import suggestions
+
+    rel = _write_page(
+        wiki, "projects/app/knowledge/mystery.md",
+        "# Mystery\nSome fact. <!-- ren-volatile: some-unknown-kind -->\n",
+    )
+
+    result = wiki_health.sweep(wiki)
+    unverifiable = result["stale_facts"]["unverifiable"]
+    assert any(u["page"] == rel and u["kind"] == "some-unknown-kind" for u in unverifiable)
+    assert result["stale_facts"]["stale"] == []
+    assert result["stale_facts"]["corrections_queued"] == 0
+    assert suggestions.pending_suggestions() == []
+
+
+def test_checker_without_ground_truth_skips_with_no_queue(wiki, monkeypatch):
+    from lib.memory.volatile import CHECKERS
+
+    monkeypatch.setitem(CHECKERS, "release-count", lambda root: None)
+    rel = _write_page(
+        wiki, "projects/app/knowledge/versions.md",
+        "# Versions\nRenOS has shipped 12 releases. <!-- ren-volatile: release-count -->\n",
+    )
+
+    result = wiki_health.sweep(wiki)
+    assert result["stale_facts"]["stale"] == []
+    assert any(u["page"] == rel for u in result["stale_facts"]["unverifiable"])
+    assert result["stale_facts"]["corrections_queued"] == 0
+
+
+def test_report_renders_stale_facts_section(wiki, monkeypatch):
+    from lib.memory.volatile import CHECKERS
+
+    monkeypatch.setitem(CHECKERS, "release-count", lambda root: "30")
+    rel = _write_page(
+        wiki, "projects/app/knowledge/versions.md",
+        "# Versions\nRenOS has shipped 12 releases. <!-- ren-volatile: release-count -->\n",
+    )
+
+    result = wiki_health.sweep(wiki)
+    report = wiki_health.render_report(result)
+    assert rel in report
+    assert "30" in report
+    assert "Stale facts" in report
