@@ -72,17 +72,34 @@ _LINT_FINGERPRINT_PREFIX = "wiki-lint:"
 # ------------------------------------------------------------------- walking
 
 
-def walk_wiki_pages(wiki_root: Path, skip_raw: bool = False) -> list[str]:
+def in_archive(parts: tuple[str, ...]) -> bool:
+    """Spec-exact archive exemption: `archive/` at the wiki root, or
+    `projects/<slug>/archive/` — NOT an `archive` dir at arbitrary depth
+    (that would silently exempt e.g. `projects/x/knowledge/archive/n.md`).
+    Mirrors `ren_paths.in_project_raw`'s shape for the project-scoped case.
+    Moved here from `__init__.py` (#52 rider) so the walker can use it
+    without a circular import."""
+    if parts and parts[0] == "archive":
+        return True
+    return len(parts) >= 3 and parts[0] == "projects" and parts[2] == "archive"
+
+
+def walk_wiki_pages(
+    wiki_root: Path, skip_raw: bool = False, skip_archive: bool = False
+) -> list[str]:
     """Every markdown page under `wiki_root` as a sorted wiki-relative posix
     path, always skipping the `.ren/` framework tree and optionally
-    `projects/<slug>/raw/`. THE page walker for this skill — `sweep`'s
-    `_knowledge_pages` and the lint both use it so the two can't drift."""
+    `projects/<slug>/raw/` and `archive/`. THE page walker for this skill —
+    `sweep`'s `_knowledge_pages` and the lint both use it so the two can't
+    drift."""
     pages: list[str] = []
     for md_path in sorted(wiki_root.rglob("*.md")):
         parts = md_path.relative_to(wiki_root).parts
         if ".ren" in parts:
             continue
         if skip_raw and ren_paths.in_project_raw(parts):
+            continue
+        if skip_archive and in_archive(parts):
             continue
         pages.append(md_path.relative_to(wiki_root).as_posix())
     return pages
@@ -456,7 +473,7 @@ def run_incremental_lint(session: str, full: bool = False) -> dict:
             "watermark_advanced": True,
         }
 
-    all_pages = walk_wiki_pages(wiki_root)
+    all_pages = walk_wiki_pages(wiki_root, skip_archive=True)
     pages = (
         [p for p in all_pages if not _is_pseudo(p)]
         if full
@@ -543,4 +560,4 @@ def run_incremental_lint(session: str, full: bool = False) -> dict:
     }
 
 
-__all__ = ["run_incremental_lint", "walk_wiki_pages", "is_fixable_page", "PRODUCER"]
+__all__ = ["run_incremental_lint", "walk_wiki_pages", "is_fixable_page", "in_archive", "PRODUCER"]

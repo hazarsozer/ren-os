@@ -91,7 +91,7 @@ from lib.pointer import REPO_REF_PREFIX as _REPO_REF_PREFIX, parse_pointer_line
 from lib.ren_paths import PathTraversalError
 from skills.recall.lib import rank as _recall_rank
 
-from .lint import run_incremental_lint, walk_wiki_pages
+from .lint import run_incremental_lint, walk_wiki_pages, in_archive as _in_archive
 
 _FRONTMATTER_RE = re.compile(r"\A---\n(.*?)\n---\n?", re.DOTALL)
 _FM_TYPE_RE = re.compile(r"^type:\s*(.+)$", re.MULTILINE)
@@ -417,16 +417,6 @@ _MD_LINK_RE = re.compile(
 _MD_FULL_LINK_RE = re.compile(
     r"\[[^\]\n]*\]\(\s*<?[^()\s#>]+\.md>?(?:#[^()\s]*)?(?:\s+\"[^\"]*\")?\s*\)"
 )
-
-
-def _in_archive(parts: tuple[str, ...]) -> bool:
-    """Spec-exact archive exemption: `archive/` at the wiki root, or
-    `projects/<slug>/archive/` — NOT an `archive` dir at arbitrary depth
-    (that would silently exempt e.g. `projects/x/knowledge/archive/n.md`).
-    Mirrors `ren_paths.in_project_raw`'s shape for the project-scoped case."""
-    if parts and parts[0] == "archive":
-        return True
-    return len(parts) >= 3 and parts[0] == "projects" and parts[2] == "archive"
 
 
 def _orphan_pages(wiki_root: Path) -> list[str]:
