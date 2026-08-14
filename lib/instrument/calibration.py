@@ -187,6 +187,26 @@ def read_last_injection() -> tuple[str, str]:
     return session, text
 
 
+def harness_session_id() -> str | None:
+    """The harness `session_id` the wake-up hook stamped into the pairing
+    file, or None when there is no usable stamp. Never raises.
+
+    Unlike `read_last_injection`, this deliberately IGNORES the `consumed`
+    marker: consumption exists to stop a second harvest of the same
+    transcript, not to forget which session this is. Callers that need to
+    match instrumentation logged under the REAL session id — e.g.
+    `skills.wrap.lib._eligible_update_targets`, whose own `session` argument
+    is a model-supplied label — read it through here rather than
+    re-deriving the id from anywhere else (there is no other authority; see
+    the module docstring).
+    """
+    session = _read_stamp().get("session")
+    if not isinstance(session, str):
+        return None
+    session = session.strip()
+    return session or None
+
+
 def mark_last_injection_consumed() -> bool:
     """Stamp the pairing file `consumed` so no later wrap can harvest the same
     session again. Kept (rather than unlinked) so the persisted payload stays
@@ -451,6 +471,7 @@ __all__ = [
     "legacy_last_injection_path",
     "MAX_OUTPUT_PAIRS",
     "PLAUSIBLE_RATIO_BAND",
+    "harness_session_id",
     "harvest_and_calibrate",
     "last_injection_path",
     "persist_last_injection",

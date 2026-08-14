@@ -254,9 +254,18 @@ def test_durable_outcome_metric_recorded(wiki):
     assert len(entries) == 1
     entry = entries[0]
 
-    for key in ("created", "updated", "gated_out", "suggested", "held", "refused"):
+    for key in ("seen", "created", "created_project", "created_global",
+                "updated", "gated_out", "suggested", "held", "refused"):
         assert key in entry
         assert isinstance(entry[key], int)
+
+    # #I5 (spec §4): `seen` and the project/global split of creates are what
+    # make "creates still starve" distinguishable from "nothing was proposed".
+    assert entry["seen"] == 1
+    assert entry["created_project"] + entry["created_global"] == entry["created"]
+    # This item was classified global-scope, so it lands in `lessons/`.
+    assert entry["created_global"] == len(result["applied"])
+    assert entry["created_project"] == 0
 
     assert entry["created"] == len(result["applied"])
     assert entry["updated"] == len(result["updated"])

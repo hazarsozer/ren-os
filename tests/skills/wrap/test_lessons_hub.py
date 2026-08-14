@@ -19,6 +19,7 @@ Run with: uv run pytest tests/skills/wrap/test_lessons_hub.py -v
 
 from __future__ import annotations
 
+import importlib
 import re
 
 import pytest
@@ -104,6 +105,66 @@ def test_project_hub_frontmatter(wiki):
     assert "type: project-knowledge" in text
     assert "project: p" in text
     assert "hub: true" in text
+
+
+def test_existing_hub_keeps_human_prose_and_gains_only_the_new_link(wiki):
+    """#I2: an existing hub is APPENDED to, never re-rendered — a human's
+    prose (and hand-written ordering) survives; only the missing link lands."""
+    lessons_dir = wiki / "lessons"
+    lessons_dir.mkdir(parents=True, exist_ok=True)
+    (lessons_dir / "old-one.md").write_text("Old lesson one.\n", encoding="utf-8")
+
+    hub_path = lessons_dir / "lessons.md"
+    hub_path.write_text(
+        "---\ntype: hub\nhub: true\ntitle: \"Lessons\"\n---\n\n"
+        "# Lessons\n\n"
+        "These are the ones I actually reread — the rest is noise.\n\n"
+        "- [old-one](old-one.md)\n",
+        encoding="utf-8",
+    )
+
+    (lessons_dir / "new-one.md").write_text("New lesson.\n", encoding="utf-8")
+    assert _ensure_lessons_hub("lessons", "s1", None) is True
+
+    text = hub_path.read_text(encoding="utf-8")
+    assert "These are the ones I actually reread — the rest is noise." in text
+    assert "- [old-one](old-one.md)" in text
+    assert "- [new-one](new-one.md)" in text
+    assert _links(text) == ["- [old-one](old-one.md)", "- [new-one](new-one.md)"]
+
+
+def test_trust_user_hub_is_never_touched(wiki):
+    """#I2: a hub the friend owns (`ren_trust: user`) is skipped entirely —
+    same hold rule the durable-update path applies to trust-user targets."""
+    lessons_dir = wiki / "lessons"
+    lessons_dir.mkdir(parents=True, exist_ok=True)
+    (lessons_dir / "new-one.md").write_text("New lesson.\n", encoding="utf-8")
+
+    hub_path = lessons_dir / "lessons.md"
+    before = (
+        "---\ntype: hub\nhub: true\nren_trust: \"user\"\ntitle: \"Lessons\"\n---\n\n"
+        "# Lessons\n\nMy hand-curated list.\n"
+    )
+    hub_path.write_text(before, encoding="utf-8")
+
+    assert _ensure_lessons_hub("lessons", "s1", None) is False
+    assert hub_path.read_text(encoding="utf-8") == before
+
+
+def test_new_global_hub_has_frontmatter_type(wiki):
+    """#I6: wiki-lint files a `missing-frontmatter-type` judgment on any page
+    without a frontmatter `type:` — wrap's own hub must not trip its own lint."""
+    lessons_dir = wiki / "lessons"
+    lessons_dir.mkdir(parents=True, exist_ok=True)
+    (lessons_dir / "old-one.md").write_text("Old lesson one.\n", encoding="utf-8")
+
+    assert _ensure_lessons_hub("lessons", "s1", None) is True
+
+    text = (lessons_dir / "lessons.md").read_text(encoding="utf-8")
+    assert "type: hub" in text
+
+    lint = importlib.import_module("skills.wiki-health.lib.lint")
+    assert lint._frontmatter_type(text) == "hub"
 
 
 def test_hub_failure_never_raises(wiki, monkeypatch):

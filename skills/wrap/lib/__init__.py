@@ -656,26 +656,40 @@ def _durable_create_page(item: str, scope: str, project: str | None) -> str:
     return f"lessons/{_slugify(item)}.md"
 
 
-_HUB_LINK_RE = re.compile(r"^- \[[^\]]+\]\([^)]+\)$", re.MULTILINE)
+_HUB_LINK_RE = re.compile(r"^- \[[^\]]+\]\(([^)]+)\)$", re.MULTILINE)
 
 
 def _hub_links(text: str) -> list[str]:
-    """The `- [name](file.md)` link lines carried by a rendered/on-disk hub
-    body. Used to detect whether a hub write is actually needed: the write
-    door stamps `ren_*` provenance frontmatter onto every applied page, so
-    the on-disk file never byte-equals a freshly rendered body — comparing
-    link lists (the only part that can meaningfully change here) is what
-    makes `_ensure_lessons_hub` idempotent."""
+    """The link TARGETS of the `- [name](file.md)` lines carried by a hub
+    body — what the hub already advertises. Used to decide which entries a
+    hub is missing: the write door stamps `ren_*` provenance frontmatter onto
+    every applied page, so the on-disk file never byte-equals a freshly
+    rendered body; comparing advertised targets is what makes
+    `_ensure_lessons_hub` idempotent."""
     return _HUB_LINK_RE.findall(text)
 
 
 def _ensure_lessons_hub(dir_rel: str, session: str, project: str | None) -> bool:
     """Folder-note hub for a lessons/ directory (spec §2, 0.7.2 hub
-    convention: `<dir>/<dirname>.md`, `hub: true`). Rebuilds the link list
-    from disk every call and writes ONLY when the link list differs from
-    what's already on disk — idempotent, and the first call backfills links
-    to every pre-existing lesson page. Isolated-duty posture: never raises;
-    returns False on any failure (caller appends a warning)."""
+    convention: `<dir>/<dirname>.md`, `hub: true`).
+
+    Two distinct paths (fix round 2, #I2 — the old code re-rendered the whole
+    body and UPDATEd it, silently deleting any prose a human had written on
+    the hub):
+
+      * **Hub absent** — write the full template (frontmatter + heading +
+        one link per lesson page, backfilling every pre-existing one).
+      * **Hub present** — APPEND ONLY the link lines it is missing to the
+        body it already has (same shape as
+        `skills/wiki-health/lib/lint.py::_hub_missing_entries`), never a
+        re-render. Nothing missing → no write at all (idempotent).
+
+    A hub whose `ren_trust` is `user` is a human-owned page: skipped
+    entirely (returns False), same hold rule the durable-update path applies
+    to trust-user targets.
+
+    Isolated-duty posture: never raises; returns False on any failure (caller
+    appends a warning)."""
     try:
         wiki = ren_paths.wiki_root()
         dirname = PurePosixPath(dir_rel).name
@@ -687,25 +701,40 @@ def _ensure_lessons_hub(dir_rel: str, session: str, project: str | None) -> bool
             p.name for p in dir_path.glob("*.md")
             if p.is_file() and p.name != f"{dirname}.md"
         ) if dir_path.is_dir() else []
-        links = "\n".join(f"- [{PurePosixPath(n).stem}]({n})" for n in entries)
 
-        if project:
-            fm = (f"---\ntype: project-knowledge\nschema_version: 1\n"
-                  f"project: {project}\nhub: true\ntitle: \"Lessons Hub\"\n---\n")
-        else:
-            fm = "---\nhub: true\ntitle: \"Lessons\"\n---\n"
-        body = f"{fm}\n# Lessons\n\nDurable lessons in this folder:\n\n{links}\n"
-
-        hub_exists = hub_path.is_file()
-        if hub_exists:
-            existing_text = hub_path.read_text(encoding="utf-8")
-            if _hub_links(existing_text) == _hub_links(body):
+        if hub_path.is_file():
+            # Human-authored hub: never auto-edited (see docstring).
+            if _target_trust(hub_rel) == "user":
                 return False
+            existing_text = hub_path.read_text(encoding="utf-8")
+            advertised = set(_hub_links(existing_text))
+            missing = [n for n in entries if n not in advertised]
+            if not missing:
+                return False
+            appended = "\n".join(f"- [{PurePosixPath(n).stem}]({n})" for n in missing)
+            content = existing_text.rstrip("\n") + "\n" + appended + "\n"
+            op = "UPDATE"
+        else:
+            links = "\n".join(f"- [{PurePosixPath(n).stem}]({n})" for n in entries)
+            if project:
+                fm = (f"---\ntype: project-knowledge\nschema_version: 1\n"
+                      f"project: {project}\nhub: true\ntitle: \"Lessons Hub\"\n---\n")
+            else:
+                # #I6: wiki-lint files a `missing-frontmatter-type` judgment
+                # on any page without a frontmatter `type:` — wrap's own hub
+                # was tripping it. `hub` is the honest minimal stamp: lint
+                # accepts ANY non-empty type string, and `hub` is NOT in
+                # `skills/wiki-migration/schemas.json`'s `page_types`, so
+                # doctor's schema check skips it rather than demanding a
+                # schema_version chain that doesn't exist for this shape.
+                fm = "---\ntype: hub\nhub: true\ntitle: \"Lessons\"\n---\n"
+            content = f"{fm}\n# Lessons\n\nDurable lessons in this folder:\n\n{links}\n"
+            op = "ADD"
 
         _, prov = propose_and_apply(
             Proposal(
-                op="UPDATE" if hub_exists else "ADD",
-                page=hub_rel, content=body,
+                op=op,
+                page=hub_rel, content=content,
                 reason="lessons folder-note hub (spec 2026-08-14 §2)",
                 producer="wrap", writer="routine", session=session,
             )
@@ -959,9 +988,20 @@ def wrap_session(
     new_events = events_after[len(events_before):]
     fail_closed = any(e.get("event") == "fail_closed" for e in new_events)
 
+    # Spec §4 — the measurement the #60 distiller decision is made on. `seen`
+    # (candidates offered) and the project/global split of creates are what
+    # make "creates still starve" distinguishable from "nothing was ever
+    # proposed" and from "everything lands globally"; the original four
+    # counters could not tell those apart (fix round 2, #I5). Existing keys
+    # are unchanged — `created` stays the TOTAL.
+    created_project = sum(1 for a in applied if a["page"].startswith("projects/"))
     collect.record(
         collect.KIND_DURABLE_OUTCOME,
-        {"session": session, "created": len(applied), "updated": len(updated),
+        {"session": session, "seen": len(durable_items),
+         "created": len(applied),
+         "created_project": created_project,
+         "created_global": len(applied) - created_project,
+         "updated": len(updated),
          "gated_out": len(gated_out), "suggested": len(suggested),
          "held": len(held), "refused": len(refused)},
     )
@@ -1277,7 +1317,12 @@ def _run_wiki_health_sweep() -> dict:
     normally a live-session-invoked auditor per `skills/wiki-health/SKILL.md`)
     — this is the one place `wiki_health_critical`'s input gets produced at
     wrap time. Left as its own function so `harvest_suggestions` can isolate
-    a sweep failure from the three producer calls."""
+    a sweep failure from the three producer calls.
+
+    READ-ONLY on purpose: `apply_corrections` is left at its default False,
+    so this unattended, every-session call reports stale facts without
+    queuing a single write (fix round 2, #C2). Only `/ren:wiki-health`'s
+    explicit apply step — with a human looking at the report — passes True."""
     import importlib
 
     wiki_health_lib = importlib.import_module("skills.wiki-health.lib")
@@ -1371,19 +1416,46 @@ def _append_session_summary(session: str, project: str | None, result: dict) -> 
     )
 
 
+def _session_id_candidates(session: str) -> set[str]:
+    """Every id this wrap's session may be logged under.
+
+    Wrap's `session` argument is a MODEL-supplied label, but the wake-up hook
+    logs `KIND_WAKEUP_SURFACE` under the HARNESS `session_id` it was handed
+    (`hooks/wake-up/ren-wake-up.py` → `compose_wake_up_context(session=...)`).
+    Matching on the label alone therefore found zero wake-up surfaces in
+    production, which silently emptied the eligibility set and made the whole
+    update path inert (fix round 2, #C1). The harness id is recovered from the
+    pairing file the same hook stamps — `calibration.harness_session_id()`,
+    the only authority for it; unresolvable (no stamp, degraded wake-up) just
+    means the label stands alone, never an error."""
+    candidates = {session}
+    try:
+        harness = calibration.harness_session_id()
+    except Exception:  # noqa: BLE001 - a broken stamp must never break wrap
+        harness = None
+    if harness:
+        candidates.add(harness)
+    return candidates
+
+
 def _eligible_update_targets(session: str) -> tuple[str, ...]:
     """The mechanical eligibility set for update-action durable items (spec
     §1): pages THIS session actually surfaced — wake-up injections
     (`KIND_WAKEUP_SURFACE`) plus on-demand recalls (`KIND_L3_FETCH`) — that
     still exist on disk. Assembled from the instrumentation logs, re-checked
     in code after the classifier call; a target outside this set is treated
-    as malformed classifier output (fail-closed), never written."""
+    as malformed classifier output (fail-closed), never written.
+
+    Entries match on ANY of this session's ids (`_session_id_candidates`):
+    the wrap label the model supplied, plus the harness `session_id` the
+    wake-up hook logged its surfaces under."""
+    sessions = _session_id_candidates(session)
     pages: set[str] = set()
     for entry in collect.read(kind=collect.KIND_WAKEUP_SURFACE):
-        if entry.get("session") == session:
+        if entry.get("session") in sessions:
             pages.update(p for p in entry.get("pages", []) if isinstance(p, str))
     for entry in collect.read(kind=collect.KIND_L3_FETCH):
-        if entry.get("session") == session and isinstance(entry.get("page"), str):
+        if entry.get("session") in sessions and isinstance(entry.get("page"), str):
             pages.add(entry["page"])
     wiki = ren_paths.wiki_root()
     return tuple(sorted(p for p in pages if (wiki / p).is_file()))
