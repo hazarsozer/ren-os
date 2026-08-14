@@ -412,6 +412,13 @@ def _incremental_scope(wiki_root: Path, touched: list[str]) -> list[str]:
     for page in touched:
         if _is_pseudo(page) or not (wiki_root / page).is_file():
             continue
+        if in_archive(Path(page).parts):
+            # Mirrors `walk_wiki_pages(..., skip_archive=True)`: archiving a
+            # page journals an ADD of `archive/<rel>`, so an unfiltered scope
+            # would flag the freshly archived copy in the very next
+            # incremental sweep (the #52 rider only covered the full-scope
+            # walk, not this path — final-review finding 1, 2026-08-14).
+            continue
         scope.add(page)
         for candidate in _hub_candidates((wiki_root / page).parent):
             if candidate.is_file():
