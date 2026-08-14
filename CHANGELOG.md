@@ -1,5 +1,53 @@
 # Changelog
 
+## [0.7.3] - 2026-08-14 — "the living wiki"
+
+The knowledge-flow release: wrap stops being a create-only producer and the
+KB unfreezes. Spec: docs/superpowers/specs/2026-08-14-wrap-knowledge-flow-design.md.
+
+- **#60 (doctrine-first slice) — wrap learns UPDATE.** The durable-item
+  classifier's verdict grows scope (`project`/`global`), action
+  (`create`/`update`), and `target_page` — update targets restricted in code
+  to the session's mechanical eligibility set (wake-up injections +
+  `/ren:recall` fetches, on-disk-verified, matched against both the wrap
+  label and the harness session id from the calibration pairing file).
+  Updates merge via a strict one-call `merge_update` (frontmatter must
+  survive byte-identical; empty/unchanged/crashed merges gate the item out
+  as `MergeError` — close-out never crashes). Updates targeting
+  `ren_trust: user` pages are never auto-applied — they route to the
+  suggestions store (`wrap-update:<session>:<page>`). A `durable_outcome`
+  metric (seen / created project-vs-global / updated / gated-out /
+  suggested / held / refused) records per wrap — the measurement that
+  decides whether the full #60 wiki-distiller is still needed. The
+  distiller itself stays unbuilt by decision; its interface is specced.
+- **#57 — durable creates land in project scope.** Project-scoped items are
+  born at `projects/<slug>/knowledge/lessons/<slug>.md` (global `lessons/`
+  fallback), so #54's dormant D4 auto-pointer duty finally fires. Both
+  lessons directories get folder-note hubs, maintained append-only (human
+  prose is never re-rendered away; `trust: user` hubs are never touched),
+  with a one-time backfill of pre-existing global lessons.
+- **#39 — volatile-facts markers + freshness sweep.** New
+  `lib/memory/volatile.py`: `<!-- ren-volatile: <kind> -->` markers with
+  mechanical checkers for `framework-version` (via
+  `ren_paths.framework_version()`) and `release-count` (git tags, resolved
+  through the project registry / dev root so it works from an installed
+  plugin; zero tags reads as "0"). wiki-health's sweep gains a
+  `stale_facts` check — read-only by default (`apply_corrections=False`;
+  wrap's close-out sweep can never write), with corrections applied one
+  write per page only at `/ren:wiki-health`'s explicit apply step, only
+  when the pre-marker text carries exactly one unambiguous number, and only
+  on non-user-trust pages (user pages become suggestions). Unknown kinds
+  are inventoried as unverifiable, never guessed at.
+- **Review-hardened.** The train's final whole-branch review caught two
+  Criticals the task gates couldn't see: the eligibility set keyed on
+  wrap's session *label* (which never matches the harness id wake-up logs
+  under — the update path would have shipped inert), and the stale-facts
+  sweep silently writing during every `/ren:wrap` against wiki-health's
+  documented read-only contract. Both fixed pre-merge, plus six Importants
+  (marker-pair oscillation, hub clobbering, dead-checker resolution among
+  them). Follow-up filed from the same review: `apply_auto` silently
+  overwrites on durable slug collisions (revertible, but lossy).
+
 ## [0.7.2] - 2026-08-13 — "the legible wiki"
 
 The graph becomes readable: hubs get names, tiers get colors. Spec:
