@@ -54,7 +54,7 @@ def test_stale_fact_detected_and_correction_queued(wiki, monkeypatch):
         "# Versions\nRenOS has shipped 12 releases. <!-- ren-volatile: release-count -->\n",
     )
 
-    result = wiki_health.sweep(wiki)
+    result = wiki_health.sweep(wiki, apply_corrections=True)
     stale = result["stale_facts"]["stale"]
     assert len(stale) == 1
     assert stale[0]["page"] == rel
@@ -82,7 +82,7 @@ def test_two_numbers_before_marker_falls_back_to_report_only(wiki, monkeypatch):
     )
     text_before = (wiki / rel).read_text(encoding="utf-8")
 
-    result = wiki_health.sweep(wiki)
+    result = wiki_health.sweep(wiki, apply_corrections=True)
     stale = result["stale_facts"]["stale"]
     assert len(stale) == 1
     assert stale[0]["ground_truth"] == "30"
@@ -103,7 +103,7 @@ def test_user_trust_page_routes_to_suggestion(wiki, monkeypatch):
         trust="user",
     )
 
-    result = wiki_health.sweep(wiki)
+    result = wiki_health.sweep(wiki, apply_corrections=True)
     assert result["stale_facts"]["stale"] == [] or result["stale_facts"]["corrections_queued"] == 0
     assert result["stale_facts"]["corrections_queued"] == 0
 
@@ -169,3 +169,59 @@ def test_report_renders_stale_facts_section(wiki, monkeypatch):
     assert rel in report
     assert "30" in report
     assert "Stale facts" in report
+
+
+def test_default_sweep_is_read_only(wiki, monkeypatch):
+    """#C2: `sweep()` without `apply_corrections` reports stale facts and
+    writes NOTHING — no queue entry, no suggestion, no page edit. Wrap's
+    close-out calls this on every session; it must never write unattended."""
+    from lib.memory.volatile import CHECKERS
+    from lib.memory import queue
+    from lib import suggestions
+
+    monkeypatch.setitem(CHECKERS, "release-count", lambda root: "30")
+    rel = _write_page(
+        wiki, "projects/app/knowledge/versions.md",
+        "# Versions\nRenOS has shipped 12 releases. <!-- ren-volatile: release-count -->\n",
+    )
+    text_before = (wiki / rel).read_text(encoding="utf-8")
+
+    result = wiki_health.sweep(wiki)
+
+    # Reported...
+    assert [s["page"] for s in result["stale_facts"]["stale"]] == [rel]
+    # ...but nothing written anywhere.
+    assert result["stale_facts"]["corrections_queued"] == 0
+    assert (wiki / rel).read_text(encoding="utf-8") == text_before
+    assert [e for e in queue.all_entries() if e.proposal.page == rel] == []
+    assert suggestions.pending_suggestions() == []
+
+
+def test_two_stale_markers_on_one_page_both_corrected_in_one_write(wiki, monkeypatch):
+    """#I1: two markers on one page must not oscillate — both corrections
+    land, in a SINGLE write for that page."""
+    from lib.memory.volatile import CHECKERS
+    from lib.memory import queue
+
+    monkeypatch.setitem(CHECKERS, "release-count", lambda root: "30")
+    monkeypatch.setitem(CHECKERS, "framework-version", lambda root: "9.9.9")
+    rel = _write_page(
+        wiki, "projects/app/knowledge/versions.md",
+        "# Versions\n"
+        "RenOS has shipped 12 releases. <!-- ren-volatile: release-count -->\n"
+        "RenOS is currently at 0.0.1. <!-- ren-volatile: framework-version -->\n",
+    )
+
+    result = wiki_health.sweep(wiki, apply_corrections=True)
+
+    assert len(result["stale_facts"]["stale"]) == 2
+    assert result["stale_facts"]["corrections_queued"] == 1  # ONE write, both fixes
+
+    text = (wiki / rel).read_text(encoding="utf-8")
+    release_line = next(l for l in text.splitlines() if "release-count" in l)
+    version_line = next(l for l in text.splitlines() if "framework-version" in l)
+    assert "30" in release_line and "12" not in release_line
+    assert "9.9.9" in version_line and "0.0.1" not in version_line
+
+    page_writes = [e for e in queue.all_entries() if e.proposal.page == rel]
+    assert len(page_writes) == 1

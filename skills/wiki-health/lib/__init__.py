@@ -6,7 +6,10 @@ replaces it — a periodic read-only sweep the live session runs, then fixes
 what it can (through the existing write-safety substrate: `propose_and_apply`
 / `resolve_and_apply`) and interviews the friend only on genuine ambiguity.
 See `SKILL.md` for the full behavior contract; this module is the sweep
-mechanics only — it never writes anything itself.
+mechanics only. `sweep()` writes nothing by default; its ONE writing lever is
+the explicit `apply_corrections=True` argument (stale-fact corrections, #39),
+which only `/ren:wiki-health`'s apply step passes — never an unattended
+caller such as wrap's close-out.
 
 `sweep()` returns the findings below + a timestamp:
   - `dangling_pointers` — every l2-map page's "## Decision map" pointer
@@ -528,18 +531,31 @@ def _orphan_pages(wiki_root: Path) -> list[str]:
     return sorted(orphans)
 
 
-def _stale_facts(wiki_root: Path, session: str) -> dict:
+def _stale_facts(wiki_root: Path, session: str, apply_corrections: bool = False) -> dict:
     """#39's freshness sweep (spec 2026-08-14 §3): scan durable pages for
-    `ren-volatile` markers, verify checkable kinds against ground truth, and
-    queue a correction through the write queue for each stale line —
-    writer="routine" (mechanical bookkeeping; never quarantines), trust-user
-    targets routed to the suggestions store instead. Warn-not-block: any
-    per-page/per-marker failure is skipped, never raises. The naive
-    number-substitution correction only fires when the substring BEFORE the
-    `ren-volatile` marker contains EXACTLY ONE digit sequence to replace —
-    zero, or two-plus (an earlier unrelated number on the same line), fall
-    back to report-only. The marker comment itself and anything after it
-    are never touched. No NLP guessing, per spec."""
+    `ren-volatile` markers and verify checkable kinds against ground truth.
+
+    REPORTING is unconditional. WRITING is not: with `apply_corrections`
+    False (the default, and what `sweep()` passes on the read-only path), no
+    correction is queued and no suggestion is recorded — findings are
+    returned and nothing on disk or in any store changes. `/ren:wiki-health`
+    passes True at its explicit apply step. This is what makes the sweep
+    honestly read-only (fix round 2, #C2: wrap's close-out calls `sweep()`
+    on EVERY session, so queuing here meant silent unattended writes).
+
+    When applying: writer="routine" (mechanical bookkeeping; never
+    quarantines), trust-user targets routed to the suggestions store
+    instead. ONE write per PAGE, not per marker — corrections accumulate in a
+    single running line buffer so two stale markers on the same page both
+    land (fix round 2, #I1: rebuilding the buffer from the pre-loop text made
+    the second correction overwrite the first).
+
+    Warn-not-block: any per-page/per-marker failure is skipped, never raises.
+    The naive number-substitution correction only fires when the substring
+    BEFORE the `ren-volatile` marker contains EXACTLY ONE digit sequence to
+    replace — zero, or two-plus (an earlier unrelated number on the same
+    line), fall back to report-only. The marker comment itself and anything
+    after it are never touched. No NLP guessing, per spec."""
     from lib.memory.volatile import MARKER_RE, check_marker, find_markers
     from lib.memory.queue import Proposal, propose_and_apply
     from lib.suggestions import SuggestionSpec, record
@@ -557,6 +573,14 @@ def _stale_facts(wiki_root: Path, session: str) -> dict:
             text = path.read_text(encoding="utf-8")
         except OSError:
             continue
+
+        # ONE running buffer per page — every correction for this page is
+        # applied to it in turn, and it is written at most once, after all
+        # this page's markers have been processed.
+        lines = text.splitlines(keepends=True)
+        corrected_line_nos: list[int] = []
+        corrected_kinds: list[str] = []
+
         for marker in find_markers(text):
             try:
                 status, truth = check_marker(marker)
@@ -570,8 +594,9 @@ def _stale_facts(wiki_root: Path, session: str) -> dict:
                 unverifiable.append(item)
                 continue
             stale.append(item)
+            if not apply_corrections:
+                continue  # read-only: reported, never corrected
             try:
-                lines = text.splitlines(keepends=True)
                 old_line = lines[marker.line_no - 1]
                 marker_match = MARKER_RE.search(old_line)
                 if marker_match is None:
@@ -586,30 +611,43 @@ def _stale_facts(wiki_root: Path, session: str) -> dict:
                 if new_line == old_line:
                     continue  # nothing mechanically replaceable — report only
                 lines[marker.line_no - 1] = new_line
-                corrected = "".join(lines)
-                if _page_trust(text) == "user":
-                    record(SuggestionSpec(
-                        producer="wiki-health",
-                        title=f"Stale fact on human-authored page: {rel}",
-                        rationale=f"{marker.kind} ground truth is {truth}",
-                        evidence=item,
-                        kind="page_write",
-                        payload=dict(op="UPDATE", page=rel, content=corrected,
-                                     reason=f"stale-fact refresh ({marker.kind})",
-                                     producer="routine", writer="routine",
-                                     session=session),
-                        fingerprint=f"stale-fact:{rel}:{marker.line_no}",
-                    ))
-                    continue
-                _, prov = propose_and_apply(Proposal(
-                    op="UPDATE", page=rel, content=corrected,
-                    reason=f"stale-fact refresh ({marker.kind}: {truth})",
-                    producer="routine", writer="routine", session=session,
-                ))
-                if prov is not None:
-                    queued += 1
+                corrected_line_nos.append(marker.line_no)
+                corrected_kinds.append(f"{marker.kind}: {truth}")
             except Exception:  # noqa: BLE001 - warn-not-block
                 continue
+
+        if not corrected_line_nos:
+            continue
+        try:
+            corrected = "".join(lines)
+            summary = ", ".join(corrected_kinds)
+            if _page_trust(text) == "user":
+                # One suggestion per PAGE (matching the one write per page),
+                # fingerprinted on the first corrected line so a re-sweep of
+                # the same page never re-nags.
+                record(SuggestionSpec(
+                    producer="wiki-health",
+                    title=f"Stale fact on human-authored page: {rel}",
+                    rationale=f"ground truth is {summary}",
+                    evidence={"page": rel, "corrections": corrected_line_nos,
+                              "kinds": corrected_kinds},
+                    kind="page_write",
+                    payload=dict(op="UPDATE", page=rel, content=corrected,
+                                 reason=f"stale-fact refresh ({summary})",
+                                 producer="routine", writer="routine",
+                                 session=session),
+                    fingerprint=f"stale-fact:{rel}:{corrected_line_nos[0]}",
+                ))
+                continue
+            _, prov = propose_and_apply(Proposal(
+                op="UPDATE", page=rel, content=corrected,
+                reason=f"stale-fact refresh ({summary})",
+                producer="routine", writer="routine", session=session,
+            ))
+            if prov is not None:
+                queued += 1
+        except Exception:  # noqa: BLE001 - warn-not-block
+            continue
 
     return {"stale": stale, "unverifiable": unverifiable, "corrections_queued": queued}
 
@@ -802,9 +840,18 @@ def sweep(
     wiki_root: Path | None = None,
     llm_call: Callable[[str], str] | None = None,
     session: str = "wiki-health-sweep",
+    apply_corrections: bool = False,
 ) -> dict:
-    """Run the full read-only coherence sweep. Never writes anything —
-    fixing findings is the live session's job (see SKILL.md).
+    """Run the full coherence sweep. Read-only by default — fixing findings
+    is the live session's job (see SKILL.md).
+
+    `apply_corrections` (default False) is the ONE writing lever: it threads
+    to `_stale_facts`, which with False computes and reports stale
+    `ren-volatile` facts but queues no correction and records no suggestion.
+    `/ren:wiki-health` passes True at its explicit apply step, AFTER the
+    report has been shown. Every unattended caller — notably wrap's
+    close-out via `harvest_suggestions` — leaves it False, so a sweep can
+    never write behind a friend's back (fix round 2, #C2).
 
     Returns the 7 documented keys (`dangling_pointers`, `contradiction_pairs`,
     `duplicate_pairs`, `numeric_drift_pairs`, `mass_deletions`,
@@ -860,7 +907,8 @@ def sweep(
     "unverifiable": [...], "corrections_queued": int}` from scanning every
     durable page's `ren-volatile` markers (see `_stale_facts`). `session`
     (default `"wiki-health-sweep"`) threads through to the correction
-    proposals/suggestions this raises."""
+    proposals/suggestions this raises WHEN `apply_corrections=True`;
+    `corrections_queued` is always `0` on the default read-only path."""
     wiki_root = wiki_root or ren_paths.wiki_root()
     if not wiki_root.is_dir():
         return {
@@ -920,7 +968,7 @@ def sweep(
         "hubless_knowledge_dirs": hubless_knowledge_dirs,
         "unlinked_knowledge_pages": unlinked_knowledge_pages,
         "orphan_pages": _orphan_pages(wiki_root),
-        "stale_facts": _stale_facts(wiki_root, session),
+        "stale_facts": _stale_facts(wiki_root, session, apply_corrections),
         "judge_dismissed": judge_dismissed,
         "judge_supersedes": judge_supersedes,
         "retrieval_eval": _retrieval_eval(),

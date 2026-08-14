@@ -21,13 +21,20 @@ contract:
     - "The rendered sweep report (skills.wiki-health.lib.render_report output) shown to the friend"
   budgets:
     turns: 6
-    files_written: 0
+    # Zero for the sweep+report path; the apply step (step 3) writes only
+    # what the friend has seen listed first.
+    files_written: 10
     duration_seconds: 60
   permissions:
     read:
       - "~/.renos/wiki/**"
       - "~/.renos/wiki/.ren/journal.jsonl"
-    write: []
+    write:
+      # The sweep itself is read-only. These are the writes the APPLY step
+      # (step 3 below, after the report has been shown) may make through the
+      # write queue / suggestions store — including the stale-fact
+      # corrections `sweep(apply_corrections=True)` queues.
+      - "~/.renos/wiki/**"
     execute: []
   completion_conditions:
     - "sweep() ran and every finding it returned is either fixed (with reasoning recorded via propose_and_apply/resolve_and_apply), listed as intentionally left, or the friend was asked about it"
@@ -82,13 +89,14 @@ used to catch, by sweeping periodically instead of gating continuously.
    metrics as `KIND_RETRIEVAL_EVAL`; this is exit criterion 2's instrument,
    not a repair target — nothing in this skill acts on it),
    `stale_facts` (#39: scans durable pages for `<!-- ren-volatile: <kind> -->`
-   markers, verifies checkable kinds — `"framework-version"` against
-   `pyproject`, `"release-count"` against git tags — against ground truth,
-   and mechanically queues a correction through the write queue when the
-   marked line has exactly one unambiguous number to replace (trust-user
-   pages route to the suggestions store instead); everything else, and any
-   unknown marker kind, reports as unverifiable rather than guessing) and
-   `generated_at`.
+   markers and verifies checkable kinds — `"framework-version"` against
+   `ren_paths.framework_version()`, `"release-count"` against git tags —
+   against ground truth. **Report-only here**: the plain `sweep()` call
+   queues NOTHING (`corrections_queued` is always `0`), because unattended
+   callers — wrap's close-out runs this sweep on every session — must never
+   write behind the friend's back. Anything not mechanically checkable, and
+   any unknown marker kind, reports as unverifiable rather than guessing)
+   and `generated_at`.
 2. Call `render_report(findings)` and show the friend the full report
    **before** touching anything — the friend sees what was found even if
    the session is about to fix most of it unattended.
@@ -129,6 +137,15 @@ used to catch, by sweeping periodically instead of gating continuously.
      friend the report, so each orphan lands in the suggestions store
      (fingerprint-deduped, never re-nags once declined); never auto-link
      an orphan into a hub or map on your own.
+   - **Stale fact** (#39): mechanically fixable, but ONLY at this explicit
+     apply step and ONLY after the report was shown (step 2). Re-run
+     `sweep(apply_corrections=True)` — the same scan, now queuing one
+     correction per stale PAGE through the write queue (`producer="routine"`,
+     `writer="routine"` — mechanical, never quarantines), with trust-user
+     pages routed to the suggestions store instead of written. Only lines
+     with exactly one unambiguous number before the marker are corrected;
+     everything else stays report-only. Never pass `apply_corrections=True`
+     from a routine or an unattended caller.
    - **Mass-deletion anomaly**: never auto-fix. This is a "look at this"
      signal, not a repair target — surface the window (count, pages, start
      time) and ask the friend if it was intentional.
