@@ -159,7 +159,10 @@ def _apply(sid: str, kind: str, payload: dict, session: str) -> dict:
 
     if action == "quarantine_release":
         wiki_health = importlib.import_module("skills.wiki-health.lib")
-        entry, prov = wiki_health.release_page(payload["page"], session)
+        entry, prov = wiki_health.release_page(
+            payload["page"], session,
+            via="suggestion-accepted", evidence=payload.get("evidence") or {},
+        )
         if prov is None:
             # held on contradicts (or no-op) — the hold is visible in the queue;
             # retrying accept cannot change it, so this counts as decided.

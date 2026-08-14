@@ -1111,7 +1111,9 @@ def render_report(findings: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
-def release_page(page: str, session: str) -> tuple:
+def release_page(
+    page: str, session: str, *, via: str = "human-direct", evidence: dict | None = None
+) -> tuple:
     """Release `page` from quarantine — the ONLY product exit from the
     banner state, and it exists precisely because release is a HUMAN act:
     the live session calls this only after the friend explicitly says the
@@ -1126,6 +1128,17 @@ def release_page(page: str, session: str) -> tuple:
     quarantined instruction-plane page (`decisions/*` etc.) would otherwise
     pend forever, since `propose_and_apply` holds instruction-plane targets
     for exactly the human approval this call already represents.
+
+    `via` distinguishes the exit flavor a `KIND_QUARANTINE_RELEASE` metric
+    was recorded under: `"human-direct"` (default — the friend releases the
+    page directly), `"suggestion-accepted"` (the release was decided through
+    `/ren:suggestions`), or `"machine"` (never passed here — that's
+    `release_page_auto`'s own literal). `evidence` is the judge verdict or
+    ineligibility payload that justified the release when it came through
+    `/ren:suggestions` (#51); it defaults to `{}` for a bare human release.
+    The metric is recorded ONLY on a completed release — the held-on-
+    contradicts and no-op paths below return before it, same as
+    `release_page_auto`.
 
     Returns `(QueueEntry, Provenance | None)` — `Provenance` is None only if
     the proposal was held on a `contradicts` conflict (the session resolves
@@ -1158,6 +1171,13 @@ def release_page(page: str, session: str) -> tuple:
     if any(c.get("kind") == "contradicts" for c in entry.conflicts):
         return entry, None
     prov = approve_and_apply(entry.qid, who="human:quarantine-release")
+
+    from lib.instrument import collect
+
+    collect.record(
+        collect.KIND_QUARANTINE_RELEASE,
+        {"page": page, "session": session, "via": via, "evidence": evidence or {}},
+    )
     return get(entry.qid), prov
 
 
@@ -1244,7 +1264,7 @@ def release_page_auto(page: str, session: str, evidence: dict) -> tuple:
     prov = approve_and_apply(entry.qid, who="agent:quarantine-screen")
     collect.record(
         collect.KIND_QUARANTINE_RELEASE,
-        {"page": page, "session": session, "evidence": evidence},
+        {"page": page, "session": session, "via": "machine", "evidence": evidence},
     )
     return get(entry.qid), prov
 
