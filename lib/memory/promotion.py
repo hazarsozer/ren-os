@@ -142,6 +142,68 @@ def promote_to_global(
     )
 
 
+_PROJECT_INSTRUCTIONS_TEMPLATE = """\
+---
+type: project-instructions
+schema_version: 1
+project: {slug}
+title: "Standing Instructions"
+---
+
+# Standing instructions — {slug}
+
+Rules on this page render into the project repo's CLAUDE.md managed block
+(#63) and bind every session there, subagents included. Writes are
+instruction-plane: always human diff-approved, never auto-applied.
+
+## Rules
+"""
+
+
+def promote_to_project(text: str, slug: str, session: str) -> QueueEntry:
+    """Propose a standing rule for `projects/<slug>/instructions.md` (#63).
+
+    Manual-first entry path: reached from /ren:pin ("make this a standing
+    rule for this repo") or an accepted /ren:suggestions promotion. Returns
+    a PENDING entry — the Task-5 instruction-plane hold is the gate; the
+    caller releases it with `queue.approve_and_apply` once the human has
+    approved in chat (same completion contract as pin's `_complete_if_held`).
+
+    Raises PromotionError on an empty rule, an invalid slug, or a
+    quarantined target page (quarantined content must never become standing
+    instructions)."""
+    rule = " ".join(text.split())
+    if not rule:
+        raise PromotionError("standing rule text is empty")
+    if not ren_paths.HANDLE_RE.match(slug):
+        raise PromotionError(f"invalid project slug: {slug!r}")
+
+    page = f"projects/{slug}/instructions.md"
+    if _page_exists(page):
+        existing = _read_page(page)
+        if quarantine.is_quarantined(existing):
+            raise PromotionError(
+                f"{page!r} is quarantined — release it before promoting new rules"
+            )
+        op = "UPDATE"
+        content = existing.rstrip("\n") + f"\n- {rule}\n"
+    else:
+        op = "ADD"
+        content = _PROJECT_INSTRUCTIONS_TEMPLATE.format(slug=slug) + f"\n- {rule}\n"
+
+    return propose(
+        Proposal(
+            op=op,
+            page=page,
+            content=content,
+            reason="promote-to-project",
+            producer="promotion",
+            writer="human",
+            session=session,
+        )
+    )
+
+
 def demote_check(page: str = GLOBAL_PREFIX) -> list[str]:
     """Drift detection for doctor (Phase 7): scan `page` (a directory,
     defaulting to the whole global tier at `wiki_root()/global/`) for pages
@@ -162,4 +224,10 @@ def demote_check(page: str = GLOBAL_PREFIX) -> list[str]:
     return violations
 
 
-__all__ = ["GLOBAL_PREFIX", "PromotionError", "promote_to_global", "demote_check"]
+__all__ = [
+    "GLOBAL_PREFIX",
+    "PromotionError",
+    "promote_to_global",
+    "promote_to_project",
+    "demote_check",
+]

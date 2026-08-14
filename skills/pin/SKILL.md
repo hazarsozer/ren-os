@@ -73,6 +73,10 @@ Per spec §3.2, a pinned or corrected page is something the friend explicitly ca
 
 A pin whose content is a TASK ("next session, do X") should carry its own disposal as its last step — end the pinned text with "…and delete this page once done." Belt-and-braces: `/ren:wrap`'s "Live pins" gate (see `skills/wrap/SKILL.md`) also lists every live pin at session end and asks the friend about ones that look acted-on, so a finished plan-pin gets caught there even when the text forgot its own delete step. Disposal is always the normal correction path (`correct(page, None, session)` → queue DELETE) — never a direct file deletion.
 
+## Standing rules scoped to a project (#63)
+
+When the friend asks to make something a standing rule for the CURRENT PROJECT specifically ("always do X in this repo", "make that a standing rule here") — not an ordinary page pin — the session calls `lib.memory.promotion.promote_to_project(text, slug, session)` instead of `pin()`. It proposes an `ADD`/`UPDATE` against `projects/<slug>/instructions.md` (born on first promotion — no skeleton stamping anywhere else) and, being an instruction-plane page (Task 5), always comes back `pending`. After the friend confirms verbally, complete the hold with `queue.approve_and_apply(qid, who="human:pin")` — same completion contract as `correct(..., approved_by=...)`'s `_complete_if_held`. `pin()` itself stays unchanged for ordinary page pins; this is a separate entry path, not a mode of `pin()`.
+
 ## What this skill does NOT do
 
 - Write to a wiki page directly. Every pin/correction is a `Proposal` at the data-plane door (`propose_and_apply`) — applying (or holding on a contradiction) is owned by the queue/tier machinery, not this skill.
