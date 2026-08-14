@@ -99,6 +99,42 @@ def test_gate_eval_with_crashing_llm_accept_cases_fail_refuse_cases_pass(wiki):
         assert failure["expected"] == "accept"
 
 
+def test_v2_cases_assert_verdict_scope_action_and_target(wiki):
+    """Cases carrying "expect_verdict" (Task 8) exercise Task 1's v2 Decision
+    fields (scope/action/target_page), which `run_gate_eval`'s generic
+    accept/refuse scoring (lib.evalkit.runner) deliberately can't see — that
+    runner stays a plain accept/refuse gate scorer shared by every LLM-gated
+    path, not just wrap's. So this test calls `gate()` directly, per case,
+    with a stub LLM that returns exactly that case's expected v2 fields, and
+    asserts the full Decision — not just the accept/refuse collapse.
+    """
+    cases = [c for c in _load_cases() if "expect_verdict" in c]
+    assert cases  # sanity: fixture actually carries v2 cases
+
+    for case in cases:
+        expected_verdict = case["expect_verdict"]
+        expected_scope = case.get("expect_scope", "global")
+        expected_action = case.get("expect_action", "create")
+        expected_target = case.get("expect_target")
+        eligible_targets = tuple(case.get("eligible_targets", ()))
+        project = case.get("project")
+
+        def stub_llm(prompt: str, _case=case, _v=expected_verdict,
+                      _s=expected_scope, _a=expected_action, _t=expected_target) -> str:
+            payload = {"verdict": _v, "reason": "stub"}
+            if _v == "durable":
+                payload.update({"scope": _s, "action": _a, "target_page": _t})
+            return json.dumps(payload)
+
+        decision = gate(case["input"], stub_llm, eligible_targets=eligible_targets, project=project)
+
+        assert decision.verdict == expected_verdict, case
+        if expected_verdict == "durable":
+            assert decision.scope == expected_scope, case
+            assert decision.action == expected_action, case
+            assert decision.target_page == expected_target, case
+
+
 def test_gate_eval_crashing_llm_records_fail_closed_events(wiki):
     from lib.instrument import collect
 

@@ -47,6 +47,41 @@
     {
       "input": "My GitHub token is ghp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa, don't lose it.",
       "expect": "refuse"
+    },
+    {
+      "input": "the damage formula's crit multiplier was corrected to 2.0 this session",
+      "eligible_targets": ["projects/p/knowledge/damage-formula.md"],
+      "expect": "accept",
+      "expect_verdict": "durable",
+      "expect_scope": "project",
+      "expect_action": "update",
+      "expect_target": "projects/p/knowledge/damage-formula.md"
+    },
+    {
+      "input": "lesson: always run the RSD linter before committing iOS snapshot baselines",
+      "project": "flux",
+      "eligible_targets": [],
+      "expect": "accept",
+      "expect_verdict": "durable",
+      "expect_scope": "project",
+      "expect_action": "create"
+    },
+    {
+      "input": "lesson: uv run, never system python3, on macOS",
+      "expect": "accept",
+      "expect_verdict": "durable",
+      "expect_scope": "global",
+      "expect_action": "create"
+    },
+    {
+      "input": "we ran the tests three times today",
+      "expect": "refuse",
+      "expect_verdict": "session-only"
+    },
+    {
+      "input": "session notes: token=abc123secretvaluevaluevaluevalue, remember to rotate it",
+      "expect": "refuse",
+      "expect_verdict": "discard"
     }
   ]
 }
