@@ -335,6 +335,36 @@ def test_accept_quarantine_release_actually_releases(wiki):
     assert result["decision_recorded"] is True
 
 
+def test_accept_quarantine_release_records_metric_via_suggestion_accepted(wiki):
+    # Task 3 (#51): exercises the REAL wiring in skills/suggestions/lib
+    # (the quarantine_release action branch), not release_page() directly —
+    # confirms the accept() handler actually threads via="suggestion-accepted"
+    # and the suggestion's evidence payload through to the metric.
+    from lib.instrument import collect
+
+    rel = _make_quarantined_page(wiki)
+    evidence = {"judge": {"confidence": 0.92, "reason": "facts only"}}
+    entry = record(
+        SuggestionSpec(
+            producer="wiki-health",
+            title=f"Release {rel} from quarantine",
+            rationale="screen cleared it",
+            evidence={},
+            kind="structured_action",
+            payload={"action": "quarantine_release", "page": rel, "evidence": evidence},
+            fingerprint=f"wiki-health:quarantine-release:{rel}",
+        )
+    )
+
+    result = accept(entry["sid"], "s-test")
+
+    assert result["applied"] is True
+    rows = collect.read(kind=collect.KIND_QUARANTINE_RELEASE)
+    assert len(rows) == 1
+    assert rows[0]["via"] == "suggestion-accepted"
+    assert rows[0]["evidence"] == evidence
+
+
 def test_accept_review_lint_finding_hands_off_decided(wiki):
     entry = record(
         SuggestionSpec(

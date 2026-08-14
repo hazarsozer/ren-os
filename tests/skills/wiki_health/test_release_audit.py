@@ -1,10 +1,17 @@
 """
 Tests for Task 3 (#51): audit trail on every quarantine release path.
 
-Every completed release — human-direct (`release_page`), machine
-(`release_page_auto`), and suggestion-accepted (routed through
-`skills.suggestions.lib`) — must record a `KIND_QUARANTINE_RELEASE`
-metric carrying `via` and `evidence`.
+This file covers `skills.wiki-health.lib.release_page` and
+`release_page_auto` DIRECTLY: default `via="human-direct"`, an explicit
+`via`/`evidence` passed straight through `release_page`, the `"machine"`
+literal `release_page_auto` always records, and that a held-on-contradicts
+`release_page` call records no metric at all.
+
+It does NOT exercise the suggestion-accepted wiring in
+`skills/suggestions/lib/__init__.py` (the `quarantine_release` action
+branch) — that goes through the real `accept()` path and lives in
+`tests/skills/suggestions/test_suggestions_skill.py`
+(`test_accept_quarantine_release_records_metric_via_suggestion_accepted`).
 
 Fixture convention copied from tests/skills/wiki_health/test_quarantine_screen.py
 (itself copied from tests/skills/wiki_health/test_release.py) — no shared
@@ -16,14 +23,28 @@ Run with: uv run pytest tests/skills/wiki_health/test_release_audit.py -v
 from __future__ import annotations
 
 import importlib
+from dataclasses import dataclass
 
 import pytest
 
 from lib.instrument import collect
 from lib.memory import quarantine
+from lib.memory import queue as queue_mod
 from lib.ren_paths import wiki_root
 
 wiki_health = importlib.import_module("skills.wiki-health.lib")
+
+
+@dataclass
+class _FakeConflict:
+    """Mirrors test_quarantine_screen.py's `_FakeConflict` — the
+    monkeypatched-`_semantics.detect` recipe used there to fabricate a
+    `contradicts` hold without needing a real second contradicting page."""
+
+    kind: str
+    page: str
+    write_id: str | None
+    evidence: str
 
 
 @pytest.fixture
@@ -113,3 +134,20 @@ class TestReleasePageAuditTrail:
         events = [e for e in recorded_metrics if e["kind"] == collect.KIND_QUARANTINE_RELEASE]
         assert len(events) == 1
         assert events[0]["data"]["via"] == "machine"
+
+    def test_release_page_held_on_contradicts_records_no_metric(
+        self, wiki_with_quarantined_page, recorded_metrics, monkeypatch
+    ):
+        rel = wiki_with_quarantined_page
+
+        class _FakeSemantics:
+            @staticmethod
+            def detect(op, page, content, wiki_root, exempt_pages=None):
+                return [_FakeConflict(kind="contradicts", page=page, write_id="w-old-1", evidence="stub")]
+
+        monkeypatch.setattr(queue_mod, "_semantics", _FakeSemantics)
+
+        entry, prov = wiki_health.release_page(rel, "sess-t3")
+        assert prov is None
+        events = [e for e in recorded_metrics if e["kind"] == collect.KIND_QUARANTINE_RELEASE]
+        assert events == []
