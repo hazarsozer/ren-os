@@ -38,13 +38,15 @@ from lib.instrument import collect
 from lib.memory import scrub
 
 VALID_VERDICTS: Final[frozenset[str]] = frozenset({"durable", "session-only", "discard"})
+VALID_SCOPES: Final[frozenset[str]] = frozenset({"project", "global"})
+VALID_ACTIONS: Final[frozenset[str]] = frozenset({"create", "update"})
 
 _MAX_ITEM_CHARS: Final[int] = 4_000
 _PREVIEW_CHARS: Final[int] = 80
 
 _CLASSIFIER_PROMPT_TEMPLATE: Final[str] = """\
 You are deciding whether ONE candidate item from an end-of-session wrap
-should be written to durable, cross-session memory.
+should be written to durable, cross-session memory — and if so, WHERE.
 
 Bias HARD toward NOT durable: durable memory is sacred and cheap to pollute,
 expensive to clean up later. Only answer "durable" when the item is a
@@ -59,9 +61,23 @@ The three verdicts:
 - "discard" — noise, ephemera, or anything that must never be written down,
   including anything that resembles a secret, credential, password, or token.
 
+If (and only if) the verdict is "durable", also decide placement:
+- "action": "update" when the item is really a refinement, correction, or
+  extension of one of the ELIGIBLE UPDATE TARGETS below — pick that page as
+  "target_page". You may ONLY pick from that list; if the list is empty or
+  nothing fits, use "create" with "target_page": null.
+- "scope": "project" when the item is specific to the active project
+  ({project}); "global" when it is a cross-project lesson.
+
+Eligible update targets (pages this session actually read; pick from these
+EXACTLY or use "create"):
+{targets_block}
+
 Output JSON ONLY (no surrounding prose, no code fence). Schema:
 
-{{"verdict": "durable" | "session-only" | "discard", "reason": "<one sentence>"}}
+{{"verdict": "durable" | "session-only" | "discard", "reason": "<one sentence>",
+ "scope": "project" | "global", "action": "create" | "update",
+ "target_page": "<one of the eligible targets>" | null}}
 
 Candidate item:
 ---
@@ -81,9 +97,14 @@ class ClassifierError(Exception):
 class Decision:
     verdict: str   # "durable" | "session-only" | "discard"
     reason: str
+    scope: str = "global"          # "project" | "global"
+    action: str = "create"         # "create" | "update"
+    target_page: str | None = None # required iff action == "update"
 
 
-def build_classifier_prompt(item_text: str) -> str:
+def build_classifier_prompt(
+    item_text: str, *, eligible_targets: tuple[str, ...] = (), project: str | None = None
+) -> str:
     """Build the strict, JSON-only classification prompt for one candidate
     item. Truncates defensively (from the end, keeping the most recent/final
     text) so a runaway-length item can't blow the prompt budget."""
@@ -92,19 +113,29 @@ def build_classifier_prompt(item_text: str) -> str:
     text = item_text
     if len(text) > _MAX_ITEM_CHARS:
         text = text[-_MAX_ITEM_CHARS:]
-    return _CLASSIFIER_PROMPT_TEMPLATE.format(item_text=text)
+    targets_block = "\n".join(f"- {t}" for t in eligible_targets) or "(none — action must be \"create\")"
+    return _CLASSIFIER_PROMPT_TEMPLATE.format(
+        item_text=text, project=project or "(no project in scope)",
+        targets_block=targets_block,
+    )
 
 
-def classify_llm(item_text: str, llm_call: Callable[[str], str]) -> Decision:
+def classify_llm(
+    item_text: str, llm_call: Callable[[str], str], *,
+    eligible_targets: tuple[str, ...] = (), project: str | None = None,
+) -> Decision:
     """The REAL gate: ask `llm_call` to classify `item_text`, parse STRICTLY.
 
     Raises `ClassifierError` on anything that isn't a clean
-    `{"verdict": <valid>, "reason": <str>}` object — malformed JSON, wrong
-    shape, or an unrecognized verdict string all raise rather than guessing.
+    `{"verdict": <valid>, "reason": <str>, "scope": <valid>, "action": <valid>,
+    "target_page": <str|null>}` object — malformed JSON, wrong shape, or an
+    unrecognized verdict/scope/action string all raise rather than guessing.
     `gate()` is the only intended caller in production; it catches this
     exception and falls back to `classify_deterministic`.
     """
-    prompt = build_classifier_prompt(item_text)
+    prompt = build_classifier_prompt(
+        item_text, eligible_targets=eligible_targets, project=project
+    )
     raw = llm_call(prompt)
 
     if not isinstance(raw, str):
@@ -130,7 +161,23 @@ def classify_llm(item_text: str, llm_call: Callable[[str], str]) -> Decision:
     if not isinstance(reason, str):
         raise ClassifierError(f"'reason' must be a string; got {type(reason).__name__}")
 
-    return Decision(verdict=verdict, reason=reason)
+    scope = data.get("scope", "global")
+    if scope not in VALID_SCOPES:
+        raise ClassifierError(f"unknown scope {scope!r}; must be one of {sorted(VALID_SCOPES)}")
+    action = data.get("action", "create")
+    if action not in VALID_ACTIONS:
+        raise ClassifierError(f"unknown action {action!r}; must be one of {sorted(VALID_ACTIONS)}")
+    target = data.get("target_page")
+    if action == "update":
+        if not isinstance(target, str) or target not in eligible_targets:
+            raise ClassifierError(
+                f"update target {target!r} is not in the eligibility set"
+            )
+    else:
+        if target is not None:
+            raise ClassifierError('target_page must be null when action is "create"')
+    return Decision(verdict=verdict, reason=reason, scope=scope, action=action,
+                    target_page=target if action == "update" else None)
 
 
 def classify_deterministic(item_text: str) -> Decision:
@@ -147,7 +194,10 @@ def classify_deterministic(item_text: str) -> Decision:
     )
 
 
-def gate(item_text: str, llm_call: Callable[[str], str] | None = None) -> Decision:
+def gate(
+    item_text: str, llm_call: Callable[[str], str] | None = None, *,
+    eligible_targets: tuple[str, ...] = (), project: str | None = None,
+) -> Decision:
     """The single entry point `wrap_session` (and anything else gating a
     durable-write candidate) calls.
 
@@ -168,7 +218,8 @@ def gate(item_text: str, llm_call: Callable[[str], str] | None = None) -> Decisi
 
     if llm_call is not None:
         try:
-            return classify_llm(item_text, llm_call)
+            return classify_llm(item_text, llm_call,
+                                eligible_targets=eligible_targets, project=project)
         except Exception as exc:  # noqa: BLE001 - any failure here is fail-closed, not fatal
             collect.record(
                 collect.KIND_CLASSIFIER_EVENT,
@@ -185,6 +236,8 @@ def gate(item_text: str, llm_call: Callable[[str], str] | None = None) -> Decisi
 
 __all__ = [
     "VALID_VERDICTS",
+    "VALID_SCOPES",
+    "VALID_ACTIONS",
     "Decision",
     "ClassifierError",
     "build_classifier_prompt",

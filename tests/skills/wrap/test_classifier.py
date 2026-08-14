@@ -188,3 +188,73 @@ def test_classifier_event_preview_redacts_secret_shaped_content(wiki):
     preview = events[-1]["item_preview"]
     assert "AKIAIOSFODNN7EXAMPLE" not in preview
     assert preview == "<redacted: secret-shaped content>"
+
+
+# --- v2: scope / action / target_page -------------------------------------------
+
+
+def _llm(payload: dict):
+    return lambda prompt: json.dumps(payload)
+
+
+def test_decision_v2_defaults_are_create_global():
+    d = Decision(verdict="durable", reason="r")
+    assert d.scope == "global" and d.action == "create" and d.target_page is None
+
+
+def test_classify_llm_accepts_update_to_eligible_target(wiki):
+    from skills.wrap.lib.classifier import VALID_SCOPES, VALID_ACTIONS
+    d = classify_llm(
+        "we learned X about the damage formula",
+        _llm({"verdict": "durable", "reason": "reusable", "scope": "project",
+              "action": "update", "target_page": "projects/p/knowledge/a.md"}),
+        eligible_targets=("projects/p/knowledge/a.md",), project="p",
+    )
+    assert d.action == "update" and d.target_page == "projects/p/knowledge/a.md"
+
+
+def test_classify_llm_rejects_target_outside_eligibility_set(wiki):
+    with pytest.raises(ClassifierError):
+        classify_llm(
+            "item", _llm({"verdict": "durable", "reason": "r", "scope": "project",
+                          "action": "update", "target_page": "projects/p/knowledge/other.md"}),
+            eligible_targets=("projects/p/knowledge/a.md",), project="p",
+        )
+
+
+def test_classify_llm_rejects_update_with_null_target(wiki):
+    with pytest.raises(ClassifierError):
+        classify_llm(
+            "item", _llm({"verdict": "durable", "reason": "r", "scope": "global",
+                          "action": "update", "target_page": None}),
+            eligible_targets=("a.md",),
+        )
+
+
+def test_classify_llm_rejects_create_with_target(wiki):
+    with pytest.raises(ClassifierError):
+        classify_llm(
+            "item", _llm({"verdict": "durable", "reason": "r", "scope": "global",
+                          "action": "create", "target_page": "a.md"}),
+            eligible_targets=("a.md",),
+        )
+
+
+def test_classify_llm_rejects_unknown_scope_or_action(wiki):
+    with pytest.raises(ClassifierError):
+        classify_llm("item", _llm({"verdict": "durable", "reason": "r",
+                                   "scope": "universe", "action": "create",
+                                   "target_page": None}))
+
+
+def test_classify_llm_missing_v2_fields_defaults_create_global(wiki):
+    # Back-compat: a bare {"verdict","reason"} answer still parses.
+    d = classify_llm("item", _llm({"verdict": "session-only", "reason": "r"}))
+    assert d.action == "create" and d.scope == "global" and d.target_page is None
+
+
+def test_gate_fail_closed_on_bad_target_falls_back_deterministic(wiki):
+    d = gate("item", _llm({"verdict": "durable", "reason": "r", "scope": "global",
+                           "action": "update", "target_page": "not-eligible.md"}),
+             eligible_targets=("a.md",))
+    assert d.verdict in {"session-only", "discard"}  # never durable via fallback
