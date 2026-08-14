@@ -467,6 +467,29 @@ def _check_add_race(qid: str, entry: "QueueEntry", verb: str) -> None:
     )
 
 
+def _rerender_project_claude_md(page: str) -> None:
+    """#63 post-apply hook: an applied write to projects/<slug>/instructions.md
+    re-renders the mapped repo's CLAUDE.md managed block. Best-effort BY
+    CONTRACT — the wiki write has already succeeded and is journaled; a
+    render failure (unmapped slug, missing repo, adapter error) must never
+    fail or roll back the apply. Doctor's standing_instructions_drift check
+    is the visibility backstop for skipped renders."""
+    parts = page.split("/")
+    if len(parts) != 3 or parts[0] != "projects" or parts[2] != "instructions.md":
+        return
+    try:
+        from pathlib import Path
+
+        from lib import ren_paths
+        from lib.adapter import claude_md
+
+        entry = ren_paths.load_project_registry().get(parts[1])
+        if entry:
+            claude_md.write_project_claude_md(Path(entry["repo_path"]), parts[1])
+    except Exception:  # noqa: BLE001 - see docstring: never fail the applied write
+        pass
+
+
 def apply(qid: str) -> Provenance:
     """Apply an approved entry through `write_apply.apply_write`.
 
@@ -507,6 +530,7 @@ def apply(qid: str) -> Provenance:
     entry.status = _APPLIED
     entry.write_id = prov.write_id
     _persist(entry)
+    _rerender_project_claude_md(proposal.page)
     return prov
 
 

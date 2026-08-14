@@ -976,6 +976,29 @@ def test_rank_extras_excludes_quarantined_pages(wiki):
     assert held_count == 1
 
 
+def test_instructions_page_never_an_extras_candidate(wiki):
+    # #63: a released (non-quarantined) projects/<slug>/instructions.md must
+    # never surface via the extras channel — it's already injected into
+    # every session via the repo's CLAUDE.md managed block (Task 7/8), so
+    # surfacing it here would spend extras budget on a duplicate. An
+    # ordinary knowledge page in the same wiki must still surface, and the
+    # exclusion must not count toward held_count (nothing is withheld).
+    _write(
+        wiki / "projects" / "flux" / "instructions.md",
+        "Always run tests before committing.",
+    )
+    _write(
+        wiki / "projects" / "flux" / "knowledge" / "stack.md",
+        "# Stack\n\nFlux renders with Rust and wgpu.",
+    )
+
+    ranked, held_count = wakeup.rank_extras("", wiki, exclude=set())
+
+    assert "projects/flux/instructions.md" not in ranked
+    assert "projects/flux/knowledge/stack.md" in ranked
+    assert held_count == 0
+
+
 # ---------------------------------------------------------- structured sections
 
 
