@@ -725,6 +725,41 @@ def check_execution_doctrine() -> CheckResult:
     return CheckResult(name, "ok", "doctrine card wired; ren-reviewer shipped; no stopgap residue")
 
 
+def check_standing_instructions_drift() -> CheckResult:
+    """#63: for every registered project with an instructions.md, the repo's
+    CLAUDE.md managed block must match a fresh render — a mismatch means a
+    stale splice (re-render never fired), a hand-edit inside the markers, or
+    a missing CLAUDE.md. Warn-not-block; remediation is a re-render
+    (`lib.adapter.claude_md.write_project_claude_md`), never automatic."""
+    from lib import ren_paths
+    from lib.adapter import claude_md
+
+    wiki = ren_paths.wiki_root()
+    stale: list[str] = []
+    seen = 0
+    for slug, entry in sorted(ren_paths.load_project_registry().items()):
+        if not (wiki / "projects" / slug / "instructions.md").is_file():
+            continue
+        seen += 1
+        repo_md = Path(entry["repo_path"]) / "CLAUDE.md"
+        try:
+            current = repo_md.read_text(encoding="utf-8") if repo_md.is_file() else ""
+        except OSError:
+            stale.append(slug)
+            continue
+        expected = claude_md.render_project_block(slug, wiki_root=wiki)
+        if claude_md.spliced_text(current, expected) != current:
+            stale.append(slug)
+    if not seen:
+        return CheckResult("standing_instructions_drift", "skip", "no project has an instructions.md")
+    if stale:
+        return CheckResult(
+            "standing_instructions_drift", "warn",
+            f"stale CLAUDE.md block for: {', '.join(stale)} — re-render via write_project_claude_md",
+        )
+    return CheckResult("standing_instructions_drift", "ok", f"{seen} project block(s) in sync")
+
+
 def _project_agents_dir() -> Path | None:
     """`.claude/agents/` of the repo the current cwd maps to, via the
     repo-path↔slug registry (`ren_paths.load_project_registry`) — same
@@ -804,6 +839,7 @@ _ALL_CHECK_NAMES: tuple[str, ...] = (
     "check_model_map_staleness",
     "check_orphaned_projects",
     "check_execution_doctrine",
+    "check_standing_instructions_drift",
     "check_agent_shadowing",
 )
 
@@ -848,6 +884,7 @@ __all__ = [
     "check_model_map_staleness",
     "check_orphaned_projects",
     "check_execution_doctrine",
+    "check_standing_instructions_drift",
     "check_agent_shadowing",
     "run_checks",
 ]

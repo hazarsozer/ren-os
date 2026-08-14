@@ -58,7 +58,7 @@ def test_run_checks_returns_one_result_per_check(wiki):
         "backup_configured", "execution_tiers", "global_drift", "harness_neutrality", "guard_health",
         "suggestion_store", "apply_integrity", "judge_health", "archive_integrity",
         "routing_audit", "model_map_staleness", "orphaned_projects",
-        "execution_doctrine", "agent_shadowing",
+        "execution_doctrine", "standing_instructions_drift", "agent_shadowing",
     }
 
 
