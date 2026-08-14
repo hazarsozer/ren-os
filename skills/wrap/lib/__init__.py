@@ -1225,6 +1225,24 @@ def _append_session_summary(session: str, project: str | None, result: dict) -> 
     )
 
 
+def _eligible_update_targets(session: str) -> tuple[str, ...]:
+    """The mechanical eligibility set for update-action durable items (spec
+    §1): pages THIS session actually surfaced — wake-up injections
+    (`KIND_WAKEUP_SURFACE`) plus on-demand recalls (`KIND_L3_FETCH`) — that
+    still exist on disk. Assembled from the instrumentation logs, re-checked
+    in code after the classifier call; a target outside this set is treated
+    as malformed classifier output (fail-closed), never written."""
+    pages: set[str] = set()
+    for entry in collect.read(kind=collect.KIND_WAKEUP_SURFACE):
+        if entry.get("session") == session:
+            pages.update(p for p in entry.get("pages", []) if isinstance(p, str))
+    for entry in collect.read(kind=collect.KIND_L3_FETCH):
+        if entry.get("session") == session and isinstance(entry.get("page"), str):
+            pages.add(entry["page"])
+    wiki = ren_paths.wiki_root()
+    return tuple(sorted(p for p in pages if (wiki / p).is_file()))
+
+
 def _session_queue_entries(session: str) -> list[dict]:
     """Every queue entry for `session`, regardless of status (the wrap screen
     needs BOTH pending and already-applied entries, incl. auto-tier applies).
