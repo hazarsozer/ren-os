@@ -1,5 +1,49 @@
 # Changelog
 
+## [0.7.4] - 2026-08-14 — "the standing rule"
+
+The quarantine-exit train: Cluster B's deferred trio (#52/#51/#46) plus a
+new per-project instruction surface (#63). Spec for #63:
+docs/superpowers/specs/2026-08-14-project-standing-instructions-design.md.
+
+- **#52 — a human decline sticks.** The quarantine screen's machine exit
+  now consults the decision ledger before judging: a declined release holds
+  the page out of `release_page_auto` until its content actually changes.
+  Release suggestions carry a `content_sha256`; `decide()` re-hashes the
+  page at decline time (record-time fallback if unreadable) so a page
+  edited while the suggestion sat pending can't slip through; pre-train
+  hash-less declines hold unconditionally (fail-closed). Both screen
+  phases report held pages under `held_declined`.
+- **#51 — every quarantine release is audited.** `KIND_QUARANTINE_RELEASE`
+  now records on all three exit paths with a `via` discriminator
+  (`machine` / `suggestion-accepted` / `human-direct`) and the justifying
+  evidence dict; suggestion-accepted releases stopped discarding their
+  evidence.
+- **#46 — the judge sees whole pages again.** `JUDGE_MAX_TEXT_CHARS`
+  4,000 → 8,000: the first live sweep routed 14/20 candidates to the human
+  as `too-long` (all 4,016–5,816 chars), making the suggestions store the
+  de-facto exit. 8k covers every observed page; genuinely huge pages still
+  route to the human.
+- **#52 rider — archive/ leaves lint scope.** `archive/` and
+  `projects/<slug>/archive/` are excluded from the incremental lint like
+  `raw/` — including the incremental path itself, where the final
+  whole-branch review caught (with a live repro) that freshly archived
+  pages still entered the sweep via the journal.
+- **#63 — project standing instructions.** A rule that must bind every
+  session in a repo — subagents included — gets a governed home:
+  `projects/<slug>/instructions.md`, instruction-plane by pattern (always
+  human diff-approved), born on first `promote_to_project` (manual-first:
+  pin or an accepted suggestion; wrap's classifier untouched by decision).
+  The page body renders into the repo CLAUDE.md's managed block (3k-capped
+  splice, fail-closed on quarantine banners), re-rendered by a best-effort
+  post-apply hook; wake-up's extras exclude the page (already injected via
+  CLAUDE.md); doctor's new `standing_instructions_drift` check is the
+  backstop for stale splices. Follow-ups: #64 (update/revert re-render
+  triggers).
+- **Release hygiene.** `bump_version.py` run restores SKILL.md
+  version-literal agreement with plugin.json (#65 — the 0.7.3 release had
+  left ~17 files at 0.7.2, caught by `test_repo_hygiene`).
+
 ## [0.7.3] - 2026-08-14 — "the living wiki"
 
 The knowledge-flow release: wrap stops being a create-only producer and the
