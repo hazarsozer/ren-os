@@ -21,6 +21,7 @@ without breaking dedup.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import sys
@@ -198,6 +199,33 @@ def decided_fingerprints() -> set[str]:
     return ledger_fingerprints()
 
 
+def _decline_time_hash(payload: dict) -> str:
+    """Final-review finding 2 (2026-08-14): `_record_release_suggestion`
+    hashes the page when the suggestion is FILED, but a page can change while
+    the suggestion sits pending. Ledgering the stale record-time hash on a
+    later decline means `declined_release_holds` finds no match for the
+    content the human just declined, and the machine exit re-opens for it.
+
+    For a `quarantine_release` suggestion with a `page`, re-read that page
+    from the wiki root at DECLINE time and hash its current content instead
+    — mirroring `declined_release_holds`'s own hashing exactly. Falls back to
+    the record-time `payload["content_sha256"]` if the page is missing or
+    unreadable (never raise — decline must always succeed). Every other
+    payload shape keeps the existing record-time passthrough unchanged."""
+    record_time_hash = payload["content_sha256"]
+    if payload.get("action") != "quarantine_release":
+        return record_time_hash
+    page = payload.get("page")
+    if not isinstance(page, str) or not page:
+        return record_time_hash
+    try:
+        path = ren_paths.safe_join(ren_paths.wiki_root(), page)
+        text = path.read_text(encoding="utf-8")
+    except (OSError, ren_paths.PathTraversalError):
+        return record_time_hash
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
 def decide(sid: str, decision: str) -> dict:
     """Transition `sid` to `decision` ("accepted" or "declined"). Pure state
     transition — does NOT apply the suggestion's payload; application is the
@@ -220,7 +248,7 @@ def decide(sid: str, decision: str) -> dict:
     }
     payload = entry.get("payload")
     if isinstance(payload, dict) and isinstance(payload.get("content_sha256"), str):
-        line["content_sha256"] = payload["content_sha256"]
+        line["content_sha256"] = _decline_time_hash(payload)
     _append_ledger_line(line)
     return entry
 
