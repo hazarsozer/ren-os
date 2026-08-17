@@ -835,18 +835,32 @@ def check_cache_env_hygiene() -> CheckResult:
     `UV_PROJECT_ENVIRONMENT` (see `ren_paths.envs_dir()`) instead of letting
     `uv run` create one there.
 
-    Warns listing every stale `.venv` found across all version dirs; `skip`s
-    when the cache root is unresolvable (bare dev checkout, no installed
-    plugin, `ren_paths.plugin_cache_versions_root()` returns None) — warn-
-    not-block, never a false positive on a checkout that was never uv-run
-    from the cache in the first place."""
+    EXEMPTION (review HIGH): the CURRENT version's `.venv` is not stale —
+    `skills.install.lib.warm_environment` deliberately runs `uv sync
+    --project $CLAUDE_PLUGIN_ROOT` with no `UV_PROJECT_ENVIRONMENT` redirect
+    on every fresh install, and the interpreter path it records in
+    `interpreter.json` points INSIDE that `.venv` — load-bearing for the
+    wake-up hook's fast-path re-exec (#11 §4). Warning on it (and telling a
+    friend to remove it) would degrade that first-session self-heal. So the
+    version named by `ren_paths.current_plugin_cache_version()` — the SAME
+    `$CLAUDE_PLUGIN_ROOT` resolution `plugin_cache_versions_root()` already
+    uses, not a second mechanism — is excluded from the stale scan.
+
+    Warns listing every OTHER (non-current) stale `.venv` found across all
+    version dirs; `skip`s when the cache root is unresolvable (bare dev
+    checkout, no installed plugin, `ren_paths.plugin_cache_versions_root()`
+    returns None) — warn-not-block, never a false positive on a checkout
+    that was never uv-run from the cache in the first place."""
     name = "cache_env_hygiene"
     cache_versions_root = ren_paths.plugin_cache_versions_root()
     if cache_versions_root is None or not cache_versions_root.is_dir():
         return CheckResult(name, "skip", "plugin cache root unresolvable")
 
+    current_version = ren_paths.current_plugin_cache_version()
     stale = sorted(
-        venv.parent.name for venv in cache_versions_root.glob("*/.venv") if venv.is_dir()
+        venv.parent.name
+        for venv in cache_versions_root.glob("*/.venv")
+        if venv.is_dir() and venv.parent.name != current_version
     )
     if stale:
         return CheckResult(
@@ -854,7 +868,11 @@ def check_cache_env_hygiene() -> CheckResult:
             f"stale venv inside versioned cache dir for: {', '.join(stale)} — "
             "remove it; invocations should set UV_PROJECT_ENVIRONMENT, see #40",
         )
-    return CheckResult(name, "ok", "no stale .venv in versioned cache dirs")
+    return CheckResult(
+        name, "ok",
+        "no stale .venv in versioned cache dirs "
+        "(current version's .venv, if any, is expected — see warm_environment/#11 §4)",
+    )
 
 
 _ALL_CHECK_NAMES: tuple[str, ...] = (

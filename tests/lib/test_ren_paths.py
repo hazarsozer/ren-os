@@ -510,6 +510,17 @@ def test_plugin_cache_versions_root_expands_user_and_vars(tmp_path, monkeypatch)
     assert ren_paths.plugin_cache_versions_root() == tmp_path / "ren-os" / "ren"
 
 
+def test_current_plugin_cache_version_none_when_unresolvable(monkeypatch):
+    monkeypatch.delenv("CLAUDE_PLUGIN_ROOT", raising=False)
+    assert ren_paths.current_plugin_cache_version() is None
+
+
+def test_current_plugin_cache_version_is_basename_of_version_dir(tmp_path, monkeypatch):
+    version_dir = tmp_path / "cache" / "ren-os" / "ren" / "0.7.6"
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(version_dir))
+    assert ren_paths.current_plugin_cache_version() == "0.7.6"
+
+
 # --- envs_dir (#40) ----------------------------------------------------------
 
 

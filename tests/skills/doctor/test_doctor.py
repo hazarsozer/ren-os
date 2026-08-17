@@ -902,13 +902,45 @@ def test_check_cache_env_hygiene_ok_when_no_stale_venv(tmp_path, monkeypatch):
 
 
 def test_check_cache_env_hygiene_warns_on_stale_venv(tmp_path, monkeypatch):
-    version_dir = tmp_path / "cache" / "ren-os" / "ren" / "0.7.5"
-    (version_dir / ".venv").mkdir(parents=True)
-    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(version_dir))
+    """A .venv in a NON-current version dir is stale — warn."""
+    versions_root = tmp_path / "cache" / "ren-os" / "ren"
+    current_dir = versions_root / "0.7.6"
+    current_dir.mkdir(parents=True)
+    stale_dir = versions_root / "0.7.5"
+    (stale_dir / ".venv").mkdir(parents=True)
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(current_dir))
 
     result = doctor.check_cache_env_hygiene()
     assert result.status == "warn"
     assert "0.7.5" in result.message
+
+
+def test_check_cache_env_hygiene_ok_when_only_current_version_venv_present(tmp_path, monkeypatch):
+    """Review HIGH (#40): warm_environment deliberately creates a .venv in
+    the CURRENT version's cache dir (issue #11 §4, interpreter.json points
+    inside it) — that must never warn. Repro named by the review: only
+    `<current-version-dir>/.venv` present, nothing else."""
+    version_dir = tmp_path / "cache" / "ren-os" / "ren" / "0.7.6"
+    (version_dir / ".venv").mkdir(parents=True)
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(version_dir))
+
+    result = doctor.check_cache_env_hygiene()
+    assert result.status == "ok"
+
+
+def test_check_cache_env_hygiene_warns_on_stale_even_alongside_current_venv(tmp_path, monkeypatch):
+    """The current version's .venv is exempt, but a stale one elsewhere still warns."""
+    versions_root = tmp_path / "cache" / "ren-os" / "ren"
+    current_dir = versions_root / "0.7.6"
+    (current_dir / ".venv").mkdir(parents=True)
+    stale_dir = versions_root / "0.7.5"
+    (stale_dir / ".venv").mkdir(parents=True)
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(current_dir))
+
+    result = doctor.check_cache_env_hygiene()
+    assert result.status == "warn"
+    assert "0.7.5" in result.message
+    assert "0.7.6" not in result.message
 
 
 def test_check_cache_env_hygiene_registered_in_all_check_names():
