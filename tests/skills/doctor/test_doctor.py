@@ -845,3 +845,38 @@ def test_check_agent_shadowing_warns_on_project_dir_collision(wiki, tmp_path, cl
 
 def test_check_agent_shadowing_registered_in_all_check_names():
     assert "check_agent_shadowing" in doctor._ALL_CHECK_NAMES
+
+
+def test_check_agent_shadowing_warns_project_only_collision(wiki, tmp_path, clean_path_env, monkeypatch):
+    """Collision ONLY in project .claude/agents/ must name 'project' and NOT say 'user agent(s)'."""
+    from lib import ren_paths
+
+    monkeypatch.setenv("REN_CLAUDE_DIR", str(tmp_path / "userclaude"))
+
+    (wiki / "projects" / "myproj").mkdir(parents=True)
+    repo = tmp_path / "myproj-repo"
+    project_agents = repo / ".claude" / "agents"
+    project_agents.mkdir(parents=True)
+    (project_agents / "ren-planner.md").write_text("shadow", encoding="utf-8")
+    ren_paths.record_project_repo("myproj", repo)
+
+    monkeypatch.chdir(repo)
+    result = doctor.check_agent_shadowing()
+    assert result.status == "warn"
+    assert "ren-planner" in result.message
+    assert "project" in result.message
+    assert "user agent(s)" not in result.message
+
+
+def test_check_agent_shadowing_skips_both_dirs_absent(tmp_path, monkeypatch):
+    """Both user and project agents dirs absent: skip message must name both scopes."""
+    from lib import ren_paths
+
+    monkeypatch.setenv("REN_CLAUDE_DIR", str(tmp_path / "userclaude"))
+    monkeypatch.setattr(doctor, "_project_agents_dir", lambda: None)
+
+    result = doctor.check_agent_shadowing()
+    assert result.status == "skip"
+    assert "no user or project" in result.message or "no" in result.message
+    assert "user" in result.message
+    assert "project" in result.message

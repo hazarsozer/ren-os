@@ -792,26 +792,37 @@ def check_agent_shadowing() -> CheckResult:
     name = "agent_shadowing"
     shipped = {p.stem for p in (_REPO_ROOT / "agents").glob("*.md")}
 
-    candidate_dirs = []
     user_dir = ren_paths.claude_user_dir() / "agents"
-    if user_dir.is_dir():
-        candidate_dirs.append(user_dir)
     project_dir = _project_agents_dir()
-    if project_dir is not None and project_dir.is_dir():
-        candidate_dirs.append(project_dir)
 
-    if not candidate_dirs:
-        return CheckResult(name, "skip", "no user agents directory")
+    user_has_dir = user_dir.is_dir()
+    project_has_dir = project_dir is not None and project_dir.is_dir()
 
-    clashes: set[str] = set()
-    for d in candidate_dirs:
-        clashes |= shipped & {p.stem for p in d.glob("*.md")}
+    if not user_has_dir and not project_has_dir:
+        return CheckResult(name, "skip", "no user or project agents directory")
 
-    if clashes:
+    # Track clashes per origin
+    clashes_by_origin: dict[str, set[str]] = {}
+    if user_has_dir:
+        user_clashes = shipped & {p.stem for p in user_dir.glob("*.md")}
+        if user_clashes:
+            clashes_by_origin["user"] = user_clashes
+    if project_has_dir:
+        project_clashes = shipped & {p.stem for p in project_dir.glob("*.md")}
+        if project_clashes:
+            clashes_by_origin["project"] = project_clashes
+
+    if clashes_by_origin:
+        messages = []
+        for origin in ("user", "project"):
+            if origin in clashes_by_origin:
+                clashes = clashes_by_origin[origin]
+                messages.append(
+                    f"{origin} agent(s) shadow shipped RenOS agents: {', '.join(sorted(clashes))}"
+                )
         return CheckResult(
             name, "warn",
-            f"user agent(s) shadow shipped RenOS agents: {', '.join(sorted(clashes))} — "
-            "rename yours or the shipped behavior won't apply",
+            f"{'; '.join(messages)} — rename yours or the shipped behavior won't apply",
         )
     return CheckResult(name, "ok", f"{len(shipped)} shipped agent(s), no shadowing")
 
