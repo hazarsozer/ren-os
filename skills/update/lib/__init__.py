@@ -21,14 +21,16 @@ def _version_key(version: str) -> tuple[int, ...]:
     return tuple(int(part) for part in version.split("."))
 
 
-def changelog_digest(old: str, new: str, changelog_path: Path) -> str:
+def changelog_digest(old: str, new: str, changelog_path: Path | str) -> str:
     """CHANGELOG.md sections for versions in (old, new], in file order.
 
+    Accepts a `Path` or `str` path — the digest is a courtesy, never a
+    gate, so an argument-type detail must not crash the closing flow.
     Returns "" when the range is empty, a bound is unparseable, or the
     file is missing/unreadable.
     """
     try:
-        text = changelog_path.read_text(encoding="utf-8")
+        text = Path(changelog_path).read_text(encoding="utf-8")
         old_key, new_key = _version_key(old), _version_key(new)
     except (OSError, ValueError):
         return ""

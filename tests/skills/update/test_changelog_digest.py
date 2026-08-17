@@ -63,3 +63,34 @@ def test_reversed_range_returns_empty(tmp_path):
     cl = tmp_path / "CHANGELOG.md"
     cl.write_text("## [0.4.1]\nB\n", encoding="utf-8")
     assert update_lib.changelog_digest("0.4.1", "0.4.0", cl) == ""
+
+
+_CHANGELOG_FIXTURE = """# Changelog
+
+## [0.6.5] — 2026-08-01 — "fifth release"
+
+Features in 0.6.5.
+
+## [0.6.4] — 2026-07-30 — "fourth release"
+
+Features in 0.6.4.
+
+## [0.6.3] — 2026-07-20 — "third release"
+
+Features in 0.6.3.
+
+## [0.6.2] — 2026-07-10 — "second release"
+
+Features in 0.6.2.
+"""
+
+
+def test_str_path_matches_path_result(tmp_path):
+    p = tmp_path / "CHANGELOG.md"
+    p.write_text(_CHANGELOG_FIXTURE, encoding="utf-8")
+    assert update_lib.changelog_digest("0.6.2", "0.6.5", str(p)) == update_lib.changelog_digest("0.6.2", "0.6.5", p)
+    assert update_lib.changelog_digest("0.6.2", "0.6.5", str(p)) != ""
+
+
+def test_garbage_str_path_returns_empty(tmp_path):
+    assert update_lib.changelog_digest("0.6.2", "0.6.5", str(tmp_path / "missing.md")) == ""
