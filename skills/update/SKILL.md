@@ -197,9 +197,14 @@ Carried near-verbatim from donor `skills/update/` (Task 7.3) — the migration s
 - **Global migration: folder-note-hubs-1.** Gate:
   `should_run_folder_note_hubs_1()` from `skills.update.lib`. If true — show
   the friend the pending rename list (the gate's paths), get approval (this
-  is a MAJOR-classified structural change), then run `uv run python
-  migrations/folder-note-hubs-1/migrate.py` followed by `uv run python
-  migrations/folder-note-hubs-1/verify.py`. On verify success, call
+  is a MAJOR-classified structural change), then run
+  `UV_PROJECT_ENVIRONMENT="$HOME/.renos/.envs/<version>" uv run python
+  migrations/folder-note-hubs-1/migrate.py` followed by
+  `UV_PROJECT_ENVIRONMENT="$HOME/.renos/.envs/<version>" uv run python
+  migrations/folder-note-hubs-1/verify.py` — these also run from the
+  versioned plugin cache dir, so redirect uv's project environment the same
+  way (#40; `ren_paths.envs_dir()`) rather than letting a `.venv` land
+  inside that immutable cache dir. On verify success, call
   `skills.install.lib.write_default_graph_config()` (the new Obsidian tier
   view written during the migration). On verify failure: stop, show the FAIL
   lines, offer whole-wiki restore via `skills/update/scripts/restore.sh --whole <snapshot>`
@@ -237,6 +242,12 @@ Carried near-verbatim from donor `skills/update/` (Task 7.3) — the migration s
   (`record_choice(cid, "accepted")`); accepted plugins get the hint + a
   restart note; declines are recorded and never re-asked; no answer records
   nothing. Nothing installs without an explicit yes in chat.
+
+- **GC stale uv envs** — call `skills.update.lib.gc_stale_envs()`. It
+  removes `framework_root()/.envs/<v>` dirs whose version is no longer in
+  the plugin cache (#40 — the versions this same update just made stale)
+  and returns the removed version list; report it if non-empty, silent
+  otherwise. Best-effort, never a gate.
 
 ## References
 

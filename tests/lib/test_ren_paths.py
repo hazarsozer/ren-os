@@ -482,3 +482,24 @@ def test_detect_project_prefers_longest_matching_repo_path(clean_path_env, tmp_p
 
     assert ren_paths.detect_project(inner, wiki, dev_root=tmp_path / "Dev") == "inner"
     assert ren_paths.detect_project(outer, wiki, dev_root=tmp_path / "Dev") == "outer"
+
+
+# --- envs_dir (#40) ----------------------------------------------------------
+
+
+def test_envs_dir_defaults_to_framework_root_dot_envs_current_version(clean_path_env, tmp_path):
+    clean_path_env.setenv("REN_FRAMEWORK_ROOT", str(tmp_path))
+    clean_path_env.delenv("CLAUDE_PLUGIN_OPTION_FRAMEWORK_VERSION", raising=False)
+    clean_path_env.delenv("CLAUDE_PLUGIN_ROOT", raising=False)
+    assert ren_paths.envs_dir() == tmp_path / ".envs" / ren_paths.framework_version()
+
+
+def test_envs_dir_explicit_version_wins(clean_path_env, tmp_path):
+    clean_path_env.setenv("REN_FRAMEWORK_ROOT", str(tmp_path))
+    assert ren_paths.envs_dir("1.2.3") == tmp_path / ".envs" / "1.2.3"
+
+
+def test_envs_dir_is_pure_path_math_no_mkdir(clean_path_env, tmp_path):
+    clean_path_env.setenv("REN_FRAMEWORK_ROOT", str(tmp_path))
+    path = ren_paths.envs_dir("9.9.9")
+    assert not path.exists()

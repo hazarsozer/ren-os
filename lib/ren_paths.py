@@ -144,6 +144,22 @@ def framework_root() -> Path:
     return Path.home() / ".renos"
 
 
+def envs_dir(version: str | None = None) -> Path:
+    """Return the per-version uv project-environment dir: `framework_root() /
+    ".envs" / (version or framework_version())`.
+
+    Pure path math — never creates the directory. Issue #40: invoking skill
+    lib entrypoints via `uv run` FROM the versioned plugin cache dir
+    (`~/.claude/plugins/cache/ren-os/ren/<version>/`) otherwise creates a
+    `.venv` inside it — stale garbage the moment the next version lands, in a
+    directory otherwise treated as an immutable installed artifact.
+    Documented invocations set `UV_PROJECT_ENVIRONMENT` to this path instead;
+    `skills.update.lib.gc_stale_envs()` GCs entries whose version is no
+    longer in the plugin cache.
+    """
+    return framework_root() / ".envs" / (version or framework_version())
+
+
 CLAUDE_DIR_ENV = "REN_CLAUDE_DIR"
 """Override for the user-level Claude config dir (tests + unusual homes)."""
 
@@ -562,6 +578,7 @@ __all__ = [
     "code_map_cache_dir",
     "code_map_path",
     "framework_root",
+    "envs_dir",
     "CLAUDE_DIR_ENV",
     "CLAUDE_CONFIG_DIR_ENV",
     "claude_user_dir",

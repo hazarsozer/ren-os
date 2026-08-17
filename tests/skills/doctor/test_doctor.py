@@ -59,6 +59,7 @@ def test_run_checks_returns_one_result_per_check(wiki):
         "suggestion_store", "apply_integrity", "judge_health", "archive_integrity",
         "routing_audit", "model_map_staleness", "orphaned_projects",
         "execution_doctrine", "standing_instructions_drift", "agent_shadowing",
+        "cache_env_hygiene",
     }
 
 
@@ -880,3 +881,35 @@ def test_check_agent_shadowing_skips_both_dirs_absent(tmp_path, monkeypatch):
     assert "no user or project" in result.message or "no" in result.message
     assert "user" in result.message
     assert "project" in result.message
+
+
+# --------------------------------------------------------- check_cache_env_hygiene
+
+
+def test_check_cache_env_hygiene_skips_when_cache_root_unresolvable(monkeypatch):
+    monkeypatch.delenv("CLAUDE_PLUGIN_ROOT", raising=False)
+    result = doctor.check_cache_env_hygiene()
+    assert result.status == "skip"
+
+
+def test_check_cache_env_hygiene_ok_when_no_stale_venv(tmp_path, monkeypatch):
+    version_dir = tmp_path / "cache" / "ren-os" / "ren" / "0.7.5"
+    version_dir.mkdir(parents=True)
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(version_dir))
+
+    result = doctor.check_cache_env_hygiene()
+    assert result.status == "ok"
+
+
+def test_check_cache_env_hygiene_warns_on_stale_venv(tmp_path, monkeypatch):
+    version_dir = tmp_path / "cache" / "ren-os" / "ren" / "0.7.5"
+    (version_dir / ".venv").mkdir(parents=True)
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(version_dir))
+
+    result = doctor.check_cache_env_hygiene()
+    assert result.status == "warn"
+    assert "0.7.5" in result.message
+
+
+def test_check_cache_env_hygiene_registered_in_all_check_names():
+    assert "check_cache_env_hygiene" in doctor._ALL_CHECK_NAMES

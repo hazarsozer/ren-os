@@ -827,6 +827,41 @@ def check_agent_shadowing() -> CheckResult:
     return CheckResult(name, "ok", f"{len(shipped)} shipped agent(s), no shadowing")
 
 
+def check_cache_env_hygiene() -> CheckResult:
+    """#40: a `.venv` inside a VERSIONED plugin cache dir
+    (`~/.claude/plugins/cache/ren-os/ren/<version>/.venv`) is stale garbage
+    the moment the next version lands — that directory is otherwise treated
+    as an immutable installed artifact. Documented invocations set
+    `UV_PROJECT_ENVIRONMENT` (see `ren_paths.envs_dir()`) instead of letting
+    `uv run` create one there.
+
+    Resolves the cache root the same way `_plugin_cache_versions_root`
+    does elsewhere (`skills.update.lib`): `$CLAUDE_PLUGIN_ROOT` points AT the
+    current version dir, so its parent lists every version dir the cache
+    still has. Warns listing every stale `.venv` found across all version
+    dirs; `skip`s when the cache root is unresolvable (bare dev checkout,
+    no installed plugin) — warn-not-block, never a false positive on a
+    checkout that was never uv-run from the cache in the first place."""
+    name = "cache_env_hygiene"
+    val = os.environ.get("CLAUDE_PLUGIN_ROOT", "").strip()
+    if not val:
+        return CheckResult(name, "skip", "plugin cache root unresolvable (no CLAUDE_PLUGIN_ROOT)")
+    cache_versions_root = Path(os.path.expanduser(os.path.expandvars(val))).parent
+    if not cache_versions_root.is_dir():
+        return CheckResult(name, "skip", "plugin cache root unresolvable")
+
+    stale = sorted(
+        venv.parent.name for venv in cache_versions_root.glob("*/.venv") if venv.is_dir()
+    )
+    if stale:
+        return CheckResult(
+            name, "warn",
+            f"stale venv inside versioned cache dir for: {', '.join(stale)} — "
+            "remove it; invocations should set UV_PROJECT_ENVIRONMENT, see #40",
+        )
+    return CheckResult(name, "ok", "no stale .venv in versioned cache dirs")
+
+
 _ALL_CHECK_NAMES: tuple[str, ...] = (
     "check_env",
     "check_wiki_structure",
@@ -852,6 +887,7 @@ _ALL_CHECK_NAMES: tuple[str, ...] = (
     "check_execution_doctrine",
     "check_standing_instructions_drift",
     "check_agent_shadowing",
+    "check_cache_env_hygiene",
 )
 
 
@@ -897,5 +933,6 @@ __all__ = [
     "check_execution_doctrine",
     "check_standing_instructions_drift",
     "check_agent_shadowing",
+    "check_cache_env_hygiene",
     "run_checks",
 ]
