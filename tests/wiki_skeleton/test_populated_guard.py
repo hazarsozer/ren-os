@@ -56,3 +56,14 @@ def test_updated_core_page_means_populated(tmp_path):
 def test_unreadable_page_does_not_crash(tmp_path):
     (tmp_path / "identity.md").write_bytes(b"\xff\xfe garbage")
     assert wiki_populated_reason(tmp_path) is None
+
+
+def test_malformed_yaml_frontmatter_does_not_crash(tmp_path):
+    # Valid UTF-8, frontmatter delimiters present, but the body is not valid
+    # YAML (unterminated quoted scalar) — yaml.safe_load raises YAMLError,
+    # which must be swallowed the same as an unreadable/undecodable page.
+    (tmp_path / "identity.md").write_text(
+        '---\nren_write_id: "w-01TEST\nren_ts: "2026-08-01T00:00:00Z"\n---\n# page\n',
+        encoding="utf-8",
+    )
+    assert wiki_populated_reason(tmp_path) is None

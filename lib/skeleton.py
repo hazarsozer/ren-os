@@ -193,7 +193,8 @@ def wiki_populated_reason(target_root: Path) -> str | None:
         `ren_supersedes` in its provenance — i.e. it was UPDATEd through the
         write door after its founding ADD.
 
-    Detection must never crash bootstrap: unreadable/unstamped pages read as
+    Detection must never crash bootstrap: unreadable/unstamped pages, and
+    pages whose frontmatter is present but not valid YAML, read as
     not-populated (the 0.7.1 door guard still protects them from overwrite).
     """
     from lib.memory.provenance import read_frontmatter_provenance
@@ -209,7 +210,7 @@ def wiki_populated_reason(target_root: Path) -> str | None:
             continue
         try:
             prov = read_frontmatter_provenance(page.read_text(encoding="utf-8"))
-        except (OSError, UnicodeDecodeError):
+        except (OSError, UnicodeDecodeError, yaml.YAMLError):
             continue
         if prov and prov.get("supersedes"):
             return f"{name} has been updated since founding (ren_supersedes present)"
