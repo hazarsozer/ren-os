@@ -212,6 +212,16 @@ Carried near-verbatim from donor `skills/update/` (Task 7.3) — the migration s
 
 ## Closing steps (after re-verify)
 
+- **Re-render project CLAUDE.md blocks** — call
+  `skills.update.lib.rerender_all_project_claude_md()` after migrations
+  complete. The queue's post-apply hook and `revert`'s post-revert hook
+  (`lib.adapter.claude_md.rerender_for_page`) each re-render only the ONE
+  project touched by a single instructions.md write; an update can change
+  the block's FORMAT (adapter changes, doctrine index refresh) for every
+  project at once without touching instructions.md at all — this closes
+  that spec §3(b) gap (#64). Best-effort per slug — the returned
+  `{slug: "ok" | "error: <msg>"}` dict is informational, never a gate.
+
 - **Report what changed** — build the "what changed in your RenOS" digest:
   `skills.update.lib.changelog_digest(<old-version>, <new-version>,
   <plugin-root>/CHANGELOG.md)` (plugin root = `$CLAUDE_PLUGIN_ROOT`, falling

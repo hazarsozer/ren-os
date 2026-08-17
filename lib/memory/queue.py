@@ -529,21 +529,14 @@ def _rerender_project_claude_md(page: str) -> None:
     CONTRACT — the wiki write has already succeeded and is journaled; a
     render failure (unmapped slug, missing repo, adapter error) must never
     fail or roll back the apply. Doctor's standing_instructions_drift check
-    is the visibility backstop for skipped renders."""
-    parts = page.split("/")
-    if len(parts) != 3 or parts[0] != "projects" or parts[2] != "instructions.md":
-        return
-    try:
-        from pathlib import Path
+    is the visibility backstop for skipped renders.
 
-        from lib import ren_paths
-        from lib.adapter import claude_md
+    #64: the body now lives in `lib.adapter.claude_md.rerender_for_page`,
+    shared with `lib.memory.revert.revert`'s post-revert trigger — this stays
+    a one-line delegate so this module's call sites and name keep working."""
+    from lib.adapter import claude_md
 
-        entry = ren_paths.load_project_registry().get(parts[1])
-        if entry:
-            claude_md.write_project_claude_md(Path(entry["repo_path"]), parts[1])
-    except Exception:  # noqa: BLE001 - see docstring: never fail the applied write
-        pass
+    claude_md.rerender_for_page(page)
 
 
 def apply(qid: str) -> Provenance:

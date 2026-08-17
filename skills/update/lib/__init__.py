@@ -143,3 +143,34 @@ def should_run_folder_note_hubs_1(wiki_root_path: Path | None = None) -> bool:
                 continue
             return True
     return False
+
+
+def rerender_all_project_claude_md() -> dict[str, str]:
+    """#64 spec §3(b) trigger: `/ren:update`'s closing steps call this so
+    every project's repo CLAUDE.md managed block reflects the CURRENT
+    adapter/format after migrations land — the queue's post-apply hook and
+    revert's post-revert hook only fire for the ONE project touched by a
+    single write; an update can change how EVERY project's block renders
+    (a format change, a doctrine index refresh) without touching any
+    instructions.md at all.
+
+    For every registered project slug whose wiki carries a
+    `projects/<slug>/instructions.md` (same detection
+    `skills/doctor/lib/check_standing_instructions_drift` uses), calls
+    `write_project_claude_md`. Returns `{slug: "ok"}` on success or
+    `{slug: "error: <msg>"}` on failure — never raises, so one broken repo
+    path never stops the rest of the run."""
+    from lib import ren_paths
+    from lib.adapter import claude_md
+
+    wiki = wiki_root()
+    results: dict[str, str] = {}
+    for slug, entry in sorted(ren_paths.load_project_registry().items()):
+        if not (wiki / "projects" / slug / "instructions.md").is_file():
+            continue
+        try:
+            claude_md.write_project_claude_md(Path(entry["repo_path"]), slug, wiki_root=wiki)
+            results[slug] = "ok"
+        except Exception as exc:  # noqa: BLE001 - never stop the run over one slug
+            results[slug] = f"error: {exc}"
+    return results
