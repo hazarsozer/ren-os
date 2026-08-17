@@ -14,6 +14,7 @@ Run with: uv run pytest tests/lib/memory/test_queue.py -v
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass
 
 import pytest
@@ -532,6 +533,51 @@ def test_apply_auto_collision_direct(wiki):
     root = ren_paths.wiki_root()
     assert "from A" in (root / "lessons/direct-collision.md").read_text(encoding="utf-8")
     assert "from B" in (root / "lessons/direct-collision-2.md").read_text(encoding="utf-8")
+
+
+# ------------------------------------------ #66 queue collision hardenings
+
+
+def test_collision_identical_to_sibling_is_noop_duplicate(wiki):
+    queue.propose_and_apply(_auto_proposal(
+        page="projects/demo/knowledge/lessons/y.md", content="alpha\n", session="s-A"))
+    queue.propose_and_apply(_auto_proposal(
+        page="projects/demo/knowledge/lessons/y.md", content="beta\n", session="s-B"))   # -> y-2.md
+
+    # Session C re-proposes content identical to the DIVERTED sibling
+    # (y-2.md), not the original page — must still be recognized as a
+    # no-op rather than landing a duplicate y-3.md.
+    entry_c = queue.propose(_auto_proposal(
+        page="projects/demo/knowledge/lessons/y.md", content="beta\n", session="s-C"))
+    with pytest.raises(QueueStateError):
+        queue.apply_auto(entry_c.qid)
+
+    reloaded = queue.get(entry_c.qid)
+    assert reloaded.status == "noop-duplicate"
+    assert not (ren_paths.wiki_root() / "projects/demo/knowledge/lessons/y-3.md").exists()
+
+
+def test_free_suffix_page_non_md_page(wiki):
+    from lib.memory.queue import _free_suffix_page
+
+    (ren_paths.wiki_root() / "lessons").mkdir(parents=True, exist_ok=True)
+    (ren_paths.wiki_root() / "lessons" / "x.txt").write_text("body\n", encoding="utf-8")
+    assert _free_suffix_page("lessons/x.txt") == "lessons/x.txt-2"
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root ignores chmod 0o000 — unreadable-sibling case can't be exercised")
+def test_free_suffix_page_skips_unreadable_sibling(wiki):
+    root = ren_paths.wiki_root()
+    (root / "lessons").mkdir(parents=True, exist_ok=True)
+    (root / "lessons" / "z.md").write_text("a\n", encoding="utf-8")
+    sibling = root / "lessons" / "z-2.md"
+    sibling.write_text("b\n", encoding="utf-8")
+    sibling.chmod(0o000)
+    try:
+        from lib.memory.queue import _free_suffix_page
+        assert _free_suffix_page("lessons/z.md") == "lessons/z-3.md"
+    finally:
+        sibling.chmod(0o644)
 
 
 # -------------------------------------------------- resolve_and_apply (Task 4)

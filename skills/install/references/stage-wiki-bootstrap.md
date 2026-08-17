@@ -16,3 +16,7 @@ than re-describing the same steps twice.
 
 Never overwrites. Never diffs for auto-merge. A file that already exists is
 reported as `skipped`, full stop — per `lib.skeleton`'s module docstring.
+
+Bootstrap additionally refuses to run at all against a populated wiki
+(`PopulatedWikiError`) — see `SKILL.md`'s wiki-bootstrap stage for the
+refusal rendering and the `REN_WIKI_ROOT` test recipe.
