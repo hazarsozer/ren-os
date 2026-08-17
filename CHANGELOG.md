@@ -1,5 +1,44 @@
 # Changelog
 
+## [0.7.6] - 2026-08-17 — "first impressions"
+
+The pre-handoff train, release 2 of 2: the polish a fresh install sees
+first. Spec: docs/superpowers/specs/2026-08-17-pre-handoff-fix-train-design.md
+(Release 2) + the #66 rider from 0.7.5's final review.
+
+- **#36 — doctor names the colliding directory.** `agent_shadowing`'s
+  skip/warn messages now say which scope holds the collision — "user" or
+  "project" agents dir, both when both clash — instead of blaming "user"
+  unconditionally.
+- **#37 — the unlinted nudge agrees with the watermark.** Wake-up's
+  `_unlinted_count` now counts in the same units the lint watermark is
+  stamped in (`len(journal.entries())` — malformed and non-object journal
+  lines are skipped, replicated inline so the hook stays stdlib-only). A
+  parity test pins the two counts against the same fixture so a future
+  skip-rule change can't silently reopen the drift.
+- **#66 — collision hardenings from 0.7.5's final review.** The
+  identical-content noop-duplicate check now also covers existing
+  `<slug>-N.md` siblings; `_free_suffix_page` no longer assumes `.md`
+  (whole-name suffixing otherwise) and probes slot freedom by existence,
+  never readability — an unreadable sibling can't be silently overwritten.
+  The install bootstrap reference doc points at the 0.7.5 refusal.
+- **#64 — the CLAUDE.md block re-renders on update and revert.** The #63
+  post-apply hook moved to `lib.adapter.claude_md.rerender_for_page`;
+  `revert()` of an instructions write re-renders the mapped repo's block,
+  and `/ren:update`'s closing steps call the new
+  `rerender_all_project_claude_md()` so adapter format changes propagate
+  (spec §3(b) closed). All best-effort by contract — a render failure
+  never fails the wiki operation.
+- **#40 — the uv environment leaves the versioned cache dir.** Documented
+  invocations set `UV_PROJECT_ENVIRONMENT="$HOME/.renos/.envs/<version>"`;
+  `/ren:update` GCs env dirs for versions no longer in the cache
+  (`gc_stale_envs`); doctor's new `check_cache_env_hygiene` warns on
+  `.venv` inside STALE versioned cache dirs — the current version's venv
+  is exempt, since install's `warm_environment` creates it deliberately
+  for the wake-up fast path (#11 §4; the final review caught that warning
+  on it would advise breaking the first-session self-heal). Cache-root
+  resolution has one home: `ren_paths.plugin_cache_versions_root()`.
+
 ## [0.7.5] - 2026-08-17 — "safe hands"
 
 The pre-handoff train, release 1 of 2: the data-loss and crash paths a
