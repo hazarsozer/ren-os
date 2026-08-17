@@ -620,6 +620,16 @@ def apply_auto(qid: str) -> Provenance:
         (c.get("write_id") for c in entry.conflicts if c.get("kind") == "supersedes"),
         None,
     )
+    if target_page != proposal.page:
+        # #61: a collision-diverted write lands on a brand-new sibling page
+        # (target_page), not on the page any `supersedes` conflict was
+        # computed against (proposal.page, still untouched on disk). That
+        # write_id belongs to the ORIGINAL page's lineage, not the sibling's
+        # — stamping it here would falsely claim the sibling replaces the
+        # original, and `lib.memory.revert._find_citers` reads `supersedes`
+        # as ground truth. A collision write replaces nothing by
+        # construction, so it never supersedes anything.
+        supersedes = None
     prov = new_provenance(
         writer=proposal.writer,
         session=proposal.session,

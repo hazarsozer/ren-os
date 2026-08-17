@@ -487,6 +487,18 @@ def test_add_collision_across_sessions_uniquifies_slug(wiki):
     collision_lines = [e for e in journal.entries() if e.get("collision_original")]
     assert collision_lines and collision_lines[-1]["collision_original"] == "projects/demo/knowledge/lessons/same-slug.md"
 
+    # A collision write replaces nothing by construction: the diverted
+    # sibling page must NOT carry a `supersedes` pointing at the untouched
+    # original page's write_id (it would falsely claim the sibling replaces
+    # the original — `lib.memory.revert._find_citers` reads this as ground
+    # truth).
+    assert prov_b.supersedes is None
+    sibling_text = (root / prov_b.page).read_text(encoding="utf-8")
+    sibling_prov = read_frontmatter_provenance(sibling_text)
+    assert sibling_prov is not None
+    assert sibling_prov["supersedes"] is None
+    assert collision_lines[-1].get("supersedes") is None
+
 
 def test_same_session_re_add_still_upserts(wiki):
     queue.propose_and_apply(_auto_proposal(page="projects/demo/l1/s.md", content="v1\n", session="s-A"))
