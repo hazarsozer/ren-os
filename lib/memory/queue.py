@@ -52,7 +52,7 @@ from typing import get_args
 from ulid import ULID
 
 from lib import ren_paths
-from lib.memory import quarantine, scrub, write_apply
+from lib.memory import journal, quarantine, scrub, write_apply
 from lib.memory.provenance import Op, WriterClass, Provenance, new_provenance, trust_class
 
 try:
@@ -222,6 +222,22 @@ def _current_page_body(page: str) -> str | None:
         return path.read_text(encoding="utf-8")
     except OSError:
         return None
+
+
+def _free_suffix_page(page: str) -> str:
+    """First absent sibling `<stem>-N.md` (N from 2) for a colliding ADD.
+
+    `page` keeps its original meaning as the proposal's TARGET slug (what the
+    two colliding items both wanted) — the page this collision was resolved
+    AWAY from. `QueueEntry.proposal.page` is never mutated to record where a
+    collision-resolved ADD actually landed; that location lives on the
+    resulting `Provenance.page` / journal line (`collision_original` on that
+    line points back here)."""
+    stem = page[: -len(".md")]
+    n = 2
+    while _current_page_body(f"{stem}-{n}.md") is not None:
+        n += 1
+    return f"{stem}-{n}.md"
 
 
 def _normalize_body(text: str) -> str:
@@ -570,38 +586,68 @@ def apply_auto(qid: str) -> Provenance:
             f"cannot apply_auto {qid}: proposal (writer={entry.proposal.writer!r}, "
             f"page={entry.proposal.page!r}) does not resolve to the 'auto' tier"
         )
-    # NOTE: `_check_add_race` is deliberately NOT wired in here. Unlike
-    # `apply()` (human approve -> apply, a real time gap where an external
-    # actor can land the page first), `apply_auto` is reached synchronously
-    # from `propose_and_apply` with no gap — and several producers
-    # (`skills.wrap.lib.wrap_session`'s L1 write chief among them) legitimately
-    # re-`ADD` the SAME page across repeated calls in one session as an
-    # upsert. Wiring the race check here false-positives on that shipped
-    # behavior (see tests/skills/wrap/test_wrap_flow.py's two-wrap-same-
-    # session coverage) without closing any real race — codex D5's failure
-    # scenario is specifically the approve()/apply() human gap.
+    # #61 collision contract for op=ADD over an existing page:
+    #   same session as the page's latest journal write -> upsert (wrap's
+    #     documented same-session L1 re-ADD);
+    #   identical normalized content -> noop-duplicate (mirrors
+    #     _check_add_race's outcome for the same situation);
+    #   different session AND different content -> a genuine slug collision
+    #     between two durable items: write to the first free <slug>-N.md so
+    #     nothing is silently replaced. The human apply() path keeps
+    #     _check_add_race unchanged — its hold semantics fit the
+    #     approve/apply time gap; this path stays autonomous.
+    proposal = entry.proposal
+    target_page = proposal.page
+    collision_extra: dict = {}
+    if proposal.op == "ADD":
+        current = _current_page_body(proposal.page)
+        if current is not None:
+            page_journal = journal.entries(proposal.page)
+            last_session = page_journal[-1].get("session") if page_journal else None
+            if last_session != proposal.session:
+                effective = _quarantined_content(proposal) or ""
+                if _content_hash(_normalize_body(current)) == _content_hash(_normalize_body(effective)):
+                    entry.status = _NOOP_DUPLICATE
+                    _persist(entry)
+                    raise QueueStateError(
+                        f"cannot apply_auto {qid}: ADD target {proposal.page!r} already has "
+                        "identical content — recorded as noop-duplicate"
+                    )
+                target_page = _free_suffix_page(proposal.page)
+                collision_extra = {"collision_original": proposal.page}
 
     supersedes = next(
         (c.get("write_id") for c in entry.conflicts if c.get("kind") == "supersedes"),
         None,
     )
-    proposal = entry.proposal
+    if target_page != proposal.page:
+        # #61: a collision-diverted write lands on a brand-new sibling page
+        # (target_page), not on the page any `supersedes` conflict was
+        # computed against (proposal.page, still untouched on disk). That
+        # write_id belongs to the ORIGINAL page's lineage, not the sibling's
+        # — stamping it here would falsely claim the sibling replaces the
+        # original, and `lib.memory.revert._find_citers` reads `supersedes`
+        # as ground truth. A collision write replaces nothing by
+        # construction, so it never supersedes anything.
+        supersedes = None
     prov = new_provenance(
         writer=proposal.writer,
         session=proposal.session,
         op=proposal.op,
-        page=proposal.page,
+        page=target_page,
         supersedes=supersedes,
         trust=trust_class(proposal.writer, proposal.producer),
     )
 
     # allow_existing_add: propose-time dedup plus the documented same-session
-    # L1 re-ADD upsert own ADD semantics on this path (#58 door guard opt-in).
+    # L1 re-ADD upsert own ADD semantics on this path (#58 door guard opt-in);
+    # a genuine cross-session slug collision is resolved above by writing to
+    # `target_page` instead, so `allow_existing_add` never needs to clobber it.
     write_apply.apply_write(
-        proposal.page,
+        target_page,
         _quarantined_content(proposal),
         prov,
-        journal_extra={"auto": True},
+        journal_extra={"auto": True, **collision_extra},
         allow_existing_add=True,
     )
 

@@ -15,8 +15,9 @@ import json
 
 import pytest
 
+import lib.ren_paths as ren_paths
 from lib.ren_paths import state_dir, wiki_root
-from skills.install.lib import install_state, record_install, stamp_wiki
+from skills.install.lib import PopulatedWikiError, install_state, record_install, stamp_wiki
 from skills.interview.lib import save_identity
 
 
@@ -193,3 +194,37 @@ def test_install_state_reports_companions_recorded(clean_path_env, wiki):
     companions.record_choice("graphify", "declined")
     state = install_state(wiki)
     assert state["companions_recorded"] is True
+
+
+# --- populated-wiki refusal / idempotent re-run (Task 2, #58 remainder) -----
+
+
+def test_stamp_wiki_refuses_populated_wiki(wiki):  # `wiki` = the file's existing isolated-root fixture
+    # Arrange: bootstrap once, then simulate real content — write an UPDATE
+    # to log.md THROUGH the write door so it gains ren_supersedes.
+    stamp_wiki()
+    from lib.memory import write_apply
+    from lib.memory.provenance import new_provenance, read_frontmatter_provenance
+    root = ren_paths.wiki_root()
+    founding = read_frontmatter_provenance((root / "log.md").read_text(encoding="utf-8"))
+    prov = new_provenance(writer="human", session="s-real", op="UPDATE",
+                          page="log.md", supersedes=founding["write_id"])
+    write_apply.apply_write("log.md", "# log\n\n- 2026-08-12: real entry\n", prov)
+    identity_before = (root / "identity.md").read_bytes()
+    log_before = (root / "log.md").read_bytes()
+
+    # Act + assert: the 2026-08-12 incident repro — a second install run.
+    with pytest.raises(PopulatedWikiError) as exc:
+        stamp_wiki()
+    assert "REN_WIKI_ROOT" in str(exc.value)
+    assert (root / "identity.md").read_bytes() == identity_before
+    assert (root / "log.md").read_bytes() == log_before
+
+
+def test_stamp_wiki_rerun_on_half_bootstrapped_wiki_stamps_missing_only(wiki):
+    stamp_wiki()
+    root = ren_paths.wiki_root()
+    (root / "LICENSES.md").unlink()          # half-bootstrapped: one page missing
+    result = stamp_wiki()
+    assert "LICENSES.md" in result.written    # re-stamped
+    assert result.written == ["LICENSES.md"]  # and nothing else written

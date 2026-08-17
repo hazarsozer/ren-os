@@ -36,7 +36,12 @@ from lib import ren_paths
 from lib.adapter.claude_md import MARKER_BEGIN, MARKER_END
 from lib.companions import CHOICES_FILENAME
 from lib.ren_paths import claude_user_dir
-from lib.skeleton import StampResult, stamp_skeleton, wiki_stamped as _wiki_stamped
+from lib.skeleton import (
+    StampResult,
+    stamp_skeleton,
+    wiki_populated_reason,
+    wiki_stamped as _wiki_stamped,
+)
 from skills.backup.lib import backup_configured
 
 QUESTION_BUDGET = 10
@@ -135,11 +140,38 @@ def install_state(wiki_root: Path | None = None) -> dict:
     }
 
 
+class PopulatedWikiError(Exception):
+    """Raised by `stamp_wiki` when the target wiki already holds real content.
+
+    There is deliberately no force flag: `stamp_skeleton` already never
+    overwrites, so nothing legitimate needs to stamp INTO a populated wiki —
+    the only caller that hits this is a test-drive of /ren:install pointed
+    at the real wiki (the 2026-08-12 incident)."""
+
+    def __init__(self, reason: str) -> None:
+        self.reason = reason
+        super().__init__(
+            f"wiki at {ren_paths.wiki_root()} already has real content ({reason}) — "
+            "bootstrap refused. To test-drive install, point REN_WIKI_ROOT at a "
+            "scratch directory."
+        )
+
+
 def stamp_wiki(profile: str = "master") -> StampResult:
     """Thin call into `lib.skeleton.stamp_skeleton` for the `profile` (default
     `"master"`) manifest against the real wiki root. Additive-only per that
     module's contract — a second call is a no-op (everything already present
-    reports as `skipped`, nothing is overwritten)."""
+    reports as `skipped`, nothing is overwritten).
+
+    Raises `PopulatedWikiError` before stamping anything if the wiki already
+    looks populated (`lib.skeleton.wiki_populated_reason`) — the flow-level
+    guard in front of `stamp_skeleton`'s own never-overwrite door (the
+    2026-08-12 incident: a test run of /ren:install re-ADDed skeleton pages
+    over real content)."""
+    reason = wiki_populated_reason(ren_paths.wiki_root())
+    if reason is not None:
+        raise PopulatedWikiError(reason)
+
     skeleton_root = Path(__file__).resolve().parents[3] / "wiki-skeleton"
     return stamp_skeleton(
         skeleton_root=skeleton_root,
@@ -273,6 +305,7 @@ def warm_environment() -> dict:
 __all__ = [
     "QUESTION_BUDGET",
     "DEFAULT_GRAPH_CONFIG",
+    "PopulatedWikiError",
     "install_state",
     "stamp_wiki",
     "write_default_graph_config",

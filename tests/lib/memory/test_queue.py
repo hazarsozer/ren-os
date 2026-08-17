@@ -18,6 +18,7 @@ from dataclasses import dataclass
 
 import pytest
 
+from lib import ren_paths
 from lib.memory import journal, queue, quarantine
 from lib.memory.provenance import read_frontmatter_provenance
 from lib.memory.queue import Proposal, QueueStateError
@@ -53,6 +54,14 @@ def _proposal(**overrides):
     )
     defaults.update(overrides)
     return Proposal(**defaults)
+
+
+def _auto_proposal(**overrides):
+    """`_proposal()` wrapper defaulting to the auto tier (llm-auto writer,
+    a non-global page) — for apply_auto/propose_and_apply collision tests."""
+    defaults = dict(writer="llm-auto", page="lessons/auto.md")
+    defaults.update(overrides)
+    return _proposal(**defaults)
 
 
 # ------------------------------------------------------------------ propose
@@ -456,6 +465,73 @@ def test_propose_and_apply_contradiction_holds_for_reasoning(wiki, monkeypatch):
     )
 
     assert prov is None and entry.status == "pending"
+
+
+# ------------------------------------------------- ADD slug collisions (#61)
+
+
+def test_add_collision_across_sessions_uniquifies_slug(wiki):
+    # Session A lands the page.
+    entry_a, prov_a = queue.propose_and_apply(_auto_proposal(
+        page="projects/demo/knowledge/lessons/same-slug.md",
+        content="# lesson from session A\n", session="s-A"))
+    # Session B: a DIFFERENT durable item, same slug.
+    entry_b, prov_b = queue.propose_and_apply(_auto_proposal(
+        page="projects/demo/knowledge/lessons/same-slug.md",
+        content="# lesson from session B\n", session="s-B"))
+
+    root = ren_paths.wiki_root()
+    assert "session A" in (root / "projects/demo/knowledge/lessons/same-slug.md").read_text(encoding="utf-8")
+    assert prov_b.page == "projects/demo/knowledge/lessons/same-slug-2.md"
+    assert "session B" in (root / prov_b.page).read_text(encoding="utf-8")
+    collision_lines = [e for e in journal.entries() if e.get("collision_original")]
+    assert collision_lines and collision_lines[-1]["collision_original"] == "projects/demo/knowledge/lessons/same-slug.md"
+
+    # A collision write replaces nothing by construction: the diverted
+    # sibling page must NOT carry a `supersedes` pointing at the untouched
+    # original page's write_id (it would falsely claim the sibling replaces
+    # the original — `lib.memory.revert._find_citers` reads this as ground
+    # truth).
+    assert prov_b.supersedes is None
+    sibling_text = (root / prov_b.page).read_text(encoding="utf-8")
+    sibling_prov = read_frontmatter_provenance(sibling_text)
+    assert sibling_prov is not None
+    assert sibling_prov["supersedes"] is None
+    assert collision_lines[-1].get("supersedes") is None
+
+
+def test_same_session_re_add_still_upserts(wiki):
+    queue.propose_and_apply(_auto_proposal(page="projects/demo/l1/s.md", content="v1\n", session="s-A"))
+    _, prov2 = queue.propose_and_apply(_auto_proposal(page="projects/demo/l1/s.md", content="v2\n", session="s-A"))
+    assert prov2.page == "projects/demo/l1/s.md"          # no suffix
+    assert "v2" in (ren_paths.wiki_root() / "projects/demo/l1/s.md").read_text(encoding="utf-8")
+
+
+def test_collision_suffix_skips_occupied_slot(wiki):
+    prov = None
+    for s, txt in (("s-A", "a\n"), ("s-B", "b\n"), ("s-C", "c\n")):
+        _, prov = queue.propose_and_apply(_auto_proposal(
+            page="projects/demo/knowledge/lessons/x.md", content=txt, session=s))
+    assert prov.page == "projects/demo/knowledge/lessons/x-3.md"
+
+
+def test_apply_auto_collision_direct(wiki):
+    """Direct apply_auto variant (bypassing propose()'s own dedup/contradiction
+    checks) — pins apply_auto's own contract in case propose_and_apply's
+    upstream checks ever intercept the scenario above."""
+    entry_a = queue.propose(_auto_proposal(
+        page="lessons/direct-collision.md", content="from A\n", session="s-A"))
+    prov_a = queue.apply_auto(entry_a.qid)
+    assert prov_a.page == "lessons/direct-collision.md"
+
+    entry_b = queue.propose(_auto_proposal(
+        page="lessons/direct-collision.md", content="from B\n", session="s-B"))
+    prov_b = queue.apply_auto(entry_b.qid)
+
+    assert prov_b.page == "lessons/direct-collision-2.md"
+    root = ren_paths.wiki_root()
+    assert "from A" in (root / "lessons/direct-collision.md").read_text(encoding="utf-8")
+    assert "from B" in (root / "lessons/direct-collision-2.md").read_text(encoding="utf-8")
 
 
 # -------------------------------------------------- resolve_and_apply (Task 4)

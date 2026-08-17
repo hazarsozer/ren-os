@@ -1,5 +1,38 @@
 # Changelog
 
+## [0.7.5] - 2026-08-17 — "safe hands"
+
+The pre-handoff train, release 1 of 2: the data-loss and crash paths a
+fresh install could hit, closed before the first external install. Spec:
+docs/superpowers/specs/2026-08-17-pre-handoff-fix-train-design.md.
+
+- **#58 — install refuses a populated wiki.** `stamp_wiki` now asks
+  `wiki_populated_reason()` (two mechanical signals: any
+  `projects/*/map.md`, or a core page carrying `ren_supersedes`) and
+  raises `PopulatedWikiError` before stamping anything — the message
+  points at `REN_WIKI_ROOT` for test drives. No `--force`: nothing
+  legitimate stamps into a populated wiki. Detection never crashes
+  bootstrap (unreadable, undecodable, and malformed-YAML pages read as
+  not-populated — the final task review caught the YAMLError path).
+  Half-bootstrapped re-runs stamp missing pages only (pinned by test),
+  and the install SKILL gained a "Test-driving install" recipe. The
+  2026-08-12 incident (four-wave skeleton re-ADD over the real wiki) is
+  now a regression test asserting identity.md and log.md survive
+  byte-identical.
+- **#61 — durable slug collisions stop overwriting.** `apply_auto` with
+  `op=ADD` over an existing page now resolves three ways: same session as
+  the page's latest journal write → upsert (wrap's L1 re-ADD, unchanged);
+  identical normalized content → noop-duplicate; different session AND
+  different content → the write lands on the first free `<slug>-N.md`,
+  the journal line carries `collision_original`, and the diverted write's
+  `supersedes` is forced to `None` (it replaces nothing — the task review
+  caught that the stale conflict write_id would otherwise corrupt
+  revert's citer detection). The human `apply()` path and
+  `resolve_and_apply` keep their existing semantics.
+- **#32 — the changelog digest can't crash the update flow.**
+  `changelog_digest` coerces str paths (`Path(changelog_path)`); the
+  courtesy digest is now un-crashable on an argument-type detail.
+
 ## [0.7.4] - 2026-08-14 — "the standing rule"
 
 The quarantine-exit train: Cluster B's deferred trio (#52/#51/#46) plus a

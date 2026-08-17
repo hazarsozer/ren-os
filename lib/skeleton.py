@@ -183,6 +183,40 @@ def stamp_skeleton(
     return result
 
 
+def wiki_populated_reason(target_root: Path) -> str | None:
+    """Return why `target_root` looks like a POPULATED wiki, or None if it
+    looks fresh/half-bootstrapped (founding pages only).
+
+    Two mechanical signals, no content heuristics:
+      - any `projects/*/map.md` exists (a project was ingested/bootstrapped);
+      - a core page (`identity.md`, `log.md`, `index.md`) carries
+        `ren_supersedes` in its provenance — i.e. it was UPDATEd through the
+        write door after its founding ADD.
+
+    Detection must never crash bootstrap: unreadable/unstamped pages, and
+    pages whose frontmatter is present but not valid YAML, read as
+    not-populated (the 0.7.1 door guard still protects them from overwrite).
+    """
+    from lib.memory.provenance import read_frontmatter_provenance
+
+    maps = sorted(target_root.glob("projects/*/map.md"))
+    if maps:
+        rel = ", ".join(str(m.relative_to(target_root)) for m in maps[:3])
+        return f"project map(s) exist: {rel}"
+
+    for name in ("identity.md", "log.md", "index.md"):
+        page = target_root / name
+        if not page.is_file():
+            continue
+        try:
+            prov = read_frontmatter_provenance(page.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, yaml.YAMLError):
+            continue
+        if prov and prov.get("supersedes"):
+            return f"{name} has been updated since founding (ren_supersedes present)"
+    return None
+
+
 WIKI_STAMP_MARKER = "index.md"
 """The page whose presence means "this directory is a stamped RenOS wiki".
 `stamp_skeleton` always writes it, so it is the cheapest honest marker."""
@@ -202,4 +236,10 @@ def wiki_stamped(wiki_root: Path) -> bool:
     return (Path(wiki_root) / WIKI_STAMP_MARKER).is_file()
 
 
-__all__ = ["StampResult", "stamp_skeleton", "WIKI_STAMP_MARKER", "wiki_stamped"]
+__all__ = [
+    "StampResult",
+    "stamp_skeleton",
+    "WIKI_STAMP_MARKER",
+    "wiki_stamped",
+    "wiki_populated_reason",
+]
