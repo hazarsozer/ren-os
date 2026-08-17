@@ -8,12 +8,11 @@ raising, because the digest is a courtesy, never a gate.
 
 from __future__ import annotations
 
-import os
 import re
 import shutil
 from pathlib import Path
 
-from lib.ren_paths import framework_root, wiki_root
+from lib.ren_paths import framework_root, plugin_cache_versions_root, wiki_root
 
 _HEADER_RE = re.compile(r"^## \[(\d+\.\d+\.\d+)\]", re.MULTILINE)
 _ANY_HEADER_RE = re.compile(r"^## \[", re.MULTILINE)
@@ -178,21 +177,6 @@ def rerender_all_project_claude_md() -> dict[str, str]:
     return results
 
 
-def _plugin_cache_versions_root() -> Path | None:
-    """Parent of the versioned plugin cache dir, resolved the same way
-    `skills.install.lib._repo_root()` and doctor's checks read
-    `$CLAUDE_PLUGIN_ROOT` — that env var points AT the currently-running
-    version dir (`~/.claude/plugins/cache/ren-os/ren/<version>/`), so its
-    parent (`.../ren-os/ren/`) lists every version dir the cache still has.
-    Returns None when the env var is unset (bare dev checkout, no installed
-    plugin) — callers must treat that as "unresolvable", never as "no live
-    versions"."""
-    val = os.environ.get("CLAUDE_PLUGIN_ROOT", "").strip()
-    if not val:
-        return None
-    return Path(os.path.expanduser(os.path.expandvars(val))).parent
-
-
 def gc_stale_envs() -> list[str]:
     """Remove `framework_root()/.envs/<v>` dirs whose version `<v>` has no
     corresponding dir in the plugin cache (#40) — GCs the per-version uv
@@ -205,7 +189,7 @@ def gc_stale_envs() -> list[str]:
     what's live), a missing `.envs` dir is a no-op, and a per-directory
     `OSError` (permissions, a concurrent deletion) just skips that one
     directory rather than aborting the sweep."""
-    cache_versions_root = _plugin_cache_versions_root()
+    cache_versions_root = plugin_cache_versions_root()
     if cache_versions_root is None or not cache_versions_root.is_dir():
         return []
 

@@ -484,6 +484,32 @@ def test_detect_project_prefers_longest_matching_repo_path(clean_path_env, tmp_p
     assert ren_paths.detect_project(outer, wiki, dev_root=tmp_path / "Dev") == "outer"
 
 
+# --- plugin_cache_versions_root (#40) ----------------------------------------
+
+
+def test_plugin_cache_versions_root_none_when_unresolvable(monkeypatch):
+    monkeypatch.delenv("CLAUDE_PLUGIN_ROOT", raising=False)
+    assert ren_paths.plugin_cache_versions_root() is None
+
+
+def test_plugin_cache_versions_root_blank_is_unresolvable(monkeypatch):
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", "   ")
+    assert ren_paths.plugin_cache_versions_root() is None
+
+
+def test_plugin_cache_versions_root_is_parent_of_version_dir(tmp_path, monkeypatch):
+    version_dir = tmp_path / "cache" / "ren-os" / "ren" / "0.7.5"
+    version_dir.mkdir(parents=True)
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(version_dir))
+    assert ren_paths.plugin_cache_versions_root() == version_dir.parent
+
+
+def test_plugin_cache_versions_root_expands_user_and_vars(tmp_path, monkeypatch):
+    monkeypatch.setenv("MY_CACHE_BASE", str(tmp_path))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", "$MY_CACHE_BASE/ren-os/ren/0.7.5")
+    assert ren_paths.plugin_cache_versions_root() == tmp_path / "ren-os" / "ren"
+
+
 # --- envs_dir (#40) ----------------------------------------------------------
 
 

@@ -144,6 +144,28 @@ def framework_root() -> Path:
     return Path.home() / ".renos"
 
 
+def plugin_cache_versions_root() -> Path | None:
+    """Parent of the currently-running versioned plugin cache dir, or None
+    when unresolvable.
+
+    `$CLAUDE_PLUGIN_ROOT` points AT the current version dir (e.g.
+    `~/.claude/plugins/cache/ren-os/ren/<version>/`), so its `.parent`
+    (`.../ren-os/ren/`) lists every version dir the cache still has. Returns
+    None when the env var is unset (bare dev checkout, no installed plugin)
+    — callers must treat that as "unresolvable", never as "no live
+    versions" (never delete/warn based on a guess).
+
+    Single source of truth for this resolution (#40 review finding): both
+    `skills.update.lib.gc_stale_envs` and
+    `skills.doctor.lib.check_cache_env_hygiene` call this rather than each
+    re-implementing the CLAUDE_PLUGIN_ROOT → expand → parent walk.
+    """
+    val = os.environ.get("CLAUDE_PLUGIN_ROOT", "").strip()
+    if not val:
+        return None
+    return Path(os.path.expanduser(os.path.expandvars(val))).parent
+
+
 def envs_dir(version: str | None = None) -> Path:
     """Return the per-version uv project-environment dir: `framework_root() /
     ".envs" / (version or framework_version())`.
@@ -578,6 +600,7 @@ __all__ = [
     "code_map_cache_dir",
     "code_map_path",
     "framework_root",
+    "plugin_cache_versions_root",
     "envs_dir",
     "CLAUDE_DIR_ENV",
     "CLAUDE_CONFIG_DIR_ENV",
