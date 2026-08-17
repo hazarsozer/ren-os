@@ -482,3 +482,61 @@ def test_detect_project_prefers_longest_matching_repo_path(clean_path_env, tmp_p
 
     assert ren_paths.detect_project(inner, wiki, dev_root=tmp_path / "Dev") == "inner"
     assert ren_paths.detect_project(outer, wiki, dev_root=tmp_path / "Dev") == "outer"
+
+
+# --- plugin_cache_versions_root (#40) ----------------------------------------
+
+
+def test_plugin_cache_versions_root_none_when_unresolvable(monkeypatch):
+    monkeypatch.delenv("CLAUDE_PLUGIN_ROOT", raising=False)
+    assert ren_paths.plugin_cache_versions_root() is None
+
+
+def test_plugin_cache_versions_root_blank_is_unresolvable(monkeypatch):
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", "   ")
+    assert ren_paths.plugin_cache_versions_root() is None
+
+
+def test_plugin_cache_versions_root_is_parent_of_version_dir(tmp_path, monkeypatch):
+    version_dir = tmp_path / "cache" / "ren-os" / "ren" / "0.7.5"
+    version_dir.mkdir(parents=True)
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(version_dir))
+    assert ren_paths.plugin_cache_versions_root() == version_dir.parent
+
+
+def test_plugin_cache_versions_root_expands_user_and_vars(tmp_path, monkeypatch):
+    monkeypatch.setenv("MY_CACHE_BASE", str(tmp_path))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", "$MY_CACHE_BASE/ren-os/ren/0.7.5")
+    assert ren_paths.plugin_cache_versions_root() == tmp_path / "ren-os" / "ren"
+
+
+def test_current_plugin_cache_version_none_when_unresolvable(monkeypatch):
+    monkeypatch.delenv("CLAUDE_PLUGIN_ROOT", raising=False)
+    assert ren_paths.current_plugin_cache_version() is None
+
+
+def test_current_plugin_cache_version_is_basename_of_version_dir(tmp_path, monkeypatch):
+    version_dir = tmp_path / "cache" / "ren-os" / "ren" / "0.7.6"
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(version_dir))
+    assert ren_paths.current_plugin_cache_version() == "0.7.6"
+
+
+# --- envs_dir (#40) ----------------------------------------------------------
+
+
+def test_envs_dir_defaults_to_framework_root_dot_envs_current_version(clean_path_env, tmp_path):
+    clean_path_env.setenv("REN_FRAMEWORK_ROOT", str(tmp_path))
+    clean_path_env.delenv("CLAUDE_PLUGIN_OPTION_FRAMEWORK_VERSION", raising=False)
+    clean_path_env.delenv("CLAUDE_PLUGIN_ROOT", raising=False)
+    assert ren_paths.envs_dir() == tmp_path / ".envs" / ren_paths.framework_version()
+
+
+def test_envs_dir_explicit_version_wins(clean_path_env, tmp_path):
+    clean_path_env.setenv("REN_FRAMEWORK_ROOT", str(tmp_path))
+    assert ren_paths.envs_dir("1.2.3") == tmp_path / ".envs" / "1.2.3"
+
+
+def test_envs_dir_is_pure_path_math_no_mkdir(clean_path_env, tmp_path):
+    clean_path_env.setenv("REN_FRAMEWORK_ROOT", str(tmp_path))
+    path = ren_paths.envs_dir("9.9.9")
+    assert not path.exists()

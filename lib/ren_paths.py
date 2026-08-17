@@ -45,7 +45,7 @@ WIKI_ROOT_PLUGIN_OPTION = "CLAUDE_PLUGIN_OPTION_WIKIROOT"
 Honored on its own — independent of `REN_FRAMEWORK_ROOT` — so a friend who configures
 only `wikiRoot` reads/writes the path they advertised (Codex F1)."""
 
-FALLBACK_FRAMEWORK_VERSION = "0.7.5"
+FALLBACK_FRAMEWORK_VERSION = "0.7.6"
 """Fallback used when no installed-plugin metadata is reachable. Matches
 plugin.json#version (the SSOT). Tests pinned to this. In a real install Layer 2
 (plugin.json) wins, so this only stamps in bare-checkout/test contexts."""
@@ -142,6 +142,73 @@ def framework_root() -> Path:
     # Lazy: re-read Path.home() at call time (issue #13 — the module constant
     # freezes the real home at import, bypassing test HOME isolation).
     return Path.home() / ".renos"
+
+
+def _resolve_current_plugin_dir() -> Path | None:
+    """The currently-running versioned plugin cache dir itself
+    (`~/.claude/plugins/cache/ren-os/ren/<version>/`), or None when
+    `$CLAUDE_PLUGIN_ROOT` is unset (bare dev checkout, no installed plugin).
+
+    Private — `plugin_cache_versions_root()` and `current_plugin_cache_version()`
+    both derive from this ONE expansion of `$CLAUDE_PLUGIN_ROOT` so there is
+    exactly one place that reads/expands the env var (#40 review finding)."""
+    val = os.environ.get("CLAUDE_PLUGIN_ROOT", "").strip()
+    if not val:
+        return None
+    return Path(os.path.expanduser(os.path.expandvars(val)))
+
+
+def plugin_cache_versions_root() -> Path | None:
+    """Parent of the currently-running versioned plugin cache dir, or None
+    when unresolvable.
+
+    `$CLAUDE_PLUGIN_ROOT` points AT the current version dir (e.g.
+    `~/.claude/plugins/cache/ren-os/ren/<version>/`), so its `.parent`
+    (`.../ren-os/ren/`) lists every version dir the cache still has. Returns
+    None when the env var is unset (bare dev checkout, no installed plugin)
+    — callers must treat that as "unresolvable", never as "no live
+    versions" (never delete/warn based on a guess).
+
+    Single source of truth for this resolution (#40 review finding): both
+    `skills.update.lib.gc_stale_envs` and
+    `skills.doctor.lib.check_cache_env_hygiene` call this rather than each
+    re-implementing the CLAUDE_PLUGIN_ROOT → expand → parent walk.
+    """
+    current = _resolve_current_plugin_dir()
+    return current.parent if current is not None else None
+
+
+def current_plugin_cache_version() -> str | None:
+    """Basename of the currently-running versioned plugin cache dir (the
+    version string), or None when `$CLAUDE_PLUGIN_ROOT` is unresolvable.
+
+    #40 review finding (HIGH): install's `warm_environment` deliberately
+    runs `uv sync --project $CLAUDE_PLUGIN_ROOT` with no
+    `UV_PROJECT_ENVIRONMENT` redirect, creating a `.venv` inside the CURRENT
+    version's cache dir on purpose — `interpreter.json` records an
+    interpreter inside it, load-bearing for the wake-up hook's fast-path
+    re-exec (#11 §4). `check_cache_env_hygiene` uses this to exempt that one
+    version's `.venv` from its stale-venv warning, so the check never tells
+    a friend to delete the thing the first-session self-heal depends on.
+    """
+    current = _resolve_current_plugin_dir()
+    return current.name if current is not None else None
+
+
+def envs_dir(version: str | None = None) -> Path:
+    """Return the per-version uv project-environment dir: `framework_root() /
+    ".envs" / (version or framework_version())`.
+
+    Pure path math — never creates the directory. Issue #40: invoking skill
+    lib entrypoints via `uv run` FROM the versioned plugin cache dir
+    (`~/.claude/plugins/cache/ren-os/ren/<version>/`) otherwise creates a
+    `.venv` inside it — stale garbage the moment the next version lands, in a
+    directory otherwise treated as an immutable installed artifact.
+    Documented invocations set `UV_PROJECT_ENVIRONMENT` to this path instead;
+    `skills.update.lib.gc_stale_envs()` GCs entries whose version is no
+    longer in the plugin cache.
+    """
+    return framework_root() / ".envs" / (version or framework_version())
 
 
 CLAUDE_DIR_ENV = "REN_CLAUDE_DIR"
@@ -562,6 +629,9 @@ __all__ = [
     "code_map_cache_dir",
     "code_map_path",
     "framework_root",
+    "plugin_cache_versions_root",
+    "current_plugin_cache_version",
+    "envs_dir",
     "CLAUDE_DIR_ENV",
     "CLAUDE_CONFIG_DIR_ENV",
     "claude_user_dir",

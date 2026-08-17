@@ -104,6 +104,17 @@ def revert(write_id: str) -> RevertResult:
     )
     journal.append(revert_prov, extra={"revert_of": write_id})
 
+    try:
+        from lib.adapter import claude_md
+
+        claude_md.rerender_for_page(page)
+    except Exception:  # noqa: BLE001 - #64: best-effort BY CONTRACT, mirrors
+        # queue's post-apply hook — the revert has already succeeded and is
+        # journaled; a stale repo CLAUDE.md block must never fail or roll
+        # back the revert itself. Doctor's standing_instructions_drift check
+        # is the visibility backstop for a skipped re-render.
+        pass
+
     citers = _find_citers(write_id, page)
 
     return RevertResult(write_id=write_id, page=page, restored=True, citers=citers)

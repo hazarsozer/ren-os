@@ -212,16 +212,42 @@ def all_entries() -> list[QueueEntry]:
 _all_entries = all_entries  # internal alias for existing call sites
 
 
+def _page_path(page: str) -> Path:
+    """Absolute path for a wiki-relative `page`, via the same `safe_join`
+    resolution `_current_page_body` uses."""
+    return ren_paths.safe_join(ren_paths.wiki_root(), page)
+
+
 def _current_page_body(page: str) -> str | None:
     """Read the wiki page at `page`, or `None` if it doesn't exist / can't be
     read. Used by the applied-page dedup check in `propose`."""
-    path = ren_paths.safe_join(ren_paths.wiki_root(), page)
+    path = _page_path(page)
     if not path.is_file():
         return None
     try:
         return path.read_text(encoding="utf-8")
     except OSError:
         return None
+
+
+def _collision_siblings(page: str):
+    """Yield existing `<stem>-N<ext>` sibling pages diverted-to by a prior
+    collision on `page` (N from 2, stopping at the first absent slot) — the
+    same stem/suffix logic `_free_suffix_page` uses to pick the next free
+    slot. #66 item 1: the collision branch's identical-content check must
+    also compare against these, not just `page` itself, or a re-proposal
+    identical to an already-diverted sibling lands a fresh duplicate instead
+    of being recognized as a no-op."""
+    is_md = page.endswith(".md")
+    stem = page[: -len(".md")] if is_md else page
+    suffix = ".md" if is_md else ""
+    n = 2
+    while True:
+        candidate = f"{stem}-{n}{suffix}"
+        if not _page_path(candidate).is_file():
+            return
+        yield candidate
+        n += 1
 
 
 def _free_suffix_page(page: str) -> str:
@@ -232,12 +258,26 @@ def _free_suffix_page(page: str) -> str:
     AWAY from. `QueueEntry.proposal.page` is never mutated to record where a
     collision-resolved ADD actually landed; that location lives on the
     resulting `Provenance.page` / journal line (`collision_original` on that
-    line points back here)."""
-    stem = page[: -len(".md")]
+    line points back here).
+
+    #66 item 2: `.md` suffixing (`<stem>-N.md`) assumes a markdown page;
+    for a page that does NOT end `.md`, splitting on a fake ".md" stem would
+    mangle the name (e.g. `x.txt` -> `x.-2.md`). Non-`.md` pages instead get
+    whole-name suffixing: `f"{page}-{n}"`.
+
+    #66 item 3: a slot is free only when the candidate path does not EXIST
+    on disk (`is_file()` false) — not merely when it can't be READ.
+    `_current_page_body` returns `None` both for "absent" and "present but
+    unreadable" (e.g. permissions), which would wrongly treat an existing,
+    unreadable sibling as a free slot and have `write_apply.apply_write`
+    (called with `allow_existing_add=True`) silently overwrite it."""
+    is_md = page.endswith(".md")
+    stem = page[: -len(".md")] if is_md else page
+    suffix = ".md" if is_md else ""
     n = 2
-    while _current_page_body(f"{stem}-{n}.md") is not None:
+    while _page_path(f"{stem}-{n}{suffix}").is_file():
         n += 1
-    return f"{stem}-{n}.md"
+    return f"{stem}-{n}{suffix}"
 
 
 def _normalize_body(text: str) -> str:
@@ -489,21 +529,14 @@ def _rerender_project_claude_md(page: str) -> None:
     CONTRACT — the wiki write has already succeeded and is journaled; a
     render failure (unmapped slug, missing repo, adapter error) must never
     fail or roll back the apply. Doctor's standing_instructions_drift check
-    is the visibility backstop for skipped renders."""
-    parts = page.split("/")
-    if len(parts) != 3 or parts[0] != "projects" or parts[2] != "instructions.md":
-        return
-    try:
-        from pathlib import Path
+    is the visibility backstop for skipped renders.
 
-        from lib import ren_paths
-        from lib.adapter import claude_md
+    #64: the body now lives in `lib.adapter.claude_md.rerender_for_page`,
+    shared with `lib.memory.revert.revert`'s post-revert trigger — this stays
+    a one-line delegate so this module's call sites and name keep working."""
+    from lib.adapter import claude_md
 
-        entry = ren_paths.load_project_registry().get(parts[1])
-        if entry:
-            claude_md.write_project_claude_md(Path(entry["repo_path"]), parts[1])
-    except Exception:  # noqa: BLE001 - see docstring: never fail the applied write
-        pass
+    claude_md.rerender_for_page(page)
 
 
 def apply(qid: str) -> Provenance:
@@ -606,7 +639,21 @@ def apply_auto(qid: str) -> Provenance:
             last_session = page_journal[-1].get("session") if page_journal else None
             if last_session != proposal.session:
                 effective = _quarantined_content(proposal) or ""
-                if _content_hash(_normalize_body(current)) == _content_hash(_normalize_body(effective)):
+                effective_hash = _content_hash(_normalize_body(effective))
+                # #66 item 1: identical to the original page, OR to any
+                # already-diverted `-N` sibling — either way this proposal
+                # restates something already durable, so it's a no-op, not
+                # a new duplicate at the next free slot.
+                is_duplicate = _content_hash(_normalize_body(current)) == effective_hash
+                if not is_duplicate:
+                    for sibling in _collision_siblings(proposal.page):
+                        sibling_body = _current_page_body(sibling)
+                        if sibling_body is None:
+                            continue  # unreadable sibling: skip, don't treat as a match
+                        if _content_hash(_normalize_body(sibling_body)) == effective_hash:
+                            is_duplicate = True
+                            break
+                if is_duplicate:
                     entry.status = _NOOP_DUPLICATE
                     _persist(entry)
                     raise QueueStateError(

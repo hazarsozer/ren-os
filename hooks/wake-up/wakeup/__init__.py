@@ -881,6 +881,12 @@ def _unlinted_count() -> int:
     a flat `{"journal_lines_seen": int, "clean": bool, "stamped_at": str}`
     stamp.
 
+    Counts in the SAME units as `lib.memory.journal.entries()`, which skips
+    blank lines AND lines that fail `json.loads` AND parsed non-dict lines.
+    The watermark is stamped in those units, so the two must agree. A raw
+    non-blank count drifts one nudge unit per malformed or non-object line,
+    forever (#37).
+
     Keyed on the COUNT, never on the stamp's `clean` flag: `clean` is
     wiki-global, so a single unresolved finding anywhere would otherwise make
     this a permanent nudge.
@@ -889,10 +895,19 @@ def _unlinted_count() -> int:
     (no nudge), same failure doctrine as every other producer here."""
     try:
         with (state_dir() / JOURNAL_FILENAME).open(encoding="utf-8") as handle:
-            # Blank lines are skipped, matching how the journal's own reader
-            # (`lib.memory.journal.entries`) counts entries — the watermark is
-            # stamped in THOSE units, so the two must agree.
-            lines = sum(1 for line in handle if line.strip())
+            # Count in the SAME units the watermark is stamped in:
+            # len(journal.entries()), which skips malformed and
+            # non-object lines (lib/memory/journal.py). A raw non-blank
+            # count drifts one nudge unit per bad line, forever (#37).
+            lines = 0
+            for line in handle:
+                if not line.strip():
+                    continue
+                try:
+                    if isinstance(json.loads(line), dict):
+                        lines += 1
+                except ValueError:
+                    continue
     except (OSError, UnicodeDecodeError):
         logger.debug("could not count journal lines", exc_info=True)
         return 0

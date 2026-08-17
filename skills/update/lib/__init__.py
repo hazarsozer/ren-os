@@ -9,9 +9,10 @@ raising, because the digest is a courtesy, never a gate.
 from __future__ import annotations
 
 import re
+import shutil
 from pathlib import Path
 
-from lib.ren_paths import wiki_root
+from lib.ren_paths import framework_root, plugin_cache_versions_root, wiki_root
 
 _HEADER_RE = re.compile(r"^## \[(\d+\.\d+\.\d+)\]", re.MULTILINE)
 _ANY_HEADER_RE = re.compile(r"^## \[", re.MULTILINE)
@@ -143,3 +144,68 @@ def should_run_folder_note_hubs_1(wiki_root_path: Path | None = None) -> bool:
                 continue
             return True
     return False
+
+
+def rerender_all_project_claude_md() -> dict[str, str]:
+    """#64 spec §3(b) trigger: `/ren:update`'s closing steps call this so
+    every project's repo CLAUDE.md managed block reflects the CURRENT
+    adapter/format after migrations land — the queue's post-apply hook and
+    revert's post-revert hook only fire for the ONE project touched by a
+    single write; an update can change how EVERY project's block renders
+    (a format change, a doctrine index refresh) without touching any
+    instructions.md at all.
+
+    For every registered project slug whose wiki carries a
+    `projects/<slug>/instructions.md` (same detection
+    `skills/doctor/lib/check_standing_instructions_drift` uses), calls
+    `write_project_claude_md`. Returns `{slug: "ok"}` on success or
+    `{slug: "error: <msg>"}` on failure — never raises, so one broken repo
+    path never stops the rest of the run."""
+    from lib import ren_paths
+    from lib.adapter import claude_md
+
+    wiki = wiki_root()
+    results: dict[str, str] = {}
+    for slug, entry in sorted(ren_paths.load_project_registry().items()):
+        if not (wiki / "projects" / slug / "instructions.md").is_file():
+            continue
+        try:
+            claude_md.write_project_claude_md(Path(entry["repo_path"]), slug, wiki_root=wiki)
+            results[slug] = "ok"
+        except Exception as exc:  # noqa: BLE001 - never stop the run over one slug
+            results[slug] = f"error: {exc}"
+    return results
+
+
+def gc_stale_envs() -> list[str]:
+    """Remove `framework_root()/.envs/<v>` dirs whose version `<v>` has no
+    corresponding dir in the plugin cache (#40) — GCs the per-version uv
+    project environments `ren_paths.envs_dir()` points invocations at, once
+    that version is no longer installed. Returns the removed version
+    strings, in sorted order.
+
+    Never raises: an unresolvable cache root is a no-op (nothing removed —
+    we never guess and delete everything just because we can't confirm
+    what's live), a missing `.envs` dir is a no-op, and a per-directory
+    `OSError` (permissions, a concurrent deletion) just skips that one
+    directory rather than aborting the sweep."""
+    cache_versions_root = plugin_cache_versions_root()
+    if cache_versions_root is None or not cache_versions_root.is_dir():
+        return []
+
+    live_versions = {p.name for p in cache_versions_root.iterdir() if p.is_dir()}
+
+    envs_root = framework_root() / ".envs"
+    if not envs_root.is_dir():
+        return []
+
+    removed: list[str] = []
+    for entry in sorted(envs_root.iterdir()):
+        if not entry.is_dir() or entry.name in live_versions:
+            continue
+        try:
+            shutil.rmtree(entry)
+        except OSError:
+            continue
+        removed.append(entry.name)
+    return removed

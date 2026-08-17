@@ -6,12 +6,12 @@ description: |
   snapshots the wiki, runs migrations, verifies via verify.json, shows diffs
   for approval, applies, and re-verifies. Snapshot/rollback is built in.
   Never silent on MAJOR bumps.
-version: 0.7.5
+version: 0.7.6
 license: MIT
 type: skill
 execution_tier: deterministic
 schema_version: 1
-framework_version: "0.7.5"
+framework_version: "0.7.6"
 
 contract:
   required_outputs:
@@ -197,9 +197,14 @@ Carried near-verbatim from donor `skills/update/` (Task 7.3) — the migration s
 - **Global migration: folder-note-hubs-1.** Gate:
   `should_run_folder_note_hubs_1()` from `skills.update.lib`. If true — show
   the friend the pending rename list (the gate's paths), get approval (this
-  is a MAJOR-classified structural change), then run `uv run python
-  migrations/folder-note-hubs-1/migrate.py` followed by `uv run python
-  migrations/folder-note-hubs-1/verify.py`. On verify success, call
+  is a MAJOR-classified structural change), then run
+  `UV_PROJECT_ENVIRONMENT="$HOME/.renos/.envs/<version>" uv run python
+  migrations/folder-note-hubs-1/migrate.py` followed by
+  `UV_PROJECT_ENVIRONMENT="$HOME/.renos/.envs/<version>" uv run python
+  migrations/folder-note-hubs-1/verify.py` — these also run from the
+  versioned plugin cache dir, so redirect uv's project environment the same
+  way (#40; `ren_paths.envs_dir()`) rather than letting a `.venv` land
+  inside that immutable cache dir. On verify success, call
   `skills.install.lib.write_default_graph_config()` (the new Obsidian tier
   view written during the migration). On verify failure: stop, show the FAIL
   lines, offer whole-wiki restore via `skills/update/scripts/restore.sh --whole <snapshot>`
@@ -211,6 +216,16 @@ Carried near-verbatim from donor `skills/update/` (Task 7.3) — the migration s
 `lib/memory/snapshot.py` (Task 1.2, G9) is a DIFFERENT snapshot mechanism: per-write-id, page-granularity snapshots for the write-safety substrate (revert a single memory write in one step). `scripts/snapshot.sh` here is whole-wiki, version-bump-granularity, for migration rollback. They serve genuinely different purposes at different granularities — this skill's carried snapshot logic is NOT rewritten to unify with Task 1.2's substrate; that unification (if it's ever worth doing) is a 0.3-scoped ADR decision, not something to improvise here. Noted per the task brief's explicit instruction not to rewrite working carried code.
 
 ## Closing steps (after re-verify)
+
+- **Re-render project CLAUDE.md blocks** — call
+  `skills.update.lib.rerender_all_project_claude_md()` after migrations
+  complete. The queue's post-apply hook and `revert`'s post-revert hook
+  (`lib.adapter.claude_md.rerender_for_page`) each re-render only the ONE
+  project touched by a single instructions.md write; an update can change
+  the block's FORMAT (adapter changes, doctrine index refresh) for every
+  project at once without touching instructions.md at all — this closes
+  that spec §3(b) gap (#64). Best-effort per slug — the returned
+  `{slug: "ok" | "error: <msg>"}` dict is informational, never a gate.
 
 - **Report what changed** — build the "what changed in your RenOS" digest:
   `skills.update.lib.changelog_digest(<old-version>, <new-version>,
@@ -227,6 +242,12 @@ Carried near-verbatim from donor `skills/update/` (Task 7.3) — the migration s
   (`record_choice(cid, "accepted")`); accepted plugins get the hint + a
   restart note; declines are recorded and never re-asked; no answer records
   nothing. Nothing installs without an explicit yes in chat.
+
+- **GC stale uv envs** — call `skills.update.lib.gc_stale_envs()`. It
+  removes `framework_root()/.envs/<v>` dirs whose version is no longer in
+  the plugin cache (#40 — the versions this same update just made stale)
+  and returns the removed version list; report it if non-empty, silent
+  otherwise. Best-effort, never a gate.
 
 ## References
 

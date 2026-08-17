@@ -792,28 +792,87 @@ def check_agent_shadowing() -> CheckResult:
     name = "agent_shadowing"
     shipped = {p.stem for p in (_REPO_ROOT / "agents").glob("*.md")}
 
-    candidate_dirs = []
     user_dir = ren_paths.claude_user_dir() / "agents"
-    if user_dir.is_dir():
-        candidate_dirs.append(user_dir)
     project_dir = _project_agents_dir()
-    if project_dir is not None and project_dir.is_dir():
-        candidate_dirs.append(project_dir)
 
-    if not candidate_dirs:
-        return CheckResult(name, "skip", "no user agents directory")
+    user_has_dir = user_dir.is_dir()
+    project_has_dir = project_dir is not None and project_dir.is_dir()
 
-    clashes: set[str] = set()
-    for d in candidate_dirs:
-        clashes |= shipped & {p.stem for p in d.glob("*.md")}
+    if not user_has_dir and not project_has_dir:
+        return CheckResult(name, "skip", "no user or project agents directory")
 
-    if clashes:
+    # Track clashes per origin
+    clashes_by_origin: dict[str, set[str]] = {}
+    if user_has_dir:
+        user_clashes = shipped & {p.stem for p in user_dir.glob("*.md")}
+        if user_clashes:
+            clashes_by_origin["user"] = user_clashes
+    if project_has_dir:
+        project_clashes = shipped & {p.stem for p in project_dir.glob("*.md")}
+        if project_clashes:
+            clashes_by_origin["project"] = project_clashes
+
+    if clashes_by_origin:
+        messages = []
+        for origin in ("user", "project"):
+            if origin in clashes_by_origin:
+                clashes = clashes_by_origin[origin]
+                messages.append(
+                    f"{origin} agent(s) shadow shipped RenOS agents: {', '.join(sorted(clashes))}"
+                )
         return CheckResult(
             name, "warn",
-            f"user agent(s) shadow shipped RenOS agents: {', '.join(sorted(clashes))} — "
-            "rename yours or the shipped behavior won't apply",
+            f"{'; '.join(messages)} — rename yours or the shipped behavior won't apply",
         )
     return CheckResult(name, "ok", f"{len(shipped)} shipped agent(s), no shadowing")
+
+
+def check_cache_env_hygiene() -> CheckResult:
+    """#40: a `.venv` inside a VERSIONED plugin cache dir
+    (`~/.claude/plugins/cache/ren-os/ren/<version>/.venv`) is stale garbage
+    the moment the next version lands — that directory is otherwise treated
+    as an immutable installed artifact. Documented invocations set
+    `UV_PROJECT_ENVIRONMENT` (see `ren_paths.envs_dir()`) instead of letting
+    `uv run` create one there.
+
+    EXEMPTION (review HIGH): the CURRENT version's `.venv` is not stale —
+    `skills.install.lib.warm_environment` deliberately runs `uv sync
+    --project $CLAUDE_PLUGIN_ROOT` with no `UV_PROJECT_ENVIRONMENT` redirect
+    on every fresh install, and the interpreter path it records in
+    `interpreter.json` points INSIDE that `.venv` — load-bearing for the
+    wake-up hook's fast-path re-exec (#11 §4). Warning on it (and telling a
+    friend to remove it) would degrade that first-session self-heal. So the
+    version named by `ren_paths.current_plugin_cache_version()` — the SAME
+    `$CLAUDE_PLUGIN_ROOT` resolution `plugin_cache_versions_root()` already
+    uses, not a second mechanism — is excluded from the stale scan.
+
+    Warns listing every OTHER (non-current) stale `.venv` found across all
+    version dirs; `skip`s when the cache root is unresolvable (bare dev
+    checkout, no installed plugin, `ren_paths.plugin_cache_versions_root()`
+    returns None) — warn-not-block, never a false positive on a checkout
+    that was never uv-run from the cache in the first place."""
+    name = "cache_env_hygiene"
+    cache_versions_root = ren_paths.plugin_cache_versions_root()
+    if cache_versions_root is None or not cache_versions_root.is_dir():
+        return CheckResult(name, "skip", "plugin cache root unresolvable")
+
+    current_version = ren_paths.current_plugin_cache_version()
+    stale = sorted(
+        venv.parent.name
+        for venv in cache_versions_root.glob("*/.venv")
+        if venv.is_dir() and venv.parent.name != current_version
+    )
+    if stale:
+        return CheckResult(
+            name, "warn",
+            f"stale venv inside versioned cache dir for: {', '.join(stale)} — "
+            "remove it; invocations should set UV_PROJECT_ENVIRONMENT, see #40",
+        )
+    return CheckResult(
+        name, "ok",
+        "no stale .venv in versioned cache dirs "
+        "(current version's .venv, if any, is expected — see warm_environment/#11 §4)",
+    )
 
 
 _ALL_CHECK_NAMES: tuple[str, ...] = (
@@ -841,6 +900,7 @@ _ALL_CHECK_NAMES: tuple[str, ...] = (
     "check_execution_doctrine",
     "check_standing_instructions_drift",
     "check_agent_shadowing",
+    "check_cache_env_hygiene",
 )
 
 
@@ -886,5 +946,6 @@ __all__ = [
     "check_execution_doctrine",
     "check_standing_instructions_drift",
     "check_agent_shadowing",
+    "check_cache_env_hygiene",
     "run_checks",
 ]

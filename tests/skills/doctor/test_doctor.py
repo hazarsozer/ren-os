@@ -59,6 +59,7 @@ def test_run_checks_returns_one_result_per_check(wiki):
         "suggestion_store", "apply_integrity", "judge_health", "archive_integrity",
         "routing_audit", "model_map_staleness", "orphaned_projects",
         "execution_doctrine", "standing_instructions_drift", "agent_shadowing",
+        "cache_env_hygiene",
     }
 
 
@@ -845,3 +846,102 @@ def test_check_agent_shadowing_warns_on_project_dir_collision(wiki, tmp_path, cl
 
 def test_check_agent_shadowing_registered_in_all_check_names():
     assert "check_agent_shadowing" in doctor._ALL_CHECK_NAMES
+
+
+def test_check_agent_shadowing_warns_project_only_collision(wiki, tmp_path, clean_path_env, monkeypatch):
+    """Collision ONLY in project .claude/agents/ must name 'project' and NOT say 'user agent(s)'."""
+    from lib import ren_paths
+
+    monkeypatch.setenv("REN_CLAUDE_DIR", str(tmp_path / "userclaude"))
+
+    (wiki / "projects" / "myproj").mkdir(parents=True)
+    repo = tmp_path / "myproj-repo"
+    project_agents = repo / ".claude" / "agents"
+    project_agents.mkdir(parents=True)
+    (project_agents / "ren-planner.md").write_text("shadow", encoding="utf-8")
+    ren_paths.record_project_repo("myproj", repo)
+
+    monkeypatch.chdir(repo)
+    result = doctor.check_agent_shadowing()
+    assert result.status == "warn"
+    assert "ren-planner" in result.message
+    assert "project" in result.message
+    assert "user agent(s)" not in result.message
+
+
+def test_check_agent_shadowing_skips_both_dirs_absent(tmp_path, monkeypatch):
+    """Both user and project agents dirs absent: skip message must name both scopes."""
+    from lib import ren_paths
+
+    monkeypatch.setenv("REN_CLAUDE_DIR", str(tmp_path / "userclaude"))
+    monkeypatch.setattr(doctor, "_project_agents_dir", lambda: None)
+
+    result = doctor.check_agent_shadowing()
+    assert result.status == "skip"
+    assert "no user or project" in result.message or "no" in result.message
+    assert "user" in result.message
+    assert "project" in result.message
+
+
+# --------------------------------------------------------- check_cache_env_hygiene
+
+
+def test_check_cache_env_hygiene_skips_when_cache_root_unresolvable(monkeypatch):
+    monkeypatch.delenv("CLAUDE_PLUGIN_ROOT", raising=False)
+    result = doctor.check_cache_env_hygiene()
+    assert result.status == "skip"
+
+
+def test_check_cache_env_hygiene_ok_when_no_stale_venv(tmp_path, monkeypatch):
+    version_dir = tmp_path / "cache" / "ren-os" / "ren" / "0.7.5"
+    version_dir.mkdir(parents=True)
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(version_dir))
+
+    result = doctor.check_cache_env_hygiene()
+    assert result.status == "ok"
+
+
+def test_check_cache_env_hygiene_warns_on_stale_venv(tmp_path, monkeypatch):
+    """A .venv in a NON-current version dir is stale — warn."""
+    versions_root = tmp_path / "cache" / "ren-os" / "ren"
+    current_dir = versions_root / "0.7.6"
+    current_dir.mkdir(parents=True)
+    stale_dir = versions_root / "0.7.5"
+    (stale_dir / ".venv").mkdir(parents=True)
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(current_dir))
+
+    result = doctor.check_cache_env_hygiene()
+    assert result.status == "warn"
+    assert "0.7.5" in result.message
+
+
+def test_check_cache_env_hygiene_ok_when_only_current_version_venv_present(tmp_path, monkeypatch):
+    """Review HIGH (#40): warm_environment deliberately creates a .venv in
+    the CURRENT version's cache dir (issue #11 §4, interpreter.json points
+    inside it) — that must never warn. Repro named by the review: only
+    `<current-version-dir>/.venv` present, nothing else."""
+    version_dir = tmp_path / "cache" / "ren-os" / "ren" / "0.7.6"
+    (version_dir / ".venv").mkdir(parents=True)
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(version_dir))
+
+    result = doctor.check_cache_env_hygiene()
+    assert result.status == "ok"
+
+
+def test_check_cache_env_hygiene_warns_on_stale_even_alongside_current_venv(tmp_path, monkeypatch):
+    """The current version's .venv is exempt, but a stale one elsewhere still warns."""
+    versions_root = tmp_path / "cache" / "ren-os" / "ren"
+    current_dir = versions_root / "0.7.6"
+    (current_dir / ".venv").mkdir(parents=True)
+    stale_dir = versions_root / "0.7.5"
+    (stale_dir / ".venv").mkdir(parents=True)
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(current_dir))
+
+    result = doctor.check_cache_env_hygiene()
+    assert result.status == "warn"
+    assert "0.7.5" in result.message
+    assert "0.7.6" not in result.message
+
+
+def test_check_cache_env_hygiene_registered_in_all_check_names():
+    assert "check_cache_env_hygiene" in doctor._ALL_CHECK_NAMES

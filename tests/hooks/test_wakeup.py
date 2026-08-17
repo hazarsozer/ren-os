@@ -2150,6 +2150,68 @@ class TestUnlintedNudge:
 
         assert "2 journal entries unlinted" in payload
 
+    def test_unlinted_count_matches_watermark_units_with_malformed_lines(self, project):
+        """Issue #37: _unlinted_count must count in the same units as the
+        watermark (len(journal.entries())), which skips blank, malformed,
+        and non-dict lines. A raw non-blank count drifts one nudge unit per
+        bad line, forever."""
+        # 3 valid entries + 1 malformed + 1 non-object + 1 blank line.
+        journal_path = state_dir() / "journal.jsonl"
+        journal_path.parent.mkdir(parents=True, exist_ok=True)
+        journal_path.write_text(
+            '{"page": "a.md", "op": "ADD"}\n'
+            'not json at all\n'
+            '{"page": "b.md", "op": "ADD"}\n'
+            '"just a string"\n'
+            '\n'
+            '{"page": "c.md", "op": "ADD"}\n',
+            encoding="utf-8",
+        )
+        # Watermark stamped at 2 entries-units: exactly 1 valid entry is unlinted.
+        wm_path = state_dir() / "wiki_lint_watermark.json"
+        wm_path.parent.mkdir(parents=True, exist_ok=True)
+        wm_path.write_text(
+            '{"journal_lines_seen": 2, "clean": true, "stamped_at": "2026-08-17T00:00:00+00:00"}',
+            encoding="utf-8",
+        )
+        assert wakeup._unlinted_count() == 1
+
+    def test_unlinted_count_matches_journal_entries_len_exactly(self, project):
+        """Parity pin (#37 MEDIUM): `_unlinted_count`'s inline reimplementation
+        of `journal.entries()`'s three skip rules (blank / malformed /
+        non-object lines) must never silently drift from the real thing. This
+        ties the two counts together directly, so a FOURTH skip rule added to
+        `entries()` later (without updating the hook's stdlib copy) fails
+        here instead of re-opening #37 unnoticed.
+
+        `lib.memory.journal` is imported HERE, in the test, which is allowed
+        to reach into `lib/` — only the wake-up HOOK ITSELF must stay
+        stdlib-only / py3.9-safe (see `_unlinted_count`'s own docstring and
+        `test_hooks_do_not_import_skills_wiki_health` below)."""
+        from lib.memory import journal
+
+        journal_path = state_dir() / "journal.jsonl"
+        journal_path.parent.mkdir(parents=True, exist_ok=True)
+        journal_path.write_text(
+            '{"page": "a.md", "op": "ADD"}\n'
+            'not json at all\n'
+            '{"page": "b.md", "op": "ADD"}\n'
+            '"just a string"\n'
+            '\n'
+            '{"page": "c.md", "op": "ADD"}\n'
+            '{"page": "d.md", "op": "ADD"}\n',
+            encoding="utf-8",
+        )
+        seen = 1
+        wm_path = state_dir() / "wiki_lint_watermark.json"
+        wm_path.parent.mkdir(parents=True, exist_ok=True)
+        wm_path.write_text(
+            json.dumps({"journal_lines_seen": seen, "clean": True, "stamped_at": "2026-08-17T00:00:00+00:00"}),
+            encoding="utf-8",
+        )
+
+        assert wakeup._unlinted_count() == len(journal.entries()) - seen
+
     def test_hooks_do_not_import_skills_wiki_health(self):
         """The nudge reads the two state files directly; the hook must stay
         stdlib-only and must never import the wiki-health skill package."""

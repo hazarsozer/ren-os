@@ -8,10 +8,10 @@ description: |
   This is 0.3's replacement for per-write human approval
   (v2.2 removed the queue gate on data-plane writes) — the autonomous
   auditor that runs periodically instead of a human reviewing every diff.
-version: 0.7.5
+version: 0.7.6
 license: MIT
 
-framework_version: "0.7.5"
+framework_version: "0.7.6"
 schema_version: 1
 type: skill
 execution_tier: judgment
@@ -195,8 +195,11 @@ write), routes judgment-shaped findings to the durable suggestion store, and
 stamps the watermark forward (`clean=False` when anything was queued).
 
 ```bash
-uv run python -c "import importlib,json; m=importlib.import_module('skills.wiki-health.lib'); print(json.dumps(m.run_incremental_lint(session='$CLAUDE_SESSION_ID'), indent=2))"
+UV_PROJECT_ENVIRONMENT="$HOME/.renos/.envs/<version>" uv run python -c "import importlib,json; m=importlib.import_module('skills.wiki-health.lib'); print(json.dumps(m.run_incremental_lint(session='$CLAUDE_SESSION_ID'), indent=2))"
 ```
+
+(this runs from the versioned plugin cache dir — the `UV_PROJECT_ENVIRONMENT`
+prefix redirects uv's project env out of that immutable cache dir; #40)
 
 Pass `full=True` to ignore the watermark and check every page.
 

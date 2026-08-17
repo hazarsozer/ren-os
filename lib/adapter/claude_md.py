@@ -361,6 +361,26 @@ def write_project_claude_md(
     return path, apply_block(path, render_project_block(project_slug, wiki_root=wiki_root))
 
 
+def rerender_for_page(page: str) -> None:
+    """#63/#64 post-write hook: an applied or reverted write to
+    projects/<slug>/instructions.md re-renders the mapped repo's CLAUDE.md
+    managed block. Best-effort BY CONTRACT — the wiki write (or revert) has
+    already succeeded and is journaled; a render failure (unmapped slug,
+    missing repo, adapter error) must never fail or roll back the caller's
+    operation. Doctor's standing_instructions_drift check is the visibility
+    backstop for skipped renders. Shared by `lib.memory.queue`'s apply path
+    and `lib.memory.revert.revert`, so both triggers stay in lockstep."""
+    parts = page.split("/")
+    if len(parts) != 3 or parts[0] != "projects" or parts[2] != "instructions.md":
+        return
+    try:
+        entry = ren_paths.load_project_registry().get(parts[1])
+        if entry:
+            write_project_claude_md(Path(entry["repo_path"]), parts[1])
+    except Exception:  # noqa: BLE001 - see docstring: never fail the caller's write
+        pass
+
+
 __all__ = [
     "MARKER_BEGIN",
     "MARKER_END",
@@ -375,4 +395,5 @@ __all__ = [
     "apply_block",
     "write_global_claude_md",
     "write_project_claude_md",
+    "rerender_for_page",
 ]

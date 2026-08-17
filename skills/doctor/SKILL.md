@@ -6,12 +6,12 @@ description: |
   small, isolated checks (env, wiki structure, frontmatter, schema
   versions, budget lint, dangling L2 pointers, graphify status, backup
   configuration, global-tier drift, harness neutrality) — all warn-not-block.
-version: 0.7.5
+version: 0.7.6
 license: MIT
 type: skill
 execution_tier: deterministic
 schema_version: 1
-framework_version: "0.7.5"
+framework_version: "0.7.6"
 
 contract:
   required_outputs:
@@ -73,6 +73,7 @@ Donor's Node/gh/claude-cli checks, activity-feed/RC-channel/fleet checks, and th
 | `check_execution_doctrine` | 0.6.4: `agents/ren-reviewer.md` present (doctrine card references it) → `error` if missing; a manual pre-0.6.4 `<!-- renos:doctrine-stopgap -->` block left in `~/.claude/CLAUDE.md` → `warn` (the wake-up hook injects the card now, the manual block is redundant residue) |
 | `check_standing_instructions_drift` | #63: repo CLAUDE.md standing-instructions block matches a fresh render of the wiki page |
 | `check_agent_shadowing` | 0.6.5: a user or project `.claude/agents/<name>.md` filename colliding with a shipped `agents/*.md` → `warn` naming the colliding agent(s); checks both `claude_user_dir()/agents` and, when the cwd resolves to a registered project, that project's `.claude/agents/`; `skip` when neither directory exists |
+| `check_cache_env_hygiene` | #40: any `<cache>/<version>/.venv` inside the versioned plugin cache dir → `warn` naming the version(s) — invocations should redirect via `UV_PROJECT_ENVIRONMENT` (see `ren_paths.envs_dir()`); `ok` when none found; `skip` when the cache root is unresolvable |
 
 ## Behavior
 
