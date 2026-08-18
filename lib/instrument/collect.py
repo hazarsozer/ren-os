@@ -92,6 +92,11 @@ KIND_QUARANTINE_RELEASE = "quarantine_release"
 #: outcomes: created/updated/gated_out/suggested/held/refused counts (Task 4,
 #: 0.7.x knowledge-flow train) — the outcome metric for the durable loop.
 KIND_DURABLE_OUTCOME = "durable_outcome"
+#: One per `/ren:distill` run, summarizing the batch and capped-apply outcome
+#: (Task 4, 0.7.x knowledge-flow train) — the run-level metric for the
+#: distiller, alongside the shared `KIND_DURABLE_OUTCOME` counters it also
+#: emits with `producer="distiller"`.
+KIND_DISTILLER_RUN = "distiller_run"
 
 
 def _now_iso() -> str:
@@ -270,6 +275,7 @@ __all__ = [
     "KIND_RETRIEVAL_EVAL",
     "KIND_QUARANTINE_RELEASE",
     "KIND_DURABLE_OUTCOME",
+    "KIND_DISTILLER_RUN",
     "record",
     "read",
     "harvest_session_usage",
