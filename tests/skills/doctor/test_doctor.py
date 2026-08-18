@@ -798,6 +798,42 @@ def test_check_apply_integrity_ignores_noop_revert_entries(wiki):
     assert result.status == "ok"
 
 
+def test_check_apply_integrity_ignores_fixtrain_remediation_session(wiki):
+    """#67: the 2026-08-04 L1 archive relocation wrote the journal but the
+    routine bypassed queue persist — an accepted, exempted session in
+    `_APPLY_INTEGRITY_EXEMPT_SESSIONS`, not a crash window to warn about."""
+    from lib.memory import journal
+    from lib.memory.provenance import new_provenance
+
+    prov = new_provenance(
+        writer="llm-auto",
+        session="f65b32a8-fixtrain-remediation",
+        op="UPDATE",
+        page="lessons/relocated.md",
+    )
+    journal.append(prov)
+
+    result = doctor.check_apply_integrity()
+    assert result.status == "ok"
+
+
+def test_check_apply_integrity_warns_on_session_not_in_exemption_table(wiki):
+    """#67 guard: the exemption table is a closed list — any session not in
+    it must still warn on an orphaned write_id."""
+    from lib.memory import journal
+    from lib.memory.provenance import new_provenance
+
+    prov = new_provenance(
+        writer="llm-auto", session="some-other-session", op="UPDATE", page="lessons/orphan.md"
+    )
+    journal.append(prov)
+
+    result = doctor.check_apply_integrity()
+
+    assert result.status == "warn"
+    assert prov.write_id in result.message
+
+
 # ------------------------------------------------------- check_orphaned_projects
 
 

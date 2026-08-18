@@ -55,6 +55,7 @@ import sys
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
+from typing import Final
 
 from lib import ren_paths
 from lib.instrument import collect
@@ -511,6 +512,19 @@ def check_suggestion_store(store_dir: Path | None = None) -> CheckResult:
     return CheckResult("suggestion_store", "ok", f"{total} suggestion entry file(s) parse cleanly")
 
 
+# #67: sessions whose journal entries are orphaned BY DESIGN, not by the
+# crash race check_apply_integrity exists to surface. Each key carries its
+# in-code reason; adding an exemption is a deliberate code change here —
+# there is no config/env override.
+_APPLY_INTEGRITY_EXEMPT_SESSIONS: Final[dict[str, str]] = {
+    "install": "Gate-0 skeleton stamp writes journal without queue entries by design",
+    "f65b32a8-fixtrain-remediation": (
+        "2026-08-04 L1 archive relocation: journal written, queue persist "
+        "bypassed by the routine — accepted, not a crash window"
+    ),
+}
+
+
 def check_apply_integrity() -> CheckResult:
     """codex D6 (visibility only): a write can leave a journal entry with no
     matching APPLIED queue entry if the process dies between
@@ -527,14 +541,18 @@ def check_apply_integrity() -> CheckResult:
     entries (revert records, metric-watch findings) are never queue-backed
     by design and are excluded from the scan entirely.
 
-    Also excludes `session="install"` entries (Gate-0 Finding 2): install's
-    Stage-2 wiki-stamp (`lib.skeleton.stamp_skeleton`) calls
-    `write_apply.apply_write` directly for the founding pages
-    (index.md/log.md/identity.md/LICENSES.md), bypassing the queue entirely —
-    they're orphaned by construction on every fresh install, not by a crash
-    race, so flagging them is a false positive. The structural fix (routing
-    install writes through `queue.apply` so a matching applied entry exists)
-    is 0.6 backlog; this is the visibility-layer exclusion in the meantime."""
+    Also excludes the sessions listed in `_APPLY_INTEGRITY_EXEMPT_SESSIONS` —
+    entries orphaned by design, not by a crash race; the reason lives in the
+    table next to each key, and adding an exemption is a deliberate code
+    change (no config/env override). The `install` entry's long-form context
+    (Gate-0 Finding 2): install's Stage-2 wiki-stamp
+    (`lib.skeleton.stamp_skeleton`) calls `write_apply.apply_write` directly
+    for the founding pages (index.md/log.md/identity.md/LICENSES.md),
+    bypassing the queue entirely — they're orphaned by construction on every
+    fresh install, not by a crash race, so flagging them is a false positive.
+    The structural fix (routing install writes through `queue.apply` so a
+    matching applied entry exists) is 0.6 backlog; this is the
+    visibility-layer exclusion in the meantime."""
     from lib.memory import journal, queue
 
     applied_write_ids = {
@@ -545,7 +563,7 @@ def check_apply_integrity() -> CheckResult:
     for entry in journal.entries():
         if entry.get("op") not in ("ADD", "UPDATE", "DELETE"):
             continue
-        if entry.get("session") == "install":
+        if entry.get("session") in _APPLY_INTEGRITY_EXEMPT_SESSIONS:
             continue
         write_id = entry.get("write_id")
         if write_id and write_id not in applied_write_ids:
