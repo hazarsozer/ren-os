@@ -6,7 +6,7 @@ Spec §3.5: "minimal metric-watch: one routine watches budget ceiling, memory
 growth rate, classifier fail-closed events, backup unconfigured and writes
 findings to the journal for the next wake-up."
 
-Four independent checks, each isolated (a crashing check produces a
+Five independent checks, each isolated (a crashing check produces a
 `"check-error"` finding instead of killing the others):
 
   - `_check_budget` — is the latest `injected_bytes` wake-up payload
@@ -17,6 +17,10 @@ Four independent checks, each isolated (a crashing check produces a
     that needs cross-run memory.)
   - `_check_classifier_fail_closed` — any NEW `classifier_event` entries with
     `event == "fail_closed"` since the last run?
+  - `_check_no_llm_with_candidates` — Task 6 / spec §4.1: a since-last-watch
+    `no_llm` classifier_event AND a since-last-watch wrap `durable_outcome`
+    with `seen > 0` both present (a wrap that HAD candidates but ran without
+    any classifier — a defect signal, not background noise)?
   - `_check_backup` — is there neither a configured `backup` git remote NOR a
     tarball newer than 7 days in the plugin's backups dir?
 
@@ -133,6 +137,32 @@ def _check_classifier_fail_closed(state: dict) -> dict | None:
     return None
 
 
+def _check_no_llm_with_candidates(state: dict) -> dict | None:
+    """Post-2026-08-18 spec §4.1: after the wiring fix, a wrap that HAD
+    candidates (`seen > 0`) but ran without any classifier ("no_llm" event)
+    is a defect signal, not background noise. Fires only when BOTH a
+    since-last-watch `no_llm` classifier_event AND a since-last-watch wrap
+    durable_outcome with `seen > 0` exist. Same state-watermark pattern as
+    `_check_classifier_fail_closed`."""
+    outcomes = collect.read(kind=collect.KIND_DURABLE_OUTCOME)
+    wrap_outcomes = [o for o in outcomes if o.get("producer") == "wrap" and o.get("seen", 0) > 0]
+
+    events = collect.read(kind=collect.KIND_CLASSIFIER_EVENT)
+    no_llm_events = [e for e in events if e.get("event") == "no_llm"]
+
+    last_ts = state.get("last_no_llm_ts")
+    new_outcomes = [o for o in wrap_outcomes if not last_ts or o.get("ts", "") > last_ts]
+    new_events = [e for e in no_llm_events if not last_ts or e.get("ts", "") > last_ts]
+
+    all_ts = [o.get("ts", "") for o in wrap_outcomes] + [e.get("ts", "") for e in no_llm_events]
+    if all_ts:
+        state["last_no_llm_ts"] = max(all_ts)
+
+    if new_outcomes and new_events:
+        return {"kind": "no_llm-with-candidates", "count": len(new_outcomes)}
+    return None
+
+
 def _git_remote_configured(wiki_root: Path, remote_name: str) -> bool:
     try:
         proc = subprocess.run(
@@ -173,6 +203,7 @@ _CHECKS: tuple[tuple[str, str], ...] = (
     ("budget", "_check_budget"),
     ("memory_growth", "_check_memory_growth"),
     ("classifier", "_check_classifier_fail_closed"),
+    ("no_llm_with_candidates", "_check_no_llm_with_candidates"),
     ("backup", "_check_backup"),
 )
 
@@ -195,6 +226,7 @@ def watch(session: str) -> list[dict]:
         ("budget", lambda: _check_budget(state)),
         ("memory_growth", lambda: _check_memory_growth(wiki_root, state)),
         ("classifier", lambda: _check_classifier_fail_closed(state)),
+        ("no_llm_with_candidates", lambda: _check_no_llm_with_candidates(state)),
         ("backup", lambda: _check_backup(wiki_root)),
     ]
 

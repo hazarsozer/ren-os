@@ -123,6 +123,8 @@ def test_rerun_is_idempotent_no_writes_second_time(tmp_path):
         "alternatives/",
         "patterns/",
         "projects/",
+        "routines/",
+        "routines/distiller-weekly.md",
     }
 
 
