@@ -6,10 +6,10 @@ description: |
   my project memory." Triggers on the /ren:remember [project] slash command.
   Renders the L2 map in human prose, not a raw markdown dump. The cheapest
   trust-builder in the scope (spec §3.8 A-10) — read-only, always.
-version: 0.7.8
+version: 0.7.9
 license: MIT
 
-framework_version: "0.7.8"
+framework_version: "0.7.9"
 schema_version: 1
 type: skill
 execution_tier: deterministic

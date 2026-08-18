@@ -67,7 +67,7 @@ BACKUP_REMOTE_ASK_REASON = (
 QUEUE_APPLY_ENV = "REN_QUEUE_APPLY"
 MASS_DELETE_THRESHOLD = 3
 
-_RM_RE = re.compile(r"(?:^|[;&|]\s*)(rm|unlink)\b")
+_RM_RE = re.compile(r"(?:^|[;&|\n]\s*)(rm|unlink)\b")
 _RECURSIVE_FLAG_RE = re.compile(r"(?:^|\s)-[a-zA-Z]*[rR][a-zA-Z]*(?:\s|$)|--recursive\b")
 _REMOTE_SET_RE = re.compile(r"\bgit\s+remote\s+(set-url|add)\s+\S*backup\S*", re.IGNORECASE)
 _SHELL_SEPARATORS = (";", "&&", "||", "|")

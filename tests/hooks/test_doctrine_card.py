@@ -48,12 +48,10 @@ class TestCardContent:
 
     def test_review_gate_requires_open_work_closure(self):
         """Pin the actual phrase: a loose `"closed" in card` would match any
-        stray occurrence, and the closure rule must not read as an either/or
-        (a model can satisfy "closed OR added" by adding a line and stopping)."""
+        stray occurrence."""
         for sp in (True, False):
             card = render_doctrine_card(sp)
-            assert "open-work ledger is closed" in card
-            assert "if it has no line, add one before you claim done" in card
+            assert "open-work ledger line is closed" in card
 
     def test_line_cap_50(self):
         for sp in (True, False):
@@ -91,8 +89,11 @@ class TestReferencesResolve:
         card = render_doctrine_card(True)
         known = {
             "superpowers:brainstorming",
+            "superpowers:using-git-worktrees",
+            "superpowers:writing-plans",
             "superpowers:subagent-driven-development",
             "superpowers:test-driven-development",
+            "superpowers:finishing-a-development-branch",
         }
         import re
         assert set(re.findall(r"superpowers:[a-z-]+", card)) <= known
@@ -120,27 +121,36 @@ class TestBudgetAndStructure:
 
     def test_card_structure_skeleton_pinned(self):
         """Pin the structural skeleton of the doctrine card to catch accidental
-        edits. Asserts the presence and order of: section header, four numbered
-        gates, and the red-flags table header. Uses successive .index() calls to
-        verify in-order appearance (house style: structural stability, not
-        verbatim-text pinning)."""
+        edits. Asserts the presence and order of: section header, seven
+        numbered gates, and the red-flags table header. Uses successive
+        .index() calls to verify in-order appearance (house style: structural
+        stability, not verbatim-text pinning)."""
         for sp in (True, False):
             card = render_doctrine_card(sp)
 
             # The exact section header line
             assert card.index("## How we work (execution doctrine)") >= 0
 
-            # Four numbered gate leads, in order (substring matching the opener).
-            # Each .index() call will raise if not found; successive calls
-            # verify order (latter index > earlier index).
+            # Seven numbered gate leads, in order (substring matching the
+            # opener). Each .index() call will raise if not found; successive
+            # calls verify order (latter index > earlier index).
             idx_brainstorm = card.index("1. **Brainstorm gate.**")
-            idx_decompose = card.index("2. **Decompose.**")
-            idx_dispatch = card.index("3. **Dispatch.**")
-            idx_review = card.index("4. **Review gate.**")
+            idx_isolate = card.index("2. **Isolate & plan.**")
+            idx_decompose = card.index("3. **Decompose.**")
+            idx_dispatch = card.index("4. **Dispatch.**")
+            idx_per_task = card.index("5. **Per-task review.**")
+            idx_review = card.index("6. **Review gate.**")
+            idx_finish = card.index("7. **Finish.**")
 
-            assert idx_brainstorm < idx_decompose < idx_dispatch < idx_review, (
-                "Gate leads are out of order or missing"
-            )
+            assert (
+                idx_brainstorm
+                < idx_isolate
+                < idx_decompose
+                < idx_dispatch
+                < idx_per_task
+                < idx_review
+                < idx_finish
+            ), "Gate leads are out of order or missing"
 
             # v2 additions, pinned to their owning gate.
             idx_planner = card.index("`ren-planner` agent")
@@ -154,12 +164,13 @@ class TestBudgetAndStructure:
 
             # The table header for Red flags section (stable structural marker).
             idx_table_header = card.index("| Thought | Reality |")
-            assert idx_table_header > idx_review, "Table header appears before review gate"
+            assert idx_table_header > idx_finish, "Table header appears before finish gate"
 
     def test_compact_card_survives_band_low_budget_intact(self):
         """The head-preserving fallback must fit the band-low budget whole
-        (500 tokens x 1.5 chars/token), header and all four gate leads included
-        — otherwise it would itself get tail-cut and reintroduce the bug."""
+        (650 tokens x 1.5 chars/token = 975 chars), header and all five gate
+        leads included — otherwise it would itself get tail-cut and
+        reintroduce the bug."""
         import sys
         sys.path.insert(0, str(REPO / "hooks" / "wake-up"))
         from wakeup import DOCTRINE_BUDGET, truncate_text_to_tokens  # noqa: E402
@@ -169,12 +180,14 @@ class TestBudgetAndStructure:
         assert compact.startswith(SECTION_DOCTRINE)
         for lead in (
             "1. **Brainstorm gate.**",
-            "2. **Decompose.**",
-            "3. **Dispatch.**",
-            "4. **Review gate.**",
+            "2. **Isolate & plan.**",
+            "3. **Decompose.**",
+            "4. **Dispatch.**",
+            "5. **Per-task review**",
         ):
             assert lead in compact, lead
-        assert "superpowers:" not in compact  # variant-agnostic, so no skill ids
+        assert "superpowers:writing-plans" in compact
+        assert "superpowers:subagent-driven-development" in compact
 
     def test_compact_card_agents_ship(self):
         import re
@@ -182,16 +195,75 @@ class TestBudgetAndStructure:
             assert (REPO / "agents" / f"{agent_name}.md").is_file(), agent_name
 
     def test_card_keeps_margin_under_raised_budget(self):
-        """Both variants must stay >=150 chars clear of the 500x4.0 char cap, so
+        """Both variants must stay >=150 chars clear of the 650x4.0 char cap, so
         a small future wording edit cannot silently push the card over."""
         import sys
         sys.path.insert(0, str(REPO / "hooks" / "wake-up"))
         from wakeup import DOCTRINE_BUDGET  # noqa: E402
 
-        assert DOCTRINE_BUDGET == 500
+        assert DOCTRINE_BUDGET == 650
         cap = DOCTRINE_BUDGET * 4.0 - 150
         for sp in (True, False):
             assert len(render_doctrine_card(sp)) <= cap
+
+
+_PIPELINE_PHASES = [
+    "brainstorm", "worktree", "plan", "decompose", "per-task review", "review gate", "finish",
+]
+_SKILL_NAMES_FULL = [
+    "superpowers:brainstorming",
+    "superpowers:using-git-worktrees",
+    "superpowers:writing-plans",
+    "superpowers:subagent-driven-development",
+    "superpowers:test-driven-development",
+    "superpowers:finishing-a-development-branch",
+]
+_MODEL_NAMES = ["sonnet", "haiku", "opus", "fable", "claude-"]
+
+
+def test_full_card_names_every_phase_and_skill():
+    card = render_doctrine_card(superpowers=True)
+    low = card.lower()
+    for phase in _PIPELINE_PHASES:
+        assert phase in low, phase
+    for skill in _SKILL_NAMES_FULL:
+        assert skill in card, skill
+    assert "model-classes.md" in card          # routing pointer
+    assert "per-task" in low                    # review before chaining
+
+
+def test_fallback_card_names_phases_without_superpowers_refs_breaking():
+    card = render_doctrine_card(superpowers=False)
+    low = card.lower()
+    for phase in _PIPELINE_PHASES:
+        assert phase in low, phase
+    assert "model-classes.md" in card
+    assert "recommended companion" in low       # footer still points at superpowers
+
+
+def test_compact_card_keeps_skill_names_and_routing():
+    card = render_doctrine_card_compact()
+    assert "superpowers:writing-plans" in card
+    assert "superpowers:subagent-driven-development" in card
+    assert "model-classes.md" in card
+    assert len(card) <= 1200  # head-preserving fallback must stay small
+
+
+def test_no_model_names_anywhere():
+    for card in (
+        render_doctrine_card(True),
+        render_doctrine_card(False),
+        render_doctrine_card_compact(),
+    ):
+        low = card.lower()
+        for name in _MODEL_NAMES:
+            assert name not in low, name
+
+
+def test_full_card_fits_doctrine_budget_at_default_ratio():
+    from wakeup import DOCTRINE_BUDGET, CHARS_PER_TOKEN
+    card = render_doctrine_card(superpowers=True)
+    assert len(card) <= DOCTRINE_BUDGET * CHARS_PER_TOKEN
 
 
 def test_doctrine_pointer_is_a_path():

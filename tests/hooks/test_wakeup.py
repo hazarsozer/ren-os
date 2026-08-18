@@ -1094,9 +1094,10 @@ class TestStructuredSections:
         assert segment.startswith(wakeup.SECTION_DOCTRINE)
         for lead in (
             "1. **Brainstorm gate.**",
-            "2. **Decompose.**",
-            "3. **Dispatch.**",
-            "4. **Review gate.**",
+            "2. **Isolate & plan.**",
+            "3. **Decompose.**",
+            "4. **Dispatch.**",
+            "5. **Per-task review**",
         ):
             assert lead in segment, lead
         assert wakeup.DOCTRINE_POINTER in segment
@@ -1121,7 +1122,7 @@ class TestStructuredSections:
 
         assert wakeup.SECTION_DOCTRINE in out
         assert "1. **Brainstorm gate.**" in out  # gate 1 survived
-        assert "4. **Review gate.**" in out       # gate 4 survived
+        assert "6. **Review gate.**" in out       # gate 6 survived
         assert out.startswith("## RenOS wake-up context")  # seed header survived
         assert any("over budget" in r.message for r in caplog.records)
 
@@ -1345,10 +1346,16 @@ class TestStructuredSections:
 
         assert "continues in" not in payload
 
-    def test_all_four_structured_sections_get_pointer_lines_when_oversized(self, project):
+    def test_all_four_structured_sections_get_pointer_lines_when_oversized(self, project, monkeypatch):
         # Sections 1-4 (identity, overview, L1, L2) each carry their own
         # wiki-relative pointer when truncated; extras are unaffected (they
-        # already show their rel-path as a `#### {rel}` heading).
+        # already show their rel-path as a `#### {rel}` heading). This test
+        # is about the per-section `_inject_section` pointer mechanism, not
+        # the #71 byte ceiling — all four sections truncated near their max
+        # budgets sums well past the harness-threshold default, so the
+        # ceiling is raised here to isolate what this test actually checks
+        # (the byte-ceiling cascade itself is covered by TestByteCeiling).
+        monkeypatch.setenv("REN_WAKEUP_BYTE_CEILING", "100000")
         _write(project["project_dir"].parent.parent / "identity.md", "---\ntype: identity\n---\n" + ("a" * 5000))
         _write(project["project_dir"] / "overview.md", "b" * 5000)
         _write(project["project_dir"] / "l1" / "session-001.md", _model_stamped("c" * 10000))
@@ -1381,8 +1388,10 @@ class TestStructuredSections:
         # header. Confirms the header now appears immediately before the
         # suggestion content (join is "\n\n".join, so the header and the
         # first line of suggestion_line()'s output are separated only by
-        # the section-join blank line) and sits between routines (section
-        # 5) and extras (section 7), matching schema order.
+        # the section-join blank line). #71 (criticality-first reorder):
+        # pending now sits ahead of routines and extras (and every other
+        # content section) — waiting-on-you items are the most actionable
+        # thing in the payload.
         from lib.memory.queue import Proposal, propose
 
         _write(project["project_dir"] / "l1" / "session-001.md", _model_stamped("L1 content"))
@@ -1403,7 +1412,7 @@ class TestStructuredSections:
         routines_idx = payload.index(wakeup.SECTION_ROUTINES)
         pending_idx = payload.index(wakeup.SECTION_PENDING)
         extras_idx = payload.index(wakeup.SECTION_EXTRAS)
-        assert routines_idx < pending_idx < extras_idx
+        assert pending_idx < routines_idx < extras_idx
 
     def test_no_pending_header_when_nothing_pending(self, project):
         _write(project["project_dir"] / "l1" / "session-001.md", _model_stamped("L1 content"))
@@ -1411,6 +1420,284 @@ class TestStructuredSections:
         payload = wakeup.compose_wake_up_context(cwd=project["cwd"], wiki_root=wiki_root(), session="sess-1")
 
         assert wakeup.SECTION_PENDING not in payload
+
+
+# --------------------------------------------------------- byte ceiling (#71)
+
+
+_OPEN_WORK_MODEL_STAMPED = (
+    '---\ntitle: "Open work"\ntype: open-work\nschema_version: 1\nproject: demo-project\n'
+    'ren_write_id: "w-test"\nren_writer: "llm-auto"\nren_trust: "model"\n---\n\n'
+    "# Open work\n\n## Open\n\n- [ ] wire the loader — ptr:issue:#42 (opened 2026-08-01)\n"
+)
+
+
+def _populate_everything(project):
+    """Fill every section compose_wake_up_context can produce: pending,
+    identity, overview, open work, L1, L2, routines, extras."""
+    from lib.memory.queue import Proposal, propose
+
+    _write(project["project_dir"].parent.parent / "identity.md", "---\ntype: identity\n---\n# About Friend\n\nBuilds things.\n")
+    _write(project["project_dir"] / "overview.md", "# demo-project\n\nA demo project.\n")
+    _write(project["project_dir"] / "open-work.md", _OPEN_WORK_MODEL_STAMPED)
+    _write(project["project_dir"] / "l1" / "session-001.md", _model_stamped("L1 content"))
+    _write(project["project_dir"] / "map.md", "# demo-project — knowledge map\n## Knowledge\n- uses FastAPI\n")
+    _write(
+        project["project_dir"].parent.parent / "routines" / "r1.md",
+        '---\ntype: routine-spec\nname: r1\ntrigger_type: manual\nlinked_repo: demo\n---\n',
+    )
+    _write(project["project_dir"].parent.parent / "extra.md", "# Extra\n\nsome extra content")
+    propose(Proposal(
+        op="ADD", page="global/rule.md", content="r", reason="t",
+        producer="promotion", writer="human", session="s1",
+    ))
+
+
+def _section_body(text: str, header: str) -> str:
+    """Slice `text` from `header` to the next '## ' header (or end)."""
+    start = text.index(header)
+    end = text.find("\n## ", start + len(header))
+    return text[start:end] if end != -1 else text[start:]
+
+
+class TestByteCeiling:
+    def test_section_order_is_criticality_first(self, project):
+        _populate_everything(project)
+
+        out = wakeup.compose_wake_up_context(cwd=project["cwd"], wiki_root=wiki_root(), session="sess-order")
+
+        expected = [
+            n for n in (
+                wakeup.SECTION_DOCTRINE, wakeup.SECTION_PENDING, wakeup.SECTION_IDENTITY,
+                wakeup.SECTION_OVERVIEW, wakeup.SECTION_OPENWORK, wakeup.SECTION_L1,
+                wakeup.SECTION_L2, wakeup.SECTION_EXTRAS,
+            ) if n in out
+        ]
+        positions = {name: out.index(name) for name in expected}
+        ordered = sorted(positions, key=positions.get)
+        assert ordered == expected
+
+    def test_sentinel_is_second_line(self, project):
+        _write(project["project_dir"] / "l1" / "session-001.md", _model_stamped("L1 content"))
+
+        out = wakeup.compose_wake_up_context(cwd=project["cwd"], wiki_root=wiki_root(), session="sess-sentinel")
+
+        assert out.splitlines()[1] == wakeup.SENTINEL_LINE
+
+    def test_byte_ceiling_respected(self, project, monkeypatch):
+        _populate_everything(project)
+        _write(project["project_dir"].parent.parent / "extra.md", "x " * 4000)
+        monkeypatch.setenv("REN_WAKEUP_BYTE_CEILING", "4000")
+
+        out = wakeup.compose_wake_up_context(cwd=project["cwd"], wiki_root=wiki_root(), session="sess-ceiling")
+
+        assert len(out.encode("utf-8")) <= 4000
+
+    def test_cascade_degrades_extras_before_any_other_section(self, project, monkeypatch):
+        _populate_everything(project)
+        _write(project["project_dir"].parent.parent / "extra.md", "x " * 4000)
+
+        full = wakeup.compose_wake_up_context(cwd=project["cwd"], wiki_root=wiki_root(), session="sess-full")
+        # A ceiling just under the unceilinged size, but comfortably above
+        # what remains once extras degrade to pointer-only lines.
+        full_bytes = len(full.encode("utf-8"))
+        ceiling = full_bytes - 500
+        assert ceiling > 0, "precondition: extras must be large enough to matter"
+        monkeypatch.setenv("REN_WAKEUP_BYTE_CEILING", str(ceiling))
+
+        out = wakeup.compose_wake_up_context(cwd=project["cwd"], wiki_root=wiki_root(), session="sess-cascade")
+
+        assert wakeup.SECTION_EXTRAS in out
+        assert "#### " in out.split(wakeup.SECTION_EXTRAS)[1]
+
+        for name in (wakeup.SECTION_PENDING, wakeup.SECTION_OPENWORK, wakeup.SECTION_L1, wakeup.SECTION_L2):
+            if name in full:
+                assert _section_body(full, name) == _section_body(out, name)
+
+    def test_cascade_never_touches_doctrine_pending_openwork(self, project, monkeypatch):
+        _populate_everything(project)
+        _write(project["project_dir"].parent.parent / "extra.md", "x " * 4000)
+
+        full = wakeup.compose_wake_up_context(cwd=project["cwd"], wiki_root=wiki_root(), session="sess-full2")
+        monkeypatch.setenv("REN_WAKEUP_BYTE_CEILING", "2500")  # brutal ceiling
+
+        out = wakeup.compose_wake_up_context(cwd=project["cwd"], wiki_root=wiki_root(), session="sess-brutal")
+
+        assert wakeup.SECTION_DOCTRINE in out
+        if wakeup.SECTION_PENDING in full:
+            assert wakeup.SECTION_PENDING in out
+        if wakeup.SECTION_OPENWORK in full:
+            assert wakeup.SECTION_OPENWORK in out
+
+    def test_instrumentation_records_final_post_cascade_byte_size(self, project, monkeypatch):
+        _populate_everything(project)
+        _write(project["project_dir"].parent.parent / "extra.md", "x " * 4000)
+        monkeypatch.setenv("REN_WAKEUP_BYTE_CEILING", "4000")
+
+        out = wakeup.compose_wake_up_context(cwd=project["cwd"], wiki_root=wiki_root(), session="sess-instrument")
+
+        events = collect.read(kind=collect.KIND_INJECTED_BYTES)
+        matching = [e for e in events if e.get("session") == "sess-instrument"]
+        assert matching, "expected an instrumentation event for this session"
+        assert matching[-1]["bytes"] == len(out.encode("utf-8"))
+
+    # ----------------------------------------------------- review fix-ups
+
+    def test_multi_section_truncation_still_meets_ceiling(self, project, monkeypatch):
+        """Review finding #1: a ceiling that forces SEVERAL cascade-order
+        sections to be truncated (not fully dropped) in one walk used to
+        leave the payload slightly OVER ceiling — each truncated section's
+        trailing note (`_CASCADE_TRUNCATION_NOTE`) was appended AFTER the
+        shrink budget was computed and never deducted from it, and there was
+        no re-measure to catch the residual. Build identity/overview/L1
+        large enough that, after extras+routines+L2 are dropped, all three
+        still need truncating (not dropping) to fit — the exact multi-
+        truncation path the original bug needed."""
+        _write(project["project_dir"].parent.parent / "identity.md", "---\ntype: identity\n---\n# About Friend\n\n" + ("id " * 800))
+        _write(project["project_dir"] / "overview.md", "# demo-project\n\n" + ("ov " * 800))
+        _write(project["project_dir"] / "l1" / "session-001.md", _model_stamped("l1 " * 1600))
+        _write(project["project_dir"] / "map.md", "# demo-project — knowledge map\n" + ("l2 " * 1600))
+        _write(
+            project["project_dir"].parent.parent / "routines" / "r1.md",
+            '---\ntype: routine-spec\nname: r1\ntrigger_type: manual\nlinked_repo: demo\n---\n' + ("r " * 200),
+        )
+
+        monkeypatch.setenv("REN_WAKEUP_BYTE_CEILING", "8000")
+        out = wakeup.compose_wake_up_context(cwd=project["cwd"], wiki_root=wiki_root(), session="sess-multi")
+
+        assert len(out.encode("utf-8")) <= 8000
+        # Precondition: this really did exercise the multi-truncation path
+        # (several sections truncated-not-dropped), not just a single drop.
+        truncated_sections = sum(
+            1 for h in (wakeup.SECTION_IDENTITY, wakeup.SECTION_OVERVIEW, wakeup.SECTION_L1)
+            if h in out and "*(truncated for size" in out.split(h, 1)[1].split("\n## ", 1)[0]
+        )
+        assert truncated_sections >= 2, "precondition: expected several sections truncated, not just dropped"
+
+    def test_pending_and_open_work_survive_band_low_final_guard(self, project, monkeypatch):
+        """Review finding #2: the pre-existing #48 token guard (which runs
+        BEFORE the byte cascade) used to only protect `"_head"`/`"_doctrine"`
+        — with pending now the FIRST content section (post-#71 reorder),
+        `truncate_text_to_tokens`'s tail-keeping made it the first casualty
+        whenever the guard fired. A band-low calibration ratio plus a small
+        max_tokens forces the guard; pending and open work must both survive
+        it with no marker needed (they are simply never swept into the
+        tail-truncatable body)."""
+        _write(project["project_dir"] / "l1" / "session-001.md", _model_stamped("l1 " * 2000))
+        _write(
+            project["project_dir"] / "open-work.md",
+            _OPEN_WORK_MODEL_STAMPED,
+        )
+        from lib.memory.queue import Proposal, propose
+        propose(Proposal(
+            op="ADD", page="global/rule.md", content="r", reason="t",
+            producer="promotion", writer="human", session="s1",
+        ))
+        monkeypatch.setattr(wakeup, "_calibrated_chars_per_token", lambda: 1.5)
+
+        out = wakeup.compose_wake_up_context(
+            cwd=project["cwd"], wiki_root=wiki_root(), session="sess-guard", max_tokens=500,
+        )
+
+        assert wakeup.SECTION_PENDING in out
+        assert wakeup.SECTION_OPENWORK in out
+
+    def test_cascade_dropped_section_page_absent_from_log_surface(self, project, monkeypatch):
+        """Review finding #3: `surfaced_pages` was finalized BEFORE the byte
+        cascade ran, so a page whose entire section the cascade dropped was
+        still recorded as surfaced — an unreceived page counting as a
+        recall hit poisons the honest-miss metric. A small ceiling that
+        forces the L1 section to be dropped entirely must exclude the L1
+        session file from `miss_log.log_surface`'s recorded pages, while an
+        untouched/merely-truncated section's pages still count."""
+        _write(project["project_dir"] / "l1" / "session-001.md", _model_stamped("L1 content"))
+        _write(project["project_dir"] / "map.md", "# demo-project — knowledge map\n" + ("l2 " * 1600))
+
+        monkeypatch.setenv("REN_WAKEUP_BYTE_CEILING", "2500")
+        out = wakeup.compose_wake_up_context(cwd=project["cwd"], wiki_root=wiki_root(), session="sess-drop-log")
+
+        assert wakeup.SECTION_L1 not in out, "precondition: L1 must have been fully dropped by the cascade"
+
+        surfaces = collect.read(kind=collect.KIND_WAKEUP_SURFACE)
+        matching = [e for e in surfaces if e.get("session") == "sess-drop-log"]
+        assert matching, "expected a surface record for this session"
+        pages = set(matching[-1]["pages"])
+        assert "projects/demo-project/l1/session-001.md" not in pages
+        assert "projects/demo-project/map.md" in pages
+
+    def test_token_guard_path_still_meets_byte_ceiling_with_protections(self, project, caplog):
+        """Review round 3 HIGH: when the #48 token guard actually fires (a
+        realistic wiki with every section near its max budget, at DEFAULT
+        settings — max_tokens=5000, ratio 4.0, ceiling 9500), it used to
+        collapse the body into a single `"_misc"`-keyed blob BEFORE the byte
+        cascade ran. `_apply_byte_ceiling` only shrinks `SECTION_*` keys in
+        `_CASCADE_ORDER`, found nothing left to touch on that blob, and
+        returned the payload untouched — 2.1x the ceiling in the reviewer's
+        repro. No env overrides here: this must reproduce and fix the DEFAULT
+        path, not a monkeypatched one."""
+        import logging
+
+        _write(project["project_dir"].parent.parent / "identity.md", "---\ntype: identity\n---\n# About Friend\n\n" + ("id " * 700))
+        _write(project["project_dir"] / "overview.md", "# demo-project\n\n" + ("ov " * 900))
+        _write(project["project_dir"] / "l1" / "session-001.md", _model_stamped("l1 " * 1800))
+        _write(project["project_dir"] / "map.md", "# demo-project — knowledge map\n" + ("l2 " * 1800))
+        _write(
+            project["project_dir"].parent.parent / "routines" / "r1.md",
+            '---\ntype: routine-spec\nname: r1\ntrigger_type: manual\nlinked_repo: demo\n---\n' + ("r " * 700),
+        )
+        for i in range(3):
+            _write(project["project_dir"].parent.parent / f"extra{i}.md", f"# Extra{i}\n\n" + ("ex " * 900))
+        _write(project["project_dir"] / "open-work.md", _OPEN_WORK_MODEL_STAMPED)
+        from lib.memory.queue import Proposal, propose
+        propose(Proposal(
+            op="ADD", page="global/rule.md", content="r", reason="t",
+            producer="promotion", writer="human", session="s1",
+        ))
+
+        with caplog.at_level(logging.WARNING):
+            out = wakeup.compose_wake_up_context(cwd=project["cwd"], wiki_root=wiki_root(), session="sess-guard-cascade")
+
+        assert any("over budget" in r.message for r in caplog.records), (
+            "precondition: the #48 token guard must actually have fired"
+        )
+        assert len(out.encode("utf-8")) <= wakeup.WAKEUP_BYTE_CEILING_DEFAULT
+        assert wakeup.SECTION_PENDING in out
+        assert wakeup.SECTION_OPENWORK in out
+        assert wakeup.SECTION_DOCTRINE in out
+
+    def test_token_guard_path_filters_dropped_section_pages_from_log_surface(self, project, monkeypatch):
+        """Review round 3 LOW (folded into the HIGH fix): on the same guard-
+        fires path, a section the cascade fully drops must not leave its
+        page in `miss_log.log_surface`'s recorded pages — the same honesty
+        guarantee already covered for the pure-byte-ceiling path
+        (`test_cascade_dropped_section_page_absent_from_log_surface`), now
+        exercised through the token-guard path instead. `_CASCADE_ORDER`
+        processes `SECTION_L2` before `SECTION_L1`, so under a tight
+        `max_tokens` (with the byte ceiling loosened out of the way) a large
+        L2 map gets truncated (still present) while a tiny L1 session file's
+        remaining share of the shrunk budget bottoms out and it is dropped
+        entirely — exactly the asymmetric outcome (one section survives
+        truncated, one is fully gone) this filtering exists for."""
+        _write(project["project_dir"] / "l1" / "session-001.md", _model_stamped("tiny l1"))
+        _write(project["project_dir"] / "map.md", "# demo-project — knowledge map\n" + ("l2 " * 2000))
+
+        # Loosen the byte ceiling so the TOKEN guard is the binding
+        # constraint being exercised here, not the byte one (already covered
+        # by the sibling test above).
+        monkeypatch.setenv("REN_WAKEUP_BYTE_CEILING", "100000")
+        out = wakeup.compose_wake_up_context(
+            cwd=project["cwd"], wiki_root=wiki_root(), session="sess-guard-drop", max_tokens=700,
+        )
+
+        assert wakeup.SECTION_L1 not in out, "precondition: L1 must have been fully dropped"
+
+        surfaces = collect.read(kind=collect.KIND_WAKEUP_SURFACE)
+        matching = [e for e in surfaces if e.get("session") == "sess-guard-drop"]
+        assert matching, "expected a surface record for this session"
+        pages = set(matching[-1]["pages"])
+        assert "projects/demo-project/l1/session-001.md" not in pages
+        if wakeup.SECTION_L2 in out:
+            assert "projects/demo-project/map.md" in pages
 
 
 # --------------------------------------------------------------- no-LLM scan
@@ -2284,7 +2571,11 @@ class TestOpenWorkSection:
         assert "done thing" not in payload
         assert "ancient thing" not in payload
 
-    def test_section_sits_between_l1_and_l2(self, project):
+    def test_section_sits_between_overview_and_l1(self, project):
+        # #71 (criticality-first reorder): open work moved up to directly
+        # after the overview block — still ahead of L2 — so continuity
+        # ("what's still open") reads before "where to find knowledge".
+        _write(project["project_dir"] / "overview.md", "# demo-project\n\nA demo project.\n")
         _write(project["project_dir"] / "l1" / "session-001.md", _model_stamped("L1 content"))
         _write(project["project_dir"] / "map.md", "# demo-project — knowledge map\n## Knowledge\n- uses FastAPI\n")
         _write(project["project_dir"] / "open-work.md", self._ledger(self._open_body()))
@@ -2293,8 +2584,9 @@ class TestOpenWorkSection:
             cwd=project["cwd"], wiki_root=wiki_root(), session="sess-ow"
         )
 
-        assert payload.index(wakeup.SECTION_L1) < payload.index(wakeup.SECTION_OPENWORK)
-        assert payload.index(wakeup.SECTION_OPENWORK) < payload.index(wakeup.SECTION_L2)
+        assert payload.index(wakeup.SECTION_OVERVIEW) < payload.index(wakeup.SECTION_OPENWORK)
+        assert payload.index(wakeup.SECTION_OPENWORK) < payload.index(wakeup.SECTION_L1)
+        assert payload.index(wakeup.SECTION_L1) < payload.index(wakeup.SECTION_L2)
 
     def test_absent_page_omits_header(self, project):
         _write(project["project_dir"] / "l1" / "session-001.md", _model_stamped("L1 content"))

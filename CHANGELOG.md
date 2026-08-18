@@ -1,5 +1,45 @@
 # Changelog
 
+## [0.7.9] - 2026-08-18 — "doctrine holds"
+
+The proof-case train: run end-to-end through the full canonical route
+(brainstorm → worktree → writing-plans → subagent-driven development with
+per-task reviews on class-routed models → whole-branch review → finish),
+fixing the three gaps that let sessions drift from that route in the
+first place. Plan: `docs/superpowers/plans/2026-08-18-doctrine-holds-train.md`.
+
+- **#69 — the guards close the generator's bypasses.** `_GIT_PUSH_RE` and
+  `_RM_RE` treat `\n` as a command separator (matching the bash-wiki-write
+  check), and `_has_force_refspec` strips shell quotes AND leading
+  backslashes before the `+` test — `'+main'`, `"+main"`, and `\+main`
+  are all forced updates once the shell is done with them. The 10 strict
+  xfails pinning these in the #68 generated corpus flipped to plain green
+  assertions, plus a backslash shape added. Known tradeoff (recorded
+  ruling): quoted text containing a newline followed by `git push …` or
+  `rm …` — e.g. a commit-message heredoc quoting those commands — now
+  triggers the guards; reword the text or use a plain `-m` message.
+- **#70 — the doctrine card carries the whole pipeline.** Both card
+  variants (full and compact fallback) now render the seven-phase route —
+  brainstorm, isolate & plan (worktree + `superpowers:writing-plans`),
+  decompose, dispatch (`superpowers:subagent-driven-development`,
+  test-first, class-routed subagents per `doctrine/model-classes.md`),
+  per-task review, the `ren-reviewer` gate, finish — with skill names
+  preserved even in the compact variant (742 chars, survives band-low
+  ratios intact). `DOCTRINE_BUDGET` 500 → 650 so the full card actually
+  fits its own budget. Model names never appear; classes only (test-pinned).
+- **#71 — wake-up respects the harness byte cliff.** The composer renders
+  to a byte ceiling (default 9,500, `REN_WAKEUP_BYTE_CEILING` override)
+  under the harness's ~10KB persist threshold, orders sections by
+  irreplaceability (doctrine → Waiting-on-you → identity/overview → open
+  work → L1 → L2 → routines → extras), degrades tail-first when over
+  (extras to pointers, then dropped, then one section up at a time —
+  protected sections never touched), and opens with a sentinel line
+  telling any session that does see a persisted-file preview to Read the
+  full file first. The #48 token guard now folds into the same keyed
+  cascade instead of collapsing the body (whole-branch review HIGH), and
+  `log_surface` only records pages whose content actually survived the
+  final payload — no more fake recall hits from dropped sections.
+
 ## [0.7.8] - 2026-08-18 — "sharper guards"
 
 The post-0.7.7 fix train: every open issue was first verified against the

@@ -115,6 +115,16 @@ def test_refspec_plus_head_colon_main_force_push_blocked(git_repo, capsys):
     assert rc == 2
 
 
+def test_backslash_escaped_plus_refspec_force_push_blocked(git_repo, capsys):
+    # Review round 3 LOW (#71): the shell strips a leading backslash before
+    # git ever sees the refspec, so `git push origin \+main` forces the same
+    # update as `git push origin +main` — `_has_force_refspec` must strip
+    # the backslash, not just surrounding quotes, before its `+` test.
+    rc = pre_push_scan.check_push("git push origin \\+main", str(git_repo))
+    assert rc == 2
+    assert "force" in capsys.readouterr().err.lower()
+
+
 def test_rebase_then_plain_push_allowed(git_repo, clean_path_env):
     # M8: the rewrite check applies only to the push SEGMENT. A local rebase
     # followed by a plain push is safe (git rejects it if non-ff) and must not
