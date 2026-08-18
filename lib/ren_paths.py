@@ -40,6 +40,11 @@ must NOT use it (issue #13: import-time freezing bypasses test HOME isolation);
 WIKI_ROOT_ENV = "REN_WIKI_ROOT"
 """Explicit env-var override for the wiki path (highest-precedence F1 tier)."""
 
+_STATE_DIR_NAME = ".ren"
+"""Name of the framework-state directory under the wiki root. The `.ren`
+semantics live here only — `state_dir()` and `under_ren_state()` share it
+(issue #31)."""
+
 WIKI_ROOT_PLUGIN_OPTION = "CLAUDE_PLUGIN_OPTION_WIKIROOT"
 """Claude plugin option (`userConfig.wikiRoot`) exported as an env var by the host.
 Honored on its own — independent of `REN_FRAMEWORK_ROOT` — so a friend who configures
@@ -108,9 +113,13 @@ DEFAULT_PLUGIN_DATA = Path.home() / ".claude" / "plugins" / "data" / "renos"
 
 
 def plugin_data_dir() -> Path:
-    """Return the plugin-data dir for regenerable artifacts (snapshots, code-maps).
+    """Return the plugin-data dir for regenerable artifacts (code-maps, tarballs).
 
-    Honors CLAUDE_PLUGIN_DATA; falls back to the same path the shell scripts use.
+    Honors CLAUDE_PLUGIN_DATA; falls back to `~/.claude/plugins/data/renos`.
+    NOT the wiki-snapshot root: the update scripts resolve that as
+    `${REN_SNAPSHOT_ROOT:-~/.claude/plugins/data/renos}` and deliberately
+    ignore CLAUDE_PLUGIN_DATA (#34 — the harness-rendered value points at a
+    directory no snapshot has ever landed in).
     """
     override = os.environ.get(PLUGIN_DATA_ENV, "").strip()
     if override:
@@ -413,7 +422,22 @@ def state_dir() -> Path:
     single portable root per Obsidian-invariant (RenOS 0.2 scope v2.1) rather than
     splitting state across the framework root and the wiki root.
     """
-    return wiki_root() / ".ren"
+    return wiki_root() / _STATE_DIR_NAME
+
+
+def under_ren_state(path: Path, wiki_root: Path) -> bool:
+    """True when `path` is `wiki_root/.ren` or any descendant of it.
+
+    Pure path logic — no filesystem access, works on non-existent paths.
+    Only the `.ren` directly under `wiki_root` counts as framework state
+    (immutable, incl. per-write snapshots); a `.ren` buried deeper in the
+    tree is ordinary wiki content. Shared predicate for scanners that must
+    skip framework state (issue #31) — do not re-implement locally."""
+    try:
+        rel_parts = path.relative_to(wiki_root).parts
+    except ValueError:
+        return False
+    return bool(rel_parts) and rel_parts[0] == _STATE_DIR_NAME
 
 
 class PathTraversalError(ValueError):

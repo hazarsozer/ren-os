@@ -623,6 +623,46 @@ def test_wrap_screen_empty_session_is_graceful_minimal(wiki):
     assert "- (none)" in screen
 
 
+def test_wrap_screen_unchanged_rerun_says_already_saved(wiki):
+    """#49: an unchanged same-session re-run dedups the L1 propose to the
+    synthetic, never-persisted `noop-duplicate` queue entry — its qid is
+    absent from disk, so the screen used to render the alarming
+    "- session summary: (not found)". It must say the truth instead:
+    unchanged (already saved)."""
+    narrative = "---\n---\n\n# S\n\nNothing new since last wrap.\n"
+    first = wrap_session(narrative, [], session="s-noop-rerun")
+    assert queue.get(first["l1_qid"]).status == "applied"
+
+    second = wrap_session(narrative, [], session="s-noop-rerun")
+    assert second["l1_status"] == "noop-duplicate"
+
+    screen = render_wrap_screen(second, session="s-noop-rerun")
+    assert "- session summary: unchanged (already saved)" in screen
+    assert "(not found)" not in screen
+
+
+def test_wrap_screen_missing_qid_without_noop_status_still_not_found(wiki):
+    """#49 regression guard: a genuinely missing qid — no `l1_status` key at
+    all (old callers/fixtures), or a non-noop status — still renders the
+    honest "(not found)" line."""
+    base = {
+        "l1_qid": "q-does-not-exist",
+        "applied": [],
+        "held": [],
+        "gated_out": [],
+        "refused": [],
+        "fail_closed": False,
+    }
+
+    screen = render_wrap_screen(base, session="sess-nothing")
+    assert "- session summary: (not found)" in screen
+
+    screen = render_wrap_screen(
+        {**base, "l1_status": "applied"}, session="sess-nothing",
+    )
+    assert "- session summary: (not found)" in screen
+
+
 def test_wrap_screen_writes_nothing(wiki):
     session = "sess-screen-3"
     result = wrap_session(

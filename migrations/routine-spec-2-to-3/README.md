@@ -28,5 +28,5 @@ An **empty** `allowlist.paths` is a **valid** v3 spec — but it means the routi
 
 ## Rollback
 
-- Snapshot at runtime: `${CLAUDE_PLUGIN_DATA}/wiki-snapshots/v2-pre-update-<ts>/` (same convention as 1-to-2).
-- Manual restore: `cp -a $CLAUDE_PLUGIN_DATA/wiki-snapshots/<latest>/. $REN_WIKI_ROOT/`
+- Snapshot at runtime: `~/.claude/plugins/data/renos/wiki-snapshots/v2-pre-update-<ts>/` (same convention as 1-to-2).
+- Manual restore: `cp -a ~/.claude/plugins/data/renos/wiki-snapshots/<latest>/. $REN_WIKI_ROOT/`

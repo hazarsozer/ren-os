@@ -34,6 +34,7 @@ from lib.ren_paths import (
     handle,
     safe_join,
     state_dir,
+    under_ren_state,
     validate_handle,
     wiki_root,
 )
@@ -295,6 +296,32 @@ def test_state_dir_follows_wiki_root_tier_precedence(clean_path_env):
         clean_path_env.setenv("REN_FRAMEWORK_ROOT", fw)
         clean_path_env.setenv("REN_WIKI_ROOT", wiki)
         assert state_dir() == Path(wiki) / ".ren"
+
+
+# --- Issue #31: under_ren_state() -------------------------------------------
+# Pure path predicate — no filesystem access, works on non-existent paths.
+
+
+def test_under_ren_state_true_for_snapshot_descendant():
+    wiki = Path("/w")
+    assert under_ren_state(wiki / ".ren" / "snapshots" / "w-X" / "map.md", wiki)
+
+
+def test_under_ren_state_true_for_state_dir_itself():
+    wiki = Path("/w")
+    assert under_ren_state(wiki / ".ren", wiki)
+
+
+def test_under_ren_state_false_for_live_map():
+    wiki = Path("/w")
+    assert not under_ren_state(wiki / "projects" / "p" / "map.md", wiki)
+
+
+def test_under_ren_state_false_for_nested_dot_ren():
+    # Only `wiki_root/.ren` is framework state; a `.ren` directory buried
+    # deeper in the tree is ordinary wiki content (issue #31 — pinned).
+    wiki = Path("/w")
+    assert not under_ren_state(wiki / "projects" / "p" / ".ren" / "x.md", wiki)
 
 
 # --- Task 0.2: safe_join() traversal guard ----------------------------------

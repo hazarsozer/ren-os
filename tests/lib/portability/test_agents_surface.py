@@ -15,6 +15,7 @@ import pytest
 from lib.portability.agents_surface import (
     CLAUDE_TOKENS,
     lint_generated_surfaces,
+    lint_generated_surfaces_partitioned,
     lint_harness_neutral,
     render_agents_md,
     write_agents_md,
@@ -164,6 +165,54 @@ def test_lint_generated_surfaces_flags_agents_md_itself_if_dirty(tmp_path):
 
     report = lint_generated_surfaces(wiki_root, repo_root)
     assert str(repo_root / "AGENTS.md") in report
+
+
+def test_lint_generated_surfaces_skips_ren_state_snapshot_copies(tmp_path):
+    """Issue #33: snapshot copies under `wiki_root/.ren/` are immutable framework
+    state, not live surfaces — they must be excluded from the lint entirely."""
+    wiki_root = tmp_path / "wiki"
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+
+    snapshot_map = _write(
+        wiki_root, ".ren/snapshots/w-X/projects/demo/map.md",
+        "---\ntype: l2-map\nproject: demo\n---\n# demo map\n\nRecalled via /ren:recall in Claude Code.\n",
+    )
+
+    report = lint_generated_surfaces(wiki_root, repo_root)
+    assert str(snapshot_map) not in report
+    assert report == {}
+
+    partitioned = lint_generated_surfaces_partitioned(wiki_root, repo_root)
+    assert partitioned == {"agents_md": {}, "l2_maps": {}}
+
+
+def test_lint_generated_surfaces_partitioned_separates_surface_kinds(tmp_path):
+    """Issue #33: the doctor needs to tell an AGENTS.md hit (warn) from an
+    l2-map content hit (info) — the partitioned shape carries that split."""
+    wiki_root = tmp_path / "wiki"
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+
+    map_path = _write(
+        wiki_root, "projects/demo/map.md",
+        "---\ntype: l2-map\nproject: demo\n---\n# demo map\n\nBuilt for use with Claude Code.\n",
+    )
+    agents_md = _write(repo_root, "AGENTS.md", "# AGENTS.md\n\nMaintained by Claude Code.\n")
+
+    partitioned = lint_generated_surfaces_partitioned(wiki_root, repo_root)
+    assert set(partitioned) == {"agents_md", "l2_maps"}
+    assert str(agents_md) in partitioned["agents_md"]
+    assert "claude" in partitioned["agents_md"][str(agents_md)]
+    assert str(map_path) in partitioned["l2_maps"]
+    assert "claude" in partitioned["l2_maps"][str(map_path)]
+    # No cross-contamination between the two partitions.
+    assert str(agents_md) not in partitioned["l2_maps"]
+    assert str(map_path) not in partitioned["agents_md"]
+
+    # The flat wrapper stays backward-compatible: the merge of both partitions.
+    flat = lint_generated_surfaces(wiki_root, repo_root)
+    assert flat == {**partitioned["agents_md"], **partitioned["l2_maps"]}
 
 
 # --- codex_read_proof.sh: static assertions only, never invoke codex -------

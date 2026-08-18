@@ -43,7 +43,7 @@ def wiki_and_plugin_data(tmp_path):
 
 def test_snapshot_creates_dir_and_copies_wiki(wiki_and_plugin_data):
     wiki, plugin_data = wiki_and_plugin_data
-    r = _run(["bash", str(_SNAPSHOT), "1.0.0"], REN_WIKI_ROOT=str(wiki), CLAUDE_PLUGIN_DATA=str(plugin_data))
+    r = _run(["bash", str(_SNAPSHOT), "1.0.0"], REN_WIKI_ROOT=str(wiki), REN_SNAPSHOT_ROOT=str(plugin_data))
     assert r.returncode == 0, r.stderr
     snap_path = Path(r.stdout.strip())
     assert snap_path.is_dir()
@@ -53,13 +53,13 @@ def test_snapshot_creates_dir_and_copies_wiki(wiki_and_plugin_data):
 
 def test_snapshot_logs_to_wiki_log(wiki_and_plugin_data):
     wiki, plugin_data = wiki_and_plugin_data
-    _run(["bash", str(_SNAPSHOT), "1.0.0"], REN_WIKI_ROOT=str(wiki), CLAUDE_PLUGIN_DATA=str(plugin_data))
+    _run(["bash", str(_SNAPSHOT), "1.0.0"], REN_WIKI_ROOT=str(wiki), REN_SNAPSHOT_ROOT=str(plugin_data))
     log_text = (wiki / "log.md").read_text(encoding="utf-8")
     assert "snapshot" in log_text
 
 
 def test_snapshot_missing_wiki_root_fails(tmp_path):
-    r = _run(["bash", str(_SNAPSHOT), "1.0.0"], REN_WIKI_ROOT=str(tmp_path / "nope"), CLAUDE_PLUGIN_DATA=str(tmp_path / "pd"))
+    r = _run(["bash", str(_SNAPSHOT), "1.0.0"], REN_WIKI_ROOT=str(tmp_path / "nope"), REN_SNAPSHOT_ROOT=str(tmp_path / "pd"))
     assert r.returncode == 2
 
 
@@ -68,7 +68,7 @@ def test_snapshot_prunes_beyond_retain(wiki_and_plugin_data):
     for _ in range(5):
         r = _run(
             ["bash", str(_SNAPSHOT), "1.0.0"],
-            REN_WIKI_ROOT=str(wiki), CLAUDE_PLUGIN_DATA=str(plugin_data),
+            REN_WIKI_ROOT=str(wiki), REN_SNAPSHOT_ROOT=str(plugin_data),
             CLAUDE_PLUGIN_OPTION_SNAPSHOTRETAIN="2",
         )
         assert r.returncode == 0, r.stderr
@@ -76,25 +76,78 @@ def test_snapshot_prunes_beyond_retain(wiki_and_plugin_data):
     assert len(remaining) <= 2
 
 
+# ----------------------------------------------------- snapshot root (issue #34)
+
+
+def test_snapshot_root_env_override_wins(wiki_and_plugin_data):
+    """REN_SNAPSHOT_ROOT is the single override for the snapshot root."""
+    wiki, plugin_data = wiki_and_plugin_data
+    r = _run(["bash", str(_SNAPSHOT), "1.0.0"], REN_WIKI_ROOT=str(wiki), REN_SNAPSHOT_ROOT=str(plugin_data))
+    assert r.returncode == 0, r.stderr
+    snap_path = Path(r.stdout.strip())
+    assert snap_path.is_dir()
+    assert snap_path.parent == plugin_data / "wiki-snapshots"
+
+
+def test_snapshot_default_root_ignores_claude_plugin_data(tmp_path):
+    """With REN_SNAPSHOT_ROOT unset, snapshots land under
+    $HOME/.claude/plugins/data/renos — never under CLAUDE_PLUGIN_DATA
+    (issue #34: the harness renders that var as a different dir than the
+    one real runs use, so relying on it splits the snapshot store)."""
+    wiki = tmp_path / "wiki"
+    wiki.mkdir()
+    (wiki / "log.md").write_text("# Wiki Log\n", encoding="utf-8")
+    home = tmp_path / "home"
+    home.mkdir()
+    decoy = tmp_path / "decoy-plugin-data"
+    r = _run(
+        ["bash", str(_SNAPSHOT), "1.0.0"],
+        REN_WIKI_ROOT=str(wiki), HOME=str(home), CLAUDE_PLUGIN_DATA=str(decoy),
+    )
+    assert r.returncode == 0, r.stderr
+    snap_path = Path(r.stdout.strip())
+    assert snap_path.parent == home / ".claude" / "plugins" / "data" / "renos" / "wiki-snapshots"
+    assert snap_path.is_dir()
+    assert not decoy.exists()
+
+
+def test_restore_list_default_root_ignores_claude_plugin_data(tmp_path):
+    home = tmp_path / "home"
+    home.mkdir()
+    decoy = tmp_path / "decoy-plugin-data"
+    r = _run(["bash", str(_RESTORE), "--list"], HOME=str(home), CLAUDE_PLUGIN_DATA=str(decoy))
+    assert r.returncode == 0
+    assert str(home / ".claude" / "plugins" / "data" / "renos" / "wiki-snapshots") in r.stdout
+
+
+def test_prune_default_root_ignores_claude_plugin_data(tmp_path):
+    home = tmp_path / "home"
+    home.mkdir()
+    decoy = tmp_path / "decoy-plugin-data"
+    r = _run(["bash", str(_PRUNE), "--dry-run"], HOME=str(home), CLAUDE_PLUGIN_DATA=str(decoy))
+    assert r.returncode == 0
+    assert str(home / ".claude" / "plugins" / "data" / "renos" / "wiki-snapshots") in r.stdout
+
+
 # --------------------------------------------------------------------- restore
 
 
 def test_restore_list_empty_when_no_snapshots(tmp_path):
-    r = _run(["bash", str(_RESTORE), "--list"], CLAUDE_PLUGIN_DATA=str(tmp_path / "pd"))
+    r = _run(["bash", str(_RESTORE), "--list"], REN_SNAPSHOT_ROOT=str(tmp_path / "pd"))
     assert r.returncode == 0
     assert "no snapshots" in r.stdout
 
 
 def test_restore_whole_restores_wiki(wiki_and_plugin_data):
     wiki, plugin_data = wiki_and_plugin_data
-    snap_r = _run(["bash", str(_SNAPSHOT), "1.0.0"], REN_WIKI_ROOT=str(wiki), CLAUDE_PLUGIN_DATA=str(plugin_data))
+    snap_r = _run(["bash", str(_SNAPSHOT), "1.0.0"], REN_WIKI_ROOT=str(wiki), REN_SNAPSHOT_ROOT=str(plugin_data))
     snap_path = snap_r.stdout.strip()
 
     (wiki / "identity.md").write_text("CORRUPTED", encoding="utf-8")
 
     r = _run(
         ["bash", str(_RESTORE), "--whole", snap_path],
-        REN_WIKI_ROOT=str(wiki), CLAUDE_PLUGIN_DATA=str(plugin_data),
+        REN_WIKI_ROOT=str(wiki), REN_SNAPSHOT_ROOT=str(plugin_data),
     )
     assert r.returncode == 0, r.stderr
     assert "restored from" in r.stdout
@@ -103,14 +156,14 @@ def test_restore_whole_restores_wiki(wiki_and_plugin_data):
 
 def test_restore_page_restores_single_file(wiki_and_plugin_data):
     wiki, plugin_data = wiki_and_plugin_data
-    snap_r = _run(["bash", str(_SNAPSHOT), "1.0.0"], REN_WIKI_ROOT=str(wiki), CLAUDE_PLUGIN_DATA=str(plugin_data))
+    snap_r = _run(["bash", str(_SNAPSHOT), "1.0.0"], REN_WIKI_ROOT=str(wiki), REN_SNAPSHOT_ROOT=str(plugin_data))
     snap_path = snap_r.stdout.strip()
 
     (wiki / "identity.md").write_text("CORRUPTED", encoding="utf-8")
 
     r = _run(
         ["bash", str(_RESTORE), "--page", snap_path, "identity.md"],
-        REN_WIKI_ROOT=str(wiki), CLAUDE_PLUGIN_DATA=str(plugin_data),
+        REN_WIKI_ROOT=str(wiki), REN_SNAPSHOT_ROOT=str(plugin_data),
     )
     assert r.returncode == 0, r.stderr
     assert "CORRUPTED" not in (wiki / "identity.md").read_text(encoding="utf-8")
@@ -120,7 +173,7 @@ def test_restore_whole_requires_valid_snapshot_dir(wiki_and_plugin_data):
     wiki, plugin_data = wiki_and_plugin_data
     r = _run(
         ["bash", str(_RESTORE), "--whole", "/does/not/exist"],
-        REN_WIKI_ROOT=str(wiki), CLAUDE_PLUGIN_DATA=str(plugin_data),
+        REN_WIKI_ROOT=str(wiki), REN_SNAPSHOT_ROOT=str(plugin_data),
     )
     assert r.returncode == 2
 
@@ -131,10 +184,10 @@ def test_restore_whole_requires_valid_snapshot_dir(wiki_and_plugin_data):
 def test_prune_dry_run_reports_without_deleting(wiki_and_plugin_data):
     wiki, plugin_data = wiki_and_plugin_data
     for _ in range(4):
-        _run(["bash", str(_SNAPSHOT), "1.0.0"], REN_WIKI_ROOT=str(wiki), CLAUDE_PLUGIN_DATA=str(plugin_data), CLAUDE_PLUGIN_OPTION_SNAPSHOTRETAIN="10")
+        _run(["bash", str(_SNAPSHOT), "1.0.0"], REN_WIKI_ROOT=str(wiki), REN_SNAPSHOT_ROOT=str(plugin_data), CLAUDE_PLUGIN_OPTION_SNAPSHOTRETAIN="10")
 
     before = list((plugin_data / "wiki-snapshots").glob("v*-pre-update-*"))
-    r = _run(["bash", str(_PRUNE), "1", "--dry-run"], CLAUDE_PLUGIN_DATA=str(plugin_data))
+    r = _run(["bash", str(_PRUNE), "1", "--dry-run"], REN_SNAPSHOT_ROOT=str(plugin_data))
     assert r.returncode == 0
     assert "dry-run" in r.stdout
     after = list((plugin_data / "wiki-snapshots").glob("v*-pre-update-*"))
@@ -144,9 +197,9 @@ def test_prune_dry_run_reports_without_deleting(wiki_and_plugin_data):
 def test_prune_actually_deletes_when_not_dry_run(wiki_and_plugin_data):
     wiki, plugin_data = wiki_and_plugin_data
     for _ in range(4):
-        _run(["bash", str(_SNAPSHOT), "1.0.0"], REN_WIKI_ROOT=str(wiki), CLAUDE_PLUGIN_DATA=str(plugin_data), CLAUDE_PLUGIN_OPTION_SNAPSHOTRETAIN="10")
+        _run(["bash", str(_SNAPSHOT), "1.0.0"], REN_WIKI_ROOT=str(wiki), REN_SNAPSHOT_ROOT=str(plugin_data), CLAUDE_PLUGIN_OPTION_SNAPSHOTRETAIN="10")
 
-    r = _run(["bash", str(_PRUNE), "1"], CLAUDE_PLUGIN_DATA=str(plugin_data))
+    r = _run(["bash", str(_PRUNE), "1"], REN_SNAPSHOT_ROOT=str(plugin_data))
     assert r.returncode == 0
     remaining = list((plugin_data / "wiki-snapshots").glob("v*-pre-update-*"))
     assert len(remaining) == 1

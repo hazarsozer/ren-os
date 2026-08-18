@@ -1,5 +1,45 @@
 # Changelog
 
+## [0.7.7] - 2026-08-18 — "quiet signals"
+
+The polish batch after the pre-handoff train: four long-open noise and
+paper-cut issues, sized in chat (no spec doc) and approved 2026-08-18.
+
+- **#49 — an unchanged wrap re-run says so.** `wrap_session`'s result now
+  carries `l1_status`; when the L1 dedups to the synthetic never-persisted
+  `noop-duplicate` entry, the wrap screen renders "session summary:
+  unchanged (already saved)" instead of the misleading "(not found)" —
+  which stays for genuinely missing entries.
+- **#29 — scrub stops calling code a credential.** The `password-pair`
+  pattern's value side now requires a secret-shaped RHS: a quoted string
+  (≥6 chars) or an unquoted token that is not a call expression or a whole
+  type-annotation identifier; pure numbers are additionally exempt for
+  `token`/`api_key` keys only (tuning constants), never for
+  `password`/`secret` (a digits-only password is a PIN). `page_token =
+  locks.content_token(...)`, `CHARS_PER_TOKEN: Final[float] = 4.0`,
+  `MAX_TOKENS: 128000`, and `chars_per_token: float | None = None` no
+  longer trigger `SecretsFound`; quoted, env-style, guard-word-prefixed
+  (`none.of.your.business`), and numeric-PIN secrets still do (all pinned
+  by tests, incl. the review's adversarial probes).
+- **#31 — doctor stops scanning frozen snapshots.** New shared predicate
+  `ren_paths.under_ren_state(path, wiki_root)`; `check_dangling_pointers`
+  skips everything under `wiki/.ren/`, so immutable per-write snapshot
+  copies can't bury real dangling pointers in live pages.
+- **#33 — harness_neutrality scoped to scaffolding.** The neutrality walk
+  also skips `.ren/` state, and the doctor check partitions its findings:
+  coupling in AGENTS.md (the surface we generate for portability) stays a
+  `warn`; harness tokens inside live L2-map *content* — project knowledge
+  that legitimately mentions Claude/Anthropic — report as `info`. New
+  `lint_generated_surfaces_partitioned`; the flat function keeps its shape.
+- **#34 — the snapshot root has one home.** The update scripts
+  (`snapshot.sh`/`restore.sh`/`prune-snapshots.sh`) resolve
+  `${REN_SNAPSHOT_ROOT:-~/.claude/plugins/data/renos}` and no longer
+  advertise `${CLAUDE_PLUGIN_DATA}` — observed live rendering to a
+  directory (`data/ren-ren-os/`) that exists but has never received a
+  snapshot, because the var is unset in the shell that runs the scripts.
+  SKILL.md and the migration READMEs now name the real path, so the
+  mid-incident restore flow points where the snapshots actually are.
+
 ## [0.7.6] - 2026-08-17 — "first impressions"
 
 The pre-handoff train, release 2 of 2: the polish a fresh install sees

@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # snapshot.sh — capture a pre-migration snapshot of the wiki.
 #
-# Per ADR-027 + lead-approved override: snapshots live at
-#   ${CLAUDE_PLUGIN_DATA}/wiki-snapshots/v<from>-pre-update-<ISO8601>/
+# Per ADR-027 + lead-approved override (issue #34: single-home the snapshot
+# root — never derive it from CLAUDE_PLUGIN_DATA, which the harness renders
+# as a different directory than the one real shell runs fall back to):
+#   ${REN_SNAPSHOT_ROOT:-$HOME/.claude/plugins/data/renos}/wiki-snapshots/v<from>-pre-update-<ISO8601>/
 #
 # Usage:
 #   snapshot.sh <from-version>
@@ -13,7 +15,7 @@
 # with -2, -3, etc. so concurrent invocations don't clobber.
 #
 # Side effects:
-#   - Creates ${CLAUDE_PLUGIN_DATA}/wiki-snapshots/<name>/ (entire wiki copy, hard-linked where possible)
+#   - Creates <snapshot-root>/wiki-snapshots/<name>/ (entire wiki copy, hard-linked where possible)
 #   - Prunes oldest snapshots beyond CLAUDE_PLUGIN_OPTION_SNAPSHOTRETAIN (default 3)
 #   - Logs the new snapshot path to ${REN_WIKI_ROOT}/log.md (append-only)
 
@@ -21,8 +23,8 @@ set -euo pipefail
 
 FROM_VER="${1:-unknown}"
 WIKI_ROOT="${REN_WIKI_ROOT:-${CLAUDE_PLUGIN_OPTION_WIKIROOT:-$HOME/.renos/wiki}}"
-PLUGIN_DATA="${CLAUDE_PLUGIN_DATA:-$HOME/.claude/plugins/data/renos}"
-SNAPSHOT_BASE="${PLUGIN_DATA}/wiki-snapshots"
+SNAPSHOT_ROOT="${REN_SNAPSHOT_ROOT:-$HOME/.claude/plugins/data/renos}"
+SNAPSHOT_BASE="${SNAPSHOT_ROOT}/wiki-snapshots"
 RETAIN="${CLAUDE_PLUGIN_OPTION_SNAPSHOTRETAIN:-3}"
 
 if [[ ! -d "$WIKI_ROOT" ]]; then
