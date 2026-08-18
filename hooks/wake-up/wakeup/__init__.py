@@ -147,7 +147,7 @@ L1_BUDGET: Final[int] = 1_200
 L2_BUDGET: Final[int] = 1_200
 ROUTINE_SPEC_BUDGET: Final[int] = 400
 OPENWORK_BUDGET: Final[int] = 400
-DOCTRINE_BUDGET: Final[int] = 500
+DOCTRINE_BUDGET: Final[int] = 650
 # The doctrine card ships in the plugin rather than living in the wiki, so its
 # `_inject_section` pointer names the source in prose instead of a page rel.
 DOCTRINE_POINTER: Final[str] = "hooks/wake-up/wakeup/doctrine_card.py (in the installed ren plugin)"

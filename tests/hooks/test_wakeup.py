@@ -1094,9 +1094,10 @@ class TestStructuredSections:
         assert segment.startswith(wakeup.SECTION_DOCTRINE)
         for lead in (
             "1. **Brainstorm gate.**",
-            "2. **Decompose.**",
-            "3. **Dispatch.**",
-            "4. **Review gate.**",
+            "2. **Isolate & plan.**",
+            "3. **Decompose.**",
+            "4. **Dispatch.**",
+            "5. **Per-task review**",
         ):
             assert lead in segment, lead
         assert wakeup.DOCTRINE_POINTER in segment
@@ -1121,7 +1122,7 @@ class TestStructuredSections:
 
         assert wakeup.SECTION_DOCTRINE in out
         assert "1. **Brainstorm gate.**" in out  # gate 1 survived
-        assert "4. **Review gate.**" in out       # gate 4 survived
+        assert "6. **Review gate.**" in out       # gate 6 survived
         assert out.startswith("## RenOS wake-up context")  # seed header survived
         assert any("over budget" in r.message for r in caplog.records)
 
