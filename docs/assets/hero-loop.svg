@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 300" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" role="img" aria-label="The RenOS compounding memory loop: wake-up injects what you know, you work, wrap distills the session, the distiller batch-mines what wraps missed, and the wiki you own grows — so the next session starts smarter.">
+  <!-- Theme-neutral: all text sits inside colored boxes (white text) or uses
+       mid-gray #8b949e, legible on GitHub light and dark. Okabe-Ito palette. -->
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#8b949e"/>
+    </marker>
+  </defs>
+
+  <!-- wake-up -->
+  <rect x="20" y="110" width="160" height="80" rx="12" fill="#0072b2"/>
+  <text x="100" y="143" text-anchor="middle" fill="#ffffff" font-size="16" font-weight="600">wake-up</text>
+  <text x="100" y="166" text-anchor="middle" fill="#ffffff" font-size="12" opacity="0.9">injects what you know</text>
+
+  <!-- session -->
+  <rect x="250" y="110" width="160" height="80" rx="12" fill="#009e73"/>
+  <text x="330" y="143" text-anchor="middle" fill="#ffffff" font-size="16" font-weight="600">your session</text>
+  <text x="330" y="166" text-anchor="middle" fill="#ffffff" font-size="12" opacity="0.9">you just work</text>
+
+  <!-- wrap -->
+  <rect x="480" y="110" width="160" height="80" rx="12" fill="#e69f00"/>
+  <text x="560" y="143" text-anchor="middle" fill="#ffffff" font-size="16" font-weight="600">/ren:wrap</text>
+  <text x="560" y="166" text-anchor="middle" fill="#ffffff" font-size="12" opacity="0.9">distills the session</text>
+
+  <!-- distiller -->
+  <rect x="480" y="220" width="160" height="60" rx="12" fill="#cc79a7"/>
+  <text x="560" y="245" text-anchor="middle" fill="#ffffff" font-size="14" font-weight="600">distiller (weekly)</text>
+  <text x="560" y="264" text-anchor="middle" fill="#ffffff" font-size="11" opacity="0.9">rescues what wraps missed</text>
+
+  <!-- wiki -->
+  <rect x="710" y="110" width="190" height="80" rx="12" fill="#d55e00"/>
+  <text x="805" y="143" text-anchor="middle" fill="#ffffff" font-size="16" font-weight="600">your wiki</text>
+  <text x="805" y="166" text-anchor="middle" fill="#ffffff" font-size="12" opacity="0.9">plain markdown, yours</text>
+
+  <!-- forward arrows -->
+  <line x1="180" y1="150" x2="243" y2="150" stroke="#8b949e" stroke-width="2" marker-end="url(#arr)"/>
+  <line x1="410" y1="150" x2="473" y2="150" stroke="#8b949e" stroke-width="2" marker-end="url(#arr)"/>
+  <line x1="640" y1="150" x2="703" y2="150" stroke="#8b949e" stroke-width="2" marker-end="url(#arr)"/>
+  <!-- distiller feeds the wiki too -->
+  <path d="M 640 250 C 700 250 750 230 790 197" fill="none" stroke="#8b949e" stroke-width="2" marker-end="url(#arr)"/>
+  <!-- L1s feed the distiller -->
+  <path d="M 560 190 L 560 213" fill="none" stroke="#8b949e" stroke-width="2" stroke-dasharray="4 3" marker-end="url(#arr)"/>
+
+  <!-- return loop: wiki back to wake-up -->
+  <path d="M 805 110 C 805 40 100 40 100 103" fill="none" stroke="#8b949e" stroke-width="2" marker-end="url(#arr)"/>
+  <text x="452" y="34" text-anchor="middle" fill="#8b949e" font-size="13" font-style="italic">the next session starts smarter</text>
+</svg>

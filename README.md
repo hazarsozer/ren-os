@@ -7,10 +7,43 @@
 ![python](https://img.shields.io/badge/python-%E2%89%A53.11-blue)
 ![license](https://img.shields.io/badge/license-MIT-green)
 
-RenOS is a knowledge + governance layer that runs **on top of** coding-agent harnesses
-(Claude Code first; [read-proven on Codex](docs/codex-read-proof.md)). Everything it
-knows lives in a plain-markdown wiki **you own** at `~/.renos/wiki` — readable without
-RenOS, portable to any harness, openable as an Obsidian vault.
+Every session with a coding agent starts from zero. The decisions you made
+yesterday, the preferences you explained last week, the lesson that one painful
+bug taught you — gone, unless *you* carry them forward by hand. RenOS is a
+knowledge + governance layer that runs **on top of** coding-agent harnesses
+(Claude Code first; [read-proven on Codex](docs/codex-read-proof.md)) and makes
+the carrying automatic — and safe.
+
+![The compounding loop: wake-up injects what you know, you work, wrap distills the session, the weekly distiller rescues what wraps missed, and the wiki you own grows](docs/assets/hero-loop.svg)
+
+Everything it knows lives in a plain-markdown wiki **you own** at
+`~/.renos/wiki` — readable without RenOS, portable to any harness, openable as
+an Obsidian vault. Delete the plugin and your knowledge stays.
+
+---
+
+## Why RenOS
+
+- **Agents forget. Your wiki doesn't.** Each session opens with a wake-up card
+  built from what previous sessions learned — who you are, what this project
+  is, what happened last time, what's waiting on your answer. Each session
+  ends by distilling what it learned back into the wiki, with
+  update/correct/revert semantics, never append-only. A weekly distiller
+  batch-mines the session notes for anything the end-of-session pass missed,
+  so learnings don't die in the archive.
+- **Context is expensive. Every byte is budgeted.** The wake-up card renders
+  to a byte ceiling with sections ordered by irreplaceability; no LLM call at
+  session start, by design. Real cache-token accounting and a calibrated
+  estimator replace guesswork about what injection costs.
+- **Autonomy is scary. So every write goes through one door.** Reads are free;
+  memory writes auto-apply through a single governed queue with provenance, an
+  append-only journal, per-write snapshots, and one-step revert ("undo
+  `<write_id>`" in chat). Only promotions into standing instructions ask you.
+  Every page carries a trust stamp — `user` / `model` / `foreign` — minted at
+  write time, so a page's origin is never guessed after the fact.
+
+The deep version of all three — tiers, gates, guards, instrumentation — lives
+in [docs/architecture.md](docs/architecture.md).
 
 ---
 
@@ -29,152 +62,81 @@ Then, in your first session:
 /ren:install
 ```
 
-That's the whole onboarding — an idempotent guided flow (environment check, wiki
-bootstrap, optional 10-question identity interview, backup nag, companion offers, first project). Every
-stage is skippable except the wiki bootstrap, and re-running resumes wherever you
-stopped. End it with `/ren:ingest-project` on any existing repo and you get the
-**first-session artifact**: *"I set up your project memory — here's what I captured."*
+That's the whole onboarding — an idempotent guided flow (environment check,
+wiki bootstrap, optional 10-question identity interview, backup nag, companion
+offers, first project). Every stage is skippable except the wiki bootstrap, and
+re-running resumes wherever you stopped. End it with `/ren:ingest-project` on
+any existing repo and you get the **first-session artifact**: *"I set up your
+project memory — here's what I captured."*
 
-> **Requirements:** Claude Code with plugin support, Python ≥ 3.11, `uv` (skills run
-> their mechanical cores via `uv run`). No API keys, no services, no telemetry — see
-> [What stays local](docs/data-flow.md).
-
----
-
-## The three pillars
-
-| Pillar | What it means in practice |
-|---|---|
-| 🧠 **Memory that compounds** | User-owned markdown every session reads *and extends* — with update/correct/revert semantics, never append-only. One write queue is the single door every producer writes through. |
-| 🪙 **Tokens that aren't wasted** | Every injected byte budgeted, cached, or pointed-to. No LLM call at session start, by design. Real cache-token accounting and a calibrated estimator replace guesswork. |
-| 🛡️ **Autonomy you can trust** | Writes governed by **risk tier + provenance**, not faith. Reads are free; memory auto-applies with journal + one-step revert; only promotions into standing instructions ask you (in chat); code/config diffs and destructive actions still gate. Every page also carries a **trust class** — `user` / `model` / `foreign` — stamped at the single write door, so a page's origin is never guessed after the fact. |
-
-**The success bar is measured, not vibes** — per spec §2: *"if 0.2 ships and the
-pillars are still estimates, 0.2 failed."* See [Measured numbers](#measured-numbers)
-for where each exit criterion actually stands.
+> **Requirements:** Claude Code with plugin support, Python ≥ 3.11, `uv`
+> (skills run their mechanical cores via `uv run`). No API keys, no services,
+> no telemetry — see [What stays local](docs/data-flow.md).
 
 ---
 
-## How it's organized
-
-### Memory hierarchy
-
-```
-            you / your sessions
-                    │
-   ┌────────────────┼──────────────────┐
-   ▼                ▼                  ▼
- L1  session     L2  project        L3  recall
- notes, quaran-  pointer-maps,      on-demand fetch,
- tine-bannered   quarantine-        every miss logged
- but always      bannered but       (honest hit rate)
- injected        always injected
-                 (foreign-stamped
-                 pages held out)
-                 projects/<slug>/
-                 map.md + schema.md
-                 + knowledge/ (nested,
-                 hub index.md per dir)
-                 + raw/ (sources)
-   │                │                  │
-   └────────────────┴──────────────────┘
-                    │  promotion (gated, never automatic)
-                    ▼
-          global tier — typed, durable knowledge
-          decisions/ · patterns/ · research/ · identity
-```
-
-### Instruction hierarchy
-
-RenOS rides Claude Code's **native** global → project instruction-file hierarchy
-for its instruction layer — doctrine lives in CLAUDE.md files, not in an
-injected prompt. (The wake-up hook does inject **data-plane** context,
-question-shaped: who you're working with (identity), what this project is
-(an overview `/ren:wrap` maintains across sessions on material change), what
-happened last session (L1, always injected), where to find project
-knowledge (the L2 map), active routines, anything waiting on your answer
-(pending suggestions, contradiction holds, and a count of pending
-instruction suggestions — "run /ren:suggestions to review"), and a small
-set of heuristically-ranked related pages — skipped if held-out by
-quarantine, with a "N quarantined page(s) held out" count-only line.
-Identity, the project overview, the last-session summary, and the project
-map are each truncated with a pointer line naming where the rest lives if
-they exceed their token budget — knowledge, never instructions.)
-
-```
-~/.claude/CLAUDE.md          ← managed block: behavioral core + recall doctrine
-   │                            + doctrine index (markers only; your content
-   │                            outside them is never touched — dedup-aware)
-   └── <your-repo>/CLAUDE.md ← thin pointer block → that project's L2 map
-                                (points, never duplicates)
-```
-
-### Every write goes through one door
+## A day with RenOS
 
 ```mermaid
 flowchart LR
-    P["producers<br/>pin · wrap · ingest<br/>retrospective · routines"] --> Q["write queue<br/>propose"]
-    Q --> T{"risk tier"}
-    T -- data plane --> A["auto-apply"]
-    T -- instruction plane --> R["you're asked in chat<br/>at wake-up/wrap"] --> A
-    A --> W["wiki page"]
-    A -.-> J["journal + provenance<br/>+ per-write snapshot"]
-    J -.-> V["say 'undo &lt;write_id&gt;' in chat<br/>one-step revert"]
+    W["wake-up<br/>context injected,<br/>no LLM call"] --> S["you work<br/>/ren:recall to fetch,<br/>/ren:pin to remember"]
+    S --> E["/ren:wrap<br/>session distilled through<br/>a fail-closed gate"]
+    E --> K["wiki grows<br/>revertible, trust-stamped"]
+    D["weekly distiller<br/>batch-mines session notes<br/>for missed learnings"] --> K
+    K --> W
 ```
 
-Provenance on every write, an append-only journal, per-write snapshots, file leases
-against lost updates, and quarantine banners on unreviewed LLM-authored content —
-that's the write-safety substrate (`lib/memory/`), and it's the only code that ever
-touches a wiki page.
+- **Session start** — the wake-up hook injects the card: identity, project
+  overview, last session's notes, the project map, active routines, and
+  anything waiting on your decision. Question-shaped knowledge, never
+  instructions.
+- **Mid-session** — `/ren:recall "<query>"` fetches on demand (every miss is
+  logged, so the hit rate is honest); `/ren:pin "<text>"` captures a fact the
+  moment you state it; `/ren:remember` renders what the system knows about the
+  current project.
+- **Session end** — `/ren:wrap` writes the session narrative and gates
+  candidate durable learnings through a classifier that biases hard toward
+  *not* durable. Verdicts come from a real classifier pass; anything the
+  classifier affirms but can't place is held for you as a suggestion — nothing
+  dies silently.
+- **Weekly** — the `/ren:distill` routine re-mines session narratives behind a
+  watermark for learnings the live gate missed, capped and journaled, through
+  the same write door as everything else.
 
 ---
 
-## The learning brain (0.5.x)
+## The knowledge you own
 
-Everything below routes through the same write door and the same fail-closed
-posture as the rest of the substrate — none of it is a separate, less-governed
-path.
+![Memory tiers: L1 session notes and the L2 project map are always injected; L3 recall fetches on demand; promotion into the global tier is gated](docs/assets/wiki-tiers.svg)
 
-- **Trust classes.** Every page carries a `ren_trust` stamp — `user`, `model`,
-  or `foreign` — set once, at write time, by `lib/memory/provenance.py`. Only
-  `/ren:ingest-project` mints `foreign` (content pulled from a repo you didn't
-  write yourself); everything else resolves to `user` or `model` from who
-  authored the content and who wrote it. Wikis created before this existed are
-  backfilled by `migrations/trust-backfill-1/`.
-- **LLM-judged semantics, fail-closed.** Write-time conflict detection is
-  still three deterministic heuristics with no LLM in the loop (`lib/memory/semantics.py`).
-  As of 0.5.0–0.5.2, pairs those heuristics flag — plus "near-similar" pairs
-  they'd otherwise miss — go through a bounded **shortlist** (`shortlist_pairs`)
-  to an LLM **judge** (`lib/memory/judge.py`) for a duplicate/contradiction
-  verdict with a confidence score. If no LLM call is available, the judge step
-  is skipped outright and the heuristics-only result stands — it never raises,
-  never blocks a write. Judge confidence has two bars: **0.7** to surface a
-  finding in a report (`/ren:wrap`, `/ren:wiki-health`), **0.85** — stricter —
-  to auto-consolidate. Anything the judge dismisses still shows up in
-  `/ren:wiki-health` output as "judge-dismissed (for review)" rather than
-  disappearing — a human can always see what the judge ruled out.
-- **Archive tier: never delete.** A page that's no longer live is moved to
-  `archive/<rel>` with its full prior content (`lib/memory/archive.py`) and the
-  original is journaled-deleted — both writes go through the single write
-  door. Recovery does not depend on snapshot retention: the archive copy is
-  itself the durable recovery path, so a page can be restored from
-  `archive/<rel>` long after its own write's snapshot has been pruned.
-- **Decay + consolidation.** A 90-day-idle window and a 5-pages-per-wrap cap
-  bound how much gets swept in one pass (`lib/memory/lifecycle.py`); if the
-  miss-log read that decay depends on fails, the sweep returns nothing rather
-  than guessing — under-decaying is the safe failure mode, not over-archiving.
-  Consolidation only merges pairs the judge confirmed as duplicates at ≥0.85
-  confidence, keeps the newer page, archives the older one, and appends a
-  "Merged from `[[older-page]]`" line so the merge is traceable from the
-  surviving page.
+```
+~/.renos/wiki/
+├── index.md            # the wiki's own map
+├── identity.md         # who you are, how you work
+├── log.md              # chronological session log
+├── projects/<slug>/    # map.md · overview.md · schema.md · knowledge/ · raw/ · l1/
+├── decisions/          # durable decisions (promotion-gated)
+├── patterns/           # recurring approaches worth naming
+├── research/           # ingested sources, distilled
+└── .ren/               # queue, journal, snapshots, locks, install state
+```
+
+- **The wiki is the product.** Plain markdown, no lock-in by construction —
+  `tests/test_obsidian_invariant.py` pins the invariants that keep it a valid
+  Obsidian vault.
+- **Harness-neutral** — any coding agent can read it; a rendered `AGENTS.md`
+  pointer file let Codex cite wiki pages in the
+  [live proof](docs/codex-read-proof.md).
+- **Local-first** — [docs/data-flow.md](docs/data-flow.md) documents exactly
+  what stays local (everything) and what RenOS itself never uploads (the wiki).
 
 ---
 
 ## The skill surface
 
-Eighteen skills, each declaring an **execution tier** — deterministic scripts run as
-scripts, worker-shaped drafting delegates to cheap subagent models, and judgment
-(approvals, session narrative) stays with the main model.
+Nineteen skills, each declaring an **execution tier** — deterministic scripts
+run as scripts, worker-shaped drafting delegates to cheap subagent models, and
+judgment (approvals, session narrative) stays with the main model.
 
 ### Getting started
 | Skill | What it's for |
@@ -192,101 +154,51 @@ scripts, worker-shaped drafting delegates to cheap subagent models, and judgment
 | `/ren:remember` | "What do you remember about this project?" — renders the live L2 map |
 | `/ren:wrap` | End-of-session consolidation behind a **fail-closed** classifier gate |
 
-### Governance
+### Knowledge flow & governance
 | Skill | What it's for |
 |---|---|
-| `/ren:suggestions` | Review pending instruction-plane suggestions one at a time — accept/decline in chat, rare and high-stakes by design |
+| `/ren:distill` | Batch-mine session narratives for learnings the live gate missed — watermarked, capped, revertible |
+| `/ren:suggestions` | Review pending suggestions one at a time — accept/decline in chat, rare and high-stakes by design |
 | _(conversational)_ | Suggestions also surface at wake-up and wrap; answer in chat — no queue verbs. Say "undo \<write_id>" to revert a write |
 | `/ren:routine-init` | Declare a bounded routine: schedule, exit criterion, failure handler, capability/path allowlist |
-| `/ren:metric-watch` | The minimal watch routine: budget growth, memory growth, gate failures → journal findings |
+| `/ren:metric-watch` | The minimal watch routine: budget growth, memory growth, gate failures, dead classifier wiring → journal findings |
 
 ### Maintenance
 | Skill | What it's for |
 |---|---|
-| `/ren:doctor` | Twelve isolated health checks — env, wiki structure, frontmatter, schema versions, budgets, dangling pointers, execution tiers, backup config, global-tier drift, harness neutrality |
+| `/ren:doctor` | Twenty-five isolated health checks — env, wiki structure, schema versions, budgets, pointers, tiers, guards, drift — all warn-not-block |
 | `/ren:wiki-health` | Coherence auditor: dangling pointers, contradictions, mass-deletion anomaly, quarantine inventory |
 | `/ren:backup` | Git-push-to-`backup`-remote primary, tarball fallback, retention |
 | `/ren:update` | Snapshot → migrate → verify → diff-approve → apply, rollback built in |
-| `/ren:retrospective [--since]` | Mine instrumentation + journal + session history for lessons and skill candidates (with executable scaffolds) |
+| `/ren:retrospective [--since]` | Mine instrumentation + journal + session history for lessons and skill candidates |
 | `/ren:code-map` | Optional Graphify-backed structural code map (graceful absence if not installed) |
 | `/ren:wiki-migration` | Schema-version migrations for wiki pages, scripted + verified |
 
 ---
 
-## What's on disk
+## Governed by construction
 
-**Your wiki** (`~/.renos/wiki` — yours, plain markdown, Obsidian-vault-compatible):
-
-```
-~/.renos/wiki/
-├── index.md            # the wiki's own map
-├── identity.md         # who you are, how you work
-├── log.md              # chronological session log
-├── projects/<slug>/    # per-project subtree
-│   ├── map.md          #   L2 pointer-map (the index — points at hubs)
-│   ├── overview.md     #   orientation page
-│   ├── schema.md       #   the project's own wiki taxonomy + conventions
-│   ├── knowledge/      #   durable project pages, project-determined depth
-│   │   └── <topic>/    #     every subdirectory carries a hub index.md
-│   ├── raw/            #   immutable source material (write-once)
-│   └── l1/             #   session notes
-├── decisions/          # durable decisions (promotion-gated)
-├── patterns/           # recurring approaches worth naming
-├── research/           # ingested sources, distilled
-├── alternatives/       # roads not taken, and why
-└── .ren/               # queue, journal, snapshots, locks, install state
+```mermaid
+flowchart LR
+    P["producers<br/>pin · wrap · distill · ingest<br/>retrospective · routines"] --> Q["write queue<br/>propose"]
+    Q --> T{"risk tier"}
+    T -- data plane --> A["auto-apply"]
+    T -- instruction plane --> R["you're asked in chat<br/>at wake-up/wrap"] --> A
+    A --> W["wiki page"]
+    A -.-> J["journal + provenance<br/>+ per-write snapshot"]
+    J -.-> V["say 'undo &lt;write_id&gt;' in chat<br/>one-step revert"]
 ```
 
-**This repo** (the plugin):
-
-```
-ren-os/
-├── .claude-plugin/     # plugin + marketplace manifests
-├── skills/             # the 18 /ren: skills (SKILL.md contract + lib/ core each)
-├── lib/                # memory substrate, governance, instrumentation, adapters
-├── doctrine/           # always-on + on-demand operating doctrine
-├── wiki-skeleton/      # the templates /ren:install stamps (never dev content)
-├── hooks/              # wake-up + pre-push content guard
-├── migrations/         # scripted schema migrations with verification
-├── docs/               # data-flow, exit criteria, Codex read proof
-└── tests/              # the full test suite — every DONE claim below has one
-```
+Provenance on every write, an append-only journal, per-write snapshots, file
+leases against lost updates, and quarantine banners on unreviewed LLM-authored
+content — that's the write-safety substrate (`lib/memory/`), and it's the only
+code that ever touches a wiki page. The full account — memory tiers, the
+wake-up composer, trust classes, the judge, decay and consolidation, the
+guards, and what's instrumented — is in
+[docs/architecture.md](docs/architecture.md); the honest scoreboard of measured
+exit criteria is [docs/exit-criteria.md](docs/exit-criteria.md).
 
 ---
-
-## Measured numbers
-
-Status of each 0.2 exit criterion as of this commit — nothing asserted from vibes:
-every **DONE** has a test file; every **PENDING** is calendar-bound (needs real
-elapsed usage, not more code).
-
-| # | Exit criterion | Status |
-|---|---|---|
-| 1 | Real `cache_read_input_tokens` across ≥20 sessions, published | ⏳ PENDING — harness built + tested; the collection run needs real usage |
-| 2 | Injected-context size + retrieval hit rate vs. frozen fixture + mechanical miss log | ⏳ PENDING — recording is live; fixture scores 12/12; the ≥20-session hit rate still needs computing |
-| 3 | Token estimator calibrated against the real tokenizer | ⏳ PENDING — calibration harness built + unit-tested; needs live samples |
-| 4 | Wrap classifier eval passes and demonstrably gates (fail-closed) | ✅ DONE — a crash refuses to durable-promote (`tests/skills/wrap/test_gate_eval.py`) |
-| 5 | A foreign harness can read the knowledge layer | ✅ DONE — [Codex read proof](docs/codex-read-proof.md), passed live |
-| 6 | Friend week (real usage by someone who isn't the founder) | ⏳ PENDING — calendar-bound |
-| 7 | Integrity drill: revert, quarantine, lost-update detection under rehearsed failure | ✅ DONE in the suite; a real-world rehearsal log is a separate pending artifact |
-
----
-
-## Portability & ownership
-
-- **The wiki is the product.** Delete RenOS and your knowledge remains readable
-  markdown. No lock-in by construction.
-- **Obsidian-compatible** — open `~/.renos/wiki` as a vault for a free knowledge
-  graph. `tests/test_obsidian_invariant.py` pins the invariants that keep this true.
-- **Harness-neutral by design** — the wiki is plain markdown any coding agent
-  can read; `lib/portability/agents_surface.py` renders an `AGENTS.md` pointer
-  file, and Codex cited wiki pages from a rendered `AGENTS.md` in the
-  [live proof](docs/codex-read-proof.md). `/ren:bootstrap-project` now writes
-  `AGENTS.md` into the project repo as part of bootstrapping (0.4.0) — install
-  time generation and regeneration on demand are not wired yet.
-- **Local-first** — see [docs/data-flow.md](docs/data-flow.md) for exactly what stays
-  local (everything), what ever reaches a model API (your session content, as always),
-  and what never does (the wiki is never uploaded by RenOS itself).
 
 ## Developing
 
@@ -297,13 +209,12 @@ uv run pytest            # the full test suite
 uv run python scripts/lint-yaml-frontmatter.py
 ```
 
-Runtime deps are just `python-ulid`, `pyyaml`, `typing-extensions`. `CHANGELOG.md`
-records what changed and why, release to release; `docs/exit-criteria.md` is the
-honest scoreboard.
+Runtime deps are just `python-ulid`, `pyyaml`, `typing-extensions`.
+`CHANGELOG.md` records what changed and why, release to release.
 
 ## License
 
 MIT — see `LICENSE`. Wiki-skeleton templates and doctrine ship under the same
 license; third-party attributions in `wiki-skeleton`'s `LICENSES.md` stamp. The
-behavioral core in the global instruction layer is adapted, with attribution, from
-Andrej Karpathy's public CLAUDE.md guidelines.
+behavioral core in the global instruction layer is adapted, with attribution,
+from Andrej Karpathy's public CLAUDE.md guidelines.
