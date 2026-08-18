@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.8.0] - 2026-08-18 — "knowledge flows live"
+
+The live-gate + distiller train: wire the classifier subagent into the wrap
+pipeline (verdicts as data), fix the die-loudly fail path to catch scope-None
+bugs and suggest unplaced items, build the wiki-distiller agent and weekly
+routine to re-mine quarantined L1s, and instrument both paths with per-
+producer outcome events and metrics. Plan: `docs/superpowers/specs/2026-08-18-knowledge-flows-train-design.md`.
+
+- **Part A — wrap verdicts-as-data + die-loudly routing:** `wrap_session()`
+  gains a `verdicts=` parameter for pre-computed classifier decisions (enabling
+  the one-shot `uv run` flow), validated against the same shape rules as
+  `classify_llm`. Scope-`None` placement bugs and classifier subagent spawn
+  failures now route to the suggestions store instead of being silently
+  gated out.
+- **Part B — ren:ren-distiller agent, distill skill, and weekly routine:**
+  New worker-class agent mines L1 narratives (including quarantined ones)
+  and re-processes durable items that died to `no_llm` in live wraps,
+  applying the same classifier discipline and write-door path. Watermark
+  tracks last processed L1; write cap is 10 per run with carry-over logged.
+- **Part C — instrumentation:** `durable_outcome` events gain a `producer`
+  field (wrap | distiller), new `distiller_run` event logs mining results,
+  and `metric-watch` adds `no_llm` to its watch list for wraps with
+  candidates (deterministic-fallback signal).
+
 ## [0.7.9] - 2026-08-18 — "doctrine holds"
 
 The proof-case train: run end-to-end through the full canonical route

@@ -995,6 +995,29 @@ def read_live_routines(wiki_root: Path) -> str:
     return "\n".join(rows)
 
 
+def _routine_dedicated_paths(wiki_root: Path) -> set[str]:
+    """Rel-paths of every `type: routine-spec` page under `wiki/routines/` —
+    Part B dedup (see `dedicated_paths` in `compose_wake_up_context`):
+    `read_live_routines` already gives these their own dedicated slot
+    (`SECTION_ROUTINES`), so they must be excluded from the extras candidate
+    pool too, same as identity/overview/L2/open-work."""
+    routines_dir = wiki_root / MASTER_ROUTINES_DIRNAME
+    if not routines_dir.is_dir():
+        return set()
+    try:
+        paths = sorted(routines_dir.glob("*.md"))
+    except OSError as exc:
+        logger.debug("could not scan routines dir %s: %s", routines_dir, exc)
+        return set()
+    out: set[str] = set()
+    for path in paths:
+        fm = _parse_routine_fields(_read_text_safe(path))
+        if fm.get("type") != "routine-spec":
+            continue
+        out.add(path.relative_to(wiki_root).as_posix())
+    return out
+
+
 def suggestion_line() -> str:
     """Multi-line block announcing pending queue entries (v2.2: suggestions are
     conversational, not a queue verb — Task 8). Lists up to `_SUGGESTION_LIST_CAP`
@@ -1614,6 +1637,8 @@ def compose_wake_up_context(
                 section_keys.append(SECTION_L2)
                 surfaced_pages.append(l2_rel)
                 surfaced_page_keys.append(SECTION_L2)
+
+    dedicated_paths |= _routine_dedicated_paths(wiki_root)
 
     live_routines = read_live_routines(wiki_root)
     if live_routines:

@@ -125,6 +125,29 @@ def should_run_foreign_remint_1(old: str, new: str) -> bool:
     return old_key < gate_key <= new_key
 
 
+_DISTILLER_SEED_GATE = "0.8.0"
+
+
+def should_run_distiller_watermark_seed(old: str, new: str) -> bool:
+    """True when an update crosses the 0.8.0 boundary (old < 0.8.0 <= new).
+
+    Gates the distiller watermark seed step in the post-update flow (spec §3.5):
+    a pure version-tuple comparison, no chain machinery, because seeding the
+    distiller watermark is a standalone initialization step (like
+    should_run_trust_backfill) that walks the state dir rather than a
+    schema_version-keyed page type.
+    """
+    try:
+        old_key, new_key, gate_key = (
+            _version_key(old),
+            _version_key(new),
+            _version_key(_DISTILLER_SEED_GATE),
+        )
+    except ValueError:
+        return False
+    return old_key < gate_key <= new_key
+
+
 def should_run_folder_note_hubs_1(wiki_root_path: Path | None = None) -> bool:
     """True if any legacy knowledge-hub index.md remains (raw/, archive/, dot-dirs excluded).
 

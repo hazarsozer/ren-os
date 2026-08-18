@@ -3,9 +3,9 @@ lib.memory.queue — G1 the single write-queue (Task 2.1, RenOS 0.2 Phase 2).
 
 Spec §3.1 "The single write path" (council A-3): durable memory has exactly
 ONE door — a diff-queue with contradiction/supersede checking and dedup at the
-queue; multiple producers (wrap, pin, retrospective, routine, promotion) feed
-it, but nothing reaches a wiki page except through `propose` → `approve` →
-`apply` here.
+queue; multiple producers (wrap, pin, retrospective, routine, promotion,
+distiller) feed it, but nothing reaches a wiki page except through
+`propose` → `approve` → `apply` here.
 
 Persistence is the state: one JSON file per entry at
 `state_dir()/"queue"/<qid>.json`. There is no module-level cache — every call
@@ -62,7 +62,7 @@ except ImportError:  # pragma: no cover - exercised via monkeypatch until builde
 
 _OPS: tuple[str, ...] = get_args(Op)
 _WRITER_CLASSES: tuple[str, ...] = get_args(WriterClass)
-_PRODUCERS: tuple[str, ...] = ("wrap", "pin", "retrospective", "routine", "promotion", "ingest")
+_PRODUCERS: tuple[str, ...] = ("wrap", "pin", "retrospective", "routine", "promotion", "ingest", "distiller")
 
 _QUEUE_DIRNAME = "queue"
 _PENDING = "pending"

@@ -44,7 +44,7 @@ PENDING_MAX_AGE_DAYS = 30
 
 @dataclass(frozen=True)
 class SuggestionSpec:
-    producer: str          # "retrospective"|"promotion"|"doctrine"|"wiki-health"
+    producer: str          # "retrospective"|"promotion"|"doctrine"|"wiki-health"|"wrap"|"distiller"
     title: str             # one human line
     rationale: str         # "you did X in N of last M sessions"
     evidence: dict         # structured, producer-shaped

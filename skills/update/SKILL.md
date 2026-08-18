@@ -211,6 +211,19 @@ Carried near-verbatim from donor `skills/update/` (Task 7.3) — the migration s
   (the snapshot taken at the start of this update). Never proceed to the closing
   summary with a failed verify.
 
+## 0.8.0 update notes
+
+- **distiller-watermark seed (spec §3.5):** a friend upgrading from before
+  0.8.0 has no distiller watermark yet. Initialize the watermark as a
+  post-update step after the version bump lands, gated by
+  `skills.update.lib.should_run_distiller_watermark_seed(<old-version>,
+  <new-version>)` — `True` when the update crosses the 0.8.0 boundary.
+  Call `skills.distill.lib.write_watermark("2026-08-03T00:00:00Z")` ONLY
+  if `skills.distill.lib.watermark_path()` doesn't exist yet (idempotent —
+  safe to (re-)run even if a friend already updated once without it).
+  See `docs/superpowers/specs/2026-08-18-knowledge-flows-train-design.md`'s
+  §3.5 for the backlog-rescue acceptance run.
+
 ## Overlap note: snapshot substrate vs. Task 1.2's per-write snapshots
 
 `lib/memory/snapshot.py` (Task 1.2, G9) is a DIFFERENT snapshot mechanism: per-write-id, page-granularity snapshots for the write-safety substrate (revert a single memory write in one step). `scripts/snapshot.sh` here is whole-wiki, version-bump-granularity, for migration rollback. They serve genuinely different purposes at different granularities — this skill's carried snapshot logic is NOT rewritten to unify with Task 1.2's substrate; that unification (if it's ever worth doing) is a 0.3-scoped ADR decision, not something to improvise here. Noted per the task brief's explicit instruction not to rewrite working carried code.

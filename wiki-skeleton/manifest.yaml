@@ -76,6 +76,22 @@ profiles:
         write_rule: create_if_missing
         min_framework_version: "0.2.0"
 
+      - path: "routines/"
+        type: directory
+        write_rule: create_if_missing
+        min_framework_version: "0.7.9"
+
+      - path: "routines/distiller-weekly.md"
+        template: "routines/distiller-weekly.md"
+        type: file
+        write_rule: copy_if_missing
+        min_framework_version: "0.7.9"
+        description: >
+          v3 routine-spec (Task 6, spec §3.1/§4.1) declaring the weekly
+          /ren:distill cadence: schedule, exit criterion, failure handler,
+          and capability/path allowlist. Validated against
+          `skills/routine-init/lib.validate_routine_spec`.
+
   project:
     description: "Files stamped into wiki/projects/<project>/ by /ren:bootstrap-project"
     # The per-project taxonomy lives in skills/bootstrap-project/ (L2 pointer-map
