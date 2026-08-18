@@ -230,14 +230,17 @@ def _has_force_refspec(command: str) -> bool:
     force syntax (`git push origin +main`, `git push origin +HEAD:main`).
     Only checks whitespace-separated positional tokens after the push
     keyword, so option values and URLs elsewhere in the command can't
-    false-positive. Tokens are stripped of surrounding shell quotes first
-    — the shell removes them before git parses the refspec."""
+    false-positive. Tokens are stripped of a leading backslash, then
+    surrounding shell quotes, first — the shell strips both before git ever
+    sees the refspec (``git push origin \\+main`` reaches git as ``+main``
+    just like ``git push origin +main`` does; a bare ``strip("\"'")`` alone
+    missed the backslash-escaped form, review round 3 LOW)."""
     match = _GIT_PUSH_RE.search(command)
     if match is None:
         return False
     after = command[match.end():]
     for token in after.split():
-        token = token.strip("\"'")
+        token = token.lstrip("\\").strip("\"'")
         if token.startswith("+") and len(token) > 1:
             return True
     return False

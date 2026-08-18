@@ -1722,24 +1722,35 @@ def compose_wake_up_context(
     body = "\n\n".join(sections[i] for i in body_idxs if sections[i].strip())
     composed_preview = f"{head}\n\n{body}" if body else head
 
+    # Review round 3 (0.7.9), HIGH: this guard used to respond to an
+    # over-budget payload by collapsing the whole body into a single
+    # "_misc"-keyed blob BEFORE the byte cascade ran — the cascade only
+    # shrinks `SECTION_*` keys in `_CASCADE_ORDER`, so it found nothing left
+    # to touch and returned the (still far over the harness's byte ceiling)
+    # blob untouched. Fold the token cap into an equivalent BYTE ceiling for
+    # the whole payload instead (the same head/body split, converted via the
+    # same `chars_per_token` ratio `truncate_text_to_tokens` would use) and
+    # hand it to `_apply_byte_ceiling` alongside the real byte ceiling,
+    # taking whichever is tighter — ONE per-section-keyed pass now enforces
+    # both constraints, so `SECTION_PENDING`/`SECTION_OPENWORK`/the doctrine
+    # card stay protected (via `_PROTECTED_KEYS`, unchanged) and
+    # `dropped_keys` (LOW, folded in) stays accurate for every constraint
+    # that fires, not just the byte one.
     final_tokens = _budget_tokens(composed_preview, chars_per_token)
+    byte_ceiling = _byte_ceiling()
     if final_tokens > max_tokens:
         head_tokens = _budget_tokens(head, chars_per_token)
         body_budget = max(0, max_tokens - head_tokens)
-        truncated_body = truncate_text_to_tokens(body, body_budget, chars_per_token)
+        token_guard_ceiling = len(head.encode("utf-8")) + int(body_budget * chars_per_token)
         logger.warning(
-            "wake-up payload over budget (%d > %d tokens); elided %d chars from "
-            "content sections — doctrine card preserved",
-            final_tokens, max_tokens, len(body) - len(truncated_body),
+            "wake-up payload over budget (%d > %d tokens); enforcing the "
+            "tighter of the byte ceiling and the token-derived ceiling "
+            "(%d bytes) via the byte cascade — doctrine card preserved",
+            final_tokens, max_tokens, token_guard_ceiling,
         )
-        # Collapse the body into a single already-shrunk entry so the byte
-        # cascade below (which runs on `sections`/`section_keys`, the SAME
-        # keyed lists this guard used) never re-expands what this guard just
-        # cut — it simply finds no per-section keys left to touch here.
-        sections = [sections[i] for i in head_idxs] + ([truncated_body] if truncated_body else [])
-        section_keys = [section_keys[i] for i in head_idxs] + (["_misc"] if truncated_body else [])
+        byte_ceiling = min(byte_ceiling, token_guard_ceiling)
 
-    composed, dropped_keys = _apply_byte_ceiling(section_keys, sections, _byte_ceiling(), chars_per_token)
+    composed, dropped_keys = _apply_byte_ceiling(section_keys, sections, byte_ceiling, chars_per_token)
 
     # Review finding #3 (0.7.9): a page whose whole section the cascade just
     # dropped never reached the payload — it must not be recorded as

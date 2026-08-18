@@ -48,6 +48,7 @@ _FORCE = "--" + "force"          # bare force flag
 _F = "-" + "f"                   # short force flag
 _MIRROR = "--" + "mirror"        # mirror push
 _PLUS = "+"                      # force-refspec prefix
+_BACKSLASH = "\\"                # backslash-escape prefix (review round 3 LOW, #71)
 _PUSH = "git " + "push"          # push verb (kept unassembled-safe alongside flags)
 
 # --- corpus axes -------------------------------------------------------------
@@ -69,6 +70,11 @@ PUSH_SHAPES = (
     ("plus-refspec", f"{_PUSH} origin {_PLUS}main"),
     ("plus-head-refspec", f"{_PUSH} origin {_PLUS}HEAD:main"),
     ("mirror", f"{_PUSH} {_MIRROR} origin"),
+    # Review round 3 LOW (#71): the shell strips a leading backslash before
+    # git ever sees the refspec, so `git push origin \+main` forces the same
+    # update as `git push origin +main` — `_has_force_refspec` must strip
+    # the backslash before its `+` test, not just surrounding quotes.
+    ("backslash-plus-refspec", f"{_PUSH} origin {_BACKSLASH}{_PLUS}main"),
 )
 
 RM_SHAPES = (

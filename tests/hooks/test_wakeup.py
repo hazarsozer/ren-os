@@ -1625,6 +1625,80 @@ class TestByteCeiling:
         assert "projects/demo-project/l1/session-001.md" not in pages
         assert "projects/demo-project/map.md" in pages
 
+    def test_token_guard_path_still_meets_byte_ceiling_with_protections(self, project, caplog):
+        """Review round 3 HIGH: when the #48 token guard actually fires (a
+        realistic wiki with every section near its max budget, at DEFAULT
+        settings — max_tokens=5000, ratio 4.0, ceiling 9500), it used to
+        collapse the body into a single `"_misc"`-keyed blob BEFORE the byte
+        cascade ran. `_apply_byte_ceiling` only shrinks `SECTION_*` keys in
+        `_CASCADE_ORDER`, found nothing left to touch on that blob, and
+        returned the payload untouched — 2.1x the ceiling in the reviewer's
+        repro. No env overrides here: this must reproduce and fix the DEFAULT
+        path, not a monkeypatched one."""
+        import logging
+
+        _write(project["project_dir"].parent.parent / "identity.md", "---\ntype: identity\n---\n# About Friend\n\n" + ("id " * 700))
+        _write(project["project_dir"] / "overview.md", "# demo-project\n\n" + ("ov " * 900))
+        _write(project["project_dir"] / "l1" / "session-001.md", _model_stamped("l1 " * 1800))
+        _write(project["project_dir"] / "map.md", "# demo-project — knowledge map\n" + ("l2 " * 1800))
+        _write(
+            project["project_dir"].parent.parent / "routines" / "r1.md",
+            '---\ntype: routine-spec\nname: r1\ntrigger_type: manual\nlinked_repo: demo\n---\n' + ("r " * 700),
+        )
+        for i in range(3):
+            _write(project["project_dir"].parent.parent / f"extra{i}.md", f"# Extra{i}\n\n" + ("ex " * 900))
+        _write(project["project_dir"] / "open-work.md", _OPEN_WORK_MODEL_STAMPED)
+        from lib.memory.queue import Proposal, propose
+        propose(Proposal(
+            op="ADD", page="global/rule.md", content="r", reason="t",
+            producer="promotion", writer="human", session="s1",
+        ))
+
+        with caplog.at_level(logging.WARNING):
+            out = wakeup.compose_wake_up_context(cwd=project["cwd"], wiki_root=wiki_root(), session="sess-guard-cascade")
+
+        assert any("over budget" in r.message for r in caplog.records), (
+            "precondition: the #48 token guard must actually have fired"
+        )
+        assert len(out.encode("utf-8")) <= wakeup.WAKEUP_BYTE_CEILING_DEFAULT
+        assert wakeup.SECTION_PENDING in out
+        assert wakeup.SECTION_OPENWORK in out
+        assert wakeup.SECTION_DOCTRINE in out
+
+    def test_token_guard_path_filters_dropped_section_pages_from_log_surface(self, project, monkeypatch):
+        """Review round 3 LOW (folded into the HIGH fix): on the same guard-
+        fires path, a section the cascade fully drops must not leave its
+        page in `miss_log.log_surface`'s recorded pages — the same honesty
+        guarantee already covered for the pure-byte-ceiling path
+        (`test_cascade_dropped_section_page_absent_from_log_surface`), now
+        exercised through the token-guard path instead. `_CASCADE_ORDER`
+        processes `SECTION_L2` before `SECTION_L1`, so under a tight
+        `max_tokens` (with the byte ceiling loosened out of the way) a large
+        L2 map gets truncated (still present) while a tiny L1 session file's
+        remaining share of the shrunk budget bottoms out and it is dropped
+        entirely — exactly the asymmetric outcome (one section survives
+        truncated, one is fully gone) this filtering exists for."""
+        _write(project["project_dir"] / "l1" / "session-001.md", _model_stamped("tiny l1"))
+        _write(project["project_dir"] / "map.md", "# demo-project — knowledge map\n" + ("l2 " * 2000))
+
+        # Loosen the byte ceiling so the TOKEN guard is the binding
+        # constraint being exercised here, not the byte one (already covered
+        # by the sibling test above).
+        monkeypatch.setenv("REN_WAKEUP_BYTE_CEILING", "100000")
+        out = wakeup.compose_wake_up_context(
+            cwd=project["cwd"], wiki_root=wiki_root(), session="sess-guard-drop", max_tokens=700,
+        )
+
+        assert wakeup.SECTION_L1 not in out, "precondition: L1 must have been fully dropped"
+
+        surfaces = collect.read(kind=collect.KIND_WAKEUP_SURFACE)
+        matching = [e for e in surfaces if e.get("session") == "sess-guard-drop"]
+        assert matching, "expected a surface record for this session"
+        pages = set(matching[-1]["pages"])
+        assert "projects/demo-project/l1/session-001.md" not in pages
+        if wakeup.SECTION_L2 in out:
+            assert "projects/demo-project/map.md" in pages
+
 
 # --------------------------------------------------------------- no-LLM scan
 
