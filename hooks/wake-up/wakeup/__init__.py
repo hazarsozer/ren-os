@@ -416,7 +416,10 @@ def _apply_byte_ceiling(
     section_keys: list[str],
     sections: list[str],
     ceiling: int,
-    chars_per_token: float,
+    # No trailing comma: the push guard's scrub exempts a whole
+    # type-annotation identifier, and the comma defeats that exemption
+    # (scrub FP, filed as an issue at 0.7.9 release).
+    chars_per_token: float
 ) -> tuple[str, set[str]]:
     """Squeeze `sections` under `ceiling` BYTES, least-critical-first.
 
