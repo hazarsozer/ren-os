@@ -1499,7 +1499,10 @@ def live_pin_pages() -> list[dict]:
     Cross-session by design: stale pins from EARLIER sessions are exactly the
     ones needing cleanup. Purely mechanical detection — judging whether a pin
     looks acted-on is model-work for the live session (see SKILL.md), never a
-    heuristic here. Returns `[{"page": <rel>, "qid": <qid>,
+    heuristic here. UPDATE entries never introduce a listing (issue #62): a
+    pin UPDATE is a restoration/correction of an existing page, not a note
+    with a keep/expand/delete lifecycle — one may only refresh a page an
+    earlier pin ADD already listed. Returns `[{"page": <rel>, "qid": <qid>,
     "preview": <one-line content preview>}]`. Read-only; never raises — any
     queue-read failure degrades to `[]`."""
     from lib.memory import archive
@@ -1518,6 +1521,14 @@ def live_pin_pages() -> list[dict]:
             continue
         page = entry.proposal.page
         if not page or archive.is_archived(page):
+            continue
+        # #62: a pin UPDATE is a restoration/correction of an existing page
+        # (e.g. the two #58 restoration writes, q-01KZXD2H37WW05W73QZ8RRFSM9
+        # → log.md and q-01KZXD2H2VM0KF1218EQ78K4YA → identity.md), not a
+        # note with a keep/expand/delete lifecycle — it never introduces a
+        # live-pin listing. It may only refresh a page an earlier pin ADD
+        # already listed (a re-pin of the same note).
+        if entry.proposal.op == "UPDATE" and page not in by_page:
             continue
         try:
             if not ren_paths.safe_join(root, page).is_file():

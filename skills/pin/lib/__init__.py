@@ -91,6 +91,20 @@ def pin(text: str, page: str, session: str) -> QueueEntry:
     return entry
 
 
+_SPINE_ROOT_PAGES = frozenset({"log.md", "identity.md", "index.md"})
+
+
+def _is_spine_page(page: str) -> bool:
+    """True for the wiki's structural spine: the root `log.md`,
+    `identity.md`, and `index.md`, plus any page whose final path component
+    is `map.md` (L2 maps, e.g. `projects/<slug>/map.md`). These pages are
+    never deleted via pin correction — see issue #58."""
+    normalized = page.replace("\\", "/").strip("/")
+    if normalized in _SPINE_ROOT_PAGES:
+        return True
+    return normalized.rsplit("/", 1)[-1] == "map.md"
+
+
 def _complete_if_held(entry: QueueEntry, approved_by: str | None) -> QueueEntry:
     """Dogfood-2 finding H1: complete a human-approved correction that the
     instruction-plane hold left pending.
@@ -127,8 +141,20 @@ def correct(
     on the instruction-plane hold, the approval is completed immediately via
     `queue.approve_and_apply` instead of silently swallowing the confirmed
     correction — see `_complete_if_held`.
+
+    Raises `ValueError` on a DELETE (`replacement=None`) targeting a spine
+    page — refused before anything is queued, regardless of `approved_by`
+    (issue #58).
     """
     if replacement is None:
+        if _is_spine_page(page):
+            raise ValueError(
+                f"refusing DELETE of spine page '{page}': spine pages "
+                "(log.md/identity.md/index.md/*/map.md) are never deleted "
+                "via pin correction — see issue #58 (the 2026-08 "
+                "log.md/identity.md deletion incident). approved_by does "
+                "not override this."
+            )
         entry, _ = propose_and_apply(
             Proposal(
                 op="DELETE",

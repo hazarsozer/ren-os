@@ -200,3 +200,26 @@ def test_correct_delete_on_instruction_plane_page_without_approval_stays_held(wi
 
     assert entry.status == "pending"
     assert page.exists()
+
+
+# --------------------------------------------------------------------------
+# Issue #62 / #58: spine pages are never deleted via pin correction —
+# refused before any queue proposal, regardless of approved_by.
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "page", ["log.md", "identity.md", "index.md", "projects/ren-os/map.md"]
+)
+def test_correct_delete_of_spine_page_refused_even_with_approval(wiki, page):
+    from lib.memory import queue
+
+    page_abs = wiki / page
+    page_abs.parent.mkdir(parents=True, exist_ok=True)
+    page_abs.write_text("spine content\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="#58"):
+        correct(page, None, "sess-1", approved_by="hazar")
+
+    assert page_abs.exists()
+    assert queue.all_entries() == []  # refused BEFORE any proposal was queued
