@@ -1136,6 +1136,21 @@ class TestLivePinPages:
         assert [p["page"] for p in pins] == ["projects/p/plan.md"]
         assert "v2 of the plan" in pins[0]["preview"]
 
+    def test_excludes_update_correction_entries(self, wiki):
+        """#62: a pin UPDATE is a restoration/correction of an existing
+        page (the #58 shape — correct() restoring log.md/identity.md), not
+        a note with a keep/expand/delete lifecycle — it must not render as
+        a live pin, while an applied ADD pin still does."""
+        from skills.pin.lib import correct
+        from skills.wrap.lib import live_pin_pages
+
+        (wiki / "notes.md").write_text("old content\n", encoding="utf-8")
+        correct("notes.md", "restored content", session="sess-restore")
+        self._pin("projects/p/plan.md", "next session: fix the widget")
+
+        pins = live_pin_pages()
+        assert [p["page"] for p in pins] == ["projects/p/plan.md"]
+
 
 class TestSessionSummaryJournalLine:
     """0.6.5 session journal: `wrap_session` appends one append-only NOOP

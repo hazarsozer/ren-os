@@ -14,6 +14,12 @@ State: one JSON file, `state_dir()/"metrics"/estimator.json`, shaped
 `{"chars_per_token": float, "samples": int, "updated": iso-ts}`. Absent or
 corrupt state falls back to `DEFAULT_CHARS_PER_TOKEN` with zero recorded
 samples — `estimate_tokens` never raises on a missing/bad calibration file.
+A stored ratio must also pass the ACCEPTANCE RULES before `estimate_tokens`
+honors it: at least `MIN_CALIBRATION_SAMPLES` samples behind it (a
+single-sample ratio carries no statistical weight) and a value inside
+`PLAUSIBLE_RATIO_BAND` (a corrupt or hand-edited file must never crush or
+10x-inflate every estimate). These are the same two rules the wake-up hook
+applies — this module is their single definition site.
 
 Blending: `calibrate` folds a new batch of (text, reported_tokens) pairs into
 the stored ratio as a running average, weighted by sample COUNT (not chars or
@@ -40,6 +46,13 @@ from lib import ren_paths
 
 DEFAULT_CHARS_PER_TOKEN = 4.0
 ESTIMATOR_FILENAME = "estimator.json"
+#: Floor on stored calibration samples before a ratio may govern estimates —
+#: below it, `estimate_tokens` sticks with `DEFAULT_CHARS_PER_TOKEN`.
+MIN_CALIBRATION_SAMPLES = 5
+#: Chars-per-token band a ratio must land in to be believable for English-ish
+#: markdown. Real ratios cluster near 4; anything outside this means the two
+#: sides of a pair are not describing the same text.
+PLAUSIBLE_RATIO_BAND: tuple[float, float] = (1.5, 12.0)
 
 
 def _now_iso() -> str:
@@ -69,11 +82,24 @@ def _load_ratio_state() -> tuple[float, int]:
     return ratio, samples
 
 
+def _accepted_ratio() -> float:
+    """The stored ratio if it passes the acceptance rules (at least
+    `MIN_CALIBRATION_SAMPLES` samples behind it AND inside
+    `PLAUSIBLE_RATIO_BAND`), else `DEFAULT_CHARS_PER_TOKEN`. Never raises."""
+    ratio, samples = _load_ratio_state()
+    if samples < MIN_CALIBRATION_SAMPLES:
+        return DEFAULT_CHARS_PER_TOKEN
+    low, high = PLAUSIBLE_RATIO_BAND
+    if not (low <= ratio <= high):
+        return DEFAULT_CHARS_PER_TOKEN
+    return ratio
+
+
 def estimate_tokens(text: str) -> int:
     """Estimate `text`'s token count as `ceil(len(text) / chars_per_token)`,
-    using the calibrated ratio if one is stored, else `DEFAULT_CHARS_PER_TOKEN`."""
-    ratio, _samples = _load_ratio_state()
-    return math.ceil(len(text) / ratio)
+    using the calibrated ratio if one is stored AND accepted (see
+    `_accepted_ratio`), else `DEFAULT_CHARS_PER_TOKEN`."""
+    return math.ceil(len(text) / _accepted_ratio())
 
 
 def calibrate(samples: list[tuple[str, int]]) -> float:
@@ -95,6 +121,8 @@ def calibrate(samples: list[tuple[str, int]]) -> float:
     batch_ratio = total_chars / total_tokens
     batch_weight = len(samples)
 
+    # Raw read on purpose: blending must see sub-floor accumulated state, or
+    # a stored 3-sample history would be silently replaced by (4.0, 0).
     stored_ratio, stored_samples = _load_ratio_state()
     new_samples = stored_samples + batch_weight
     blended_ratio = (stored_ratio * stored_samples + batch_ratio * batch_weight) / new_samples
@@ -109,4 +137,10 @@ def calibrate(samples: list[tuple[str, int]]) -> float:
     return blended_ratio
 
 
-__all__ = ["DEFAULT_CHARS_PER_TOKEN", "estimate_tokens", "calibrate"]
+__all__ = [
+    "DEFAULT_CHARS_PER_TOKEN",
+    "MIN_CALIBRATION_SAMPLES",
+    "PLAUSIBLE_RATIO_BAND",
+    "estimate_tokens",
+    "calibrate",
+]

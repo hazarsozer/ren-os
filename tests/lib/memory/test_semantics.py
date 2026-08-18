@@ -293,6 +293,59 @@ def test_contradiction_evidence_none_when_no_contradiction():
     assert contradiction_evidence(a, b) is None
 
 
+# --- issue #38: pointer lines and identical lines never contradict -----------
+#
+# Live false positive 1: a wiki-health sweep flagged index.md ↔
+# projects/ren-os/map.md as a contradiction over the SAME decision-map
+# pointer line. Observed mechanism (the identical pair alone does NOT fire —
+# both copies of a negated line skip each other by loop structure): the
+# pointer line served as the AFFIRMATIVE counterpart of a negated prose line
+# sharing its topic tokens, and was reported as the evidence. Pointer lines
+# state locations, not claims — they must never enter the candidate set.
+
+
+_PTR_ARROW = "- [architecture] → projects/ren-os/knowledge/architecture/index.md (unstamped)"
+_PTR_LINK = "- [architecture](projects/ren-os/knowledge/architecture/index.md) (w-123)"
+
+
+def test_identical_decision_map_lines_do_not_contradict():
+    # The live FP-1 pair shape: both pages carry the identical pointer line.
+    a = "## Knowledge\n- the wiki maps every project.\n## Decision map\n" + _PTR_ARROW + "\n"
+    b = "## Knowledge\n- ren-os owns its own map.\n## Decision map\n" + _PTR_ARROW + "\n"
+    assert contradiction_evidence(a, b) is None
+    assert contradiction_evidence(b, a) is None
+
+
+def test_pointer_line_is_never_the_affirmative_side_of_a_contradiction():
+    # The observed firing mechanism: a negated prose line overlapping the
+    # pointer's topic tokens paired the pointer line as "the same claim".
+    negated = "## Knowledge\n- do not edit the architecture knowledge index under projects by hand\n"
+    pointer_page = "## Decision map\n" + _PTR_ARROW + "\n"
+    assert contradiction_evidence(negated, pointer_page) is None
+    assert contradiction_evidence(pointer_page, negated) is None
+
+
+def test_link_form_pointer_line_is_excluded_too():
+    negated = "## Knowledge\n- do not edit the architecture knowledge index under projects by hand\n"
+    pointer_page = "## Decision map\n" + _PTR_LINK + "\n"
+    assert contradiction_evidence(negated, pointer_page) is None
+    assert contradiction_evidence(pointer_page, negated) is None
+
+
+def test_identical_negated_lines_do_not_contradict():
+    # Explicit invariant: agreement is never contradiction, negation marker
+    # or not. (Already skipped by loop structure today; pinned so it stays.)
+    line = "- do not use tabs for indentation in python files\n"
+    assert contradiction_evidence(line, line) is None
+
+
+def test_non_pointer_bullet_lines_still_contradict():
+    # Guard: pointer exclusion must not eat ordinary "- " bullet claims.
+    a = "- never use spaces for indentation in python files\n"
+    b = "- always use spaces for indentation in python files\n"
+    assert contradiction_evidence(a, b) is not None
+
+
 # --- duplicate_evidence: direct pairwise duplicate check ----------------------
 
 

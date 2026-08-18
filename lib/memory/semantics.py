@@ -45,6 +45,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+from lib.pointer import parse_pointer_line
 from lib.ren_paths import in_project_raw
 
 from . import quarantine
@@ -201,7 +202,24 @@ def _detect_contradictions(
     """Return existing lines that contradict `proposed_lines` (either
     direction): a negated line on one side that states the SAME CLAIM
     (`_same_claim`) as an affirmative line on the other side. One entry per
-    contradicting existing line, at most."""
+    contradicting existing line, at most.
+
+    Two skips (issue #38, both live false-positive classes):
+
+    1. POINTER LINES — any line `lib.pointer.parse_pointer_line` recognizes
+       (decision-map link or arrow form) is excluded from BOTH sides: a
+       pointer states a location, not a claim, yet its topic tokens overlap
+       any negated prose line about the same topic. (Inputs here are
+       `_normalize_line`d — casefolded, whitespace-collapsed — and the
+       pointer grammar is case-insensitive-compatible and whitespace-
+       tolerant, so it still matches normalized pointer lines.)
+    2. IDENTICAL LINES — a line never contradicts an existing line whose
+       normalized form is identical to it: agreement is never contradiction.
+       (Identical negated pairs are already skipped by the loop structure —
+       both sides carry the marker — but the invariant is explicit here so
+       it can't regress.)"""
+    proposed_lines = [ln for ln in proposed_lines if parse_pointer_line(ln) is None]
+    existing_lines = [ln for ln in existing_lines if parse_pointer_line(ln) is None]
     hits: list[str] = []
 
     for line in proposed_lines:
@@ -212,6 +230,8 @@ def _detect_contradictions(
         if len(toks) < _MIN_SIGNIFICANT_TOKENS_TO_CONSIDER:
             continue
         for existing in existing_lines:
+            if existing == line:
+                continue  # identical lines agree; agreement is never contradiction
             if _strip_negation(existing) is not None:
                 continue  # symmetric case handled by the loop below
             if _same_claim(toks, existing):
@@ -225,6 +245,8 @@ def _detect_contradictions(
         if len(existing_toks) < _MIN_SIGNIFICANT_TOKENS_TO_CONSIDER:
             continue
         for line in proposed_lines:
+            if line == existing:
+                continue  # identical lines agree; agreement is never contradiction
             if _strip_negation(line) is not None:
                 continue  # already covered above
             if _same_claim(existing_toks, line):

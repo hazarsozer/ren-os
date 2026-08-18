@@ -40,7 +40,11 @@ caller such as wrap's close-out.
     across pages AND within a single page (self-comparison), since two
     "## Knowledge" bullets in the same file can drift from each other just
     as easily as two separate pages can; for a within-page finding
-    `page == with`.
+    `page == with`. Cross-page drift is scoped by `semantics
+    .project_subtree` (issue #38): two pages are only drift-compared when
+    both resolve to the SAME project subtree, or both to none — two
+    different projects' templated lines (ingest dates) are supposed to
+    carry different numbers and are never paired.
   - `mass_deletions` — journal scan: more than 5 DELETE ops inside any
     rolling 24h window is an anomaly worth a friend's eyes, not proof of
     anything wrong on its own.
@@ -173,7 +177,10 @@ def _pair_findings(wiki_root: Path) -> tuple[list[dict], list[dict], list[dict],
     (negation heuristic), duplicate (shared-line ratio), and numeric drift
     (same line, different numbers — including WITHIN a single page via
     self-comparison). One loop, one candidate set, one cap (see module
-    docstring). Returns `(contradictions, duplicates, drifts, cap_note)`."""
+    docstring). Cross-page drift only compares pages whose
+    `semantics.project_subtree` is equal — same project subtree, or both
+    outside any (issue #38); contradiction and duplicate scans keep the full
+    pairing. Returns `(contradictions, duplicates, drifts, cap_note)`."""
     pages = _knowledge_pages(wiki_root)
     n = len(pages)
     capped = n > _CONTRADICTION_PAGE_CAP
@@ -216,9 +223,13 @@ def _pair_findings(wiki_root: Path) -> tuple[list[dict], list[dict], list[dict],
             if dup is not None:
                 duplicates.append({"page": rel_a, "with": rel_b, "evidence": dup})
 
-            drift = semantics.numeric_drift_evidence(text_a, text_b)
-            if drift is not None:
-                drifts.append({"page": rel_a, "with": rel_b, "evidence": f"{drift[0]}  ↔  {drift[1]}"})
+            # issue #38: drift only means something within ONE project's
+            # subtree (or wholly outside project subtrees) — two different
+            # projects' templated lines are supposed to differ in number.
+            if semantics.project_subtree(rel_a) == semantics.project_subtree(rel_b):
+                drift = semantics.numeric_drift_evidence(text_a, text_b)
+                if drift is not None:
+                    drifts.append({"page": rel_a, "with": rel_b, "evidence": f"{drift[0]}  ↔  {drift[1]}"})
 
     cap_note = None
     if capped:
