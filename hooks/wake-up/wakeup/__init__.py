@@ -121,7 +121,7 @@ from .doctrine_card import (
     superpowers_installed,
 )
 from lib.instrument import collect, miss_log
-from lib.instrument.calibration import PLAUSIBLE_RATIO_BAND
+from lib.instrument.estimator import MIN_CALIBRATION_SAMPLES, PLAUSIBLE_RATIO_BAND
 from lib.memory import archive, queue, quarantine
 from lib.memory.provenance import read_frontmatter_provenance
 from lib.ren_paths import DEFAULT_DEV_ROOT_REL, detect_project, resolve_dev_root, state_dir, wiki_root
@@ -205,7 +205,6 @@ def _strip_frontmatter(text: str) -> str:
     return text[match.end():] if match else text
 
 
-_MIN_CALIBRATION_SAMPLES: Final[int] = 5
 _BUDGET_SHIFT_WARN_FRACTION: Final[float] = 0.25
 
 
@@ -220,17 +219,18 @@ def _calibrated_chars_per_token() -> float:
     tolerance as `lib.instrument.estimator._load_ratio_state`.
 
     Fix round 3: a positive ratio isn't enough — it must also be plausible.
-    `PLAUSIBLE_RATIO_BAND` (mirrored from `lib.instrument.calibration`, which
-    already imports cleanly here) is the same band that module uses to reject
-    calibration inputs it never measured; a corrupt or hand-edited
-    estimator.json (0.5, 50.0, ...) would otherwise silently crush or
-    10x-inflate every char budget this ratio now governs.
+    `PLAUSIBLE_RATIO_BAND` (imported from `lib.instrument.estimator`, now the
+    single home of the acceptance rules both `estimate_tokens` paths share —
+    #50) is the same band the calibration loop uses to reject inputs it never
+    measured; a corrupt or hand-edited estimator.json (0.5, 50.0, ...) would
+    otherwise silently crush or 10x-inflate every char budget this ratio now
+    governs.
 
     Fix round 4 (#48): plausible still isn't enough — it must also be
     SEASONED. A single-sample ratio (the live 2026-08-03 estimator.json held
     exactly one: 2.1813929..., roughly halving every wake-up char budget)
     carries no statistical weight and must never displace the fallback
-    constant; `_MIN_CALIBRATION_SAMPLES` is the floor. Once a ratio clears
+    constant; `MIN_CALIBRATION_SAMPLES` is the floor. Once a ratio clears
     that floor and the plausibility band, it's allowed to govern — but if it
     still shifts every budget by more than `_BUDGET_SHIFT_WARN_FRACTION`
     (25%) vs `CHARS_PER_TOKEN`, that swing is logged at WARNING so a
@@ -243,7 +243,7 @@ def _calibrated_chars_per_token() -> float:
         samples = int(data.get("samples", 0))
     except Exception:  # noqa: BLE001 - a calibration read must never break wake-up
         return CHARS_PER_TOKEN
-    if samples < _MIN_CALIBRATION_SAMPLES:
+    if samples < MIN_CALIBRATION_SAMPLES:
         return CHARS_PER_TOKEN
     low, high = PLAUSIBLE_RATIO_BAND
     if not (low <= ratio <= high):

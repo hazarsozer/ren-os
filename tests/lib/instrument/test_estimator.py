@@ -79,6 +79,54 @@ def test_non_positive_stored_ratio_falls_back_to_default(isolated_state):
     assert result == math.ceil(4 / estimator.DEFAULT_CHARS_PER_TOKEN)
 
 
+# ------------------------------------------------- acceptance rules (#50)
+
+
+def _write_state(ratio, samples):
+    path = _estimator_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps({"chars_per_token": ratio, "samples": samples, "updated": "2026-01-01T00:00:00Z"}),
+        encoding="utf-8",
+    )
+
+
+def test_sub_floor_single_sample_ratio_falls_back_to_default(isolated_state):
+    _write_state(2.0, 1)
+    assert estimator.estimate_tokens("a" * 40) == math.ceil(40 / estimator.DEFAULT_CHARS_PER_TOKEN)
+
+
+def test_sub_floor_four_sample_ratio_falls_back_to_default(isolated_state):
+    _write_state(2.0, 4)
+    assert estimator.estimate_tokens("a" * 40) == math.ceil(40 / estimator.DEFAULT_CHARS_PER_TOKEN)
+
+
+def test_seasoned_in_band_ratio_is_honored(isolated_state):
+    _write_state(3.0, estimator.MIN_CALIBRATION_SAMPLES)
+    assert estimator.estimate_tokens("a" * 30) == math.ceil(30 / 3.0)
+
+
+@pytest.mark.parametrize("ratio", [0.5, 50.0])
+@pytest.mark.parametrize("samples", [5, 100])
+def test_out_of_band_ratio_falls_back_to_default_regardless_of_samples(isolated_state, ratio, samples):
+    _write_state(ratio, samples)
+    assert estimator.estimate_tokens("a" * 40) == math.ceil(40 / estimator.DEFAULT_CHARS_PER_TOKEN)
+
+
+def test_calibrate_blends_against_raw_sub_floor_state(isolated_state):
+    # Flooring must apply to the ESTIMATE read only: calibrate's blending has
+    # to see the accumulated sub-floor state, not a floored (4.0, 0).
+    _write_state(3.0, 3)
+
+    ratio = estimator.calibrate([("a" * 600, 100)])  # batch ratio 6.0, weight 1
+
+    # blended = (3.0*3 + 6.0*1) / 4 = 3.75 — NOT (4.0*0 + 6.0*1)/1 = 6.0
+    assert ratio == pytest.approx(3.75)
+
+    on_disk = json.loads(_estimator_path().read_text(encoding="utf-8"))
+    assert on_disk["samples"] == 4
+
+
 # ---------------------------------------------------------------- calibrate
 
 
@@ -107,11 +155,11 @@ def test_calibrate_second_batch_blends_by_sample_count(isolated_state):
 
 
 def test_calibrate_persistence_round_trip_feeds_estimate_tokens(isolated_state):
-    estimator.calibrate([("a" * 800, 200)])  # ratio 4.0
+    estimator.calibrate([("a" * 200, 50)] * 4)  # ratio 4.0, samples=4
 
     estimator.calibrate([("b" * 100, 50)])  # batch ratio 2.0, weight 1
-    # blended = (4.0*1 + 2.0*1)/2 = 3.0
-    assert estimator.estimate_tokens("c" * 30) == math.ceil(30 / 3.0)
+    # blended = (4.0*4 + 2.0*1)/5 = 3.6; 5 samples clears MIN_CALIBRATION_SAMPLES
+    assert estimator.estimate_tokens("c" * 36) == math.ceil(36 / 3.6)
 
 
 def test_calibrate_rejects_empty_samples(isolated_state):

@@ -83,7 +83,7 @@ from pathlib import Path
 
 from lib import ren_paths
 from lib.instrument import collect
-from lib.instrument.estimator import calibrate
+from lib.instrument.estimator import PLAUSIBLE_RATIO_BAND, calibrate
 
 LAST_INJECTION_FILENAME = "last_injection.json"
 #: The eb6b932 format (payload only, no session id). Superseded by the JSON
@@ -94,11 +94,6 @@ CLAUDE_CONFIG_DIR_ENV = "CLAUDE_CONFIG_DIR"
 #: Marker key written into the pairing file once its session has been
 #: harvested — see `mark_last_injection_consumed`.
 CONSUMED_KEY = "consumed"
-
-#: Chars-per-token band a pair must accept to be believable for English-ish
-#: markdown. Real ratios cluster near 4; anything outside this means the two
-#: sides of the pair are not describing the same text (see module docstring).
-PLAUSIBLE_RATIO_BAND: tuple[float, float] = (1.5, 12.0)
 
 #: Bound on output pairs folded in per session — calibration converges long
 #: before this, and one chatty session should not out-vote every other.
