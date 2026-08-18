@@ -253,10 +253,7 @@ def test_documented_hyphenated_skill_invocations_are_runnable():
 
 _REN_REF_RE = re.compile(r"/ren:([a-z][a-z0-9-]*)")
 # Verbs documented as future work (doctrine/companions.md: "planned for 0.3").
-# "distill" is Task 4 of the 0.7.x knowledge-flow train (this lib) landing
-# ahead of Task 5, which adds the skills/distill/ package the /ren:distill
-# verb resolves to.
-_PLANNED_VERBS = {"ingest-source", "distill"}
+_PLANNED_VERBS = {"ingest-source"}
 
 
 def _referenced_ren_verbs() -> dict[str, set[str]]:
