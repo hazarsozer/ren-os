@@ -118,7 +118,7 @@ PATTERNS: list[tuple[str, re.Pattern[str]]] = [
             r"[^\s'\"(]{4,}"
             r")"
             r"|"
-            # token/api_key keys — numeric guard kept (CHARS_PER_TOKEN = 4.0)
+            # token/api_key keys — numeric guard kept (tuning constants)
             r"(?:token|api[_-]?key)\s*[:=]\s*"
             r"(?:"
             r"['\"][^\s'\"]{6,}"  # quoted value

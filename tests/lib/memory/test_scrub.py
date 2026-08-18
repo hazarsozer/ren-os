@@ -224,20 +224,30 @@ def test_ghost_word_does_not_match_github_token_prefix():
     assert findings == []
 
 
+# Fixture shapes below are assembled at runtime (key + operator + value) so
+# the literal key=value form never appears in this file's text — the pre-push
+# guard scans outgoing added lines with this very scanner (same convention as
+# the ghp_/sk- fixtures above).
+
+
+def _pair(key: str, op: str, value: str) -> str:
+    return f"{key}{op}{value}"
+
+
 def test_call_expression_rhs_does_not_fire():
-    text = "page_token = locks.content_token(page_abs)"
+    text = _pair("page_token", " = ", "locks.content_token(page_abs)")
     findings = [f for f in scan(text) if f.kind == "password-pair"]
     assert findings == []
 
 
 def test_typed_numeric_constant_rhs_does_not_fire():
-    text = "CHARS_PER_TOKEN: Final[float] = 4.0"
+    text = _pair("CHARS_PER_TOKEN", ": ", "Final[float] = 4.0")
     findings = [f for f in scan(text) if f.kind == "password-pair"]
     assert findings == []
 
 
 def test_bare_type_annotation_rhs_does_not_fire():
-    text = "chars_per_token: float | None = None"
+    text = _pair("chars_per_token", ": ", "float | None = None")
     findings = [f for f in scan(text) if f.kind == "password-pair"]
     assert findings == []
 
@@ -245,12 +255,13 @@ def test_bare_type_annotation_rhs_does_not_fire():
 def test_guard_word_prefix_secret_still_fires():
     # 0.7.7 review HIGH: a type-like guard word counts only as a WHOLE
     # annotation token — a secret merely starting with one must still match.
-    for text in (
-        "token=None-Shall-Pass99",
-        "secret=none.of.your.business",
-        "token=final.production.key",
-        "password=Optional.Xk29!dlq",
+    for key, value in (
+        ("token", "None-Shall-Pass99"),
+        ("secret", "none.of.your.business"),
+        ("token", "final.production.key"),
+        ("password", "Optional.Xk29!dlq"),
     ):
+        text = _pair(key, "=", value)
         findings = [f for f in scan(text) if f.kind == "password-pair"]
         assert len(findings) == 1, text
 
@@ -258,29 +269,31 @@ def test_guard_word_prefix_secret_still_fires():
 def test_numeric_password_still_fires():
     # Numeric guard is scoped to token/api_key keys — a digits-only
     # password/secret is a plausible PIN, not a tuning constant.
-    findings = [f for f in scan("password=12345678") if f.kind == "password-pair"]
+    text = _pair("password", "=", "12345678")
+    findings = [f for f in scan(text) if f.kind == "password-pair"]
     assert len(findings) == 1
 
 
 def test_numeric_token_constant_does_not_fire():
-    findings = [f for f in scan("MAX_TOKENS: 128000") if f.kind == "password-pair"]
+    text = _pair("MAX_TOKENS", ": ", "128000")
+    findings = [f for f in scan(text) if f.kind == "password-pair"]
     assert findings == []
 
 
 def test_detects_quoted_password_assignment():
-    text = 'password = "hunter2xyz"'
+    text = _pair("password", " = ", '"hunter2xyz"')
     findings = [f for f in scan(text) if f.kind == "password-pair"]
     assert len(findings) == 1
 
 
 def test_detects_env_style_password_assignment():
-    text = "DB_PASSWORD=s3cr3t!42"
+    text = _pair("DB_PASSWORD", "=", "s3cr3t!42")
     findings = [f for f in scan(text) if f.kind == "password-pair"]
     assert len(findings) == 1
 
 
 def test_detects_quoted_token_assignment():
-    text = 'token: "ghp_abcd1234efgh"'
+    text = _pair("token", ": ", '"ghp_abcd1234efgh"')
     findings = [f for f in scan(text) if f.kind == "password-pair"]
     assert len(findings) == 1
 

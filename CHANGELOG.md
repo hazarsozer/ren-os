@@ -15,12 +15,13 @@ paper-cut issues, sized in chat (no spec doc) and approved 2026-08-18.
   (≥6 chars) or an unquoted token that is not a call expression or a whole
   type-annotation identifier; pure numbers are additionally exempt for
   `token`/`api_key` keys only (tuning constants), never for
-  `password`/`secret` (a digits-only password is a PIN). `page_token =
-  locks.content_token(...)`, `CHARS_PER_TOKEN: Final[float] = 4.0`,
-  `MAX_TOKENS: 128000`, and `chars_per_token: float | None = None` no
-  longer trigger `SecretsFound`; quoted, env-style, guard-word-prefixed
-  (`none.of.your.business`), and numeric-PIN secrets still do (all pinned
-  by tests, incl. the review's adversarial probes).
+  `password`/`secret` (a digits-only password is a PIN). A `page_token`
+  assigned from `locks.content_token(...)`, a `CHARS_PER_TOKEN`-style
+  numeric constant, a `MAX_TOKENS` limit, and a type-annotated
+  `chars_per_token` default no longer trigger `SecretsFound`; quoted,
+  env-style, guard-word-prefixed (`none.of.your.business`), and
+  numeric-PIN secrets still do (all pinned by tests, incl. the review's
+  adversarial probes).
 - **#31 — doctor stops scanning frozen snapshots.** New shared predicate
   `ren_paths.under_ren_state(path, wiki_root)`; `check_dangling_pointers`
   skips everything under `wiki/.ren/`, so immutable per-write snapshot
