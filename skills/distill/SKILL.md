@@ -18,7 +18,7 @@ contract:
     - "Advances watermark to max ren_ts of the batch (only on fully successful run)"
     - "Returns counts: applied, held, suggested, gated_out, refused, capped_remainder"
   budgets:
-    turns: 2
+    turns: 3
     files_written: 1
     duration_seconds: 60
   permissions:
@@ -26,13 +26,17 @@ contract:
       - "~/.renos/wiki/**"
       - "~/.renos/l1/**"
     write:
+      - "~/.renos/wiki/**"
       - "~/.renos/wiki/.ren/distiller-watermark.json"
       - "~/.renos/wiki/.ren/journal.jsonl"
   completion_conditions:
     - "Watermark advanced only if mining, classification, and application all succeeded"
     - "Malformed agent reply stops the flow; watermark untouched"
     - "Every candidate passed through apply_candidates (no silent drops)"
-  output_paths: []
+  output_paths:
+    - "~/.renos/wiki/lessons/"
+    - "~/.renos/wiki/projects/*/knowledge/lessons/"
+    - "~/.renos/wiki/.ren/distiller-watermark.json"
 
 tags: [knowledge-synthesis, wiki-distill, batch-mining, routine]
 related_skills: [wrap, routine-init]

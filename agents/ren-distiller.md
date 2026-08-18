@@ -30,4 +30,5 @@ for that session (do not re-propose those).
   `{"item": "<one-sentence learning>", "source_session": "<session id>",
     "project": "<slug or null>", "proposed_content": "<page body>",
     "kind": "lesson" | "decision" | "pattern"}`
+  The `kind` field is carried for classifier context and future use only — nothing routes on it.
   Return `[]` when nothing qualifies. No prose around the JSON.
