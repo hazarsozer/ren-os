@@ -106,6 +106,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 import subprocess
 from datetime import datetime, timedelta, timezone
@@ -135,6 +136,25 @@ L2_MAP_FILENAME: Final[str] = "map.md"
 MASTER_ROUTINES_DIRNAME: Final[str] = "routines"
 _SUGGESTION_LIST_CAP: Final[int] = 5
 SALIENCE_WINDOW_DAYS: Final[int] = 30
+
+# Harness inline threshold defense (#71): Claude Code persists SessionStart
+# hook output past ~10KB and shows only a ~2KB preview — bytes past the
+# cliff cost the whole tail. Budget in BYTES against that cliff, under it.
+WAKEUP_BYTE_CEILING_DEFAULT: Final[int] = 9_500
+SENTINEL_LINE: Final[str] = (
+    "*(If this context appears truncated or as a persisted-file preview, "
+    "Read the full file before proceeding.)*"
+)
+
+
+def _byte_ceiling() -> int:
+    raw = os.environ.get("REN_WAKEUP_BYTE_CEILING", "")
+    try:
+        value = int(raw)
+    except ValueError:
+        return WAKEUP_BYTE_CEILING_DEFAULT
+    return value if value > 0 else WAKEUP_BYTE_CEILING_DEFAULT
+
 
 # Token budget (ADR-008 heritage: 3-5K target, 5K hard cap)
 DEFAULT_MAX_TOKENS: Final[int] = 5_000
@@ -360,6 +380,140 @@ def _inject_open_work(
     dropped = len(lines) - len(kept)
     notice = f"*({dropped} more open item(s) not shown; full ledger in `{pointer_rel}`)*"
     return "\n".join(kept + [notice]) if kept else notice
+
+
+# Cascade truncation order for the byte ceiling (#71) — least critical first.
+# The protected head (seed header + sentinel, doctrine card) and the
+# `SECTION_PENDING`/`SECTION_OPENWORK` sections are never in this tuple and
+# are never touched by `_apply_byte_ceiling`.
+_CASCADE_ORDER: Final[tuple[str, ...]] = (
+    SECTION_EXTRAS, SECTION_ROUTINES, SECTION_L2, SECTION_L1,
+    SECTION_OVERVIEW, SECTION_IDENTITY,
+)
+
+_EXTRAS_ELISION_NOTE: Final[str] = "*(excerpts elided for size — fetch via /ren:recall)*"
+_CASCADE_TRUNCATION_NOTE: Final[str] = "*(truncated for size — fetch via /ren:recall)*"
+
+# Keys used in `section_keys` for entries that `_apply_byte_ceiling` must
+# never touch — the seed header, the doctrine card, and (tracked separately
+# so cascade logic never has to special-case them by string constant) any
+# non-section "misc" append (held-count line, nudges).
+_PROTECTED_KEYS: Final[frozenset[str]] = frozenset({"_head", "_doctrine"})
+
+
+def _join_sections(sections: list[str]) -> str:
+    return "\n\n".join(s for s in sections if s.strip())
+
+
+def _apply_byte_ceiling(
+    section_keys: list[str],
+    sections: list[str],
+    ceiling: int,
+    chars_per_token: float,
+) -> str:
+    """Squeeze `sections` under `ceiling` BYTES, least-critical-first, and
+    return the joined payload.
+
+    The protected head (`"_head"`/`"_doctrine"` keys), `SECTION_PENDING`, and
+    `SECTION_OPENWORK` are never modified or dropped — every other section is
+    fair game, in `_CASCADE_ORDER`. Stage 1 degrades the extras section's
+    content blocks to bare `#### {rel}` pointer lines (cheapest cut: the
+    pages stay discoverable via `/ren:recall`); stage 2 drops extras
+    entirely if that wasn't enough; stage 3 walks `_CASCADE_ORDER`,
+    tail-truncating (or, if the section's budget reaches zero, dropping)
+    one section at a time, re-measuring after each. Logs one warning naming
+    everything that was degraded, if anything was."""
+    sections = list(sections)
+    section_keys = list(section_keys)
+    composed = _join_sections(sections)
+    if len(composed.encode("utf-8")) <= ceiling:
+        return composed
+
+    degraded: list[str] = []
+
+    # Stage 1: degrade extras content blocks to pointer-only lines.
+    extras_idxs = [i for i, k in enumerate(section_keys) if k == SECTION_EXTRAS]
+    if extras_idxs:
+        i = 1  # index 0 within extras_idxs is the section header
+        changed = False
+        while i < len(extras_idxs):
+            rel_idx = extras_idxs[i]
+            if i + 1 < len(extras_idxs) and sections[rel_idx].startswith("#### "):
+                content_idx = extras_idxs[i + 1]
+                if sections[content_idx] != _EXTRAS_ELISION_NOTE:
+                    sections[content_idx] = _EXTRAS_ELISION_NOTE
+                    changed = True
+                i += 2
+            else:
+                i += 1
+        if changed:
+            degraded.append(f"{SECTION_EXTRAS} (pointers only)")
+        composed = _join_sections(sections)
+        if len(composed.encode("utf-8")) <= ceiling:
+            logger.warning(
+                "wake-up over byte ceiling (%d > %d); degraded: %s",
+                len(composed.encode("utf-8")), ceiling, ", ".join(degraded),
+            )
+            return composed
+
+    # Stage 2: still over — drop extras entirely (header + blocks).
+    if extras_idxs:
+        keep = [i for i in range(len(sections)) if section_keys[i] != SECTION_EXTRAS]
+        sections = [sections[i] for i in keep]
+        section_keys = [section_keys[i] for i in keep]
+        degraded.append(f"{SECTION_EXTRAS} (dropped)")
+        composed = _join_sections(sections)
+        if len(composed.encode("utf-8")) <= ceiling:
+            logger.warning(
+                "wake-up over byte ceiling (%d > %d); degraded: %s",
+                len(composed.encode("utf-8")), ceiling, ", ".join(degraded),
+            )
+            return composed
+
+    # Stage 3: walk the remaining cascade order, one section at a time.
+    for key in _CASCADE_ORDER:
+        if key == SECTION_EXTRAS:
+            continue  # already fully handled in stages 1-2
+        current_bytes = len(composed.encode("utf-8"))
+        overshoot_bytes = current_bytes - ceiling
+        if overshoot_bytes <= 0:
+            break
+
+        idxs = [i for i, k in enumerate(section_keys) if k == key]
+        content_idxs = idxs[1:]  # idxs[0] is the section header
+        if not content_idxs:
+            continue
+
+        combined = "\n".join(sections[i] for i in content_idxs)
+        overshoot_tokens = max(0, int(overshoot_bytes / chars_per_token) + 1)
+        current_tokens = _budget_tokens(combined, chars_per_token)
+        new_budget = max(0, current_tokens - overshoot_tokens)
+
+        if new_budget <= 0:
+            drop = set(idxs)  # header included
+            keep = [i for i in range(len(sections)) if i not in drop]
+            sections = [sections[i] for i in keep]
+            section_keys = [section_keys[i] for i in keep]
+            degraded.append(f"{key} (dropped)")
+        else:
+            truncated = truncate_text_to_tokens(combined, new_budget, chars_per_token)
+            truncated = f"{truncated}\n{_CASCADE_TRUNCATION_NOTE}"
+            sections[content_idxs[0]] = truncated
+            drop = set(content_idxs[1:])
+            if drop:
+                keep = [i for i in range(len(sections)) if i not in drop]
+                sections = [sections[i] for i in keep]
+                section_keys = [section_keys[i] for i in keep]
+            degraded.append(f"{key} (truncated)")
+
+        composed = _join_sections(sections)
+
+    if degraded:
+        logger.warning(
+            "wake-up over byte ceiling (%d > %d); degraded: %s",
+            len(composed.encode("utf-8")), ceiling, ", ".join(degraded),
+        )
+    return composed
 
 
 # `resolve_dev_root` and `detect_project` now live in `lib.ren_paths` (codex
@@ -1257,9 +1411,21 @@ def compose_wake_up_context(
     # the cuts and decision/cut can never disagree. One JSON read per hook run.
     chars_per_token = _calibrated_chars_per_token()
 
-    sections: list[str] = [f"## RenOS wake-up context (source={source})\n"]
+    sections: list[str] = [f"## RenOS wake-up context (source={source})\n{SENTINEL_LINE}\n"]
+    section_keys: list[str] = ["_head"]
     surfaced_pages: list[str] = []
     held_count = 0
+
+    # #71 criticality-first reorder: pending items are the most actionable
+    # thing in the payload, so they ride right after the head — ahead of
+    # identity/overview/L1/L2/routines/extras (see the docstring's ordering
+    # note and `_CASCADE_ORDER`, neither of which include this section).
+    suggestion = suggestion_line()
+    if suggestion:
+        sections.append(SECTION_PENDING)
+        section_keys.append(SECTION_PENDING)
+        sections.append(suggestion)
+        section_keys.append(SECTION_PENDING)
 
     # Codex F1 (0.5.5 live drill), Part B: the pages injected by sections
     # 1-4 (identity, overview, L2 map — L1 is handled separately below, same
@@ -1279,7 +1445,9 @@ def compose_wake_up_context(
             held_count += 1
         else:
             sections.append(SECTION_IDENTITY)
+            section_keys.append(SECTION_IDENTITY)
             sections.append(_inject_section(identity_text, IDENTITY_BUDGET, IDENTITY_FILENAME, chars_per_token))
+            section_keys.append(SECTION_IDENTITY)
             surfaced_pages.append(IDENTITY_FILENAME)
 
     project = None
@@ -1304,8 +1472,27 @@ def compose_wake_up_context(
                 held_count += 1
             else:
                 sections.append(SECTION_OVERVIEW)
+                section_keys.append(SECTION_OVERVIEW)
                 sections.append(_inject_section(overview_text, OVERVIEW_BUDGET, overview_rel, chars_per_token))
+                section_keys.append(SECTION_OVERVIEW)
                 surfaced_pages.append(overview_rel)
+
+        # #71 criticality-first reorder: open work moved up to directly
+        # after the overview block (still inside this same `project_dir is
+        # not None` region — it only needs `openwork_rel`, defined above) so
+        # it precedes L1/L2 — the other half of continuity, right behind
+        # "what is this project". Real content, so it is appended BEFORE the
+        # emptiness verdict below (unlike the nudge/doctrine card, which ride
+        # real content).
+        open_work_text = read_open_work(project_dir)
+        if open_work_text:
+            sections.append(SECTION_OPENWORK)
+            section_keys.append(SECTION_OPENWORK)
+            sections.append(
+                _inject_open_work(open_work_text, OPENWORK_BUDGET, openwork_rel, chars_per_token)
+            )
+            section_keys.append(SECTION_OPENWORK)
+            surfaced_pages.append(openwork_rel)
 
     # L1 continuity is GLOBAL (issue #21): the read below runs whether or not
     # a project was detected — project-local `l1/` first when there is one,
@@ -1342,22 +1529,11 @@ def compose_wake_up_context(
 
     if l1_text:
         sections.append(SECTION_L1)
+        section_keys.append(SECTION_L1)
         l1_path = _most_recent_l1_path(l1_source_dir / L1_DIRNAME)
         l1_rel = l1_path.relative_to(wiki_root).as_posix() if l1_path else None
         sections.append(_inject_section(l1_text, L1_BUDGET, l1_rel, chars_per_token))
-
-    # Open work sits between "what happened last session" and "where to find
-    # knowledge": it is the other half of continuity — what is still open.
-    # Real content, so it is appended BEFORE the emptiness verdict below
-    # (unlike the nudge/doctrine card, which ride real content).
-    if project_dir is not None:
-        open_work_text = read_open_work(project_dir)
-        if open_work_text:
-            sections.append(SECTION_OPENWORK)
-            sections.append(
-                _inject_open_work(open_work_text, OPENWORK_BUDGET, openwork_rel, chars_per_token)
-            )
-            surfaced_pages.append(openwork_rel)
+        section_keys.append(SECTION_L1)
 
     if project_dir is not None:
         l2_text = read_l2_map(project_dir)
@@ -1371,18 +1547,17 @@ def compose_wake_up_context(
                 held_count += 1
             else:
                 sections.append(SECTION_L2)
+                section_keys.append(SECTION_L2)
                 sections.append(_inject_section(l2_text, L2_BUDGET, l2_rel, chars_per_token))
+                section_keys.append(SECTION_L2)
                 surfaced_pages.append(l2_rel)
 
     live_routines = read_live_routines(wiki_root)
     if live_routines:
         sections.append(SECTION_ROUTINES)
+        section_keys.append(SECTION_ROUTINES)
         sections.append(truncate_text_to_tokens(live_routines, ROUTINE_SPEC_BUDGET, chars_per_token))
-
-    suggestion = suggestion_line()
-    if suggestion:
-        sections.append(SECTION_PENDING)
-        sections.append(suggestion)
+        section_keys.append(SECTION_ROUTINES)
 
     extras: list[str] = []
     extras_held_count = 0
@@ -1423,13 +1598,16 @@ def compose_wake_up_context(
         # extra reads empty, the header alone must not be emitted.
         if extra_blocks:
             sections.append(SECTION_EXTRAS)
+            section_keys.append(SECTION_EXTRAS)
             sections.extend(extra_blocks)
+            section_keys.extend([SECTION_EXTRAS] * len(extra_blocks))
 
     if held_count > 0:
         sections.append(
             f"{held_count} quarantined page(s) held out of this context — "
             "ask to see them explicitly."
         )
+        section_keys.append("_misc")
 
     # `sections[0]` is the seed header; anything after it is real content.
     # With nothing real gathered, return "" rather than a header-only payload
@@ -1445,10 +1623,12 @@ def compose_wake_up_context(
     nudge = unlinted_nudge_line()
     if nudge:
         sections.append(nudge)
+        section_keys.append("_misc")
 
     backlog_nudge = quarantine_backlog_nudge_line()
     if backlog_nudge:
         sections.append(backlog_nudge)
+        section_keys.append("_misc")
 
     # Doctrine rides real content; empty compose stays "" (loud notice) —
     # the emptiness decision above is made before the card is ever added.
@@ -1466,17 +1646,22 @@ def compose_wake_up_context(
         card = f"{card}\n*(continues in `{DOCTRINE_POINTER}`)*"
     card = card or full_card
     sections.insert(1, card)
+    section_keys.insert(1, "_doctrine")
 
     # #48: the generic truncator keeps the TAIL, which would silently elide
-    # the seed header (sections[0]) and doctrine card (sections[1]) — the
-    # exact content this guard exists to protect. Split head from body so
-    # ANY over-budget payload truncates only the content sections, never the
-    # head, and logs the loss instead of eating it silently.
-    head = "\n\n".join(s for s in sections[:2] if s.strip())   # seed header + doctrine card
-    body = "\n\n".join(s for s in sections[2:] if s.strip())
-    composed = f"{head}\n\n{body}" if body else head
+    # the seed header + doctrine card — the exact content this guard exists
+    # to protect. Split head from body (via `_PROTECTED_KEYS`, not raw
+    # indices, now that the doctrine card can share the same 2-entry head
+    # regardless of where other sections landed) so ANY over-budget payload
+    # truncates only the content sections, never the head, and logs the loss
+    # instead of eating it silently.
+    head_idxs = [i for i, k in enumerate(section_keys) if k in _PROTECTED_KEYS]
+    body_idxs = [i for i, k in enumerate(section_keys) if k not in _PROTECTED_KEYS]
+    head = "\n\n".join(sections[i] for i in head_idxs if sections[i].strip())
+    body = "\n\n".join(sections[i] for i in body_idxs if sections[i].strip())
+    composed_preview = f"{head}\n\n{body}" if body else head
 
-    final_tokens = _budget_tokens(composed, chars_per_token)
+    final_tokens = _budget_tokens(composed_preview, chars_per_token)
     if final_tokens > max_tokens:
         head_tokens = _budget_tokens(head, chars_per_token)
         body_budget = max(0, max_tokens - head_tokens)
@@ -1486,7 +1671,14 @@ def compose_wake_up_context(
             "content sections — doctrine card preserved",
             final_tokens, max_tokens, len(body) - len(truncated_body),
         )
-        composed = f"{head}\n\n{truncated_body}" if truncated_body else head
+        # Collapse the body into a single already-shrunk entry so the byte
+        # cascade below (which runs on `sections`/`section_keys`, the SAME
+        # keyed lists this guard used) never re-expands what this guard just
+        # cut — it simply finds no per-section keys left to touch here.
+        sections = [sections[i] for i in head_idxs] + ([truncated_body] if truncated_body else [])
+        section_keys = [section_keys[i] for i in head_idxs] + (["_misc"] if truncated_body else [])
+
+    composed = _apply_byte_ceiling(section_keys, sections, _byte_ceiling(), chars_per_token)
 
     try:
         if surfaced_pages:
@@ -1499,6 +1691,8 @@ def compose_wake_up_context(
 
 
 __all__ = [
+    "WAKEUP_BYTE_CEILING_DEFAULT",
+    "SENTINEL_LINE",
     "DEFAULT_MAX_TOKENS",
     "CHARS_PER_TOKEN",
     "DEFAULT_DEV_ROOT_REL",

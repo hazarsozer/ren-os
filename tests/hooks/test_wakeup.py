@@ -1346,10 +1346,16 @@ class TestStructuredSections:
 
         assert "continues in" not in payload
 
-    def test_all_four_structured_sections_get_pointer_lines_when_oversized(self, project):
+    def test_all_four_structured_sections_get_pointer_lines_when_oversized(self, project, monkeypatch):
         # Sections 1-4 (identity, overview, L1, L2) each carry their own
         # wiki-relative pointer when truncated; extras are unaffected (they
-        # already show their rel-path as a `#### {rel}` heading).
+        # already show their rel-path as a `#### {rel}` heading). This test
+        # is about the per-section `_inject_section` pointer mechanism, not
+        # the #71 byte ceiling — all four sections truncated near their max
+        # budgets sums well past the harness-threshold default, so the
+        # ceiling is raised here to isolate what this test actually checks
+        # (the byte-ceiling cascade itself is covered by TestByteCeiling).
+        monkeypatch.setenv("REN_WAKEUP_BYTE_CEILING", "100000")
         _write(project["project_dir"].parent.parent / "identity.md", "---\ntype: identity\n---\n" + ("a" * 5000))
         _write(project["project_dir"] / "overview.md", "b" * 5000)
         _write(project["project_dir"] / "l1" / "session-001.md", _model_stamped("c" * 10000))
@@ -1382,8 +1388,10 @@ class TestStructuredSections:
         # header. Confirms the header now appears immediately before the
         # suggestion content (join is "\n\n".join, so the header and the
         # first line of suggestion_line()'s output are separated only by
-        # the section-join blank line) and sits between routines (section
-        # 5) and extras (section 7), matching schema order.
+        # the section-join blank line). #71 (criticality-first reorder):
+        # pending now sits ahead of routines and extras (and every other
+        # content section) — waiting-on-you items are the most actionable
+        # thing in the payload.
         from lib.memory.queue import Proposal, propose
 
         _write(project["project_dir"] / "l1" / "session-001.md", _model_stamped("L1 content"))
@@ -1404,7 +1412,7 @@ class TestStructuredSections:
         routines_idx = payload.index(wakeup.SECTION_ROUTINES)
         pending_idx = payload.index(wakeup.SECTION_PENDING)
         extras_idx = payload.index(wakeup.SECTION_EXTRAS)
-        assert routines_idx < pending_idx < extras_idx
+        assert pending_idx < routines_idx < extras_idx
 
     def test_no_pending_header_when_nothing_pending(self, project):
         _write(project["project_dir"] / "l1" / "session-001.md", _model_stamped("L1 content"))
@@ -1412,6 +1420,126 @@ class TestStructuredSections:
         payload = wakeup.compose_wake_up_context(cwd=project["cwd"], wiki_root=wiki_root(), session="sess-1")
 
         assert wakeup.SECTION_PENDING not in payload
+
+
+# --------------------------------------------------------- byte ceiling (#71)
+
+
+_OPEN_WORK_MODEL_STAMPED = (
+    '---\ntitle: "Open work"\ntype: open-work\nschema_version: 1\nproject: demo-project\n'
+    'ren_write_id: "w-test"\nren_writer: "llm-auto"\nren_trust: "model"\n---\n\n'
+    "# Open work\n\n## Open\n\n- [ ] wire the loader — ptr:issue:#42 (opened 2026-08-01)\n"
+)
+
+
+def _populate_everything(project):
+    """Fill every section compose_wake_up_context can produce: pending,
+    identity, overview, open work, L1, L2, routines, extras."""
+    from lib.memory.queue import Proposal, propose
+
+    _write(project["project_dir"].parent.parent / "identity.md", "---\ntype: identity\n---\n# About Friend\n\nBuilds things.\n")
+    _write(project["project_dir"] / "overview.md", "# demo-project\n\nA demo project.\n")
+    _write(project["project_dir"] / "open-work.md", _OPEN_WORK_MODEL_STAMPED)
+    _write(project["project_dir"] / "l1" / "session-001.md", _model_stamped("L1 content"))
+    _write(project["project_dir"] / "map.md", "# demo-project — knowledge map\n## Knowledge\n- uses FastAPI\n")
+    _write(
+        project["project_dir"].parent.parent / "routines" / "r1.md",
+        '---\ntype: routine-spec\nname: r1\ntrigger_type: manual\nlinked_repo: demo\n---\n',
+    )
+    _write(project["project_dir"].parent.parent / "extra.md", "# Extra\n\nsome extra content")
+    propose(Proposal(
+        op="ADD", page="global/rule.md", content="r", reason="t",
+        producer="promotion", writer="human", session="s1",
+    ))
+
+
+def _section_body(text: str, header: str) -> str:
+    """Slice `text` from `header` to the next '## ' header (or end)."""
+    start = text.index(header)
+    end = text.find("\n## ", start + len(header))
+    return text[start:end] if end != -1 else text[start:]
+
+
+class TestByteCeiling:
+    def test_section_order_is_criticality_first(self, project):
+        _populate_everything(project)
+
+        out = wakeup.compose_wake_up_context(cwd=project["cwd"], wiki_root=wiki_root(), session="sess-order")
+
+        expected = [
+            n for n in (
+                wakeup.SECTION_DOCTRINE, wakeup.SECTION_PENDING, wakeup.SECTION_IDENTITY,
+                wakeup.SECTION_OVERVIEW, wakeup.SECTION_OPENWORK, wakeup.SECTION_L1,
+                wakeup.SECTION_L2, wakeup.SECTION_EXTRAS,
+            ) if n in out
+        ]
+        positions = {name: out.index(name) for name in expected}
+        ordered = sorted(positions, key=positions.get)
+        assert ordered == expected
+
+    def test_sentinel_is_second_line(self, project):
+        _write(project["project_dir"] / "l1" / "session-001.md", _model_stamped("L1 content"))
+
+        out = wakeup.compose_wake_up_context(cwd=project["cwd"], wiki_root=wiki_root(), session="sess-sentinel")
+
+        assert out.splitlines()[1] == wakeup.SENTINEL_LINE
+
+    def test_byte_ceiling_respected(self, project, monkeypatch):
+        _populate_everything(project)
+        _write(project["project_dir"].parent.parent / "extra.md", "x " * 4000)
+        monkeypatch.setenv("REN_WAKEUP_BYTE_CEILING", "4000")
+
+        out = wakeup.compose_wake_up_context(cwd=project["cwd"], wiki_root=wiki_root(), session="sess-ceiling")
+
+        assert len(out.encode("utf-8")) <= 4000
+
+    def test_cascade_degrades_extras_before_any_other_section(self, project, monkeypatch):
+        _populate_everything(project)
+        _write(project["project_dir"].parent.parent / "extra.md", "x " * 4000)
+
+        full = wakeup.compose_wake_up_context(cwd=project["cwd"], wiki_root=wiki_root(), session="sess-full")
+        # A ceiling just under the unceilinged size, but comfortably above
+        # what remains once extras degrade to pointer-only lines.
+        full_bytes = len(full.encode("utf-8"))
+        ceiling = full_bytes - 500
+        assert ceiling > 0, "precondition: extras must be large enough to matter"
+        monkeypatch.setenv("REN_WAKEUP_BYTE_CEILING", str(ceiling))
+
+        out = wakeup.compose_wake_up_context(cwd=project["cwd"], wiki_root=wiki_root(), session="sess-cascade")
+
+        assert wakeup.SECTION_EXTRAS in out
+        assert "#### " in out.split(wakeup.SECTION_EXTRAS)[1]
+
+        for name in (wakeup.SECTION_PENDING, wakeup.SECTION_OPENWORK, wakeup.SECTION_L1, wakeup.SECTION_L2):
+            if name in full:
+                assert _section_body(full, name) == _section_body(out, name)
+
+    def test_cascade_never_touches_doctrine_pending_openwork(self, project, monkeypatch):
+        _populate_everything(project)
+        _write(project["project_dir"].parent.parent / "extra.md", "x " * 4000)
+
+        full = wakeup.compose_wake_up_context(cwd=project["cwd"], wiki_root=wiki_root(), session="sess-full2")
+        monkeypatch.setenv("REN_WAKEUP_BYTE_CEILING", "2500")  # brutal ceiling
+
+        out = wakeup.compose_wake_up_context(cwd=project["cwd"], wiki_root=wiki_root(), session="sess-brutal")
+
+        assert wakeup.SECTION_DOCTRINE in out
+        if wakeup.SECTION_PENDING in full:
+            assert wakeup.SECTION_PENDING in out
+        if wakeup.SECTION_OPENWORK in full:
+            assert wakeup.SECTION_OPENWORK in out
+
+    def test_instrumentation_records_final_post_cascade_byte_size(self, project, monkeypatch):
+        _populate_everything(project)
+        _write(project["project_dir"].parent.parent / "extra.md", "x " * 4000)
+        monkeypatch.setenv("REN_WAKEUP_BYTE_CEILING", "4000")
+
+        out = wakeup.compose_wake_up_context(cwd=project["cwd"], wiki_root=wiki_root(), session="sess-instrument")
+
+        events = collect.read(kind=collect.KIND_INJECTED_BYTES)
+        matching = [e for e in events if e.get("session") == "sess-instrument"]
+        assert matching, "expected an instrumentation event for this session"
+        assert matching[-1]["bytes"] == len(out.encode("utf-8"))
 
 
 # --------------------------------------------------------------- no-LLM scan
@@ -2285,7 +2413,11 @@ class TestOpenWorkSection:
         assert "done thing" not in payload
         assert "ancient thing" not in payload
 
-    def test_section_sits_between_l1_and_l2(self, project):
+    def test_section_sits_between_overview_and_l1(self, project):
+        # #71 (criticality-first reorder): open work moved up to directly
+        # after the overview block — still ahead of L2 — so continuity
+        # ("what's still open") reads before "where to find knowledge".
+        _write(project["project_dir"] / "overview.md", "# demo-project\n\nA demo project.\n")
         _write(project["project_dir"] / "l1" / "session-001.md", _model_stamped("L1 content"))
         _write(project["project_dir"] / "map.md", "# demo-project — knowledge map\n## Knowledge\n- uses FastAPI\n")
         _write(project["project_dir"] / "open-work.md", self._ledger(self._open_body()))
@@ -2294,8 +2426,9 @@ class TestOpenWorkSection:
             cwd=project["cwd"], wiki_root=wiki_root(), session="sess-ow"
         )
 
-        assert payload.index(wakeup.SECTION_L1) < payload.index(wakeup.SECTION_OPENWORK)
-        assert payload.index(wakeup.SECTION_OPENWORK) < payload.index(wakeup.SECTION_L2)
+        assert payload.index(wakeup.SECTION_OVERVIEW) < payload.index(wakeup.SECTION_OPENWORK)
+        assert payload.index(wakeup.SECTION_OPENWORK) < payload.index(wakeup.SECTION_L1)
+        assert payload.index(wakeup.SECTION_L1) < payload.index(wakeup.SECTION_L2)
 
     def test_absent_page_omits_header(self, project):
         _write(project["project_dir"] / "l1" / "session-001.md", _model_stamped("L1 content"))
