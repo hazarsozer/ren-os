@@ -394,11 +394,18 @@ _CASCADE_ORDER: Final[tuple[str, ...]] = (
 _EXTRAS_ELISION_NOTE: Final[str] = "*(excerpts elided for size — fetch via /ren:recall)*"
 _CASCADE_TRUNCATION_NOTE: Final[str] = "*(truncated for size — fetch via /ren:recall)*"
 
-# Keys used in `section_keys` for entries that `_apply_byte_ceiling` must
-# never touch — the seed header, the doctrine card, and (tracked separately
-# so cascade logic never has to special-case them by string constant) any
-# non-section "misc" append (held-count line, nudges).
-_PROTECTED_KEYS: Final[frozenset[str]] = frozenset({"_head", "_doctrine"})
+# Keys used in `section_keys` for entries the final #48 token guard (in
+# `compose_wake_up_context`) must never sweep into its tail-truncatable
+# body blob — the seed header, the doctrine card, and (review finding #2,
+# 0.7.9) `SECTION_PENDING`/`SECTION_OPENWORK`: `truncate_text_to_tokens`
+# keeps the TAIL, so without this a band-low ratio's #48 guard could erase
+# the pending/open-work sections entirely before the byte cascade below
+# ever runs — the cascade's own protection (leaving them out of
+# `_CASCADE_ORDER`) only guards against the CASCADE, not this earlier
+# guard.
+_PROTECTED_KEYS: Final[frozenset[str]] = frozenset(
+    {"_head", "_doctrine", SECTION_PENDING, SECTION_OPENWORK}
+)
 
 
 def _join_sections(sections: list[str]) -> str:
@@ -410,26 +417,47 @@ def _apply_byte_ceiling(
     sections: list[str],
     ceiling: int,
     chars_per_token: float,
-) -> str:
-    """Squeeze `sections` under `ceiling` BYTES, least-critical-first, and
-    return the joined payload.
+) -> tuple[str, set[str]]:
+    """Squeeze `sections` under `ceiling` BYTES, least-critical-first.
 
-    The protected head (`"_head"`/`"_doctrine"` keys), `SECTION_PENDING`, and
-    `SECTION_OPENWORK` are never modified or dropped — every other section is
-    fair game, in `_CASCADE_ORDER`. Stage 1 degrades the extras section's
-    content blocks to bare `#### {rel}` pointer lines (cheapest cut: the
-    pages stay discoverable via `/ren:recall`); stage 2 drops extras
-    entirely if that wasn't enough; stage 3 walks `_CASCADE_ORDER`,
-    tail-truncating (or, if the section's budget reaches zero, dropping)
-    one section at a time, re-measuring after each. Logs one warning naming
-    everything that was degraded, if anything was."""
+    Returns `(composed, dropped_keys)`: the joined payload, and the set of
+    `SECTION_*` keys whose section was dropped ENTIRELY (header and all
+    content — never set for a section that was merely truncated, which
+    still counts as surfaced). The caller uses `dropped_keys` to keep
+    `miss_log.log_surface` honest (review finding #3, 0.7.9): a page whose
+    section never reached the payload must not be recorded as surfaced.
+
+    `SECTION_PENDING` and `SECTION_OPENWORK` (and the protected head) are
+    never modified or dropped — every other section is fair game, in
+    `_CASCADE_ORDER`. Stage 1 degrades the extras section's content blocks
+    to bare `#### {rel}` pointer lines (cheapest cut: the pages stay
+    discoverable via `/ren:recall`); stage 2 drops extras entirely if that
+    wasn't enough; stage 3 walks `_CASCADE_ORDER`, tail-truncating (or, if
+    the section's budget reaches zero, dropping) one section at a time,
+    accounting for the truncation note's own byte cost so the shrink
+    target is genuinely met rather than clawed back by the note (review
+    finding #1, 0.7.9); a final exact-byte safety pass then walks the same
+    order once more, trimming precisely (no token/chars_per_token rounding)
+    until the payload is provably under ceiling or every cascade-able
+    section is exhausted — the only remaining way to stay over ceiling at
+    that point is the untouchable head + pending/open-work content alone
+    exceeding it. Logs one warning naming everything that was degraded, if
+    anything was."""
     sections = list(sections)
     section_keys = list(section_keys)
     composed = _join_sections(sections)
     if len(composed.encode("utf-8")) <= ceiling:
-        return composed
+        return composed, set()
 
     degraded: list[str] = []
+    dropped_keys: set[str] = set()
+
+    def _drop(idxs: list[int]) -> None:
+        nonlocal sections, section_keys
+        drop = set(idxs)
+        keep = [i for i in range(len(sections)) if i not in drop]
+        sections = [sections[i] for i in keep]
+        section_keys = [section_keys[i] for i in keep]
 
     # Stage 1: degrade extras content blocks to pointer-only lines.
     extras_idxs = [i for i, k in enumerate(section_keys) if k == SECTION_EXTRAS]
@@ -449,28 +477,18 @@ def _apply_byte_ceiling(
         if changed:
             degraded.append(f"{SECTION_EXTRAS} (pointers only)")
         composed = _join_sections(sections)
-        if len(composed.encode("utf-8")) <= ceiling:
-            logger.warning(
-                "wake-up over byte ceiling (%d > %d); degraded: %s",
-                len(composed.encode("utf-8")), ceiling, ", ".join(degraded),
-            )
-            return composed
 
     # Stage 2: still over — drop extras entirely (header + blocks).
-    if extras_idxs:
-        keep = [i for i in range(len(sections)) if section_keys[i] != SECTION_EXTRAS]
-        sections = [sections[i] for i in keep]
-        section_keys = [section_keys[i] for i in keep]
+    if len(composed.encode("utf-8")) > ceiling and extras_idxs:
+        idxs = [i for i, k in enumerate(section_keys) if k == SECTION_EXTRAS]
+        _drop(idxs)
+        dropped_keys.add(SECTION_EXTRAS)
         degraded.append(f"{SECTION_EXTRAS} (dropped)")
         composed = _join_sections(sections)
-        if len(composed.encode("utf-8")) <= ceiling:
-            logger.warning(
-                "wake-up over byte ceiling (%d > %d); degraded: %s",
-                len(composed.encode("utf-8")), ceiling, ", ".join(degraded),
-            )
-            return composed
 
-    # Stage 3: walk the remaining cascade order, one section at a time.
+    # Stage 3: walk the remaining cascade order, one section at a time,
+    # budgeting each shrink to also cover the truncation note's own bytes.
+    note_reserve = len((_CASCADE_TRUNCATION_NOTE + "\n").encode("utf-8"))
     for key in _CASCADE_ORDER:
         if key == SECTION_EXTRAS:
             continue  # already fully handled in stages 1-2
@@ -485,26 +503,57 @@ def _apply_byte_ceiling(
             continue
 
         combined = "\n".join(sections[i] for i in content_idxs)
-        overshoot_tokens = max(0, int(overshoot_bytes / chars_per_token) + 1)
-        current_tokens = _budget_tokens(combined, chars_per_token)
-        new_budget = max(0, current_tokens - overshoot_tokens)
+        target_chars = max(0, len(combined) - overshoot_bytes - note_reserve)
+        new_budget = int(target_chars / chars_per_token)
 
         if new_budget <= 0:
-            drop = set(idxs)  # header included
-            keep = [i for i in range(len(sections)) if i not in drop]
-            sections = [sections[i] for i in keep]
-            section_keys = [section_keys[i] for i in keep]
+            _drop(idxs)
+            dropped_keys.add(key)
             degraded.append(f"{key} (dropped)")
         else:
             truncated = truncate_text_to_tokens(combined, new_budget, chars_per_token)
             truncated = f"{truncated}\n{_CASCADE_TRUNCATION_NOTE}"
             sections[content_idxs[0]] = truncated
-            drop = set(content_idxs[1:])
+            drop = content_idxs[1:]
             if drop:
-                keep = [i for i in range(len(sections)) if i not in drop]
-                sections = [sections[i] for i in keep]
-                section_keys = [section_keys[i] for i in keep]
+                _drop(drop)
             degraded.append(f"{key} (truncated)")
+
+        composed = _join_sections(sections)
+
+    # Final safety pass: token<->char rounding and the note's own overhead
+    # can still leave a small residual after stage 3's last touched
+    # section (there is no subsequent iteration in that walk to catch it).
+    # Trim EXACT bytes this time — no chars_per_token conversion — walking
+    # the same order until the payload provably fits or nothing cascade-
+    # able is left to trim.
+    for key in _CASCADE_ORDER:
+        if key == SECTION_EXTRAS:
+            continue
+        current_bytes = len(composed.encode("utf-8"))
+        overshoot_bytes = current_bytes - ceiling
+        if overshoot_bytes <= 0:
+            break
+
+        idxs = [i for i, k in enumerate(section_keys) if k == key]
+        content_idxs = idxs[1:]
+        if not content_idxs:
+            continue
+
+        content = sections[content_idxs[0]]
+        content_bytes = content.encode("utf-8")
+        if len(content_bytes) <= overshoot_bytes:
+            _drop(idxs)
+            dropped_keys.add(key)
+            if f"{key} (dropped)" not in degraded:
+                degraded.append(f"{key} (dropped)")
+        else:
+            trimmed = content_bytes[: len(content_bytes) - overshoot_bytes].decode(
+                "utf-8", errors="ignore"
+            )
+            sections[content_idxs[0]] = trimmed
+            if f"{key} (truncated)" not in degraded:
+                degraded.append(f"{key} (truncated)")
 
         composed = _join_sections(sections)
 
@@ -513,7 +562,7 @@ def _apply_byte_ceiling(
             "wake-up over byte ceiling (%d > %d); degraded: %s",
             len(composed.encode("utf-8")), ceiling, ", ".join(degraded),
         )
-    return composed
+    return composed, dropped_keys
 
 
 # `resolve_dev_root` and `detect_project` now live in `lib.ren_paths` (codex
@@ -1414,6 +1463,12 @@ def compose_wake_up_context(
     sections: list[str] = [f"## RenOS wake-up context (source={source})\n{SENTINEL_LINE}\n"]
     section_keys: list[str] = ["_head"]
     surfaced_pages: list[str] = []
+    # Parallel to `surfaced_pages`: which `SECTION_*` key each surfaced page
+    # belongs to, so a page whose whole section the byte cascade later drops
+    # can be filtered back out before `miss_log.log_surface` (review finding
+    # #3, 0.7.9) — a page never actually delivered must not count as a
+    # recall hit. `None` for pages not tied to a droppable section.
+    surfaced_page_keys: list[str | None] = []
     held_count = 0
 
     # #71 criticality-first reorder: pending items are the most actionable
@@ -1449,6 +1504,7 @@ def compose_wake_up_context(
             sections.append(_inject_section(identity_text, IDENTITY_BUDGET, IDENTITY_FILENAME, chars_per_token))
             section_keys.append(SECTION_IDENTITY)
             surfaced_pages.append(IDENTITY_FILENAME)
+            surfaced_page_keys.append(SECTION_IDENTITY)
 
     project = None
     try:
@@ -1476,6 +1532,7 @@ def compose_wake_up_context(
                 sections.append(_inject_section(overview_text, OVERVIEW_BUDGET, overview_rel, chars_per_token))
                 section_keys.append(SECTION_OVERVIEW)
                 surfaced_pages.append(overview_rel)
+                surfaced_page_keys.append(SECTION_OVERVIEW)
 
         # #71 criticality-first reorder: open work moved up to directly
         # after the overview block (still inside this same `project_dir is
@@ -1493,6 +1550,7 @@ def compose_wake_up_context(
             )
             section_keys.append(SECTION_OPENWORK)
             surfaced_pages.append(openwork_rel)
+            surfaced_page_keys.append(SECTION_OPENWORK)
 
     # L1 continuity is GLOBAL (issue #21): the read below runs whether or not
     # a project was detected — project-local `l1/` first when there is one,
@@ -1518,6 +1576,7 @@ def compose_wake_up_context(
     for candidate_dir in l1_dirs:
         for l1_file in (candidate_dir / L1_DIRNAME).glob("session-*.md"):
             surfaced_pages.append(str(l1_file.relative_to(wiki_root).as_posix()))
+            surfaced_page_keys.append(SECTION_L1)
 
     l1_text = ""
     l1_source_dir = wiki_root
@@ -1551,6 +1610,7 @@ def compose_wake_up_context(
                 sections.append(_inject_section(l2_text, L2_BUDGET, l2_rel, chars_per_token))
                 section_keys.append(SECTION_L2)
                 surfaced_pages.append(l2_rel)
+                surfaced_page_keys.append(SECTION_L2)
 
     live_routines = read_live_routines(wiki_root)
     if live_routines:
@@ -1594,6 +1654,7 @@ def compose_wake_up_context(
             extra_blocks.append(f"#### {rel}")
             extra_blocks.append(truncate_text_to_tokens(_strip_extras_placeholder_lines(text), per_page_budget, chars_per_token))
             surfaced_pages.append(rel)
+            surfaced_page_keys.append(SECTION_EXTRAS)
         # Same no-bare-header rule as every other section: when every ranked
         # extra reads empty, the header alone must not be emitted.
         if extra_blocks:
@@ -1678,7 +1739,18 @@ def compose_wake_up_context(
         sections = [sections[i] for i in head_idxs] + ([truncated_body] if truncated_body else [])
         section_keys = [section_keys[i] for i in head_idxs] + (["_misc"] if truncated_body else [])
 
-    composed = _apply_byte_ceiling(section_keys, sections, _byte_ceiling(), chars_per_token)
+    composed, dropped_keys = _apply_byte_ceiling(section_keys, sections, _byte_ceiling(), chars_per_token)
+
+    # Review finding #3 (0.7.9): a page whose whole section the cascade just
+    # dropped never reached the payload — it must not be recorded as
+    # surfaced (that would poison the honest-miss metric by counting a
+    # recall as already-hit). A merely truncated-but-present section's pages
+    # still count: their content, however shortened, WAS delivered.
+    if dropped_keys:
+        surfaced_pages = [
+            page for page, key in zip(surfaced_pages, surfaced_page_keys)
+            if key not in dropped_keys
+        ]
 
     try:
         if surfaced_pages:

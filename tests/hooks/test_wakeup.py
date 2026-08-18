@@ -1541,6 +1541,90 @@ class TestByteCeiling:
         assert matching, "expected an instrumentation event for this session"
         assert matching[-1]["bytes"] == len(out.encode("utf-8"))
 
+    # ----------------------------------------------------- review fix-ups
+
+    def test_multi_section_truncation_still_meets_ceiling(self, project, monkeypatch):
+        """Review finding #1: a ceiling that forces SEVERAL cascade-order
+        sections to be truncated (not fully dropped) in one walk used to
+        leave the payload slightly OVER ceiling — each truncated section's
+        trailing note (`_CASCADE_TRUNCATION_NOTE`) was appended AFTER the
+        shrink budget was computed and never deducted from it, and there was
+        no re-measure to catch the residual. Build identity/overview/L1
+        large enough that, after extras+routines+L2 are dropped, all three
+        still need truncating (not dropping) to fit — the exact multi-
+        truncation path the original bug needed."""
+        _write(project["project_dir"].parent.parent / "identity.md", "---\ntype: identity\n---\n# About Friend\n\n" + ("id " * 800))
+        _write(project["project_dir"] / "overview.md", "# demo-project\n\n" + ("ov " * 800))
+        _write(project["project_dir"] / "l1" / "session-001.md", _model_stamped("l1 " * 1600))
+        _write(project["project_dir"] / "map.md", "# demo-project — knowledge map\n" + ("l2 " * 1600))
+        _write(
+            project["project_dir"].parent.parent / "routines" / "r1.md",
+            '---\ntype: routine-spec\nname: r1\ntrigger_type: manual\nlinked_repo: demo\n---\n' + ("r " * 200),
+        )
+
+        monkeypatch.setenv("REN_WAKEUP_BYTE_CEILING", "8000")
+        out = wakeup.compose_wake_up_context(cwd=project["cwd"], wiki_root=wiki_root(), session="sess-multi")
+
+        assert len(out.encode("utf-8")) <= 8000
+        # Precondition: this really did exercise the multi-truncation path
+        # (several sections truncated-not-dropped), not just a single drop.
+        truncated_sections = sum(
+            1 for h in (wakeup.SECTION_IDENTITY, wakeup.SECTION_OVERVIEW, wakeup.SECTION_L1)
+            if h in out and "*(truncated for size" in out.split(h, 1)[1].split("\n## ", 1)[0]
+        )
+        assert truncated_sections >= 2, "precondition: expected several sections truncated, not just dropped"
+
+    def test_pending_and_open_work_survive_band_low_final_guard(self, project, monkeypatch):
+        """Review finding #2: the pre-existing #48 token guard (which runs
+        BEFORE the byte cascade) used to only protect `"_head"`/`"_doctrine"`
+        — with pending now the FIRST content section (post-#71 reorder),
+        `truncate_text_to_tokens`'s tail-keeping made it the first casualty
+        whenever the guard fired. A band-low calibration ratio plus a small
+        max_tokens forces the guard; pending and open work must both survive
+        it with no marker needed (they are simply never swept into the
+        tail-truncatable body)."""
+        _write(project["project_dir"] / "l1" / "session-001.md", _model_stamped("l1 " * 2000))
+        _write(
+            project["project_dir"] / "open-work.md",
+            _OPEN_WORK_MODEL_STAMPED,
+        )
+        from lib.memory.queue import Proposal, propose
+        propose(Proposal(
+            op="ADD", page="global/rule.md", content="r", reason="t",
+            producer="promotion", writer="human", session="s1",
+        ))
+        monkeypatch.setattr(wakeup, "_calibrated_chars_per_token", lambda: 1.5)
+
+        out = wakeup.compose_wake_up_context(
+            cwd=project["cwd"], wiki_root=wiki_root(), session="sess-guard", max_tokens=500,
+        )
+
+        assert wakeup.SECTION_PENDING in out
+        assert wakeup.SECTION_OPENWORK in out
+
+    def test_cascade_dropped_section_page_absent_from_log_surface(self, project, monkeypatch):
+        """Review finding #3: `surfaced_pages` was finalized BEFORE the byte
+        cascade ran, so a page whose entire section the cascade dropped was
+        still recorded as surfaced — an unreceived page counting as a
+        recall hit poisons the honest-miss metric. A small ceiling that
+        forces the L1 section to be dropped entirely must exclude the L1
+        session file from `miss_log.log_surface`'s recorded pages, while an
+        untouched/merely-truncated section's pages still count."""
+        _write(project["project_dir"] / "l1" / "session-001.md", _model_stamped("L1 content"))
+        _write(project["project_dir"] / "map.md", "# demo-project — knowledge map\n" + ("l2 " * 1600))
+
+        monkeypatch.setenv("REN_WAKEUP_BYTE_CEILING", "2500")
+        out = wakeup.compose_wake_up_context(cwd=project["cwd"], wiki_root=wiki_root(), session="sess-drop-log")
+
+        assert wakeup.SECTION_L1 not in out, "precondition: L1 must have been fully dropped by the cascade"
+
+        surfaces = collect.read(kind=collect.KIND_WAKEUP_SURFACE)
+        matching = [e for e in surfaces if e.get("session") == "sess-drop-log"]
+        assert matching, "expected a surface record for this session"
+        pages = set(matching[-1]["pages"])
+        assert "projects/demo-project/l1/session-001.md" not in pages
+        assert "projects/demo-project/map.md" in pages
+
 
 # --------------------------------------------------------------- no-LLM scan
 
