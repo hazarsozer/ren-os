@@ -26,7 +26,7 @@ contract:
       - "~/.renos/wiki/**"
       - "~/.renos/l1/**"
     write:
-      - "~/.renos/wiki/.ren/distill.watermark.json"
+      - "~/.renos/wiki/.ren/distiller-watermark.json"
       - "~/.renos/wiki/.ren/journal.jsonl"
   completion_conditions:
     - "Watermark advanced only if mining, classification, and application all succeeded"
