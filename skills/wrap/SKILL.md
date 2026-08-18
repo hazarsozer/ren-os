@@ -69,9 +69,35 @@ End-of-session consolidation. The friend runs `/ren:wrap`; this skill writes the
 1. **Compose the L1 narrative.** The live session writes this ITSELF — never a subagent (`execution_tier: judgment`; the exception to worker delegation: only the main model holds the conversation being summarized in context). A short narrative markdown summary of what happened this session — what was done, what's open, what changed. Lead with outcomes. Target ≤1,000 tokens. This is data, not doctrine; it always gets quarantined on write (queue Task 2.4 wiring), so nothing here needs to hedge its own confidence.
 2. **Extract candidate durable items.** The live session identifies zero or more candidate strings that MIGHT be worth durable, cross-session memory (a decision, a lesson, a reusable pattern). When in doubt, extract fewer, not more — the classifier gate is the second line of defense, not the first.
    - The classifier's verdict, when "durable", also carries placement: `scope` (`"project"` vs `"global"`) and `action` (`"create"` vs `"update"`, plus a `target_page` for updates). A `create` lands under `projects/<slug>/knowledge/lessons/<slug>.md` for a project-scoped item (global `lessons/` otherwise), with a folder-note hub (`<dir>/lessons.md`) auto-maintained alongside it — created in full the first time, and thereafter only APPENDED to (a human's prose on the hub is never re-rendered away, and a hub whose `ren_trust` is `"user"` is left alone entirely). An `update` may ONLY target a page from this session's own eligibility set (wake-up injections plus `/ren:recall` fetches, verified on disk) and is merged in via a strict merge call that never touches frontmatter and gates out on any merge failure. Either way, an update to a page whose `ren_trust` is `"user"` is NEVER auto-applied — it's routed to the suggestions store for the friend to approve instead.
+   - Extraction floor: before settling on zero candidates, check the session for
+     (a) recorded rulings or decisions made in chat, (b) issues closed or filed,
+     (c) releases cut, (d) lessons stated after a failure. Each of those is a
+     candidate by default. "When in doubt, extract fewer" applies to judgment
+     calls, not to these mechanical triggers. If the session had commits, closed
+     issues, or releases and you still extract zero candidates, say why in one
+     line on the wrap screen — a silent `seen=0` on a working session is the
+     defect the 2026-08-18 spec exists to prevent.
 3. **Call `skills.wrap.lib.wrap_session(narrative_md, durable_items, session, llm_call=..., cwd=Path("<absolute session working dir>"))`.**
    - `session` is just a LABEL for this session's records — you are not expected to know Claude Code's real `session_id`, and nothing depends on you guessing it. (The 0.6.1 estimator-calibration harvest resolves the transcript from the id the wake-up hook itself recorded, never from this label.)
-   - `llm_call` is injectable — point it at a CHEAP model (classifier-class) when one is reachable; the gate is a strict yes/no/discard question that doesn't need main-model reasoning. Otherwise it's the live session's own way of asking itself that question (see `lib/classifier.py`'s prompt). If no such mechanism is wired up yet, omit `llm_call` — the deterministic fallback (`session-only`/`discard` only, never `durable`) keeps memory safe by construction rather than guessing.
+   - **Classify via ONE classifier-class subagent (batched).** When there are
+     candidate items, do not omit the classifier and do not classify inline:
+
+     1. Build the per-item prompts mechanically:
+        `uv run python -c "from skills.wrap.lib import eligible_update_targets; from skills.wrap.lib.classifier import build_classifier_prompt; import json,sys; items=json.load(sys.stdin); el=eligible_update_targets('<session-id>'); print(json.dumps([build_classifier_prompt(i, eligible_targets=el, project=<project-or-None>) for i in items]))" <<< '<JSON array of candidate strings>'`
+     2. Spawn ONE classifier-class subagent (cheapest rung — never worker- or
+        orchestrator-class) whose task is: "Answer each of the following N
+        prompts independently. Return ONLY a JSON array of N objects, one per
+        prompt, in order." Include the prompts verbatim.
+     3. Parse its reply as a JSON array and pass it to
+        `wrap_session(..., verdicts=<the array>)`. Order = candidate order —
+        verdicts are index-keyed.
+     4. If the spawn fails or the reply is not a JSON array of the right
+        length, call `wrap_session(...)` with NO `verdicts` and NO `llm_call`:
+        the lib routes every candidate to the suggestions store (die loudly)
+        rather than discarding them. Tell the friend this happened.
+
+     `llm_call` remains supported for callers that have a live callable; the
+     subagent + `verdicts` transport is the standard path for `/ren:wrap`.
    - ALWAYS pass `cwd=` explicitly, set to the session's actual working directory — the Python process's own cwd may be the plugin cache dir rather than the project checkout (the documented invocation pattern), and defaulting to it silently misfiles the L1 under global `l1/` (#45).
    - Do NOT pass `project=` yourself — leave it unset. `wrap_session` derives the current project from `cwd` via the same `lib.ren_paths.detect_project` helper the wake-up hook's read path uses, so the L1 page lands exactly where the NEXT wake-up for this project will read it (codex D4 wiring). Non-project cwds (or a cwd that doesn't match any `wiki/projects/<slug>/`) fall through to the original global `l1/` path unchanged — `render_wrap_screen` shouts about this on the close-out screen so it's never silent.
    - When a durable candidate is project-specific, it belongs under that project's `projects/<slug>/knowledge/` tree — read `projects/<slug>/schema.md` (the project's own SCHEMA document: taxonomy + conventions, issue #20 amendment) first and place the page where the taxonomy says it goes, updating the relevant hub (the folder note named after its directory, `<topic>/<topic>.md`). Never a root-tier page for one project's fact.
@@ -81,7 +107,7 @@ End-of-session consolidation. The friend runs `/ren:wrap`; this skill writes the
    - Durable candidates: qids + pages, saved this session (revertible) unless held for a contradiction or surfaced as a promotion suggestion.
    - Gated out: verdict + one-line reason each.
    - Refused: any candidate the queue itself rejected (e.g. a planted secret) — surfaced explicitly, not silently dropped.
-   - If `fail_closed` is true: tell the friend the classifier fell back to the deterministic path this run (LLM path errored) — nothing was silently promoted to durable as a result.
+   - If `fail_closed` is true: tell the friend the classifier fell back for at least one item — those items were held as suggestions, not silently dropped.
 
 5. **Harvest instruction suggestions.** Call `skills.wrap.lib.harvest_suggestions(session)`. This runs the wrap-time suggestion producers (promotion candidates, doctrine shaping, wiki-health critical contradictions — the retrospective producer runs inside `/ren:retrospective`, not here) and records any new ones into `lib.suggestions`. Never raises; nothing in the end screen below depends on its return value — pending suggestions surface to the friend at the NEXT wake-up (`suggestion_line()`'s store pointer) or via `/ren:suggestions`, not on this screen.
 6. **Session journal.** `wrap_session` appends one append-only summary line to the journal (pages touched, counts) — automatic, no action needed. `ren-wiki-lint` uses these lines to lint incrementally.
