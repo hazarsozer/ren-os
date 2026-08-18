@@ -14,8 +14,8 @@
 
 set -euo pipefail
 
-PLUGIN_DATA="${CLAUDE_PLUGIN_DATA:-$HOME/.claude/plugins/data/renos}"
-SNAPSHOT_BASE="${PLUGIN_DATA}/wiki-snapshots"
+SNAPSHOT_ROOT="${REN_SNAPSHOT_ROOT:-$HOME/.claude/plugins/data/renos}"
+SNAPSHOT_BASE="${SNAPSHOT_ROOT}/wiki-snapshots"
 
 DRY_RUN=0
 RETAIN="${CLAUDE_PLUGIN_OPTION_SNAPSHOTRETAIN:-3}"

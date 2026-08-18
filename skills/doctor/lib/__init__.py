@@ -37,8 +37,10 @@ NEW (Task 7.3, all warn-not-block):
   - `check_graphify_status` — `skills.code-map.lib.status()`.
   - `check_backup_configured` — `skills.backup.lib.backup_configured()`.
   - `check_global_drift` — `lib.memory.promotion.demote_check()`.
-  - `check_harness_neutrality` — `lib.portability.agents_surface.lint_generated_surfaces`,
-    soft-wired (skips cleanly if that module is absent).
+  - `check_harness_neutrality` — `lib.portability.agents_surface.
+    lint_generated_surfaces_partitioned`, soft-wired (skips cleanly if that
+    module is absent). Warns only on a coupled AGENTS.md; live l2-map content
+    mentions are info; `wiki/.ren/` snapshots are excluded (issue #33).
 """
 
 from __future__ import annotations
@@ -232,6 +234,10 @@ def check_dangling_pointers(wiki_root: Path | None = None) -> CheckResult:
     dangling: list[str] = []
 
     for md_path in sorted(wiki_root.rglob("*.md")):
+        if ren_paths.under_ren_state(md_path, wiki_root):
+            # `.ren/` is immutable framework state (incl. per-write snapshot
+            # copies of maps) — its stale pointers are not live warns (#31).
+            continue
         text = md_path.read_text(encoding="utf-8", errors="replace")
         if _frontmatter_field(text, "type") != "l2-map":
             continue
@@ -424,7 +430,12 @@ def check_global_drift() -> CheckResult:
 
 def check_harness_neutrality(wiki_root: Path | None = None, repo_root: Path | None = None) -> CheckResult:
     """Soft-wired: `lib.portability.agents_surface` may not exist in every
-    checkout (it's Task 7.2, built in parallel) — skip cleanly if absent."""
+    checkout (it's Task 7.2, built in parallel) — skip cleanly if absent.
+
+    Issue #33 "scope to scaffolding": only a coupled AGENTS.md (the generated
+    scaffolding) warns; harness mentions inside live l2-map CONTENT are
+    legitimate (log lines like "recalled via /ren:recall") and reported as
+    info. Snapshot copies under `wiki/.ren/` are excluded by the lint."""
     wiki_root = wiki_root or ren_paths.wiki_root()
     repo_root = repo_root or _REPO_ROOT
     try:
@@ -432,9 +443,14 @@ def check_harness_neutrality(wiki_root: Path | None = None, repo_root: Path | No
     except ImportError:
         return CheckResult("harness_neutrality", "skip", "lib.portability.agents_surface not available")
 
-    report = agents_surface.lint_generated_surfaces(wiki_root, repo_root)
-    if report:
-        return CheckResult("harness_neutrality", "warn", f"{len(report)} generated surface(s) with harness-coupling tokens")
+    report = agents_surface.lint_generated_surfaces_partitioned(wiki_root, repo_root)
+    agents_hits = report["agents_md"]
+    map_hits = report["l2_maps"]
+    if agents_hits:
+        return CheckResult("harness_neutrality", "warn", f"AGENTS.md contains harness-coupling tokens: {', '.join(sorted(agents_hits))}")
+    if map_hits:
+        sample = ", ".join(sorted(map_hits)[:3])
+        return CheckResult("harness_neutrality", "info", f"{len(map_hits)} l2-map(s) mention the harness in content (informational, not a violation): {sample}")
     return CheckResult("harness_neutrality", "ok", "generated surfaces are harness-neutral")
 
 

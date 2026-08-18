@@ -92,9 +92,45 @@ PATTERNS: list[tuple[str, re.Pattern[str]]] = [
         # suffix of the identifier too. Requires an assignment operator (`:` or
         # `=`) right after the keyword so the bare word in prose ("enter your
         # password") never matches — only an actual key=value shape.
+        # The VALUE side is guarded (#29) so ordinary code doesn't trip the
+        # wiki-write gate: either a quoted string of >=6 non-quote chars, or an
+        # unquoted token that is NOT a call expression (`locks.content_token(...)`)
+        # and NOT a type-like annotation identifier (`Final[float]`,
+        # `float | None`). A guard word only counts when followed by annotation
+        # punctuation/whitespace/end — a secret merely STARTING with one
+        # (`none.of.your.business`) still matches (0.7.7 review). The pure-number
+        # guard (`4.0`, `128000`) applies only to token/api_key keys, where
+        # numeric tuning constants live; a digits-only password/secret is a
+        # plausible PIN and stays a hit. Guards are lowercase but match
+        # case-insensitively via re.IGNORECASE.
         "password-pair",
         re.compile(
-            r"(?:password|secret|token|api[_-]?key)\s*[:=]\s*['\"]?[^\s'\"]{4,}",
+            r"(?:"
+            # password/secret keys — no numeric guard (PINs are secrets)
+            r"(?:password|secret)\s*[:=]\s*"
+            r"(?:"
+            r"['\"][^\s'\"]{6,}"  # quoted value
+            r"|"
+            r"(?![\w.]+\()"  # not a call expression
+            r"(?!(?:none|true|false|final|float|int|str|bool|bytes|optional"
+            r"|literal|classvar|any|list|dict|set|tuple|frozenset)"
+            r"(?:[\[\|]|[\s'\"]|$))"  # not a whole type-like token
+            r"[^\s'\"(]{4,}"
+            r")"
+            r"|"
+            # token/api_key keys — numeric guard kept (CHARS_PER_TOKEN = 4.0)
+            r"(?:token|api[_-]?key)\s*[:=]\s*"
+            r"(?:"
+            r"['\"][^\s'\"]{6,}"  # quoted value
+            r"|"
+            r"(?![\w.]+\()"  # not a call expression
+            r"(?!\d+(?:\.\d+)?(?![^\s'\"]))"  # not a pure int/float
+            r"(?!(?:none|true|false|final|float|int|str|bool|bytes|optional"
+            r"|literal|classvar|any|list|dict|set|tuple|frozenset)"
+            r"(?:[\[\|]|[\s'\"]|$))"  # not a whole type-like token
+            r"[^\s'\"(]{4,}"
+            r")"
+            r")",
             re.IGNORECASE,
         ),
     ),

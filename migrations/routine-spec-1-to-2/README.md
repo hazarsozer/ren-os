@@ -26,5 +26,5 @@ The "please review" guidance lives here and in the diff the friend approves.
   stays `1`; `deprecated_below` stays `null`.
 
 ## Rollback
-- Snapshot at runtime: `${CLAUDE_PLUGIN_DATA}/wiki-snapshots/v1-pre-update-<ts>/`
-- Manual restore: `cp -a $CLAUDE_PLUGIN_DATA/wiki-snapshots/<latest>/. $SF_WIKI_ROOT/`
+- Snapshot at runtime: `~/.claude/plugins/data/renos/wiki-snapshots/v1-pre-update-<ts>/`
+- Manual restore: `cp -a ~/.claude/plugins/data/renos/wiki-snapshots/<latest>/. $SF_WIKI_ROOT/`

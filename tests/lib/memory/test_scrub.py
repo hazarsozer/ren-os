@@ -224,6 +224,67 @@ def test_ghost_word_does_not_match_github_token_prefix():
     assert findings == []
 
 
+def test_call_expression_rhs_does_not_fire():
+    text = "page_token = locks.content_token(page_abs)"
+    findings = [f for f in scan(text) if f.kind == "password-pair"]
+    assert findings == []
+
+
+def test_typed_numeric_constant_rhs_does_not_fire():
+    text = "CHARS_PER_TOKEN: Final[float] = 4.0"
+    findings = [f for f in scan(text) if f.kind == "password-pair"]
+    assert findings == []
+
+
+def test_bare_type_annotation_rhs_does_not_fire():
+    text = "chars_per_token: float | None = None"
+    findings = [f for f in scan(text) if f.kind == "password-pair"]
+    assert findings == []
+
+
+def test_guard_word_prefix_secret_still_fires():
+    # 0.7.7 review HIGH: a type-like guard word counts only as a WHOLE
+    # annotation token — a secret merely starting with one must still match.
+    for text in (
+        "token=None-Shall-Pass99",
+        "secret=none.of.your.business",
+        "token=final.production.key",
+        "password=Optional.Xk29!dlq",
+    ):
+        findings = [f for f in scan(text) if f.kind == "password-pair"]
+        assert len(findings) == 1, text
+
+
+def test_numeric_password_still_fires():
+    # Numeric guard is scoped to token/api_key keys — a digits-only
+    # password/secret is a plausible PIN, not a tuning constant.
+    findings = [f for f in scan("password=12345678") if f.kind == "password-pair"]
+    assert len(findings) == 1
+
+
+def test_numeric_token_constant_does_not_fire():
+    findings = [f for f in scan("MAX_TOKENS: 128000") if f.kind == "password-pair"]
+    assert findings == []
+
+
+def test_detects_quoted_password_assignment():
+    text = 'password = "hunter2xyz"'
+    findings = [f for f in scan(text) if f.kind == "password-pair"]
+    assert len(findings) == 1
+
+
+def test_detects_env_style_password_assignment():
+    text = "DB_PASSWORD=s3cr3t!42"
+    findings = [f for f in scan(text) if f.kind == "password-pair"]
+    assert len(findings) == 1
+
+
+def test_detects_quoted_token_assignment():
+    text = 'token: "ghp_abcd1234efgh"'
+    findings = [f for f in scan(text) if f.kind == "password-pair"]
+    assert len(findings) == 1
+
+
 def test_xoxo_farewell_does_not_match_slack_token():
     text = "signing off — xoxo, the team"
     findings = [f for f in scan(text) if f.kind == "slack-token"]

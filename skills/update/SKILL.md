@@ -6,17 +6,17 @@ description: |
   snapshots the wiki, runs migrations, verifies via verify.json, shows diffs
   for approval, applies, and re-verifies. Snapshot/rollback is built in.
   Never silent on MAJOR bumps.
-version: 0.7.6
+version: 0.7.7
 license: MIT
 type: skill
 execution_tier: deterministic
 schema_version: 1
-framework_version: "0.7.6"
+framework_version: "0.7.7"
 
 contract:
   required_outputs:
     - "A printed migration plan (per-page-type ordered migration chain) before any write"
-    - "A pre-migration wiki snapshot under ${CLAUDE_PLUGIN_DATA}/wiki-snapshots/v<from>-pre-update-<ISO8601>/"
+    - "A pre-migration wiki snapshot under ~/.claude/plugins/data/renos/wiki-snapshots/v<from>-pre-update-<ISO8601>/ (root overridable via REN_SNAPSHOT_ROOT)"
     - "Migrated wiki pages written to disk only after per-page verify.json PASS + diff approval, with frontmatter schema_version/framework_version bumped"
     - "An appended migration entry in wiki/log.md (snapshot path + update record)"
     - "On --dry-run: the plan only, with zero writes to wiki, snapshot dir, or marketplace"
@@ -31,11 +31,11 @@ contract:
       - "skills/wiki-migration/**"
       - "migrations/**"
       - "~/.renos/wiki/**"
-      - "${CLAUDE_PLUGIN_DATA}/wiki-snapshots/**"
+      - "~/.claude/plugins/data/renos/wiki-snapshots/**"
       - "$CLAUDE_PLUGIN_ROOT/CHANGELOG.md"
     write:
       - "~/.renos/wiki/**"
-      - "${CLAUDE_PLUGIN_DATA}/wiki-snapshots/**"
+      - "~/.claude/plugins/data/renos/wiki-snapshots/**"
     execute:
       - "uv tool install *"
       - "scripts/snapshot.sh"
@@ -47,7 +47,7 @@ contract:
     - "A snapshot exists before any page is migrated"
     - "Failed/crashed pages were reverted from snapshot while other pages continued; snapshot retained"
   output_paths:
-    - "${CLAUDE_PLUGIN_DATA}/wiki-snapshots/"
+    - "~/.claude/plugins/data/renos/wiki-snapshots/"
 
 tags: [update, migration, snapshot, rollback]
 related_skills: [wiki-migration, backup, doctor]
@@ -61,7 +61,7 @@ Carried near-verbatim from donor `skills/update/` (Task 7.3) — the migration s
 
 ## Scripts (carried, unchanged behavior)
 
-- `scripts/snapshot.sh <from-version>` — copies the wiki to `${CLAUDE_PLUGIN_DATA}/wiki-snapshots/v\<from\>-pre-update-\<ISO8601\>/`, prunes beyond `CLAUDE_PLUGIN_OPTION_SNAPSHOTRETAIN` (default 3), logs the snapshot to `wiki/log.md`.
+- `scripts/snapshot.sh <from-version>` — copies the wiki to `~/.claude/plugins/data/renos/wiki-snapshots/v\<from\>-pre-update-\<ISO8601\>/` (snapshot root overridable via `REN_SNAPSHOT_ROOT`; never derived from `CLAUDE_PLUGIN_DATA` — issue #34), prunes beyond `CLAUDE_PLUGIN_OPTION_SNAPSHOTRETAIN` (default 3), logs the snapshot to `wiki/log.md`.
 - `scripts/restore.sh {--list|--whole <snap>|--page <snap> <rel>}` — lists snapshots, restores the whole wiki (stashing the pre-restore state first), or restores a single page.
 - `scripts/prune-snapshots.sh [<N>] [--dry-run]` — retention enforcement for both normal snapshots and `STASH-broken-*` dirs (created by `restore.sh --whole`).
 - `scripts/version-compare.sh <A> <B>` / `--bump <A> <B>` — strict semver comparison + bump classification (patch/minor/major/downgrade/equal/prerelease). No CC-marketplace dependency; the framework owns semver semantics since the marketplace treats `version` as an opaque string.

@@ -284,6 +284,36 @@ def test_check_dangling_pointers_still_warns_on_missing_knowledge_page(wiki):
     assert "repo:flux" not in result.message
 
 
+def test_check_dangling_pointers_skips_snapshot_copies_under_dot_ren(wiki):
+    """Issue #31: snapshot copies of maps under `.ren/` are immutable state —
+    their stale pointers must not surface as warns."""
+    snap_map = wiki / ".ren" / "snapshots" / "w-123" / "projects" / "x" / "map.md"
+    snap_map.parent.mkdir(parents=True)
+    snap_map.write_text(
+        "---\ntype: l2-map\nproject: x\n---\n"
+        "## Decision map\n"
+        "- [topic](projects/x/missing.md) (w-123)\n",
+        encoding="utf-8",
+    )
+    result = doctor.check_dangling_pointers(wiki)
+    assert result.status == "ok"
+
+
+def test_check_dangling_pointers_still_warns_on_same_pointer_in_live_map(wiki):
+    """Issue #31 counterpart: the identical dangling pointer in a LIVE map is real."""
+    live_map = wiki / "projects" / "x" / "map.md"
+    live_map.parent.mkdir(parents=True)
+    live_map.write_text(
+        "---\ntype: l2-map\nproject: x\n---\n"
+        "## Decision map\n"
+        "- [topic](projects/x/missing.md) (w-123)\n",
+        encoding="utf-8",
+    )
+    result = doctor.check_dangling_pointers(wiki)
+    assert result.status == "warn"
+    assert "projects/x/missing.md" in result.message
+
+
 # ------------------------------------------------------------ check_graphify_status
 
 
@@ -388,6 +418,48 @@ def test_check_harness_neutrality_skips_when_module_absent(wiki, monkeypatch):
 def test_check_harness_neutrality_ok_when_clean(wiki):
     result = doctor.check_harness_neutrality(wiki, doctor._REPO_ROOT)
     assert result.status in ("ok", "skip")  # ok if module present+clean, skip if truly absent
+
+
+def test_check_harness_neutrality_ignores_snapshot_copies(wiki, tmp_path):
+    """Issue #33: a coupled l2-map living under `wiki/.ren/snapshots/` is an
+    immutable snapshot copy, not a live surface — excluded entirely."""
+    repo_root = tmp_path / "clean-repo"
+    repo_root.mkdir()
+    snap = wiki / ".ren" / "snapshots" / "w-X" / "projects" / "demo"
+    snap.mkdir(parents=True)
+    (snap / "map.md").write_text(
+        "---\ntype: l2-map\nproject: demo\n---\n# demo\n\nRecalled via /ren:recall in Claude Code.\n",
+        encoding="utf-8",
+    )
+    result = doctor.check_harness_neutrality(wiki, repo_root)
+    assert result.status == "ok"
+
+
+def test_check_harness_neutrality_info_on_live_map_content(wiki, tmp_path):
+    """Issue #33: harness mentions inside live l2-map CONTENT are informational
+    — the warn is reserved for the generated AGENTS.md scaffolding."""
+    repo_root = tmp_path / "clean-repo"
+    repo_root.mkdir()  # no AGENTS.md
+    map_dir = wiki / "projects" / "demo"
+    map_dir.mkdir(parents=True)
+    (map_dir / "map.md").write_text(
+        "---\ntype: l2-map\nproject: demo\n---\n# demo\n\nIngested with Claude Code.\n",
+        encoding="utf-8",
+    )
+    result = doctor.check_harness_neutrality(wiki, repo_root)
+    assert result.status == "info"
+    assert "map" in result.message.lower()
+
+
+def test_check_harness_neutrality_warns_on_coupled_agents_md(wiki, tmp_path):
+    """Issue #33: a coupling token in the generated AGENTS.md is the one case
+    that still warns — and the message names AGENTS.md."""
+    repo_root = tmp_path / "dirty-repo"
+    repo_root.mkdir()
+    (repo_root / "AGENTS.md").write_text("# AGENTS.md\n\nMaintained by Claude Code.\n", encoding="utf-8")
+    result = doctor.check_harness_neutrality(wiki, repo_root)
+    assert result.status == "warn"
+    assert "AGENTS.md" in result.message
 
 
 def test_guard_health_quiet_on_healthy_guards(wiki):

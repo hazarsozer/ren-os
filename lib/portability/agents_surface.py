@@ -33,6 +33,7 @@ import re
 from pathlib import Path
 
 from lib.adapter.claude_md import apply_block
+from lib.ren_paths import under_ren_state
 
 # Harness-coupling markers. Any of these appearing (case-insensitively) in a
 # GENERATED surface (AGENTS.md, l2-map pages) is a portability violation —
@@ -145,35 +146,56 @@ def lint_harness_neutral(text: str) -> list[str]:
     return [token for token in CLAUDE_TOKENS if token.lower() in lowered]
 
 
-def lint_generated_surfaces(wiki_root: Path, repo_root: Path) -> dict[str, list[str]]:
-    """Lint every GENERATED surface for harness-coupling tokens: `AGENTS.md`
-    at `repo_root` (if present) and every wiki page whose frontmatter `type`
-    is `l2-map`. Human-authored pages (lessons/, decisions/, etc.) are never
-    linted — this only enforces the surfaces WE generate.
+def lint_generated_surfaces_partitioned(wiki_root: Path, repo_root: Path) -> dict[str, dict[str, list[str]]]:
+    """Lint every GENERATED surface for harness-coupling tokens, partitioned
+    by surface kind (issue #33 "scope to scaffolding"):
 
-    Returns `{path: [offending tokens]}` for offenders only; a page/file that
-    passes (or a missing AGENTS.md) simply doesn't appear in the dict.
+      - `"agents_md"` — `repo_root/AGENTS.md` (if present), the generated
+        scaffolding whose coupling is an actual portability violation.
+      - `"l2_maps"` — every live wiki page whose frontmatter `type` is
+        `l2-map`. Map CONTENT legitimately mentions the harness (log lines
+        like "recalled via /ren:recall"), so callers downgrade these to
+        informational rather than treating them as violations.
+
+    Human-authored pages (lessons/, decisions/, etc.) are never linted, and
+    framework state under `wiki_root/.ren/` (immutable snapshot copies) is
+    skipped entirely via `lib.ren_paths.under_ren_state`.
+
+    Each partition maps `{path: [offending tokens]}` for offenders only; a
+    clean page/file (or a missing AGENTS.md) simply doesn't appear.
     """
     wiki_root = Path(wiki_root)
     repo_root = Path(repo_root)
-    report: dict[str, list[str]] = {}
+    report: dict[str, dict[str, list[str]]] = {"agents_md": {}, "l2_maps": {}}
 
     agents_md = repo_root / "AGENTS.md"
     if agents_md.is_file():
         offenders = lint_harness_neutral(agents_md.read_text(encoding="utf-8"))
         if offenders:
-            report[str(agents_md)] = offenders
+            report["agents_md"][str(agents_md)] = offenders
 
     if wiki_root.is_dir():
         for md_path in sorted(wiki_root.rglob("*.md")):
+            if under_ren_state(md_path, wiki_root):
+                continue
             text = md_path.read_text(encoding="utf-8")
             if _frontmatter_type(text) != _L2_MAP_TYPE:
                 continue
             offenders = lint_harness_neutral(text)
             if offenders:
-                report[str(md_path)] = offenders
+                report["l2_maps"][str(md_path)] = offenders
 
     return report
+
+
+def lint_generated_surfaces(wiki_root: Path, repo_root: Path) -> dict[str, list[str]]:
+    """Flat-merge wrapper over `lint_generated_surfaces_partitioned` — the
+    original shape, kept for backward compatibility. Returns `{path:
+    [offending tokens]}` across all surface kinds; callers that need to tell
+    AGENTS.md hits from l2-map hits use the partitioned function instead.
+    """
+    partitioned = lint_generated_surfaces_partitioned(wiki_root, repo_root)
+    return {**partitioned["agents_md"], **partitioned["l2_maps"]}
 
 
 __all__ = [
@@ -182,4 +204,5 @@ __all__ = [
     "write_agents_md",
     "lint_harness_neutral",
     "lint_generated_surfaces",
+    "lint_generated_surfaces_partitioned",
 ]

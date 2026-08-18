@@ -20,8 +20,8 @@
 set -euo pipefail
 
 WIKI_ROOT="${REN_WIKI_ROOT:-${CLAUDE_PLUGIN_OPTION_WIKIROOT:-$HOME/.renos/wiki}}"
-PLUGIN_DATA="${CLAUDE_PLUGIN_DATA:-$HOME/.claude/plugins/data/renos}"
-SNAPSHOT_BASE="${PLUGIN_DATA}/wiki-snapshots"
+SNAPSHOT_ROOT="${REN_SNAPSHOT_ROOT:-$HOME/.claude/plugins/data/renos}"
+SNAPSHOT_BASE="${SNAPSHOT_ROOT}/wiki-snapshots"
 
 case "${1:-}" in
   --list)
@@ -93,7 +93,7 @@ usage: restore.sh --list
        restore.sh --whole <snapshot-dir>
        restore.sh --page  <snapshot-dir> <relative-page-path>
 
-Snapshot location: \$CLAUDE_PLUGIN_DATA/wiki-snapshots/
+Snapshot location: \${REN_SNAPSHOT_ROOT:-\$HOME/.claude/plugins/data/renos}/wiki-snapshots/
 Current target:    \$REN_WIKI_ROOT or \$CLAUDE_PLUGIN_OPTION_WIKIROOT or ~/.renos/wiki
 EOF
     ;;
