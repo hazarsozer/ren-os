@@ -77,7 +77,7 @@ End-of-session consolidation. The friend runs `/ren:wrap`; this skill writes the
      issues, or releases and you still extract zero candidates, say why in one
      line on the wrap screen — a silent `seen=0` on a working session is the
      defect the 2026-08-18 spec exists to prevent.
-3. **Call `skills.wrap.lib.wrap_session(narrative_md, durable_items, session, llm_call=..., cwd=Path("<absolute session working dir>"))`.**
+3. **Call `skills.wrap.lib.wrap_session(narrative_md, durable_items, session, verdicts=..., cwd=Path("<absolute session working dir>"))`.** (`llm_call=...` remains supported for callers with a live callable — see step 3.4 below — but `verdicts=...` is the standard kwarg for the batched-subagent path this SKILL drives.)
    - `session` is just a LABEL for this session's records — you are not expected to know Claude Code's real `session_id`, and nothing depends on you guessing it. (The 0.6.1 estimator-calibration harvest resolves the transcript from the id the wake-up hook itself recorded, never from this label.)
    - **Classify via ONE classifier-class subagent (batched).** When there are
      candidate items, do not omit the classifier and do not classify inline:

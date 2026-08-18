@@ -15,8 +15,8 @@ execution_tier: deterministic
 
 contract:
   required_outputs:
-    - "Advances watermark to max ren_ts of the batch (only on fully successful run)"
-    - "Returns counts: applied, held, suggested, gated_out, refused, capped_remainder"
+    - "Advances watermark to result[\"watermark_after\"] when non-None (never guessed, always lib-computed)"
+    - "Returns counts: applied, held, suggested, gated_out, refused, duplicates, capped_remainder, watermark_after"
   budgets:
     turns: 3
     files_written: 1
@@ -24,15 +24,15 @@ contract:
   permissions:
     read:
       - "~/.renos/wiki/**"
-      - "~/.renos/l1/**"
     write:
       - "~/.renos/wiki/**"
       - "~/.renos/wiki/.ren/distiller-watermark.json"
       - "~/.renos/wiki/.ren/journal.jsonl"
   completion_conditions:
-    - "Watermark advanced only if mining, classification, and application all succeeded"
+    - "Watermark advanced only to result[\"watermark_after\"], and only if mining, classification, and application all succeeded"
     - "Malformed agent reply stops the flow; watermark untouched"
     - "Every candidate passed through apply_candidates (no silent drops)"
+    - "A capped run's remainder stays behind the watermark (spec §3.4) — watermark_after never advances past an unprocessed session's earliest L1"
   output_paths:
     - "~/.renos/wiki/lessons/"
     - "~/.renos/wiki/projects/*/knowledge/lessons/"
@@ -62,12 +62,12 @@ WRITE_CAP writes per run.
 2. **Dedup context.** For each distinct `session` in the batch, collect `landed_pages(session)`.
 3. **Mine.** Spawn ONE `ren-distiller` agent (worker-class) with the batch's `escaped_body` texts and the per-session landed sets. Parse its reply as the candidate JSON array. A malformed reply → stop, report, watermark UNTOUCHED.
 4. **Classify.** Build one classifier prompt per candidate via `build_classifier_prompt(item, eligible_targets=eligible_update_targets(source_session), project=...)` and spawn ONE classifier-class subagent (batched, same pattern as /ren:wrap step 3) returning an index-keyed JSON verdict array.
-5. **Apply.** Assemble `candidates` (lib shape: item/verdict/source_session/project/content=proposed_content/page=None) and call `apply_candidates(candidates, run_session="distill-<date>")`. Print the returned counts; a non-zero `capped_remainder` is reported as "N candidates carried to the next run".
-6. **Advance the watermark** to the batch's max `ren_ts` — ONLY if steps 3-5 completed without an exception. Any failure leaves the watermark untouched (re-run safe; the journal dedup makes replays idempotent).
-7. **Report.** One screen: batch size, candidates, applied/held/suggested/gated_out/refused, capped remainder, new watermark.
+5. **Apply.** Assemble `candidates` (lib shape: item/verdict/source_session/project/content=proposed_content/page=None) and call `apply_candidates(candidates, run_session="distill-<date>", batch=batch, watermark_before=read_watermark())`. Print the returned counts; a non-zero `capped_remainder` is reported as "N candidates carried to the next run"; `duplicates` (noop-duplicate replays) is reported separately and never counts against the cap.
+6. **Advance the watermark** to `result["watermark_after"]` — ONLY if steps 3-5 completed without an exception AND `watermark_after` is not `None`. The lib computes it: a fully-processed batch (no remainder) advances to the batch's max `ren_ts`; a capped run advances only up to (not past) the earliest L1 belonging to a session with unprocessed candidates, so that session's L1s stay behind the watermark and get re-mined next run (spec §3.4, §3.5). A `None` watermark_after with a non-empty remainder means no advance this run — say so on the report screen. Any exception in steps 3-5 leaves the watermark untouched (re-run safe; the journal dedup makes replays idempotent).
+7. **Report.** One screen: batch size, candidates, applied/held/suggested/gated_out/refused/duplicates, capped remainder, new watermark (or "no advance this run" when `watermark_after` is `None`).
 
 ## What this skill does NOT do
 
 - Write any wiki file directly — apply_candidates is the only write path.
-- Advance the watermark on a failed or partial run.
+- Advance the watermark on a failed run, or past an unprocessed session's earliest L1 on a capped run.
 - Touch quarantine banners, trust stamps, or the backup remote.

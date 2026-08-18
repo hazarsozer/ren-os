@@ -209,7 +209,7 @@ _CHECKS: tuple[tuple[str, str], ...] = (
 
 
 def watch(session: str) -> list[dict]:
-    """Run all four checks; write findings to the journal (never a wiki
+    """Run all five checks; write findings to the journal (never a wiki
     page). Each check is isolated: a crash in one produces a `"check-error"`
     finding for that check and never prevents the others from running.
     Returns the list of findings (may be empty).

@@ -114,18 +114,54 @@ def _suggest_unplaced(item: str, source_session: str, idx: int, reason: str,
             "sid": entry["sid"] if entry else None}
 
 
+def _watermark_after(batch: list[dict] | None, unprocessed: list[dict]) -> str | None:
+    """The watermark this run may safely advance to (controller ruling, #71
+    review round 3): with no `batch`, always `None` — the lib never
+    guesses at a watermark it wasn't handed the batch to compute from.
+
+    No unprocessed (remainder) candidates: the batch's own max `ren_ts` — the
+    whole batch was looked at, so everything up to its tail is safe to skip
+    next time (spec §3.4). Sessions that produced zero candidates count as
+    fully consumed by construction — they never appear in `unprocessed`.
+
+    With a remainder: the sessions those unprocessed candidates came from
+    must stay BEHIND the watermark (spec §3.4) so their source L1s get
+    re-mined. That is the max `ren_ts` among batch entries strictly below
+    the minimum `ren_ts` of any batch entry belonging to one of those
+    sessions — `None` if even the batch's earliest entry belongs to one
+    (nothing can safely advance)."""
+    if batch is None:
+        return None
+    if not unprocessed:
+        return max((e["ren_ts"] for e in batch), default=None)
+    blocked_sessions = {c["source_session"] for c in unprocessed}
+    blocked_ts = [e["ren_ts"] for e in batch if e.get("session") in blocked_sessions]
+    if not blocked_ts:
+        # The unprocessed candidates' sessions aren't in this batch at all
+        # (shouldn't happen in practice) — nothing safe to compute.
+        return None
+    floor = min(blocked_ts)
+    safe = [e["ren_ts"] for e in batch if e["ren_ts"] < floor]
+    return max(safe) if safe else None
+
+
 def apply_candidates(candidates: list[dict], *, run_session: str,
-                     cap: int = WRITE_CAP) -> dict:
+                     cap: int = WRITE_CAP,
+                     batch: list[dict] | None = None,
+                     watermark_before: str | None = None) -> dict:
     applied: list[dict] = []
     held: list[dict] = []
     suggested: list[dict] = []
     gated_out: list[dict] = []
     refused: list[dict] = []
+    duplicates: list[dict] = []
     capped_remainder = 0
+    unprocessed: list[dict] = []
 
     for idx, cand in enumerate(candidates):
         if len(applied) + len(held) >= cap:
             capped_remainder = len(candidates) - idx
+            unprocessed = candidates[idx:]
             break
         item = cand["item"]
         source = cand["source_session"]
@@ -161,6 +197,13 @@ def apply_candidates(candidates: list[dict], *, run_session: str,
         except SecretsFound as exc:
             refused.append({"item": item, "reason": str(exc)})
             continue
+        if entry.status == "noop-duplicate":
+            # Excluded from the cap count (controller ruling, #71 review
+            # round 3): a replay landing on already-current content is not
+            # new work, so it must never burn a cap slot that a genuinely
+            # new candidate needed.
+            duplicates.append({"item": item, "page": page})
+            continue
         if prov is not None:
             applied.append({"qid": entry.qid, "write_id": prov.write_id,
                             "page": page, "op": prov.op})
@@ -172,11 +215,18 @@ def apply_candidates(candidates: list[dict], *, run_session: str,
                           and a["op"] == "ADD")
     creates = [a for a in applied if a["op"] == "ADD"]
     updates = [a for a in applied if a["op"] == "UPDATE"]
+    watermark_after = _watermark_after(batch, unprocessed)
+    if batch is not None:
+        sessions = len(batch)
+    else:
+        sessions = len({c["source_session"] for c in candidates})
     collect.record(collect.KIND_DISTILLER_RUN, {
         "run_session": run_session, "candidates": len(candidates),
         "applied": len(applied), "held": len(held),
         "suggested": len(suggested), "gated_out": len(gated_out),
         "refused": len(refused), "capped_remainder": capped_remainder,
+        "sessions": sessions, "duplicates": len(duplicates),
+        "watermark_before": watermark_before, "watermark_after": watermark_after,
     })
     collect.record(collect.KIND_DURABLE_OUTCOME, {
         "session": run_session, "producer": "distiller",
@@ -189,4 +239,5 @@ def apply_candidates(candidates: list[dict], *, run_session: str,
     })
     return {"applied": applied, "held": held, "suggested": suggested,
             "gated_out": gated_out, "refused": refused,
-            "capped_remainder": capped_remainder}
+            "duplicates": duplicates, "capped_remainder": capped_remainder,
+            "watermark_after": watermark_after}
