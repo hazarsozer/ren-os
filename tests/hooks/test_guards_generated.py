@@ -309,23 +309,17 @@ _XFAIL_QUOTED_REFSPEC = pytest.mark.xfail(
 )
 
 _NL_PUSH_FINDING_CASES = [
-    pytest.param(f"echo ok\n{template}", id=f"nl-prefix-{shape_id}",
-                 marks=_XFAIL_NL)
+    pytest.param(f"echo ok\n{template}", id=f"nl-prefix-{shape_id}")
     for shape_id, template in PUSH_SHAPES
 ]
 _QUOTED_REFSPEC_FINDING_CASES = [
-    pytest.param(f"{_PUSH} origin '{_PLUS}main'", id="sq-plus-refspec",
-                 marks=_XFAIL_QUOTED_REFSPEC),
-    pytest.param(f'{_PUSH} origin "{_PLUS}main"', id="dq-plus-refspec",
-                 marks=_XFAIL_QUOTED_REFSPEC),
+    pytest.param(f"{_PUSH} origin '{_PLUS}main'", id="sq-plus-refspec"),
+    pytest.param(f'{_PUSH} origin "{_PLUS}main"', id="dq-plus-refspec"),
 ]
 _NL_RM_FINDING_CASES = [
-    pytest.param("echo ok\nrm {W}/a.md", id="nl-prefix-rm-page",
-                 marks=_XFAIL_NL),
-    pytest.param("echo ok\nunlink {W}/a.md", id="nl-prefix-unlink-page",
-                 marks=_XFAIL_NL),
-    pytest.param("echo ok\nrm -rf {W}/projects/demo", id="nl-prefix-rm-rf-dir",
-                 marks=_XFAIL_NL),
+    pytest.param("echo ok\nrm {W}/a.md", id="nl-prefix-rm-page"),
+    pytest.param("echo ok\nunlink {W}/a.md", id="nl-prefix-unlink-page"),
+    pytest.param("echo ok\nrm -rf {W}/projects/demo", id="nl-prefix-rm-rf-dir"),
 ]
 
 

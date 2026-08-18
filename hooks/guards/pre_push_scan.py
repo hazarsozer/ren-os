@@ -71,7 +71,7 @@ PATH_DENYLIST: tuple[str, ...] = (
     "tests/",
 )
 
-_GIT_PUSH_RE = re.compile(r"(?:^|[;&|]\s*)git\s+push\b")
+_GIT_PUSH_RE = re.compile(r"(?:^|[;&|\n]\s*)git\s+push\b")
 # M8: `--force-with-lease` is the SAFE idiom (refuses to clobber unseen remote
 # work) — it must NOT require REN_ALLOW_FORCE. Only bare `--force`/`-f` do. The
 # negative lookahead keeps `--force` from matching the `--force` prefix of
@@ -230,12 +230,14 @@ def _has_force_refspec(command: str) -> bool:
     force syntax (`git push origin +main`, `git push origin +HEAD:main`).
     Only checks whitespace-separated positional tokens after the push
     keyword, so option values and URLs elsewhere in the command can't
-    false-positive."""
+    false-positive. Tokens are stripped of surrounding shell quotes first
+    — the shell removes them before git parses the refspec."""
     match = _GIT_PUSH_RE.search(command)
     if match is None:
         return False
     after = command[match.end():]
     for token in after.split():
+        token = token.strip("\"'")
         if token.startswith("+") and len(token) > 1:
             return True
     return False
