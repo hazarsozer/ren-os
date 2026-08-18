@@ -313,6 +313,45 @@ class TestDuplicateAndDriftPairs:
         drifts = findings["numeric_drift_pairs"]
         assert any(d["page"] == d["with"] == "projects/app/facts.md" for d in drifts)
 
+    # issue #38: numeric drift is scoped by project subtree — the live FP
+    # paired two DIFFERENT projects' maps over their ingest-date lines
+    # ("2026-07-31: ingested…" vs "2026-08-01: ingested…"), which are
+    # supposed to differ. Drift comparison only happens when both pages
+    # resolve to the SAME `project_subtree` (equal slug, or both None).
+
+    def test_cross_project_ingest_dates_are_not_drift(self, tmp_path):
+        wiki = tmp_path / "wiki"
+        (wiki / "projects" / "genshin-calculator").mkdir(parents=True)
+        (wiki / "projects" / "ren-os").mkdir(parents=True)
+        (wiki / "projects" / "genshin-calculator" / "map.md").write_text(
+            "## Knowledge\n- 2026-07-31: ingested from existing repository\n", encoding="utf-8")
+        (wiki / "projects" / "ren-os" / "map.md").write_text(
+            "## Knowledge\n- 2026-08-01: ingested from existing repository\n", encoding="utf-8")
+        findings = wiki_health.sweep(wiki)
+        assert findings["numeric_drift_pairs"] == []
+
+    def test_both_pages_outside_project_subtrees_still_drift(self, tmp_path):
+        wiki = tmp_path / "wiki"
+        (wiki / "global").mkdir(parents=True)
+        (wiki / "notes").mkdir(parents=True)
+        (wiki / "global" / "old.md").write_text(
+            "## Knowledge\n- the dev server uses port 8080 for local runs\n", encoding="utf-8")
+        (wiki / "notes" / "new.md").write_text(
+            "## Knowledge\n- the dev server uses port 9090 for local runs\n", encoding="utf-8")
+        findings = wiki_health.sweep(wiki)
+        assert len(findings["numeric_drift_pairs"]) == 1
+
+    def test_project_page_never_drift_compared_with_global_page(self, tmp_path):
+        wiki = tmp_path / "wiki"
+        (wiki / "projects" / "app").mkdir(parents=True)
+        (wiki / "global").mkdir(parents=True)
+        (wiki / "projects" / "app" / "facts.md").write_text(
+            "## Knowledge\n- the dev server uses port 8080 for local runs\n", encoding="utf-8")
+        (wiki / "global" / "facts.md").write_text(
+            "## Knowledge\n- the dev server uses port 9090 for local runs\n", encoding="utf-8")
+        findings = wiki_health.sweep(wiki)
+        assert findings["numeric_drift_pairs"] == []
+
     def test_render_report_includes_new_sections(self, tmp_path):
         wiki = tmp_path / "wiki"
         wiki.mkdir()
