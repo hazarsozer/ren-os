@@ -7,10 +7,10 @@ description: |
   /ren:suggestions slash command. The single interactive decide surface over
   lib.suggestions' durable store (Task 14); this is where an accepted
   decision actually becomes a write.
-version: 0.7.9
+version: 0.8.0
 license: MIT
 
-framework_version: "0.7.9"
+framework_version: "0.8.0"
 schema_version: 1
 type: skill
 execution_tier: judgment

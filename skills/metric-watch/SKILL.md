@@ -6,10 +6,10 @@ description: |
   no-LLM-with-candidates defects, and backup configuration — and writes
   findings to the journal for the next wake-up to surface. Triggers on
   /ren:metric-watch, or (recommended) a weekly scheduled routine.
-version: 0.7.9
+version: 0.8.0
 license: MIT
 
-framework_version: "0.7.9"
+framework_version: "0.8.0"
 schema_version: 1
 type: skill
 execution_tier: deterministic

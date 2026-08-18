@@ -79,13 +79,13 @@ profiles:
       - path: "routines/"
         type: directory
         write_rule: create_if_missing
-        min_framework_version: "0.7.9"
+        min_framework_version: "0.8.0"
 
       - path: "routines/distiller-weekly.md"
         template: "routines/distiller-weekly.md"
         type: file
         write_rule: copy_if_missing
-        min_framework_version: "0.7.9"
+        min_framework_version: "0.8.0"
         description: >
           v3 routine-spec (Task 6, spec §3.1/§4.1) declaring the weekly
           /ren:distill cadence: schedule, exit criterion, failure handler,

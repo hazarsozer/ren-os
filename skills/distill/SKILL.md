@@ -5,10 +5,10 @@ description: |
   newer than the stored watermark for durable learnings the live wrap gate
   missed, and land them through the single write door, producer="distiller",
   capped at WRITE_CAP writes per run.
-version: 0.7.9
+version: 0.8.0
 license: MIT
 
-framework_version: "0.7.9"
+framework_version: "0.8.0"
 schema_version: 1
 type: skill
 execution_tier: deterministic

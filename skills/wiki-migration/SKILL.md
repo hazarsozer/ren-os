@@ -6,12 +6,12 @@ description: |
   (schemas.json) and a thin verify/apply primitive for running one
   migration directory against one page. Invoked by /ren:update, not
   directly by the friend.
-version: 0.7.9
+version: 0.8.0
 license: MIT
 type: skill
 execution_tier: deterministic
 schema_version: 1
-framework_version: "0.7.9"
+framework_version: "0.8.0"
 
 contract:
   required_outputs:
