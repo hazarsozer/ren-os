@@ -7,10 +7,10 @@ description: |
   list — every question is optional, the whole interview can be skipped, and
   every unanswered field gets a sane default. No venture/founder questions in
   this default path.
-version: 0.7.7
+version: 0.7.8
 license: MIT
 
-framework_version: "0.7.7"
+framework_version: "0.7.8"
 schema_version: 1
 type: skill
 execution_tier: judgment

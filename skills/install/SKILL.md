@@ -7,10 +7,10 @@ description: |
   first project, then a closing summary of what's now possible. Every stage
   is skippable except wiki bootstrap; re-running skips whatever's already
   done.
-version: 0.7.7
+version: 0.7.8
 license: MIT
 
-framework_version: "0.7.7"
+framework_version: "0.7.8"
 schema_version: 1
 type: skill
 execution_tier: judgment

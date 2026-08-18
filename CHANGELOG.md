@@ -1,5 +1,48 @@
 # Changelog
 
+## [0.7.8] - 2026-08-18 — "sharper guards"
+
+The post-0.7.7 fix train: every open issue was first verified against the
+live tree (two were found already fixed and closed with evidence — #54,
+#55), the five survivors were brainstormed, specced
+(`docs/superpowers/specs/2026-08-18-post-0.7.7-fix-train-design.md`),
+planner-decomposed, implemented TDD in parallel, and adversarially
+reviewed (one HIGH found and fixed before approval).
+
+- **#67 — apply_integrity learns recorded exemptions.** The doctor's
+  journal↔queue reconciliation now consults
+  `_APPLY_INTEGRITY_EXEMPT_SESSIONS` (session-id → recorded reason),
+  seeded with `install` and the 2026-08-04 fixtrain-remediation session
+  whose 8 write_ids bypassed queue persist by design. Unknown-session
+  orphans still warn.
+- **#62 — Live pins can no longer invite deleting the wiki spine.**
+  `live_pin_pages()` stops letting an `op=UPDATE` entry introduce a
+  listing (the two #58 restoration writes to `log.md`/`identity.md` no
+  longer render at every wrap), and `pin.correct()` hard-refuses
+  deletion of spine pages (`log.md`, `identity.md`, `index.md`, any
+  `map.md`) regardless of `approved_by` — with casefolded,
+  dot-segment-normalized matching after review caught a `Log.md` alias
+  bypass on case-insensitive APFS.
+- **#50 — one calibration acceptance rule, everywhere.**
+  `MIN_CALIBRATION_SAMPLES` (5) and `PLAUSIBLE_RATIO_BAND` now live once
+  in `lib/instrument/estimator.py`; estimate-side reads go through
+  `_accepted_ratio` while `calibrate()` keeps the raw read so sub-floor
+  blending still accumulates. Wake-up imports the shared constants;
+  `calibration.py` re-exports the band for back-compat.
+- **#38 — wiki-health heuristics stop crying wolf.** The contradiction
+  pass excludes pointer lines (via `lib.pointer.parse_pointer_line`)
+  from both sides and skips identical pairs; cross-page numeric drift is
+  scoped to same-project subtrees. Both live false positives from the
+  issue are reproduced in tests and confirmed silent; true positives
+  stay covered.
+- **#68 — the guard matrix meets a generator.** New
+  `tests/hooks/test_guards_generated.py`: 1316 deterministic
+  itertools-built cases (guarded shapes × separators × quoting,
+  runtime-assembled) against a segment-level oracle, ~1.6s. It
+  immediately caught two real guard bypasses — newline-prefix segments
+  evade the push/rm separator anchoring, and a quoted `+refspec` evades
+  force detection — pinned as 10 strict xfails and filed as #69.
+
 ## [0.7.7] - 2026-08-18 — "quiet signals"
 
 The polish batch after the pre-handoff train: four long-open noise and
