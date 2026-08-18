@@ -61,7 +61,7 @@ from lib.suggestions.producers import (
     wiki_health_critical,
 )
 
-from .classifier import gate
+from .classifier import gate, gate_precomputed, PlacementError
 from .merge import merge_update, MergeError
 
 _SLUG_WORD_RE = re.compile(r"[a-z0-9]+")
@@ -744,6 +744,27 @@ def _ensure_lessons_hub(dir_rel: str, session: str, project: str | None) -> bool
         return False
 
 
+def _route_unplaced(item: str, session: str, index: int, *, reason: str,
+                    fingerprint: str, claimed: dict | None = None) -> dict:
+    """Spec 2026-08-18 §2.3: a durable-but-unplaceable (or unclassifiable)
+    candidate goes to the suggestions store for a human to place — fail-closed
+    stops meaning "discard unheard"."""
+    entry = record_suggestion(
+        SuggestionSpec(
+            producer="wrap",
+            title=f"Place durable item from session {session}",
+            rationale=reason,
+            evidence={"item": item, "session": session, **(claimed or {})},
+            kind="structured_action",
+            payload={"action": "place_durable_item", "item": item,
+                     "session": session},
+            fingerprint=fingerprint,
+        )
+    )
+    return {"item": item, "reason": reason,
+            "sid": entry["sid"] if entry else None}
+
+
 def wrap_session(
     narrative_md: str,
     durable_items: list[str],
@@ -754,6 +775,7 @@ def wrap_session(
     *,
     open_threads: list | None = None,
     completed_ptrs: list | None = None,
+    verdicts: list[dict] | None = None,
 ) -> dict:
     """Run the wrap write path for one session close-out.
 
@@ -772,6 +794,12 @@ def wrap_session(
         plane target, or a detected `contradicts` conflict — a human/the live
         session needs to reason about these)
       - "gated_out": [{"item", "verdict", "reason"}] for non-durable items
+      - "unplaced": [{"item", "reason", "sid"}] — durable items that could
+        not be routed to a write (a `PlacementError`'d verdict, or no
+        classifier available at all) and were instead sent to the
+        suggestions store for a human to place (spec §2.2-2.3): fail-closed
+        means uncertainty goes to a human, never a silent discard or an
+        auto-write
       - "refused": [{"item", "reason"}] for durable items the queue itself
         refused (currently: a planted secret — `SecretsFound` propagates from
         `lib.memory.scrub` via `queue.propose`'s door-side scrub, and is
@@ -892,17 +920,54 @@ def wrap_session(
 
     events_before = collect.read(kind=collect.KIND_CLASSIFIER_EVENT)
 
+    if verdicts is not None and len(verdicts) != len(durable_items):
+        raise ValueError(
+            f"verdicts must match durable_items 1:1 by index: "
+            f"{len(verdicts)} verdicts for {len(durable_items)} items"
+        )
+
     applied: list[dict] = []
     held: list[dict] = []
     gated_out: list[dict] = []
     refused: list[dict] = []
     updated: list[dict] = []
     suggested: list[dict] = []
+    unplaced: list[dict] = []
 
     eligible = _eligible_update_targets(session)
 
-    for item in durable_items:
-        decision = gate(item, llm_call, eligible_targets=eligible, project=project)
+    # Spec 2026-08-18 §2.3 die-loudly rule: candidates present, but no
+    # pre-computed verdicts AND no LLM to classify them — this is a
+    # transport/wiring defect, not silence-worthy ambiguity. The old
+    # behavior (route straight to `gated_out` via the deterministic
+    # fallback) let a broken classifier masquerade as "nothing durable this
+    # session"; now every candidate routes to the suggestions store instead
+    # so a human sees it, and the `no_llm` classifier_event still fires so
+    # the defect stays measurable.
+    no_classifier = verdicts is None and llm_call is None and bool(durable_items)
+
+    for i, item in enumerate(durable_items):
+        if no_classifier:
+            gate(item, None, eligible_targets=eligible, project=project)  # records no_llm
+            unplaced.append(_route_unplaced(
+                item, session, i, reason="no classifier available at wrap time",
+                fingerprint=f"wrap-noclassifier:{session}:{i}"))
+            continue
+
+        if verdicts is not None:
+            try:
+                decision = gate_precomputed(
+                    item, verdicts[i], eligible_targets=eligible, project=project)
+            except PlacementError as exc:
+                unplaced.append(_route_unplaced(
+                    item, session, i, reason=exc.reason,
+                    fingerprint=f"wrap-unplaced:{session}:{i}",
+                    claimed={"claimed_scope": exc.claimed_scope,
+                             "claimed_action": exc.claimed_action,
+                             "claimed_target": exc.claimed_target}))
+                continue
+        else:
+            decision = gate(item, llm_call, eligible_targets=eligible, project=project)
 
         if decision.verdict != "durable":
             gated_out.append(
@@ -1003,7 +1068,8 @@ def wrap_session(
          "created_global": len(applied) - created_project,
          "updated": len(updated),
          "gated_out": len(gated_out), "suggested": len(suggested),
-         "held": len(held), "refused": len(refused)},
+         "held": len(held), "refused": len(refused),
+         "producer": "wrap", "unplaced": len(unplaced)},
     )
 
     semantic_findings = _judge_semantic_findings(
@@ -1046,6 +1112,7 @@ def wrap_session(
         "applied": applied,
         "held": held,
         "gated_out": gated_out,
+        "unplaced": unplaced,
         "refused": refused,
         "updated": updated,
         "suggested": suggested,
@@ -1462,6 +1529,12 @@ def _eligible_update_targets(session: str) -> tuple[str, ...]:
     return tuple(sorted(p for p in pages if (wiki / p).is_file()))
 
 
+# Public alias (Task 4 imports this) — same function, no behavior change;
+# the leading underscore was purely an internal-naming accident, not a
+# deliberate "do not call this" signal.
+eligible_update_targets = _eligible_update_targets
+
+
 def _session_queue_entries(session: str) -> list[dict]:
     """Every queue entry for `session`, regardless of status (the wrap screen
     needs BOTH pending and already-applied entries, incl. auto-tier applies).
@@ -1721,8 +1794,9 @@ def render_wrap_screen(wrap_result: dict, session: str) -> str:
         lines.append("")
 
     # --- Suggestions ---
+    unplaced = wrap_result.get("unplaced") or []
     lines.append("## Suggestions")
-    if suggestion_entries:
+    if suggestion_entries or unplaced:
         for entry in suggestion_entries:
             page = entry["proposal"]["page"]
             reason = entry["proposal"].get("reason", "")
@@ -1732,6 +1806,9 @@ def render_wrap_screen(wrap_result: dict, session: str) -> str:
             preview = _content_preview(entry["proposal"].get("content"))
             if preview:
                 lines.append(f"  > {preview}")
+        for entry in unplaced:
+            preview = _content_preview(entry.get("item"))
+            lines.append(f"- {preview or entry.get('item', '')} — held for placement")
     else:
         lines.append("- (none)")
     lines.append("")
@@ -1772,4 +1849,5 @@ __all__ = [
     "render_wrap_screen",
     "render_pending_list",
     "harvest_suggestions",
+    "eligible_update_targets",
 ]
