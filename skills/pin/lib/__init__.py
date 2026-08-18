@@ -98,11 +98,18 @@ def _is_spine_page(page: str) -> bool:
     """True for the wiki's structural spine: the root `log.md`,
     `identity.md`, and `index.md`, plus any page whose final path component
     is `map.md` (L2 maps, e.g. `projects/<slug>/map.md`). These pages are
-    never deleted via pin correction — see issue #58."""
-    normalized = page.replace("\\", "/").strip("/")
+    never deleted via pin correction — see issue #58.
+
+    Casefolded and `.`-segment-normalized so aliases like `Log.md` or
+    `./log.md` cannot slip past the guard on a case-insensitive
+    filesystem (review finding, fix train 2026-08-18)."""
+    parts = [
+        p for p in page.replace("\\", "/").casefold().split("/") if p not in ("", ".")
+    ]
+    normalized = "/".join(parts)
     if normalized in _SPINE_ROOT_PAGES:
         return True
-    return normalized.rsplit("/", 1)[-1] == "map.md"
+    return bool(parts) and parts[-1] == "map.md"
 
 
 def _complete_if_held(entry: QueueEntry, approved_by: str | None) -> QueueEntry:
