@@ -93,6 +93,24 @@ class ClassifierError(Exception):
     to avoid; `gate()` catches this and falls back to the deterministic path."""
 
 
+class PlacementError(ClassifierError):
+    """A DURABLE verdict whose placement (scope/action/target) is invalid.
+
+    Distinct from garden-variety malformation on purpose: the classifier
+    affirmed the item is durable, so discarding it silently would lose a
+    learning — the caller routes these to the suggestions store instead
+    (spec 2026-08-18 §2.3)."""
+
+    def __init__(self, msg: str, *, claimed_scope=None, claimed_action=None,
+                 claimed_target=None):
+        super().__init__(msg)
+        self.verdict = "durable"
+        self.reason = msg
+        self.claimed_scope = claimed_scope
+        self.claimed_action = claimed_action
+        self.claimed_target = claimed_target
+
+
 @dataclass(frozen=True)
 class Decision:
     verdict: str   # "durable" | "session-only" | "discard"
@@ -118,6 +136,61 @@ def build_classifier_prompt(
         item_text=text, project=project or "(no project in scope)",
         targets_block=targets_block,
     )
+
+
+def decision_from_data(
+    data: dict, *, eligible_targets: tuple[str, ...] = ()
+) -> Decision:
+    """Validate one pre-computed verdict object (spec 2026-08-18 §2.2).
+
+    EXACTLY `classify_llm`'s post-parse rules — this IS the extracted body —
+    with one refinement: when the verdict is "durable" but scope/action/
+    target is invalid, raise `PlacementError` (routable) rather than the
+    plain `ClassifierError` (fail-closed discard)."""
+    if not isinstance(data, dict):
+        raise ClassifierError(
+            f"classifier output must be a JSON object, got {type(data).__name__}"
+        )
+
+    verdict = data.get("verdict")
+    if verdict not in VALID_VERDICTS:
+        raise ClassifierError(
+            f"unknown verdict {verdict!r}; must be one of {sorted(VALID_VERDICTS)}"
+        )
+
+    reason = data.get("reason", "")
+    if not isinstance(reason, str):
+        raise ClassifierError(f"'reason' must be a string; got {type(reason).__name__}")
+
+    durable = verdict == "durable"
+
+    def _placement_or_plain(msg: str) -> ClassifierError:
+        if durable:
+            return PlacementError(
+                msg, claimed_scope=data.get("scope"),
+                claimed_action=data.get("action"),
+                claimed_target=data.get("target_page"),
+            )
+        return ClassifierError(msg)
+
+    scope = data.get("scope", "global")
+    if scope not in VALID_SCOPES:
+        raise _placement_or_plain(
+            f"unknown scope {scope!r}; must be one of {sorted(VALID_SCOPES)}")
+    action = data.get("action", "create")
+    if action not in VALID_ACTIONS:
+        raise _placement_or_plain(
+            f"unknown action {action!r}; must be one of {sorted(VALID_ACTIONS)}")
+    target = data.get("target_page")
+    if action == "update":
+        if not isinstance(target, str) or target not in eligible_targets:
+            raise _placement_or_plain(
+                f"update target {target!r} is not in the eligibility set")
+    else:
+        if target is not None:
+            raise _placement_or_plain('target_page must be null when action is "create"')
+    return Decision(verdict=verdict, reason=reason, scope=scope, action=action,
+                    target_page=target if action == "update" else None)
 
 
 def classify_llm(
@@ -146,38 +219,7 @@ def classify_llm(
     except WorkerOutputError as exc:
         raise ClassifierError(f"classifier output is not valid JSON: {exc}") from exc
 
-    if not isinstance(data, dict):
-        raise ClassifierError(
-            f"classifier output must be a JSON object, got {type(data).__name__}"
-        )
-
-    verdict = data.get("verdict")
-    if verdict not in VALID_VERDICTS:
-        raise ClassifierError(
-            f"unknown verdict {verdict!r}; must be one of {sorted(VALID_VERDICTS)}"
-        )
-
-    reason = data.get("reason", "")
-    if not isinstance(reason, str):
-        raise ClassifierError(f"'reason' must be a string; got {type(reason).__name__}")
-
-    scope = data.get("scope", "global")
-    if scope not in VALID_SCOPES:
-        raise ClassifierError(f"unknown scope {scope!r}; must be one of {sorted(VALID_SCOPES)}")
-    action = data.get("action", "create")
-    if action not in VALID_ACTIONS:
-        raise ClassifierError(f"unknown action {action!r}; must be one of {sorted(VALID_ACTIONS)}")
-    target = data.get("target_page")
-    if action == "update":
-        if not isinstance(target, str) or target not in eligible_targets:
-            raise ClassifierError(
-                f"update target {target!r} is not in the eligibility set"
-            )
-    else:
-        if target is not None:
-            raise ClassifierError('target_page must be null when action is "create"')
-    return Decision(verdict=verdict, reason=reason, scope=scope, action=action,
-                    target_page=target if action == "update" else None)
+    return decision_from_data(data, eligible_targets=eligible_targets)
 
 
 def classify_deterministic(item_text: str) -> Decision:
@@ -234,14 +276,42 @@ def gate(
     return classify_deterministic(item_text)
 
 
+def gate_precomputed(
+    item_text: str, data: object, *,
+    eligible_targets: tuple[str, ...] = (), project: str | None = None,
+) -> Decision:
+    """`gate()`'s sibling for the verdicts-as-data transport (spec §2.2):
+    validate a pre-computed verdict instead of calling an LLM.
+
+    `PlacementError` PROPAGATES — the caller owns the route to suggestions.
+    Any other malformation is fail-closed exactly like `gate()`'s LLM-error
+    path: record a classifier_event and fall back to deterministic."""
+    preview = str(item_text)[:_PREVIEW_CHARS]
+    if scrub.scan(str(item_text)):
+        preview = "<redacted: secret-shaped content>"
+    try:
+        return decision_from_data(data, eligible_targets=eligible_targets)  # type: ignore[arg-type]
+    except PlacementError:
+        raise
+    except Exception as exc:  # noqa: BLE001 - fail-closed, mirrors gate()
+        collect.record(
+            collect.KIND_CLASSIFIER_EVENT,
+            {"event": "fail_closed", "reason": str(exc), "item_preview": preview},
+        )
+        return classify_deterministic(item_text)
+
+
 __all__ = [
     "VALID_VERDICTS",
     "VALID_SCOPES",
     "VALID_ACTIONS",
     "Decision",
     "ClassifierError",
+    "PlacementError",
     "build_classifier_prompt",
+    "decision_from_data",
     "classify_llm",
     "classify_deterministic",
     "gate",
+    "gate_precomputed",
 ]
