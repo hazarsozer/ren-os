@@ -61,6 +61,19 @@ class TestDeriveType:
         """Kind wins over location for a project-scoped lesson."""
         assert derive_type("projects/flux/knowledge/lessons/x.md") == "lesson"
 
+    def test_rule_4_anchored_to_immediate_parent(self):
+        """Rule 4 matches spec §2.4's `**/l1/*.md` glob: `l1` must be the
+        file's IMMEDIATE parent, the same fixed-position anchoring rules 3
+        and 5 use. A first pass matched `"l1" in parts[:-1]` (anywhere in
+        the path), which over-matched a nested path like
+        `archive/l1/sub/session-z.md` — not a direct child of `l1/` — as
+        `l1` instead of falling through to I2."""
+        assert derive_type("l1/session-x.md") == "l1"
+        assert derive_type("projects/ren-os/l1/session-y.md") == "l1"
+        assert derive_type("archive/l1/session-z.md") == "l1"
+        assert derive_type("archive/l1/sub/session-z.md") is None
+        assert derive_type("l1/sub/session-z.md") is None
+
     def test_i2_unmapped_path_returns_none_without_raising(self):
         assert derive_type("some/novel/shape.md") is None
         assert derive_type("notes.md") is None

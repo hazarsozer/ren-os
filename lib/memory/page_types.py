@@ -111,8 +111,12 @@ def derive_type(page: str) -> str | None:
     if len(parts) >= 2 and parts[-2] == "lessons":
         return "lesson"
 
-    # Rule 4 — session narratives, including archived ones.
-    if "l1" in parts[:-1]:
+    # Rule 4 — session narratives, including archived ones. Anchored to the
+    # file's IMMEDIATE parent (spec §2.4's `**/l1/*.md` glob), matching how
+    # rules 3 and 5 anchor to a fixed position rather than "anywhere in the
+    # path" — `archive/l1/sub/session-z.md` is not a direct child of `l1/`
+    # and must fall through to I2.
+    if len(parts) >= 2 and parts[-2] == "l1":
         return "l1"
 
     # Rule 5 — everything else under a project knowledge tree.
