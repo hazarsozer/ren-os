@@ -440,9 +440,17 @@ def _retract_resolved_findings(wiki_root: Path) -> int:
 
         try:
             text = ren_paths.safe_join(wiki_root, page).read_text(encoding="utf-8")
-        except (OSError, ren_paths.PathTraversalError):
+        except OSError:
             # Page is gone — the finding cannot still hold.
             retract(entry["sid"], f"page {page} no longer exists")
+            retracted += 1
+            continue
+        except ren_paths.PathTraversalError:
+            # Not a missing page — a malformed/non-wiki-relative path that
+            # would escape `wiki_root`. "no longer exists" would be false
+            # here. Still retracted: a finding recorded against a path this
+            # shape can never be re-checked, so it cannot be left pending.
+            retract(entry["sid"], f"page {page} is not a valid wiki-relative path")
             retracted += 1
             continue
 

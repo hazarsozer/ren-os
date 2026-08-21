@@ -102,9 +102,11 @@ End-of-session consolidation. The friend runs `/ren:wrap`; this skill writes the
      `durable` with `action: "update"`, those items need a merged page body,
      and the `verdicts=` path has no live `llm_call` to produce one. Call
      `skills.wrap.lib.eligible_update_targets(session)` for the eligible set,
-     then dispatch ONE batched subagent over the update-verdicts whose
-     `target_page` is in it, giving each the item text plus the target page's
-     current text and asking for the COMPLETE merged page back — it must copy
+     then dispatch ONE batched worker-class subagent (a bounded text
+     transformation over one page — never orchestrator-class) over the
+     update-verdicts whose `target_page` is in it, giving each the item text
+     plus the target page's current text and asking for the COMPLETE merged
+     page back — it must copy
      the YAML frontmatter verbatim and change only the section(s) the learning
      affects. Assemble the results into an array index-aligned with the
      candidate list, `null` wherever no merge came back, and pass it as

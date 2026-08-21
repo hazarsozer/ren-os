@@ -49,6 +49,12 @@ _FRONTMATTER_RE: Final[re.Pattern[str]] = re.compile(
 )
 _FM_TYPE_RE: Final[re.Pattern[str]] = re.compile(r"^type:\s*(.+)$", re.MULTILINE)
 
+# Detects an OPENING fence only ("does this text claim to have frontmatter at
+# all"), tolerant of CRLF. Deliberately looser than `_FRONTMATTER_RE` — it is
+# the fail-safe guard `ensure_type` uses to tell "no frontmatter" apart from
+# "frontmatter this module's stricter regex could not confidently parse".
+_OPENING_FENCE_RE: Final[re.Pattern[str]] = re.compile(r"\A---\r?\n")
+
 _ROOT_FILES: Final[dict[str, str]] = {
     "identity.md": "identity",
     "log.md": "log-entry",
@@ -140,6 +146,19 @@ def ensure_type(md_text: str, page: str) -> str:
     match = _FRONTMATTER_RE.match(md_text)
     if match is not None and _FM_TYPE_RE.search(match.group(1)):
         return md_text  # I1
+
+    if match is None and _OPENING_FENCE_RE.match(md_text):
+        # `md_text` claims to have frontmatter (it opens with a `---` fence)
+        # but `_FRONTMATTER_RE` — deliberately stricter than
+        # `provenance.py`'s/`lint.py`'s, so it correctly handles an EMPTY
+        # fence rather than mistaking it for "no frontmatter" — could not
+        # parse it with confidence (e.g. a trailing space or missing
+        # newline after the closing fence, or CRLF line endings). Do not
+        # guess: prepending a second fence here would emit a page with two
+        # frontmatter blocks and could duplicate an already-set `type:`,
+        # violating I1. The safe action is to leave the text untouched and
+        # let wiki-health lint flag the malformed frontmatter for a human.
+        return md_text
 
     derived = derive_type(page)
     if derived is None:

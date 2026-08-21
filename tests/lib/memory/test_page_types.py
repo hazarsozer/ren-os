@@ -121,3 +121,20 @@ class TestEnsureType:
     def test_is_idempotent(self):
         once = ensure_type("# Body\n", "lessons/x.md")
         assert ensure_type(once, "lessons/x.md") == once
+
+    def test_trailing_space_after_closing_fence_returns_text_unchanged(self):
+        """A space after the closing `---` defeats `_FRONTMATTER_RE` (it is
+        deliberately stricter than provenance's/lint's, to correctly handle
+        an empty fence). The fail-safe must leave the text alone rather than
+        prepend a second fence on top of an already-typed page — this is the
+        exact repro from the doctrine review."""
+        text = "---\ntype: lesson\n--- \n# B\n"
+        assert ensure_type(text, "lessons/a.md") == text
+
+    def test_crlf_page_returns_text_unchanged(self):
+        text = "---\r\ntype: lesson\r\n---\r\n# B\r\n"
+        assert ensure_type(text, "lessons/a.md") == text
+
+    def test_no_trailing_newline_after_closing_fence_returns_text_unchanged(self):
+        text = "---\ntype: lesson\n---"
+        assert ensure_type(text, "lessons/a.md") == text

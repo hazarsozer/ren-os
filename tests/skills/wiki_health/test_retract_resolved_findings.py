@@ -14,7 +14,7 @@ import importlib
 
 import pytest
 
-from lib.suggestions import SuggestionSpec, pending_suggestions, record
+from lib.suggestions import SuggestionSpec, all_suggestions, pending_suggestions, record
 from lib.ren_paths import wiki_root
 
 lint = importlib.import_module("skills.wiki-health.lib.lint")
@@ -73,6 +73,22 @@ def test_deleted_page_retracts_its_finding(wiki):
     lint._retract_resolved_findings(wiki)
 
     assert entry["sid"] not in {e["sid"] for e in pending_suggestions()}
+
+
+def test_malformed_path_retracts_with_honest_reason(wiki):
+    """A `PathTraversalError` on a finding's `page` is a wrongly-shaped path,
+    not a missing page — `"page <p> no longer exists"` would be a false
+    statement about it. It must still retract (a finding recorded against a
+    path this shape can never be re-checked), but with an honest reason
+    (doctrine review finding 5, 2026-08-21)."""
+    entry = _file_finding("../../etc/passwd")
+
+    lint._retract_resolved_findings(wiki)
+
+    resolved = next(e for e in all_suggestions() if e["sid"] == entry["sid"])
+    assert resolved["status"] == "resolved"
+    assert "no longer exists" not in resolved["resolved_reason"]
+    assert "not a valid wiki-relative path" in resolved["resolved_reason"]
 
 
 def test_non_lint_suggestions_are_left_alone(wiki):

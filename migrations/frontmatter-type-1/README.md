@@ -13,7 +13,12 @@ walk.
 
 Direct writes plus an append-only journal at
 `state_dir()/migrations/frontmatter-type-1.jsonl`; revert is the whole-wiki
-pre-update snapshot, same as its two siblings.
+pre-update snapshot, same as its two siblings — but that snapshot is taken
+only by `/ren:update`. The journal records `{migration, page, ts}` for each
+page touched; it is a record of *which* pages this migration wrote, not a
+content backup, so it cannot itself revert anything. Run outside
+`/ren:update` (a bare `uv run python migrations/frontmatter-type-1/migrate.py`)
+has no revert substrate at all — see Running below.
 
 ## Invariants
 
@@ -23,6 +28,10 @@ pre-update snapshot, same as its two siblings.
 - Idempotent: running twice is a no-op the second time.
 
 ## Running
+
+Running this outside `/ren:update` gets no pre-update snapshot — that
+snapshot exists only inside `/ren:update`'s own flow, and the journal below
+is not a substitute for it. Run `/ren:backup` first if invoking manually.
 
 ```bash
 uv run python migrations/frontmatter-type-1/migrate.py --check   # dry run

@@ -141,7 +141,11 @@ plus its own journal, revertible via the pre-update whole-wiki snapshot** —
 not the write queue. Stated explicitly because it reads like a doctrine
 violation: the "never edit a governed page directly" rule binds *sessions*,
 and tree-wide migrations have their own revert path. Inventing a
-queue-routed second convention here would fragment migration revert.
+queue-routed second convention here would fragment migration revert. That
+snapshot exists only inside `/ren:update`'s own flow, so this doctrine
+argument holds for a run *through* `/ren:update` — a bare manual invocation
+of the migration script has no revert substrate and should be preceded by
+`/ren:backup`.
 
 Scope: the 29 untyped pages. I1 means it touches nothing already typed.
 
@@ -203,6 +207,13 @@ pending suggestion whose fingerprint starts with `_LINT_FINGERPRINT_PREFIX`,
 re-run `_lint_page()` against the page as it stands now and retract when that
 `(page, rule)` pair no longer appears in the returned judgments. A page that
 no longer exists retracts too.
+
+Retraction is gated on `_RECHECKABLE_RULES` — the set of rules `_lint_page()`
+can actually re-emit. The lint driver also synthesizes `held:<cls>` and
+`blocked:<cls>` fix-class families into the same `wiki-lint:` fingerprint
+namespace, and this pass cannot re-check those either. A pending finding
+whose rule is not in `_RECHECKABLE_RULES` is skipped and left pending —
+never read as resolved just because `_lint_page()` did not re-emit it.
 
 Runs as part of `run_incremental_lint()`, before the sweep files new findings.
 
