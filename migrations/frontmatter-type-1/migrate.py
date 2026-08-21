@@ -6,8 +6,11 @@ trust-backfill-1 mold: direct writes + own journal, revertible via the
 whole-wiki pre-update snapshot. Spec:
 docs/superpowers/specs/2026-08-21-knowledge-flow-seams-design.md §2.5
 
-The table itself lives in `lib.memory.page_types` and is shared with the
-write door and the lint — this migration never carries its own copy.
+The table itself lives in `lib.memory.page_types` and has two consumers: the
+write door (`queue.propose()`) and this migration. The wiki-health lint is
+NOT a consumer — it checks only that `type:` is present, never what it
+should be; it would become a third consumer if a rule ever validated the
+value. This migration never carries its own copy.
 """
 from __future__ import annotations
 

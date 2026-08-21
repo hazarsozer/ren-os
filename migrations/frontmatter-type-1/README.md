@@ -31,6 +31,9 @@ uv run python migrations/frontmatter-type-1/migrate.py           # apply
 
 ## Table
 
-The path→type table lives in `lib/memory/page_types.py` and is shared with
-`queue.propose()` and the wiki-health lint. This migration never carries its
-own copy.
+The path→type table lives in `lib/memory/page_types.py` and has two
+consumers: `queue.propose()` and this migration. The wiki-health lint is
+NOT a consumer — its `missing-frontmatter-type` rule checks only that a
+`type:` is present, never what it should be (spec 2026-08-21 §2.2). It
+would become a third consumer if a rule ever validated the value. This
+migration never carries its own copy of the table.
