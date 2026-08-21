@@ -324,7 +324,11 @@ def test_durable_item_with_planted_secret_is_refused_not_crashed(wiki):
     # The clean item still made it through fine — one bad item doesn't crash the wrap.
     assert len(result["applied"]) == 1  # v2.2: durable_qids -> applied/held
     entry = queue.get(result["applied"][0]["qid"])
-    assert entry.proposal.content == clean_item
+    # 2026-08-21 knowledge-flow-seams Task 1: the write door now derives a
+    # missing frontmatter `type:` for every proposal, and lessons/<slug>.md
+    # (Rule 3) matches — so the stored content carries a `type: lesson`
+    # stamp ahead of the raw item text.
+    assert entry.proposal.content == "---\ntype: lesson\n---\n" + clean_item
 
 
 # =============================================================================
