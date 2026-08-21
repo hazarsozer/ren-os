@@ -21,7 +21,10 @@ import json
 
 import pytest
 
+import skills.wrap.lib as _wraplib
 from lib.instrument import collect
+from lib.memory import quarantine
+from lib.memory import queue as _queue
 from lib.ren_paths import wiki_root
 from lib.suggestions import pending_suggestions
 from skills.wrap.lib import wrap_session
@@ -277,3 +280,106 @@ def test_durable_outcome_metric_recorded(wiki):
     assert entry["suggested"] == len(result["suggested"])
     assert entry["held"] == len(result["held"])
     assert entry["refused"] == len(result["refused"])
+
+
+def test_unchanged_durable_update_is_not_reported_as_held(wiki):
+    """#78: a second run proposing content already on disk dedups to a
+    synthetic noop-duplicate entry whose qid is absent from the queue dir by
+    design. Reporting it as `held` cites a qid the friend cannot look up.
+
+    The first run applies normally (same shape as
+    `test_update_applies_merged_body`). For the second run, `validate_merged`
+    (skills/wrap/lib/merge.py) requires the "merged" text's frontmatter block
+    to be byte-identical to what's now on disk — which already carries the
+    `ren_*` provenance stamps and the quarantine banner `apply` added during
+    run one. A canned merge string can't satisfy that, so the second run's
+    merge text is built from the actual on-disk page with
+    `quarantine.release` stripping the banner back off: same frontmatter,
+    banner-free body. `propose`'s own door re-adds the banner
+    (`_quarantined_content`) before comparing, reproducing the on-disk page
+    exactly and reproducing the real #78 scenario — a friend resubmitting a
+    correction that's already landed."""
+    page = "projects/p/knowledge/existing-note.md"
+    page_path = wiki / page
+    page_path.parent.mkdir(parents=True, exist_ok=True)
+    page_path.write_text(_SEED_PAGE_TEXT, encoding="utf-8")
+
+    item = "Correction: line two should say something different."
+
+    def _run(session, merge_text):
+        collect.record(collect.KIND_WAKEUP_SURFACE,
+                       {"session": session, "pages": [page]})
+        verdict = {item: {"verdict": "durable", "scope": "project",
+                          "action": "update", "target_page": page}}
+        return wrap_session(
+            narrative_md="# Summary\n",
+            durable_items=[item],
+            session=session,
+            project="p",
+            llm_call=_llm(verdict, merge_text=merge_text),
+        )
+
+    first = _run("s-noop-1", _MERGED_PAGE_TEXT)
+    assert len(first["updated"]) == 1, "precondition: the first run applies"
+
+    second_merge_text = quarantine.release(page_path.read_text(encoding="utf-8"))
+    second = _run("s-noop-2", second_merge_text)
+
+    assert [h["page"] for h in second["held"]] == [], \
+        f"noop-duplicate leaked into held: {second['held']}"
+    assert [u["page"] for u in second["unchanged"]] == [page], \
+        "an unchanged re-run must report the page as unchanged"
+
+
+def test_user_trust_hold_still_reported(wiki, monkeypatch):
+    """The discrimination must not swallow genuine holds.
+
+    A `ren_trust: "user"` target (the scenario in
+    `test_update_to_user_trust_page_held_as_suggestion`, line 165) never
+    reaches `propose_and_apply` at all — `wrap_session` diverts it to
+    `suggested` first, so it can't exercise the `held`-vs-`unchanged`
+    discrimination. A real `contradicts`-conflict hold is likewise awkward to
+    force deterministically through `lib.memory.semantics`. So — the same
+    technique `test_touched_pages_excludes_a_held_durable_item`
+    (test_wrap_links_wiring.py) already uses — `propose_and_apply` is
+    monkeypatched to route this one page's UPDATE through the real
+    `queue.propose` (a genuinely PENDING, persisted entry) while returning
+    `(entry, None)`, the exact shape a real hold takes. Assert only that
+    whatever lands in `held` still carries a real qid, so a hold is never
+    silently reclassified as `unchanged`."""
+    page = "projects/p/knowledge/human-note.md"
+    page_path = wiki / page
+    page_path.parent.mkdir(parents=True, exist_ok=True)
+    page_path.write_text(_SEED_PAGE_TEXT, encoding="utf-8")
+    collect.record(collect.KIND_WAKEUP_SURFACE, {"session": "s-hold-1", "pages": [page]})
+
+    item = "Correction: line two should say something different."
+
+    real_propose_and_apply = _wraplib.propose_and_apply
+
+    def _fake(proposal):
+        if proposal.op == "UPDATE" and proposal.page == page:
+            entry = _queue.propose(proposal)
+            return entry, None  # genuine pending hold, never applied
+        return real_propose_and_apply(proposal)
+
+    monkeypatch.setattr(_wraplib, "propose_and_apply", _fake)
+
+    result = wrap_session(
+        narrative_md="# Summary\n",
+        durable_items=[item],
+        session="s-hold-1",
+        project="p",
+        llm_call=_llm(
+            {item: {"verdict": "durable", "scope": "project",
+                    "action": "update", "target_page": page}},
+            merge_text=_MERGED_PAGE_TEXT,
+        ),
+    )
+
+    assert result["held"], "the durable item must actually be held for this test to mean anything"
+    assert all(h["qid"] for h in result["held"]), \
+        "a real hold must keep a qid that exists on disk"
+    assert _queue.get(result["held"][0]["qid"]) is not None, \
+        "a real hold's qid must resolve to an actual persisted queue entry"
+    assert result["unchanged"] == [], "a hold is not an unchanged page"

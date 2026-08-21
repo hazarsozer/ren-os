@@ -37,7 +37,7 @@ _SUGGESTIONS_DIRNAME = "suggestions"
 _PENDING = "pending"
 _DECISIONS = ("accepted", "declined")
 _EXPIRED = "expired"
-_RESOLVED = "resolved"
+RESOLVED = "resolved"
 
 DECIDED_RETENTION_DAYS = 90
 PENDING_MAX_AGE_DAYS = 30
@@ -230,9 +230,13 @@ def _decline_time_hash(payload: dict) -> str:
 def decide(sid: str, decision: str) -> dict:
     """Transition `sid` to `decision` ("accepted" or "declined"). Pure state
     transition — does NOT apply the suggestion's payload; application is the
-    caller's job (Task 19). Raises KeyError for an unknown sid, ValueError
-    for an invalid decision OR if the entry is not currently "pending" —
-    decided ("accepted"/"declined") and expired entries are immutable."""
+    caller's job (Task 19). Raises KeyError for an unknown sid, ValueError for
+    an invalid decision, OR if the entry is not currently "pending":
+
+    Raises ValueError when `sid` is already accepted, declined, expired or
+    resolved — all four are terminal. `resolved` (0.8.1's retraction status)
+    was omitted from this list although the code has always rejected it.
+    """
     if decision not in _DECISIONS:
         raise ValueError(f"decision must be one of {_DECISIONS}, got {decision!r}")
     entry = _load(sid)
@@ -273,7 +277,7 @@ def retract(sid: str, reason: str) -> dict:
             f"suggestion {sid!r} is already {entry['status']!r} — "
             "retract() only accepts pending entries"
         )
-    entry["status"] = _RESOLVED
+    entry["status"] = RESOLVED
     entry["resolved_at"] = _now_iso()
     entry["resolved_reason"] = reason
     _persist(entry)
@@ -293,7 +297,7 @@ def prune_decided(retention_days: int = DECIDED_RETENTION_DAYS) -> int:
     cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
     deleted = 0
     for entry in all_suggestions():
-        if entry.get("status") not in (*_DECISIONS, _RESOLVED):
+        if entry.get("status") not in (*_DECISIONS, RESOLVED):
             continue
         decided_at = entry.get("decided_at") or entry.get("resolved_at")
         if not decided_at:
@@ -343,7 +347,7 @@ __all__ = [
     "ledger_entries",
     "decide",
     "retract",
-    "_RESOLVED",
+    "RESOLVED",
     "prune_decided",
     "expire_stale_pending",
 ]

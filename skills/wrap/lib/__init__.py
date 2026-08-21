@@ -49,7 +49,7 @@ from lib.memory import quarantine
 from lib.memory.judge import JUDGE_MIN_CONFIDENCE, JUDGE_PAIR_CAP, judge_pairs
 from lib.memory.lifecycle import consolidate_duplicates, run_decay
 from lib.memory.provenance import new_provenance, read_frontmatter_provenance
-from lib.memory.queue import Proposal, propose_and_apply
+from lib.memory.queue import NOOP_DUPLICATE, Proposal, propose_and_apply
 from lib.memory.scrub import SecretsFound
 from lib.memory.semantics import shortlist_pairs
 from lib.suggestions import expire_stale_pending, prune_decided
@@ -814,6 +814,13 @@ def wrap_session(
         `propose_and_apply` held pending instead of applying (instruction-
         plane target, or a detected `contradicts` conflict — a human/the live
         session needs to reason about these)
+      - "unchanged": [{"page"}] for items gated "durable" whose proposed
+        content, once normalized, already matched what's on the target page —
+        `propose_and_apply` returns a synthetic, NEVER-persisted entry with
+        `status == NOOP_DUPLICATE` for these (its qid is absent from the
+        queue dir by design). #78: reporting these as `held` cited a qid the
+        friend could never look up; same discrimination as the L1 branch
+        (#49) and the 0.8.1 lint fix.
       - "gated_out": [{"item", "verdict", "reason"}] for non-durable items —
         NEVER for a durable item that merely couldn't be placed or merged;
         that's what "unplaced" is for (spec 2026-08-21 §5.2)
@@ -975,6 +982,7 @@ def wrap_session(
     updated: list[dict] = []
     suggested: list[dict] = []
     unplaced: list[dict] = []
+    unchanged: list[dict] = []
 
     eligible = _eligible_update_targets(session)
 
@@ -1029,6 +1037,9 @@ def wrap_session(
                 elif llm_call is not None:
                     merged = merge_update(current, item, llm_call)
                 else:
+                    # Raised and caught one line later rather than branching directly:
+                    # this matches the other two call sites in this file (#78). Left as-is
+                    # for local consistency -- change all three or none.
                     raise MergeError(
                         "no merge available: the verdicts= transport supplied "
                         "none and there is no live llm_call"
@@ -1072,6 +1083,13 @@ def wrap_session(
             if prov is not None:
                 updated.append({"qid": entry.qid, "write_id": prov.write_id,
                                 "page": target, "op": prov.op})
+            elif entry.status == NOOP_DUPLICATE:
+                # #78: content normalized equal to the page on disk. The entry
+                # is synthetic and never persisted, so its qid is absent from
+                # the queue dir — reporting it as `held` cites a qid the
+                # friend cannot look up. Same discrimination as the L1 branch
+                # (#49) and the 0.8.1 lint fix.
+                unchanged.append({"page": target})
             else:
                 held.append({"qid": entry.qid, "page": target,
                              "conflicts": entry.conflicts})
@@ -1102,6 +1120,10 @@ def wrap_session(
             _ensure_lessons_hub(
                 hub_dir, session, project if page.startswith("projects/") else None
             )
+        elif entry.status == NOOP_DUPLICATE:
+            # #78: same discrimination as the update branch above — a
+            # synthetic, never-persisted entry is not a hold.
+            unchanged.append({"page": page})
         else:
             held.append({"qid": entry.qid, "page": page, "conflicts": entry.conflicts})
 
@@ -1125,6 +1147,7 @@ def wrap_session(
          "updated": len(updated),
          "gated_out": len(gated_out), "suggested": len(suggested),
          "held": len(held), "refused": len(refused),
+         "unchanged": len(unchanged),
          "producer": "wrap", "unplaced": len(unplaced)},
     )
 
@@ -1167,6 +1190,7 @@ def wrap_session(
         "wrap_cwd": wrap_cwd,
         "applied": applied,
         "held": held,
+        "unchanged": unchanged,
         "gated_out": gated_out,
         "unplaced": unplaced,
         "refused": refused,
@@ -1745,6 +1769,14 @@ def render_wrap_screen(wrap_result: dict, session: str) -> str:
             f"the project in projects.json"
         )
     lines.append(f"- project overview: {wrap_result.get('overview', 'skipped')}")
+    # #78 finding 5: the durable loop's `unchanged` bucket (noop-duplicate
+    # entries — content that normalized equal to what's already on the
+    # target page) is NEVER persisted to disk, so it cannot come from
+    # `_session_queue_entries`; it must be read from `wrap_result` directly.
+    # Same idiom as the L1 "unchanged (already saved)" line above (#49) —
+    # quiet, factual, one line per page.
+    for item in wrap_result.get("unchanged") or []:
+        lines.append(f"- {item['page']}: unchanged (already saved)")
     lines.append("")
 
     # --- Saved this session (revertible) ---

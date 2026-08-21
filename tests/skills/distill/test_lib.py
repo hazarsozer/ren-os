@@ -183,3 +183,51 @@ def test_apply_candidates_duplicate_bucket_excluded_from_cap(wiki):
     assert result["capped_remainder"] == 0
     run_event = collect.read(kind="distiller_run")[-1]
     assert run_event["duplicates"] == 3
+
+
+def test_watermark_holds_when_the_earliest_entry_is_blocked():
+    """Spec §3.4: sessions with unprocessed candidates must stay BEHIND the
+    watermark so their L1s are re-mined. If even the batch's earliest entry
+    belongs to one, nothing can safely advance."""
+    from skills.distill.lib import _watermark_after
+
+    batch = [
+        {"ren_ts": "2026-08-01T00:00:00Z", "session": "s1"},
+        {"ren_ts": "2026-08-02T00:00:00Z", "session": "s2"},
+    ]
+    unprocessed = [{"source_session": "s1"}]
+
+    assert _watermark_after(batch, unprocessed) is None
+
+
+def test_watermark_same_timestamp_boundary_is_strict():
+    """`safe` is entries STRICTLY below the blocked floor. An entry sharing
+    the blocked session's exact ren_ts must not be treated as safe."""
+    from skills.distill.lib import _watermark_after
+
+    batch = [
+        {"ren_ts": "2026-08-01T00:00:00Z", "session": "s0"},
+        {"ren_ts": "2026-08-02T00:00:00Z", "session": "s1"},
+        {"ren_ts": "2026-08-02T00:00:00Z", "session": "s2"},
+    ]
+    unprocessed = [{"source_session": "s2"}]
+
+    assert _watermark_after(batch, unprocessed) == "2026-08-01T00:00:00Z"
+
+
+def test_watermark_no_remainder_takes_the_batch_max():
+    from skills.distill.lib import _watermark_after
+
+    batch = [
+        {"ren_ts": "2026-08-01T00:00:00Z", "session": "s1"},
+        {"ren_ts": "2026-08-03T00:00:00Z", "session": "s2"},
+    ]
+
+    assert _watermark_after(batch, []) == "2026-08-03T00:00:00Z"
+
+
+def test_watermark_none_batch_never_guesses():
+    from skills.distill.lib import _watermark_after
+
+    assert _watermark_after(None, []) is None
+    assert _watermark_after(None, [{"source_session": "s1"}]) is None

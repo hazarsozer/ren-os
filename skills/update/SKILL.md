@@ -6,12 +6,12 @@ description: |
   snapshots the wiki, runs migrations, verifies via verify.json, shows diffs
   for approval, applies, and re-verifies. Snapshot/rollback is built in.
   Never silent on MAJOR bumps.
-version: 0.8.1
+version: 0.8.2
 license: MIT
 type: skill
 execution_tier: deterministic
 schema_version: 1
-framework_version: "0.8.1"
+framework_version: "0.8.2"
 
 contract:
   required_outputs:
@@ -266,6 +266,19 @@ Carried near-verbatim from donor `skills/update/` (Task 7.3) — the migration s
   project at once without touching instructions.md at all — this closes
   that spec §3(b) gap (#64). Best-effort per slug — the returned
   `{slug: "ok" | "error: <msg>"}` dict is informational, never a gate.
+
+- **Re-render the global CLAUDE.md block** — call
+  `lib.adapter.claude_md.write_global_claude_md()`. The global block's
+  doctrine index holds absolute paths pinned to the running plugin version
+  (`.../cache/ren-os/ren/<version>/doctrine/*.md`), so a version bump leaves
+  every one of them naming the PREVIOUS version — live only until that cache
+  dir is GC'd, then dead links in a file injected into every session. The
+  project-tier call above cannot cover this: it iterates projects with an
+  `instructions.md`, and the global block belongs to no project. Same shape as
+  #64 one tier up. Best-effort like its project-tier sibling — report the
+  returned status (`added`/`updated`/`unchanged`/`conflict`), never gate the
+  update on it. A `conflict` means torn markers in the friend's own
+  `CLAUDE.md`: say so and leave the file untouched.
 
 - **Report what changed** — build the "what changed in your RenOS" digest:
   `skills.update.lib.changelog_digest(<old-version>, <new-version>,

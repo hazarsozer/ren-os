@@ -75,6 +75,25 @@ def test_deleted_page_retracts_its_finding(wiki):
     assert entry["sid"] not in {e["sid"] for e in pending_suggestions()}
 
 
+def test_undecodable_page_leaves_finding_pending_not_crash(wiki):
+    """`UnicodeDecodeError` is a `ValueError`, NOT an `OSError`, so it used to
+    escape both the `OSError` and `PathTraversalError` handlers and crash the
+    whole lint pass — which is called as the FIRST statement of
+    `run_incremental_lint`, so the crash was self-perpetuating: the watermark
+    never advanced and every later run died at the same line. An undecodable
+    page is not evidence a finding was resolved (final-review finding 1,
+    2026-08-21), so the finding must stay pending, and the pass must not
+    raise."""
+    path = wiki / "lessons/c.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"# Caf\xe9 notes\n")
+    entry = _file_finding("lessons/c.md", rule="held:hub-missing-entry")
+
+    lint._retract_resolved_findings(wiki)  # must not raise UnicodeDecodeError
+
+    assert entry["sid"] in {e["sid"] for e in pending_suggestions()}
+
+
 def test_malformed_path_retracts_with_honest_reason(wiki):
     """A `PathTraversalError` on a finding's `page` is a wrongly-shaped path,
     not a missing page — `"page <p> no longer exists"` would be a false
@@ -171,3 +190,45 @@ def test_retired_rule_finding_stays_pending(wiki):
     lint._retract_resolved_findings(wiki)
 
     assert entry["sid"] in {e["sid"] for e in pending_suggestions()}
+
+
+def test_non_recheckable_finding_on_deleted_page_is_retracted(wiki):
+    """#78: the _RECHECKABLE_RULES gate sat before the page-existence check,
+    so a held:/blocked: finding on a deleted page stayed pending until the
+    30-day expiry. A missing page is a fact, not a fresh judgment."""
+    entry = record(SuggestionSpec(
+        producer="wiki-health",
+        title="Wiki lint: held:quarantine in ghost.md",
+        rationale="held",
+        evidence={"page": "ghost.md", "rule": "held:quarantine"},
+        kind="structured_action",
+        payload={"action": "review_lint_finding", "page": "ghost.md",
+                 "rule": "held:quarantine", "detail": "d"},
+        fingerprint="wiki-lint:ghost.md:held:quarantine",
+    ))
+    assert any(s["sid"] == entry["sid"] for s in pending_suggestions())
+
+    retracted = lint._retract_resolved_findings(wiki)
+
+    assert retracted == 1
+    assert not any(s["sid"] == entry["sid"] for s in pending_suggestions())
+
+
+def test_non_recheckable_finding_on_live_page_stays_pending(wiki):
+    """The gate must still hold for a page that EXISTS -- absence of a fresh
+    judgment is not evidence the finding was resolved."""
+    _write(wiki, "live.md", "# Live\n")
+    entry = record(SuggestionSpec(
+        producer="wiki-health",
+        title="Wiki lint: held:quarantine in live.md",
+        rationale="held",
+        evidence={"page": "live.md", "rule": "held:quarantine"},
+        kind="structured_action",
+        payload={"action": "review_lint_finding", "page": "live.md",
+                 "rule": "held:quarantine", "detail": "d"},
+        fingerprint="wiki-lint:live.md:held:quarantine",
+    ))
+
+    lint._retract_resolved_findings(wiki)
+
+    assert any(s["sid"] == entry["sid"] for s in pending_suggestions())

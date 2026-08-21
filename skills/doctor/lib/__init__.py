@@ -48,6 +48,7 @@ from __future__ import annotations
 import importlib
 import json
 import os
+import platform
 import re
 import shutil
 import subprocess
@@ -909,6 +910,129 @@ def check_cache_env_hygiene() -> CheckResult:
     )
 
 
+def check_interpreter_freshness() -> CheckResult:
+    """The wake-up hook's fast-path re-exec target (spec 2026-08-21 (0.8.2) §8).
+
+    `hooks/wake-up/ren-wake-up.py` re-execs under an interpreter recorded by
+    `skills.install.lib.warm_environment` to avoid a cold-`uv` cost that trips
+    `_REEXEC_TIMEOUT_S` (#11 §4). The record is written at INSTALL and never
+    refreshed by `/ren:update`, so a version bump silently strands it: the hook
+    guards with `p.is_file()`, falls through to `uv run`, and degrades
+    quietly — which is exactly why nothing surfaced a record that had been
+    dangling for roughly ten releases.
+
+    Fix round 1: the dangling-path check runs BEFORE the machine/platform
+    check, not after. `platform.node()` is not stable for a given physical
+    machine (observed: macOS returns an IP-derived node name on some
+    networks, e.g. '192.168.1.17', instead of the hostname
+    'Hazars-MacBook-Air.local' recorded by `warm_environment` on the SAME
+    laptop) — so a record can be simultaneously "foreign" by that test and
+    genuinely dangling on THIS machine. A dangling path is a fact under any
+    reading: this machine has no working fast path regardless of who wrote
+    the record, so that check must win. Only once the path is confirmed to
+    exist does the machine/platform test apply.
+
+    Fix round 2: this check is a faithful MIRROR of the hook's decision, not
+    an independent, weaker predicate. It used to test only `p.is_file()` and
+    `skip` unconditionally on machine/platform mismatch whenever the path
+    existed — both wrong, because a synced `.venv` that lost its exec bit
+    read as `ok` while the hook actually rejected it (silent cold-uv cost,
+    exactly what this check exists to surface), and a foreign-looking record
+    whose path exists read as `skip` even when the hook would reject it too
+    (`platform.node()` flips between a hostname and an IP on this machine
+    depending on network, so this recurred after every re-warm). The hook
+    REJECTS a record that fails ANY of its conditions and falls through to
+    cold `uv` — so any rejection reason (gone, not a python name, not
+    executable, or a machine/platform mismatch) is now `warn`, not `skip`:
+    the practical consequence on this machine is a degraded fast path, and
+    "re-warm via /ren:install" is correct, actionable advice either way. The
+    reasons are distinguished in the message so the friend knows which one
+    fired. `skip` is no longer used by this check.
+    """
+    # This predicate MUST stay in step with the hook's own validity test,
+    # `_recorded_interpreter_path()` in `hooks/wake-up/ren-wake-up.py`
+    # (~lines 152-184). That function accepts a recorded interpreter only
+    # when ALL of: machine/platform match THIS machine, `p.is_file()`,
+    # `p.name.startswith("python")`, and `os.access(p, os.X_OK)`. Checking
+    # only `is_file()` here (as an earlier version of this check did) let
+    # doctor report `ok` for a record the hook would actually reject (e.g. a
+    # synced `.venv` that lost its exec bit) — silently degrading the fast
+    # path with no diagnostic catching it, exactly what this check exists to
+    # prevent.
+    name = "interpreter_freshness"
+    info_path = ren_paths.state_dir() / "interpreter.json"
+    try:
+        data = json.loads(info_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return CheckResult(name, "info", "no recorded interpreter (never warmed)")
+
+    if not isinstance(data, dict):
+        # A top-level non-dict `interpreter.json` (`null`, a number, a list)
+        # parses fine but has no `.get(...)` — treat it the same as "never
+        # warmed" rather than crashing this check with an AttributeError.
+        return CheckResult(name, "info", "no recorded interpreter (never warmed)")
+
+    recorded = str(data.get("interpreter") or "")
+    if not recorded:
+        return CheckResult(name, "info", "no recorded interpreter (never warmed)")
+
+    path = Path(recorded)
+    version = next(
+        (p.name for p in path.parents if p.parent.name == "ren"), "unknown"
+    )
+
+    # Dangling/invalid beats machine mismatch (fix round 1, carried forward):
+    # a path that doesn't exist, isn't named like a python interpreter, or
+    # isn't executable is a fact about THIS machine's fast path regardless of
+    # whose machine/platform the record claims to be for, so those checks run
+    # first. Only once the interpreter itself is confirmed valid does the
+    # machine/platform test apply.
+    if not path.is_file():
+        return CheckResult(
+            name, "warn",
+            f"recorded interpreter is gone (version {version}) — the wake-up "
+            f"fast path is degraded to cold uv; re-run /ren:install to re-warm",
+        )
+    if not path.name.startswith("python"):
+        return CheckResult(
+            name, "warn",
+            f"recorded interpreter path is not a python binary (version "
+            f"{version}) — the wake-up fast path is degraded to cold uv; "
+            f"re-run /ren:install to re-warm",
+        )
+    if not os.access(path, os.X_OK):
+        return CheckResult(
+            name, "warn",
+            f"recorded interpreter is not executable (version {version}) — "
+            f"the wake-up fast path is degraded to cold uv; re-run "
+            f"/ren:install to re-warm",
+        )
+
+    if data.get("machine") != platform.node() or data.get("platform") != sys.platform:
+        # The hook mirrors this exact condition and REJECTS the record when
+        # it fails — falling through to cold `uv`. That is a real, if
+        # foreign-record-shaped, degradation on THIS machine (`state_dir()`
+        # lives under the wiki root, which may be synced/backed up across
+        # machines, and `platform.node()` itself is not stable across
+        # networks on this machine), so the practical consequence is `warn`
+        # with actionable advice, not a silent `skip`.
+        return CheckResult(
+            name, "warn",
+            f"recorded interpreter is for a different machine or platform "
+            f"(version {version}) — the wake-up fast path is degraded to "
+            f"cold uv on this machine; re-run /ren:install to re-warm",
+        )
+
+    current = ren_paths.current_plugin_cache_version()
+    if current is not None and version not in ("unknown", current):
+        return CheckResult(
+            name, "warn",
+            f"recorded interpreter is from {version}, current is {current} — "
+            f"re-run /ren:install to re-warm",
+        )
+    return CheckResult(name, "ok", f"recorded interpreter valid ({version})")
+
+
 _ALL_CHECK_NAMES: tuple[str, ...] = (
     "check_env",
     "check_wiki_structure",
@@ -935,6 +1059,7 @@ _ALL_CHECK_NAMES: tuple[str, ...] = (
     "check_standing_instructions_drift",
     "check_agent_shadowing",
     "check_cache_env_hygiene",
+    "check_interpreter_freshness",
 )
 
 
@@ -981,5 +1106,6 @@ __all__ = [
     "check_standing_instructions_drift",
     "check_agent_shadowing",
     "check_cache_env_hygiene",
+    "check_interpreter_freshness",
     "run_checks",
 ]

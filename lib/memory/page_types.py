@@ -76,10 +76,14 @@ _HUB_EXCLUDED_PARTS: Final[frozenset[str]] = frozenset({"raw", "archive"})
 def _is_folder_note_hub(parts: tuple[str, ...]) -> bool:
     """`<dir>/<dirname>.md` under a project knowledge tree.
 
-    Mirrors `skills.wiki-health.lib.lint._is_hub_page`'s folder-note branch,
-    which is string-scoped so a project literally NAMED "knowledge" cannot
-    false-positive. Root `index.md` is deliberately NOT a hub here — it is
-    typed `l2-map` on disk, and I1 would preserve that anyway.
+    THE folder-note predicate (#76) — `skills.wiki-health.lib.lint._is_hub_page`
+    imports this rather than re-deriving it. Note the lint ALSO treats any
+    `index.md` as a hub; that is a different question (should hub-entry
+    maintenance run?) from this module's (what `type:` does the page carry?),
+    and root index.md is a correct `l2-map` here and a correct hub there.
+
+    String-scoped so a project literally NAMED "knowledge"
+    (projects/knowledge/notes/notes.md) cannot false-positive.
     """
     if len(parts) <= 2:
         return False
@@ -111,6 +115,15 @@ def derive_type(page: str) -> str | None:
 
     # Rule 2 — folder-note hubs.
     if _is_folder_note_hub(parts):
+        return "hub"
+
+    # Rule 2b — the root-level `lessons/` folder note (#76.3). Deliberately a
+    # narrow rule rather than widening `_is_folder_note_hub` past its
+    # `projects/` scoping: that predicate is now shared with the lint, so
+    # widening it would change which pages the lint treats as hubs. The
+    # scoping is also load-bearing — it exists so a project literally named
+    # "knowledge" cannot false-positive. See spec 2026-08-21 (0.8.2) §3.3.
+    if len(parts) == 2 and parts[0] == "lessons" and name == "lessons.md":
         return "hub"
 
     # Rule 3 — lessons, global or project-scoped (kind wins over location).

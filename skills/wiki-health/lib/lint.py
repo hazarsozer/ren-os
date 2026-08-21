@@ -42,12 +42,13 @@ waiting".
 from __future__ import annotations
 
 import re
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from lib import ren_paths
 from lib.governance.tiers import is_instruction_plane_page
 from lib.memory import journal, quarantine
-from lib.memory.queue import Proposal, propose_and_apply
+from lib.memory.page_types import _is_folder_note_hub
+from lib.memory.queue import NOOP_DUPLICATE, Proposal, propose_and_apply
 from lib.suggestions import SuggestionSpec, pending_suggestions, record, retract
 
 from . import watermark
@@ -186,21 +187,21 @@ def _hub_candidates(directory: Path) -> tuple[Path, Path]:
 
 
 def _is_hub_page(page: str) -> bool:
-    p = Path(page)
-    if p.name == "index.md":  # root index + legacy hubs
+    """Should hub-entry maintenance (`_hub_missing_entries`) run on this page?
+
+    #76: this is NOT `page_types.derive_type`'s question. That one asks what
+    `type:` a page carries and answers `l2-map` for root index.md; this one
+    asks whether to keep a hub's bullets current and answers yes — the spine
+    and legacy `**/index.md` hubs both want that. Two questions, two right
+    answers, documented at both sites.
+
+    Only the folder-note sub-condition was genuinely duplicated. It now lives
+    once, in `lib.memory.page_types._is_folder_note_hub` (skills import lib;
+    lib never imports skills).
+    """
+    if Path(page).name == "index.md":  # root index + legacy hubs
         return True
-    # Folder-note branch: string-scoped so a project literally named
-    # "knowledge" (projects/knowledge/notes/notes.md) or an archived/raw
-    # knowledge-named dir can't false-positive — same over-match class Task 3
-    # already fixed elsewhere in this plan.
-    parts = p.parts
-    return (
-        p.name == f"{p.parent.name}.md"
-        and len(parts) > 2
-        and parts[0] == "projects"
-        and "knowledge" in parts[2:-1]
-        and not any(part.startswith(".") or part in ("raw", "archive") for part in parts)
-    )
+    return _is_folder_note_hub(PurePosixPath(page).parts)
 
 
 def _hub_missing_entries(wiki_root: Path, page: str, text: str) -> tuple[str, list[str]]:
@@ -245,14 +246,29 @@ def _hub_missing_entries(wiki_root: Path, page: str, text: str) -> tuple[str, li
 
 
 def _resolves(wiki_root: Path, page: str, target: str) -> bool:
+    """True if `target` — a wikilink body, possibly `../`-relative — names a
+    file inside the wiki.
+
+    #79: resolution base and containment boundary are DIFFERENT concerns. A
+    candidate is resolved relative to the wiki root or to the page's own
+    parent, but containment is always validated against `wiki_root`. Passing
+    the parent as `safe_join`'s base made every `../` target raise
+    PathTraversalError by construction, and the enclosing `except` swallowed
+    it — so a valid link read as dangling, and on a fence-free page could be
+    silently repointed by `_link_findings`.
+    """
     candidates = [target, target if target.endswith(".md") else target + ".md"]
+    page_parent = (wiki_root / page).parent
+    root = wiki_root.resolve()
     for cand in candidates:
-        for base in (wiki_root, (wiki_root / page).parent):
+        for base in (wiki_root, page_parent):
+            resolved = (base / cand).resolve()
             try:
-                if ren_paths.safe_join(base, cand).is_file():
-                    return True
-            except ren_paths.PathTraversalError:
-                continue
+                resolved.relative_to(root)
+            except ValueError:
+                continue  # genuinely escapes the wiki — still refused
+            if resolved.is_file():
+                return True
     return False
 
 
@@ -431,27 +447,34 @@ def _retract_resolved_findings(wiki_root: Path) -> int:
         if not isinstance(page, str) or not isinstance(rule, str):
             continue
 
-        if rule not in _RECHECKABLE_RULES:
-            # `held:<cls>` / `blocked:<cls>` fix-class findings and any rule
-            # `_lint_page()` no longer emits are not re-checkable by this
-            # pass — leave them pending rather than reading their absence
-            # from fresh judgments as "resolved".
-            continue
-
+        # Page-existence FIRST (#78): a page that is gone is a FACT, not a
+        # re-judgment, so it retracts regardless of whether the rule is one
+        # this pass can re-check. Ordering these the other way left every
+        # held:/blocked: finding on a deleted page pending until expiry.
         try:
             text = ren_paths.safe_join(wiki_root, page).read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            # UnicodeDecodeError is a ValueError, NOT an OSError, so it would
+            # otherwise escape both handlers below and crash the whole lint
+            # pass. An undecodable page is not evidence the finding was
+            # resolved — "no longer exists" would be a false claim, same
+            # reasoning as the PathTraversalError arm below. Leave pending.
+            continue
         except OSError:
-            # Page is gone — the finding cannot still hold.
             retract(entry["sid"], f"page {page} no longer exists")
             retracted += 1
             continue
         except ren_paths.PathTraversalError:
-            # Not a missing page — a malformed/non-wiki-relative path that
-            # would escape `wiki_root`. "no longer exists" would be false
-            # here. Still retracted: a finding recorded against a path this
-            # shape can never be re-checked, so it cannot be left pending.
             retract(entry["sid"], f"page {page} is not a valid wiki-relative path")
             retracted += 1
+            continue
+
+        if rule not in _RECHECKABLE_RULES:
+            # `held:<cls>` / `blocked:<cls>` fix-class findings and any rule
+            # `_lint_page()` no longer emits are not re-checkable by this
+            # pass — leave them pending rather than reading their absence
+            # from fresh judgments as "resolved". The page EXISTS here; only
+            # the re-check is unavailable.
             continue
 
         _, _, judgments = _lint_page(wiki_root, page, text, all_pages, deleted)
@@ -569,6 +592,11 @@ def run_incremental_lint(session: str, full: bool = False) -> dict:
             text = path.read_text(encoding="utf-8")
         except OSError:  # pragma: no cover - vanished mid-run is not a finding
             continue
+        except UnicodeDecodeError:
+            # Same hole as _retract_resolved_findings above: UnicodeDecodeError
+            # is a ValueError, not an OSError. An undecodable page cannot be
+            # linted; skip it rather than crashing the whole run.
+            continue
 
         new_text, fix_classes, judgments = _lint_page(wiki_root, page, text, all_pages, deleted)
 
@@ -594,7 +622,7 @@ def run_incremental_lint(session: str, full: bool = False) -> dict:
                     session=session,
                 )
             )
-            if prov is None and getattr(entry, "status", None) == "noop-duplicate":
+            if prov is None and getattr(entry, "status", None) == NOOP_DUPLICATE:
                 # NOT a hold: `queue.propose` returns a SYNTHETIC, never-persisted
                 # entry with this status when the rewrite normalizes equal to what
                 # is already on the page (the `_rejoin` trailing-newline path is

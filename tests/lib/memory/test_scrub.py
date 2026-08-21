@@ -364,3 +364,22 @@ class TestTypeAnnotationFollowSet:
     ])
     def test_real_secrets_still_hit(self, key, op, value):
         assert scan(_pair(key, op, value)) != []
+
+    @pytest.mark.parametrize("key,op,value", [
+        # #72 boundary: the type-annotation exemption's terminator set gained
+        # `,` `)` `]`. A value that merely STARTS with a type keyword must still
+        # be caught -- only a bare keyword followed by a terminator is exempt.
+        (
+            "secret",
+            ": ",
+            "stray,"
+        ),
+        (
+            "secret",
+            ": ",
+            "list_of_real_keys,"
+        ),
+    ])
+    def test_guard_word_with_non_terminator_then_terminator_still_hits(self, key, op, value):
+        text = _pair(key, op, value)
+        assert scan(text), f"expected a finding for {key!r} + {op!r} + a non-keyword value"

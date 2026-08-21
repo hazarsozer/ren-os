@@ -70,7 +70,7 @@ _PENDING = "pending"
 _APPROVED = "approved"
 _APPLIED = "applied"
 _REJECTED = "rejected"
-_NOOP_DUPLICATE = "noop-duplicate"
+NOOP_DUPLICATE = "noop-duplicate"  # public: other modules discriminate on this status (#78)
 
 _FRONTMATTER_RE = re.compile(r"\A---\n(.*?)\n---\n?", re.DOTALL)
 _REN_KEY_LINE_RE = re.compile(r"^ren_\w+:.*$\n?", re.MULTILINE)
@@ -428,7 +428,7 @@ def propose(p: Proposal) -> QueueEntry:
         if current is not None:
             effective = _quarantined_content(p) or ""
             if _content_hash(_normalize_body(current)) == _content_hash(_normalize_body(effective)):
-                return QueueEntry(qid=f"q-{ULID()}", ts=_now_iso(), proposal=p, status=_NOOP_DUPLICATE)
+                return QueueEntry(qid=f"q-{ULID()}", ts=_now_iso(), proposal=p, status=NOOP_DUPLICATE)
 
     if _semantics is not None:
         conflicts = [
@@ -517,7 +517,7 @@ def _check_add_race(qid: str, entry: "QueueEntry", verb: str) -> None:
 
     effective = _quarantined_content(proposal) or ""
     if _content_hash(_normalize_body(current)) == _content_hash(_normalize_body(effective)):
-        entry.status = _NOOP_DUPLICATE
+        entry.status = NOOP_DUPLICATE
         _persist(entry)
         raise QueueStateError(
             f"cannot {verb} {qid}: ADD target {proposal.page!r} already has identical "
@@ -671,7 +671,7 @@ def apply_auto(qid: str) -> Provenance:
                             is_duplicate = True
                             break
                 if is_duplicate:
-                    entry.status = _NOOP_DUPLICATE
+                    entry.status = NOOP_DUPLICATE
                     _persist(entry)
                     raise QueueStateError(
                         f"cannot apply_auto {qid}: ADD target {proposal.page!r} already has "
@@ -854,6 +854,7 @@ __all__ = [
     "Proposal",
     "QueueEntry",
     "QueueStateError",
+    "NOOP_DUPLICATE",
     "all_entries",
     "propose",
     "pending",

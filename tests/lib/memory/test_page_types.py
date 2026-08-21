@@ -83,6 +83,20 @@ class TestDeriveType:
         assert derive_type("projects/h/knowledge/raw/raw.md") != "hub"
         assert derive_type("projects/h/knowledge/archive/archive.md") != "hub"
 
+    def test_root_lessons_hub_derives_hub(self):
+        """#76.3: the global lessons folder note is `hub` on disk but rule 3 said
+        `lesson`. `_ensure_lessons_hub()`'s pre-stamp always won under I1, so the
+        disagreement was unreachable — and the table was still wrong."""
+        assert derive_type("lessons/lessons.md") == "hub"
+
+    def test_root_lessons_leaf_still_derives_lesson(self):
+        """Rule 2b must be narrow: only the folder note, not its siblings."""
+        assert derive_type("lessons/some-durable-lesson.md") == "lesson"
+
+    def test_project_lessons_unchanged_by_rule_2b(self):
+        assert derive_type("projects/p/knowledge/lessons/lessons.md") == "hub"
+        assert derive_type("projects/p/knowledge/lessons/a-lesson.md") == "lesson"
+
 
 class TestEnsureType:
     def test_adds_frontmatter_when_absent(self):

@@ -99,3 +99,40 @@ def test_prune_decided_sweeps_resolved_files(store):
 
     assert suggestions.prune_decided() >= 1
     assert not suggestions._suggestion_path(entry["sid"]).exists()
+
+
+@pytest.mark.parametrize("decision", ["accepted", "declined"])
+def test_retract_refuses_an_already_decided_entry(store, decision):
+    """#78: only resolved->resolved was covered. A decided entry is immutable
+    and retract must refuse it, or a ledgered decision could be reopened."""
+    entry = record(_spec())
+    suggestions.decide(entry["sid"], decision)
+
+    with pytest.raises(ValueError):
+        retract(entry["sid"], "no longer holds")
+
+
+def test_retract_refuses_an_expired_entry(store):
+    """Expiry is terminal too — the third status decide()'s docstring named
+    and retract() has always rejected."""
+    entry = record(_spec())
+
+    # Backdate past PENDING_MAX_AGE_DAYS, same idiom as
+    # test_prune_decided_sweeps_resolved_files. expire_stale_pending() ages
+    # against the entry's `ts` field (set by record()), not `created_at` —
+    # there is no `created_at` field on a suggestion entry.
+    stored = suggestions._load(entry["sid"])
+    stored["ts"] = "2020-01-01T00:00:00Z"
+    suggestions._persist(stored)
+    suggestions.expire_stale_pending()
+
+    with pytest.raises(ValueError):
+        retract(entry["sid"], "no longer holds")
+
+
+def test_resolved_is_public():
+    """The private spelling was exported in __all__ while its siblings were
+    not. Renamed rather than exported."""
+    assert suggestions.RESOLVED == "resolved"
+    assert "RESOLVED" in suggestions.__all__
+    assert "_RESOLVED" not in suggestions.__all__

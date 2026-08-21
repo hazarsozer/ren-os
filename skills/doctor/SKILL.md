@@ -6,12 +6,12 @@ description: |
   small, isolated checks (env, wiki structure, frontmatter, schema
   versions, budget lint, dangling L2 pointers, graphify status, backup
   configuration, global-tier drift, harness neutrality) — all warn-not-block.
-version: 0.8.1
+version: 0.8.2
 license: MIT
 type: skill
 execution_tier: deterministic
 schema_version: 1
-framework_version: "0.8.1"
+framework_version: "0.8.2"
 
 contract:
   required_outputs:
@@ -74,6 +74,7 @@ Donor's Node/gh/claude-cli checks, activity-feed/RC-channel/fleet checks, and th
 | `check_standing_instructions_drift` | #63: repo CLAUDE.md standing-instructions block matches a fresh render of the wiki page |
 | `check_agent_shadowing` | 0.6.5: a user or project `.claude/agents/<name>.md` filename colliding with a shipped `agents/*.md` → `warn` naming the colliding agent(s); checks both `claude_user_dir()/agents` and, when the cwd resolves to a registered project, that project's `.claude/agents/`; `skip` when neither directory exists |
 | `check_cache_env_hygiene` | #40: any `<cache>/<version>/.venv` inside the versioned plugin cache dir → `warn` naming the version(s) — invocations should redirect via `UV_PROJECT_ENVIRONMENT` (see `ren_paths.envs_dir()`); `ok` when none found; `skip` when the cache root is unresolvable |
+| `check_interpreter_freshness` | spec 2026-08-21 (0.8.2) §8: the wake-up hook's recorded fast-path interpreter — dangling path or non-current version → `warn` (fast path degraded to cold `uv`); valid + current → `ok`; no record → `info`; another machine's synced record → `skip` |
 
 ## Behavior
 
