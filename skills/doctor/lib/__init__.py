@@ -921,10 +921,24 @@ def check_interpreter_freshness() -> CheckResult:
     quietly — which is exactly why nothing surfaced a record that had been
     dangling for roughly ten releases.
 
-    A record from ANOTHER machine or platform is `skip`, never `warn`:
-    `state_dir()` lives under the wiki root, which may be synced across
-    machines, and the hook ignores foreign records by design (see
-    `_recorded_interpreter_path`). Warning would fire on every second machine.
+    Fix round 1: the dangling-path check runs BEFORE the machine/platform
+    check, not after. `platform.node()` is not stable for a given physical
+    machine (observed: macOS returns an IP-derived node name on some
+    networks, e.g. '192.168.1.17', instead of the hostname
+    'Hazars-MacBook-Air.local' recorded by `warm_environment` on the SAME
+    laptop) — so a record can be simultaneously "foreign" by that test and
+    genuinely dangling on THIS machine. A dangling path is a fact under any
+    reading: this machine has no working fast path regardless of who wrote
+    the record, so that check must win. Only once the path is confirmed to
+    exist does the machine/platform test apply — `skip` for a foreign but
+    otherwise-valid record, which is the case `skip` exists for: another
+    machine's genuinely working interpreter, legitimately none of this
+    machine's business (`state_dir()` lives under the wiki root, which may be
+    synced across machines, and the hook ignores foreign records by design —
+    see `_recorded_interpreter_path`). Warning on every synced foreign record
+    would be noise; but skipping a dangling record just because its machine
+    field doesn't match is exactly the silent-degradation bug this check
+    exists to catch.
     """
     name = "interpreter_freshness"
     info_path = ren_paths.state_dir() / "interpreter.json"
@@ -932,12 +946,6 @@ def check_interpreter_freshness() -> CheckResult:
         data = json.loads(info_path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return CheckResult(name, "info", "no recorded interpreter (never warmed)")
-
-    if data.get("machine") != platform.node() or data.get("platform") != sys.platform:
-        return CheckResult(
-            name, "skip",
-            "record belongs to another machine/platform (the hook ignores it)",
-        )
 
     recorded = str(data.get("interpreter") or "")
     if not recorded:
@@ -952,6 +960,12 @@ def check_interpreter_freshness() -> CheckResult:
             name, "warn",
             f"recorded interpreter is gone (version {version}) — the wake-up "
             f"fast path is degraded to cold uv; re-run /ren:install to re-warm",
+        )
+
+    if data.get("machine") != platform.node() or data.get("platform") != sys.platform:
+        return CheckResult(
+            name, "skip",
+            "record belongs to another machine/platform (the hook ignores it)",
         )
 
     current = ren_paths.current_plugin_cache_version()

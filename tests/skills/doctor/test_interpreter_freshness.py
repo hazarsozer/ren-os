@@ -69,7 +69,26 @@ def test_foreign_machine_record_skips(state, tmp_path):
     result = doctor.check_interpreter_freshness()
 
     assert result.status == "skip", \
-        "a synced record from another machine is ignored by the hook by design"
+        "a synced record from another machine, whose interpreter path " \
+        "still exists, is ignored by the hook by design"
+
+
+def test_foreign_machine_dangling_record_still_warns(state):
+    """Fix round 1: platform.node() is not stable for the same physical
+    machine (observed: macOS can return an IP-derived node name instead of
+    the hostname warm_environment recorded). A record can therefore look
+    "foreign" by the machine/platform test while still being THIS machine's
+    own dangling record. Dangling must win: skip would silently hide the
+    exact condition this check exists to detect."""
+    _record(
+        state, "/nonexistent/cache/ren-os/ren/0.6.1/.venv/bin/python3",
+        machine="some-other-laptop",
+    )
+
+    result = doctor.check_interpreter_freshness()
+
+    assert result.status == "warn"
+    assert "0.6.1" in result.message
 
 
 def test_valid_current_interpreter_is_ok(state, tmp_path, monkeypatch):
