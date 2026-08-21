@@ -171,3 +171,45 @@ def test_retired_rule_finding_stays_pending(wiki):
     lint._retract_resolved_findings(wiki)
 
     assert entry["sid"] in {e["sid"] for e in pending_suggestions()}
+
+
+def test_non_recheckable_finding_on_deleted_page_is_retracted(wiki):
+    """#78: the _RECHECKABLE_RULES gate sat before the page-existence check,
+    so a held:/blocked: finding on a deleted page stayed pending until the
+    30-day expiry. A missing page is a fact, not a fresh judgment."""
+    entry = record(SuggestionSpec(
+        producer="wiki-health",
+        title="Wiki lint: held:quarantine in ghost.md",
+        rationale="held",
+        evidence={"page": "ghost.md", "rule": "held:quarantine"},
+        kind="structured_action",
+        payload={"action": "review_lint_finding", "page": "ghost.md",
+                 "rule": "held:quarantine", "detail": "d"},
+        fingerprint="wiki-lint:ghost.md:held:quarantine",
+    ))
+    assert any(s["sid"] == entry["sid"] for s in pending_suggestions())
+
+    retracted = lint._retract_resolved_findings(wiki)
+
+    assert retracted == 1
+    assert not any(s["sid"] == entry["sid"] for s in pending_suggestions())
+
+
+def test_non_recheckable_finding_on_live_page_stays_pending(wiki):
+    """The gate must still hold for a page that EXISTS -- absence of a fresh
+    judgment is not evidence the finding was resolved."""
+    _write(wiki, "live.md", "# Live\n")
+    entry = record(SuggestionSpec(
+        producer="wiki-health",
+        title="Wiki lint: held:quarantine in live.md",
+        rationale="held",
+        evidence={"page": "live.md", "rule": "held:quarantine"},
+        kind="structured_action",
+        payload={"action": "review_lint_finding", "page": "live.md",
+                 "rule": "held:quarantine", "detail": "d"},
+        fingerprint="wiki-lint:live.md:held:quarantine",
+    ))
+
+    lint._retract_resolved_findings(wiki)
+
+    assert any(s["sid"] == entry["sid"] for s in pending_suggestions())

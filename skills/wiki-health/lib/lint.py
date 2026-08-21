@@ -447,27 +447,27 @@ def _retract_resolved_findings(wiki_root: Path) -> int:
         if not isinstance(page, str) or not isinstance(rule, str):
             continue
 
-        if rule not in _RECHECKABLE_RULES:
-            # `held:<cls>` / `blocked:<cls>` fix-class findings and any rule
-            # `_lint_page()` no longer emits are not re-checkable by this
-            # pass — leave them pending rather than reading their absence
-            # from fresh judgments as "resolved".
-            continue
-
+        # Page-existence FIRST (#78): a page that is gone is a FACT, not a
+        # re-judgment, so it retracts regardless of whether the rule is one
+        # this pass can re-check. Ordering these the other way left every
+        # held:/blocked: finding on a deleted page pending until expiry.
         try:
             text = ren_paths.safe_join(wiki_root, page).read_text(encoding="utf-8")
         except OSError:
-            # Page is gone — the finding cannot still hold.
             retract(entry["sid"], f"page {page} no longer exists")
             retracted += 1
             continue
         except ren_paths.PathTraversalError:
-            # Not a missing page — a malformed/non-wiki-relative path that
-            # would escape `wiki_root`. "no longer exists" would be false
-            # here. Still retracted: a finding recorded against a path this
-            # shape can never be re-checked, so it cannot be left pending.
             retract(entry["sid"], f"page {page} is not a valid wiki-relative path")
             retracted += 1
+            continue
+
+        if rule not in _RECHECKABLE_RULES:
+            # `held:<cls>` / `blocked:<cls>` fix-class findings and any rule
+            # `_lint_page()` no longer emits are not re-checkable by this
+            # pass — leave them pending rather than reading their absence
+            # from fresh judgments as "resolved". The page EXISTS here; only
+            # the re-check is unavailable.
             continue
 
         _, _, judgments = _lint_page(wiki_root, page, text, all_pages, deleted)
