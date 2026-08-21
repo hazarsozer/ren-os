@@ -455,7 +455,7 @@ In `skills/wiki-migration/schemas.json`, add to `page_types` (keep the existing 
     }
 ```
 
-and append `"frontmatter-type-1"` to `global_migrations.migrations`.
+Do **not** touch `global_migrations` here — that append belongs to Task 2, which creates the directory it names. (Pre-flight ruling: every commit stays self-consistent.)
 
 Rationale for the commit body: `migration_chain()` is keyed by page type, so a type the registry has never heard of can never be migrated later.
 
@@ -726,6 +726,12 @@ Run: `uv run pytest tests/migrations/test_frontmatter_type_1.py -v`
 
 Expected: PASS (all five tests).
 
+- [ ] **Step 4b: Register the migration**
+
+In `skills/wiki-migration/schemas.json`, append `"frontmatter-type-1"` to `global_migrations.migrations`. It lands here rather than in Task 1 so the commit that names the directory is the commit that creates it.
+
+Note: `global_migrations` is **discoverability only** — that list does not cause `/ren:update` to run anything. Each global migration is gated by its own hardcoded version function in `skills/update/lib/__init__.py` (`should_run_trust_backfill`, `_PROJECT_KNOWLEDGE_GATE`, …). Adding such a gate for this migration is deliberately **out of scope** for this train: the gate version cannot be chosen until the release version is. It is recorded as a release-time follow-up in Close-out. Do not add a gate function.
+
 - [ ] **Step 5: Write the README**
 
 Create `migrations/frontmatter-type-1/README.md`:
@@ -778,7 +784,8 @@ Expected: PASS.
 - [ ] **Step 7: Commit**
 
 ```bash
-git add migrations/frontmatter-type-1/ tests/migrations/test_frontmatter_type_1.py
+git add migrations/frontmatter-type-1/ tests/migrations/test_frontmatter_type_1.py \
+        skills/wiki-migration/schemas.json
 git commit -m "$(cat <<'EOF'
 feat(migrations): frontmatter-type-1 backfill (#74)
 
@@ -1834,6 +1841,7 @@ EOF
 
 ## Close-out
 
+- [ ] **Release-time follow-up (pre-flight ruling):** add a `/ren:update` gate for `frontmatter-type-1` in `skills/update/lib/__init__.py`, matching `should_run_trust_backfill`'s shape, gated at whatever version ships this train. Without it the backfill never runs on other installs — `global_migrations` in `schemas.json` is discoverability only. Deferred because the gate version is unknowable until the release version is chosen.
 - [ ] File the follow-up issue for hub typing inconsistency (spec §10): global `lessons/lessons.md` is `hub`, project `.../lessons/lessons.md` is `project-knowledge`, root `index.md` is `l2-map` while the lint's `_is_hub_page()` counts it as a hub. I1 preserved all three; normalizing them is its own decision.
 - [ ] Close #72, #73, #74, #75 with a pointer to the spec and the acceptance numbers.
 - [ ] Update the open-work ledger: close the `#73`/`#74` lines, and the `_watermark_after` line stays open (untouched by this train).
