@@ -117,6 +117,15 @@ def derive_type(page: str) -> str | None:
     if _is_folder_note_hub(parts):
         return "hub"
 
+    # Rule 2b — the root-level `lessons/` folder note (#76.3). Deliberately a
+    # narrow rule rather than widening `_is_folder_note_hub` past its
+    # `projects/` scoping: that predicate is now shared with the lint, so
+    # widening it would change which pages the lint treats as hubs. The
+    # scoping is also load-bearing — it exists so a project literally named
+    # "knowledge" cannot false-positive. See spec 2026-08-21 (0.8.2) §3.3.
+    if len(parts) == 2 and parts[0] == "lessons" and name == "lessons.md":
+        return "hub"
+
     # Rule 3 — lessons, global or project-scoped (kind wins over location).
     if len(parts) >= 2 and parts[-2] == "lessons":
         return "lesson"
