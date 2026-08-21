@@ -1,5 +1,65 @@
 # Changelog
 
+## [0.8.1] - 2026-08-21 — "nothing falls through"
+
+The knowledge-flow seams train: 0.8.0 shipped the producers that write
+knowledge into the wiki, but the consumers they hand off to were never taught
+about them, and every seam leaked. Four fixes, one theme — a thing that was
+supposed to be remembered no longer vanishes on the way. Spec:
+`docs/superpowers/specs/2026-08-21-knowledge-flow-seams-design.md`.
+
+- **#74 — the write door derives frontmatter `type:`.** `queue.propose()` now
+  fills a missing `type:` from the page path via the new
+  `lib/memory/page_types.py`, so pages created by the distiller, `/ren:pin` or
+  the retrospective stop landing schema-invalid and manufacturing one lint
+  finding apiece. Derivation happens in `propose()` **upstream** of
+  `_normalize_body`, never in `stamp_frontmatter` — a `type:` added downstream
+  of the duplicate comparison would make every idempotent re-write look like a
+  real change, breaking the distiller's noop-duplicate `WRITE_CAP` exclusion.
+  Two invariants: an existing `type:` is never overridden (I1), and an
+  unrecognized path gets no stamp and no error so the lint still flags it (I2).
+  `migrations/frontmatter-type-1/` backfills existing pages, gated into
+  `/ren:update` by `should_run_frontmatter_type_1` (#77). `schemas.json` gains
+  the five page types the wiki was already using: `l1`, `lesson`, `hub`,
+  `licenses`, `log-entry`.
+- **Finding retraction — a fixed finding closes itself.** A lint finding is
+  mechanically verifiable, unlike a judgment call, but nothing ever re-checked
+  one; a finding resolved by other means sat pending for 30 days and then
+  expired undecided. `lib.suggestions.retract()` adds a `resolved` status
+  modeled on `expire_stale_pending()` — **not** on `decide()`, which ledgers the
+  fingerprint and would permanently deafen the producer for that page and rule
+  — and the wiki-health lint re-verifies its own pending findings each run.
+  Retraction is gated to the rules `_lint_page` can actually re-check: the
+  driver also synthesizes `held:<cls>` and `blocked:<cls>` families into the
+  same fingerprint namespace, and those are skipped and left pending rather
+  than closed on a claim never checked.
+- **#73 — `accept()` routes `place_durable_item`.** The distiller and wrap both
+  file unplaceable durable items as `structured_action`/`place_durable_item`,
+  but no apply route existed, so `decision_recorded` came back false and the
+  suggestion re-offered forever. Now a handoff (the payload carries no target
+  page, so there is nothing to write to), closing all four producers of that
+  shape: `wrap-unplaced:`, `wrap-unmerged:`, `wrap-noclassifier:`,
+  `distiller-unplaced:`.
+- **#75 — update-verdicts merge under the standard transport.** `/ren:wrap`'s
+  `verdicts=` path has no live `llm_call`, so every `action: "update"` durable
+  verdict hit `merge llm call failed: 'NoneType' object is not callable` and
+  landed in `gated_out`. `wrap_session()` gains `merges=` (index-keyed 1:1 with
+  `durable_items`), `validate_merged()` splits out of `merge_update()` so a
+  subagent-supplied merge is held to byte-identical standards, and a merge that
+  is missing, invalid, or whose target is unreadable now routes to the
+  suggestions store instead of being silently discarded. Callers holding a live
+  callable are unaffected.
+- **#72 — the scrub false positive that blocked a release push.** The `#29`
+  type-annotation exemption's terminator set now includes `,`, `)` and `]`, so
+  a bare annotated parameter (`secret: str,`) no longer scans as a password
+  pair. The widening is bounded to literal type keywords — `secret: list,` is
+  clean, `secret: list_of_real_keys,` still hits.
+
+Acceptance, measured on a live wiki: 29 untyped pages → 0, 26 findings
+retracted, pending suggestions 49 → 23, zero retracted fingerprints leaked into
+the decision ledger, a fresh pin typed on its first write, doctor 0 warn / 0
+fail. Follow-ups: #76 (hub typing), #78 (deferred minors).
+
 ## [0.8.0] - 2026-08-18 — "knowledge flows live"
 
 The live-gate + distiller train: wire the classifier subagent into the wrap
