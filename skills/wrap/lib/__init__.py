@@ -62,7 +62,7 @@ from lib.suggestions.producers import (
 )
 
 from .classifier import gate, gate_precomputed, PlacementError
-from .merge import merge_update, MergeError
+from .merge import merge_update, validate_merged, MergeError
 
 _SLUG_WORD_RE = re.compile(r"[a-z0-9]+")
 _PREVIEW_MAX_CHARS = 100
@@ -776,6 +776,7 @@ def wrap_session(
     open_threads: list | None = None,
     completed_ptrs: list | None = None,
     verdicts: list[dict] | None = None,
+    merges: list[str | None] | None = None,
 ) -> dict:
     """Run the wrap write path for one session close-out.
 
@@ -793,13 +794,17 @@ def wrap_session(
         `propose_and_apply` held pending instead of applying (instruction-
         plane target, or a detected `contradicts` conflict — a human/the live
         session needs to reason about these)
-      - "gated_out": [{"item", "verdict", "reason"}] for non-durable items
+      - "gated_out": [{"item", "verdict", "reason"}] for non-durable items —
+        NEVER for a durable item that merely couldn't be placed or merged;
+        that's what "unplaced" is for (spec 2026-08-21 §5.2)
       - "unplaced": [{"item", "reason", "sid"}] — durable items that could
-        not be routed to a write (a `PlacementError`'d verdict, or no
-        classifier available at all) and were instead sent to the
-        suggestions store for a human to place (spec §2.2-2.3): fail-closed
-        means uncertainty goes to a human, never a silent discard or an
-        auto-write
+        not be routed to a write (a `PlacementError`'d verdict, no
+        classifier available at all, or an `action: "update"` verdict whose
+        merge was missing/invalid — no entry in `merges`, no live
+        `llm_call`, or `validate_merged` refused the result) and were
+        instead sent to the suggestions store for a human to place (spec
+        §2.2-2.3, §5.2): fail-closed means uncertainty goes to a human,
+        never a silent discard or an auto-write
       - "refused": [{"item", "reason"}] for durable items the queue itself
         refused (currently: a planted secret — `SecretsFound` propagates from
         `lib.memory.scrub` via `queue.propose`'s door-side scrub, and is
@@ -868,6 +873,17 @@ def wrap_session(
     its read-side project. Write and read paths can now never drift onto
     different project slugs for the same cwd. An explicit `project=` kwarg
     (as tests use) still overrides detection entirely.
+
+    `verdicts` / `merges` (spec 2026-08-21 §5): `verdicts` carries
+    pre-computed per-item classifier output (index-aligned with
+    `durable_items`) for the standard `/ren:wrap` transport, which has no
+    live `llm_call` in the process. `merges` is the same idea for the merge
+    step: index-aligned with `durable_items`, `None` at an index means "no
+    merge produced" for that item. For an `action: "update"` verdict, a
+    non-`None` entry in `merges[i]` is used (via `validate_merged`) in
+    preference to calling `llm_call` — a caller holding both never pays for
+    an LLM call it doesn't need. Both raise `ValueError` if their length
+    doesn't match `durable_items`.
     """
     if project is None:
         project = ren_paths.detect_project(cwd or Path.cwd(), ren_paths.wiki_root())
@@ -926,6 +942,12 @@ def wrap_session(
             f"{len(verdicts)} verdicts for {len(durable_items)} items"
         )
 
+    if merges is not None and len(merges) != len(durable_items):
+        raise ValueError(
+            f"merges must match durable_items 1:1 by index: "
+            f"{len(merges)} merges for {len(durable_items)} items"
+        )
+
     applied: list[dict] = []
     held: list[dict] = []
     gated_out: list[dict] = []
@@ -981,12 +1003,26 @@ def wrap_session(
                 current = ren_paths.safe_join(
                     ren_paths.wiki_root(), target
                 ).read_text(encoding="utf-8")
-                merged = merge_update(current, item, llm_call)
+                supplied = merges[i] if merges is not None else None
+                if supplied is not None:
+                    merged = validate_merged(current, supplied)
+                elif llm_call is not None:
+                    merged = merge_update(current, item, llm_call)
+                else:
+                    raise MergeError(
+                        "no merge available: the verdicts= transport supplied "
+                        "none and there is no live llm_call"
+                    )
             except (OSError, MergeError) as exc:
-                gated_out.append(
-                    {"item": item, "verdict": "durable",
-                     "reason": f"update to {target} gated out (merge): {exc}"}
-                )
+                # Spec 2026-08-21 §5.2: a durable item that cannot be merged
+                # goes to a human, NOT to gated_out. Landing it in gated_out
+                # is the same die-silently class Part A fixed for scope-None
+                # placement — the classifier affirmed it as durable, so
+                # dropping it silently loses a real learning.
+                unplaced.append(_route_unplaced(
+                    item, session, i,
+                    reason=f"update to {target} could not be merged: {exc}",
+                    fingerprint=f"wrap-unmerged:{session}:{i}"))
                 continue
 
             proposal_kwargs = dict(

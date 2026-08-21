@@ -200,7 +200,7 @@ def test_update_to_user_trust_page_held_as_suggestion(wiki):
     assert matching[0]["producer"] == "wrap"
 
 
-def test_merge_error_gates_item_out(wiki):
+def test_merge_error_routes_to_suggestions_not_gated_out(wiki):
     session = "s-update-3"
     page = "projects/p/knowledge/existing-note-2.md"
     page_path = wiki / page
@@ -227,9 +227,13 @@ def test_merge_error_gates_item_out(wiki):
     assert result["updated"] == []
     assert result["applied"] == []
     assert result["suggested"] == []
-    assert len(result["gated_out"]) == 1
-    assert result["gated_out"][0]["item"] == item
-    assert "merge" in result["gated_out"][0]["reason"]
+    # Spec 2026-08-21 §5.2: a durable item whose merge fails validation is
+    # NOT gated_out (that's the die-silently bug #75 fixed) — it routes to
+    # the suggestions store for a human to place instead.
+    assert result["gated_out"] == []
+    assert len(result["unplaced"]) == 1
+    assert result["unplaced"][0]["item"] == item
+    assert "merge" in result["unplaced"][0]["reason"]
 
     # No write landed — the page is untouched.
     assert page_path.read_text(encoding="utf-8") == _SEED_PAGE_TEXT
