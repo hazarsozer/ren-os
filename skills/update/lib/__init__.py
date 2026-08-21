@@ -125,6 +125,41 @@ def should_run_foreign_remint_1(old: str, new: str) -> bool:
     return old_key < gate_key <= new_key
 
 
+_FRONTMATTER_TYPE_GATE = "0.8.1"
+
+
+def should_run_frontmatter_type_1(old: str, new: str) -> bool:
+    """True when an update crosses the 0.8.1 boundary (old < 0.8.1 <= new).
+
+    Gates ``migrations/frontmatter-type-1/migrate.py`` (issue #74 — backfill
+    the derived frontmatter ``type:`` onto pages created before the write door
+    derived one) the same way ``should_run_trust_backfill`` gates its
+    migration: a pure version-tuple comparison, no chain machinery, because
+    frontmatter-type-1 is a standalone global migration that walks the whole
+    wiki tree rather than a schema_version-keyed page type.
+
+    Issue #77 is why this function exists at all: being listed in
+    ``skills/wiki-migration/schemas.json``'s ``global_migrations`` is
+    discoverability ONLY and causes ``/ren:update`` to run nothing. Without a
+    gate here the backfill would never run on any install, and every page
+    predating the derivation would keep manufacturing
+    ``missing-frontmatter-type`` lint findings.
+
+    The gate constant must equal the shipped plugin version — a gate above it
+    can never fire for anyone upgrading TO this release. Pinned by
+    ``tests/skills/update/test_frontmatter_type_gating.py::test_gate_constant_matches_the_shipped_version``.
+    """
+    try:
+        old_key, new_key, gate_key = (
+            _version_key(old),
+            _version_key(new),
+            _version_key(_FRONTMATTER_TYPE_GATE),
+        )
+    except ValueError:
+        return False
+    return old_key < gate_key <= new_key
+
+
 _DISTILLER_SEED_GATE = "0.8.0"
 
 

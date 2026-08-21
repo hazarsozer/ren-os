@@ -6,12 +6,12 @@ description: |
   snapshots the wiki, runs migrations, verifies via verify.json, shows diffs
   for approval, applies, and re-verifies. Snapshot/rollback is built in.
   Never silent on MAJOR bumps.
-version: 0.8.0
+version: 0.8.1
 license: MIT
 type: skill
 execution_tier: deterministic
 schema_version: 1
-framework_version: "0.8.0"
+framework_version: "0.8.1"
 
 contract:
   required_outputs:
@@ -223,6 +223,33 @@ Carried near-verbatim from donor `skills/update/` (Task 7.3) — the migration s
   safe to (re-)run even if a friend already updated once without it).
   See `docs/superpowers/specs/2026-08-18-knowledge-flows-train-design.md`'s
   §3.5 for the backlog-rescue acceptance run.
+
+## 0.8.1 update notes
+
+- **frontmatter-type-1 (issues #74, #77):** a friend upgrading from before
+  0.8.1 has wiki pages created before the write door derived a frontmatter
+  `type:` from the page path, so those pages carry none — and every one of
+  them keeps tripping wiki-health's `missing-frontmatter-type` rule, filing a
+  fresh suggestion per page per sweep. Run
+  `migrations/frontmatter-type-1/migrate.py` once as a post-update step after
+  the version bump lands, gated by
+  `skills.update.lib.should_run_frontmatter_type_1(<old-version>,
+  <new-version>)` — `True` when the update crosses the 0.8.1 boundary.
+  Standalone global migration (walks the whole wiki tree calling
+  `lib.memory.page_types.ensure_type`, not a `schema_version`-keyed page
+  type) — see `skills/wiki-migration/schemas.json`'s `global_migrations` note
+  and that migration's README.md. `--check` previews what would be stamped
+  with zero writes; show the friend that preview before applying. Idempotent
+  — safe to (re-)run even if a friend already updated once without it.
+  It never overrides an existing `type:` (invariant I1) and leaves any path
+  the derivation table doesn't recognize untouched (I2).
+
+  **Run it before the friend's next `/ren:distill` or `/ren:wrap`.** Until a
+  page is typed, a re-propose of unchanged content against it no longer
+  normalizes equal — the proposal carries `type:` and the page on disk does
+  not — so each untyped page costs one extra self-healing write and a
+  distiller `WRITE_CAP` slot. Running the migration first avoids that burst
+  entirely.
 
 ## Overlap note: snapshot substrate vs. Task 1.2's per-write snapshots
 

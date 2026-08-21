@@ -20,6 +20,17 @@ content backup, so it cannot itself revert anything. Run outside
 `/ren:update` (a bare `uv run python migrations/frontmatter-type-1/migrate.py`)
 has no revert substrate at all — see Running below.
 
+## When it runs
+
+`/ren:update` invokes this as a post-update step when
+`skills.update.lib.should_run_frontmatter_type_1(<old>, <new>)` is `True` —
+i.e. when the update crosses the 0.8.1 boundary. See `skills/update/SKILL.md`'s
+"0.8.1 update notes".
+
+Being listed in `skills/wiki-migration/schemas.json`'s `global_migrations` is
+**discoverability only** and runs nothing on its own (issue #77); that gate
+function is what actually invokes this migration.
+
 ## Invariants
 
 - **I1** — a page that already declares a `type:` is never touched.
