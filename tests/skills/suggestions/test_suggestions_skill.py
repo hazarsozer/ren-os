@@ -430,3 +430,32 @@ def test_accept_orphan_page_hands_off_decided(wiki):
     assert result["detail"]["page"] == "projects/x/notes.md"
     assert result["decision_recorded"] is True  # handoff counts as decided
     assert get_suggestion(entry["sid"])["status"] not in ("pending",)
+
+
+def test_accept_place_durable_item_records_the_handoff(wiki):
+    """#73: the distiller and wrap both route unplaceable durable items to
+    the store as structured_action/place_durable_item. Before this route
+    existed, accept() raised "unknown suggestion kind", decision_recorded was
+    False, and the suggestion re-offered on every /ren:suggestions pass
+    forever."""
+    entry = record(SuggestionSpec(
+        producer="wrap",
+        title="Place durable item from session s-1",
+        rationale="claimed target is not eligible",
+        evidence={"item": "the learning", "session": "s-1"},
+        kind="structured_action",
+        payload={"action": "place_durable_item", "item": "the learning",
+                 "session": "s-1"},
+        fingerprint="wrap-unplaced:s-1:0",
+    ))
+
+    result = accept(entry["sid"], "s-2")
+
+    assert result["applied"] is False
+    assert result["decision_recorded"] is True
+    assert result["detail"]["item"] == "the learning"
+    assert result["detail"]["session"] == "s-1"
+
+    from lib.suggestions import pending_suggestions
+
+    assert entry["sid"] not in {e["sid"] for e in pending_suggestions()}

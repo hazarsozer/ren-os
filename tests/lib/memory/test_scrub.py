@@ -313,3 +313,47 @@ def test_patterns_is_a_list_of_kind_regex_pairs():
     for kind, pattern in PATTERNS:
         assert isinstance(kind, str)
         assert isinstance(pattern, re.Pattern)
+
+
+# --- #72: trailing comma/paren/bracket after a type annotation -----------
+
+
+class TestTypeAnnotationFollowSet:
+    """#72: the #29 exemption's terminator set was incomplete — a trailing
+    comma, close-paren or close-bracket after a guard word defeated it, so a
+    bare annotated parameter scanned as a password pair."""
+
+    @pytest.mark.parametrize("text", [
+        "    secret: str,",
+        "    password: str,",
+        "    token: int,",
+        "    api_key: str,",
+        "def f(secret: str)",
+        "x: dict[str, secret: str]",
+        "    token: float,",
+    ])
+    def test_annotated_parameter_is_clean(self, text):
+        assert scan(text) == []
+
+    @pytest.mark.parametrize("text", [
+        "    secret: str = None",
+        "secret: Final[str]",
+        "password: float | None",
+        "token: 4.0",
+        "api_key: 128000",
+        "secret = locks.content_token(x)",
+        "enter your password",
+    ])
+    def test_existing_exemptions_do_not_regress(self, text):
+        assert scan(text) == []
+
+    @pytest.mark.parametrize("text", [
+        'secret: "hunter2xyz"',
+        'password = "correcthorse"',
+        "password: 1234",
+        "secret: none.of.your.business",
+        'api_key: "sk-abcdef123456"',
+        "token: ghp_realtokenvalue",
+    ])
+    def test_real_secrets_still_hit(self, text):
+        assert scan(text) != []

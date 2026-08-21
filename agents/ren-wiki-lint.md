@@ -16,17 +16,21 @@ since the last clean watermark, unless told `--full`.
    rather than a normal import; the `UV_PROJECT_ENVIRONMENT` prefix redirects
    uv's project env out of the versioned plugin cache dir, #40).
 2. Read the result: `scope`, `pages_checked`, `fixed`, `held`,
-   `queued_suggestions`, `watermark_advanced`, `watermark_seeded`.
+   `queued_suggestions`, `retracted`, `watermark_advanced`, `watermark_seeded`.
    `scope: "seeded"` is the FIRST run on a wiki that has never been linted
    (e.g. right after an upgrade): the watermark was seeded at the current
-   journal length and NOTHING was checked or written, deliberately — history
-   is not mass-rewritten unattended. Report it as such, and say that
+   journal length and no page was checked or written, but the retraction
+   pass (below) still ran and may have resolved stale findings — it runs
+   BEFORE this early return, on every call. Report it as such, and say that
    `--full` is the way to lint history on purpose. For each entry in `fixed`,
    sanity-check the page really improved (open it). Entries in `held` are
    proposals the write queue did not land (an instruction-plane target or a
    conflict) — never report these as fixed; they also became a suggestion.
    For `queued_suggestions > 0`, tell the orchestrator the count and that
-   they surface under "Waiting on you" next wake-up.
+   they surface under "Waiting on you" next wake-up. For `retracted > 0`,
+   tell the orchestrator the count: that many prior findings were re-checked
+   and no longer hold (page fixed by other means, or deleted), so they were
+   closed without a decision and dropped from "Waiting on you".
 3. Quarantine screen (after the lint pass, same session):
    a. Run phase 1:
       `UV_PROJECT_ENVIRONMENT="$HOME/.renos/.envs/<version>" uv run python -c "import importlib,json; m=importlib.import_module('skills.wiki-health.lib'); print(json.dumps(m.run_quarantine_screen(session='<session>'), indent=2))"`

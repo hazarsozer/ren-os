@@ -48,6 +48,25 @@ def _frontmatter_block(text: str) -> str:
     return m.group(0) if m else ""
 
 
+def validate_merged(current_text: str, merged_text: str) -> str:
+    """Return `merged_text` if it is a legitimate merge of `current_text`,
+    else raise `MergeError`.
+
+    Split out of `merge_update` (spec 2026-08-21 §5.1) so a merge produced by
+    a SUBAGENT — arriving through `wrap_session(merges=...)` with no live
+    callable in the process — is held to exactly the same standard as one
+    produced by a local `llm_call`. Frontmatter is the door's property: a
+    merge that touched it is refused.
+    """
+    if not isinstance(merged_text, str) or not merged_text.strip():
+        raise MergeError("merge output empty or not a string")
+    if _frontmatter_block(merged_text) != _frontmatter_block(current_text):
+        raise MergeError("merge output altered the frontmatter block")
+    if merged_text == current_text:
+        raise MergeError("merge output is byte-identical to the current page")
+    return merged_text
+
+
 def merge_update(
     current_text: str, item_text: str, llm_call: Callable[[str], str]
 ) -> str:
@@ -56,13 +75,7 @@ def merge_update(
         raw = llm_call(prompt)
     except Exception as exc:  # noqa: BLE001 - any llm_call failure gates the item out, never crashes wrap
         raise MergeError(f"merge llm call failed: {exc}") from exc
-    if not isinstance(raw, str) or not raw.strip():
-        raise MergeError("merge output empty or not a string")
-    if _frontmatter_block(raw) != _frontmatter_block(current_text):
-        raise MergeError("merge output altered the frontmatter block")
-    if raw == current_text:
-        raise MergeError("merge output is byte-identical to the current page")
-    return raw
+    return validate_merged(current_text, raw)
 
 
-__all__ = ["merge_update", "MergeError"]
+__all__ = ["merge_update", "validate_merged", "MergeError"]

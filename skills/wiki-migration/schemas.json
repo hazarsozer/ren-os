@@ -32,10 +32,30 @@
     "routine-spec": {
       "current": 3,
       "migrations": ["routine-spec-1-to-2", "routine-spec-2-to-3"]
+    },
+    "l1": {
+      "current": 1,
+      "migrations": []
+    },
+    "lesson": {
+      "current": 1,
+      "migrations": []
+    },
+    "hub": {
+      "current": 1,
+      "migrations": []
+    },
+    "licenses": {
+      "current": 1,
+      "migrations": []
+    },
+    "log-entry": {
+      "current": 1,
+      "migrations": []
     }
   },
   "global_migrations": {
     "$comment": "Migrations that apply across ALL page types (no schema_version chain) — not driven by migration_chain(), which is page-type-keyed. Listed here for discoverability only; each is run directly as documented in its own README.",
-    "migrations": ["trust-backfill-1", "project-knowledge-1", "foreign-remint-1", "folder-note-hubs-1"]
+    "migrations": ["trust-backfill-1", "project-knowledge-1", "foreign-remint-1", "folder-note-hubs-1", "frontmatter-type-1"]
   }
 }

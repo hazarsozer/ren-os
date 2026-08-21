@@ -44,7 +44,7 @@ import json
 import re
 import sys
 import os
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import get_args
@@ -53,6 +53,7 @@ from ulid import ULID
 
 from lib import ren_paths
 from lib.memory import journal, quarantine, scrub, write_apply
+from lib.memory import page_types
 from lib.memory.provenance import Op, WriterClass, Provenance, new_provenance, trust_class
 
 try:
@@ -397,7 +398,23 @@ def propose(p: Proposal) -> QueueEntry:
     already treats any non-pending status as a hold/no-op, so this composes
     without changes there. → detect conflicts via `lib.memory.semantics`
     (best-effort import; `[]` when absent) → persist → return the new entry.
+
+    Spec 2026-08-21 §2.1: before any of that, derive a missing frontmatter
+    `type:` via `lib.memory.page_types` — upstream of the applied-page dedup
+    comparison above, so a re-proposal of identical raw content still
+    normalizes equal to the typed page on disk.
     """
+    # Spec 2026-08-21 §2.1: derive `type:` HERE — upstream of the
+    # `_normalize_body` comparison below — so a re-proposal of identical raw
+    # content still normalizes equal to the typed page on disk. Deriving in
+    # `stamp_frontmatter` instead would land downstream of that comparison
+    # and break noop-duplicate detection. `Proposal` is frozen, so rebind
+    # rather than mutate.
+    if p.op in ("ADD", "UPDATE") and p.content is not None:
+        typed = page_types.ensure_type(p.content, p.page)
+        if typed != p.content:
+            p = replace(p, content=typed)
+
     if p.content is not None:
         scrub.scrub_or_raise(p.content)
 

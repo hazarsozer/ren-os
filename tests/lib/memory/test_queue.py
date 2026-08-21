@@ -757,6 +757,29 @@ class TestAppliedDedup:
         )
         assert e.status == "pending"
 
+    def test_typed_page_still_detects_noop_duplicate(self, wiki):
+        """The door derives `type:` into the proposal UPSTREAM of
+        `_normalize_body`, so a re-proposal of byte-identical raw content
+        still normalizes equal to the typed page on disk.
+
+        If derivation ever moves into `stamp_frontmatter` (downstream of the
+        comparison), this fails: the stored page would carry `type:` and the
+        fresh proposal would not, so every idempotent re-write would register
+        as a real change — breaking the distiller's noop-duplicate cap
+        exclusion and suggestions' "content already on page" branch.
+        """
+        p = _proposal(page="lessons/a-lesson.md", content="lesson body\n")
+        entry, prov = queue.propose_and_apply(p)
+        assert prov is not None
+
+        on_disk = (wiki_root() / "lessons" / "a-lesson.md").read_text(encoding="utf-8")
+        assert "type: lesson" in on_disk
+
+        again = queue.propose(
+            _proposal(page="lessons/a-lesson.md", content="lesson body\n")
+        )
+        assert again.status == "noop-duplicate"
+
 
 # --- issue #16: batch ingest must not hold its own siblings -----------------
 

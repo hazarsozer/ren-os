@@ -48,7 +48,7 @@ from lib import ren_paths
 from lib.governance.tiers import is_instruction_plane_page
 from lib.memory import journal, quarantine
 from lib.memory.queue import Proposal, propose_and_apply
-from lib.suggestions import SuggestionSpec, pending_suggestions, record
+from lib.suggestions import SuggestionSpec, pending_suggestions, record, retract
 
 from . import watermark
 
@@ -67,6 +67,17 @@ _FENCE_RE = re.compile(r"^\s*```", re.MULTILINE)
 
 _HUB_SECTION = "## Pages"
 _LINT_FINGERPRINT_PREFIX = "wiki-lint:"
+
+#: The only judgment rules `_lint_page()` can ever emit (`missing-frontmatter-
+#: type` and `dangling-link`) — the sole re-checkable universe for
+#: `_retract_resolved_findings()` (spec 2026-08-21 §3.4, final-review finding
+#: 1). The driver also files `blocked:<cls>` and `held:<cls>` findings
+#: through the same `wiki-lint:` fingerprint namespace, and a rule can be
+#: retired from `_lint_page()` while a pending finding for it still exists —
+#: neither shape is something a fresh `_lint_page()` call can ever reproduce,
+#: so their absence from its judgments proves nothing. Register a rule here
+#: the day `_lint_page()` starts emitting it, and not before.
+_RECHECKABLE_RULES = frozenset({"missing-frontmatter-type", "dangling-link"})
 
 
 # ------------------------------------------------------------------- walking
@@ -393,6 +404,64 @@ def _suggest(page: str, rule: str, detail: str) -> bool:
     return record(spec) is not None
 
 
+def _retract_resolved_findings(wiki_root: Path) -> int:
+    """Re-verify every pending lint finding and close the ones that no longer
+    hold (spec 2026-08-21 §3.4).
+
+    A lint finding is mechanically checkable, unlike a judgment call — so a
+    finding fixed by any other means (a migration, a hand edit, a deleted
+    page) can self-close instead of sitting pending until the 30-day expiry.
+    Uses `retract`, never `decide`: a declined fingerprint is ledgered and
+    would never fire again if the defect returned.
+
+    Returns the number retracted.
+    """
+    retracted = 0
+    all_pages = walk_wiki_pages(wiki_root, skip_archive=True)  # mirror the detection walk
+    deleted = _deleted_basenames()
+
+    for entry in pending_suggestions():
+        fingerprint = str(entry.get("fingerprint", ""))
+        if not fingerprint.startswith(_LINT_FINGERPRINT_PREFIX):
+            continue
+
+        payload = entry.get("payload") or {}
+        page = payload.get("page")
+        rule = payload.get("rule")
+        if not isinstance(page, str) or not isinstance(rule, str):
+            continue
+
+        if rule not in _RECHECKABLE_RULES:
+            # `held:<cls>` / `blocked:<cls>` fix-class findings and any rule
+            # `_lint_page()` no longer emits are not re-checkable by this
+            # pass — leave them pending rather than reading their absence
+            # from fresh judgments as "resolved".
+            continue
+
+        try:
+            text = ren_paths.safe_join(wiki_root, page).read_text(encoding="utf-8")
+        except OSError:
+            # Page is gone — the finding cannot still hold.
+            retract(entry["sid"], f"page {page} no longer exists")
+            retracted += 1
+            continue
+        except ren_paths.PathTraversalError:
+            # Not a missing page — a malformed/non-wiki-relative path that
+            # would escape `wiki_root`. "no longer exists" would be false
+            # here. Still retracted: a finding recorded against a path this
+            # shape can never be re-checked, so it cannot be left pending.
+            retract(entry["sid"], f"page {page} is not a valid wiki-relative path")
+            retracted += 1
+            continue
+
+        _, _, judgments = _lint_page(wiki_root, page, text, all_pages, deleted)
+        if rule not in {r for r, _ in judgments}:
+            retract(entry["sid"], f"{rule} no longer holds for {page}")
+            retracted += 1
+
+    return retracted
+
+
 def _pending_lint_findings() -> bool:
     """True iff ANY lint finding is still pending a human — the state
     `watermark(clean=...)` must reflect."""
@@ -444,6 +513,7 @@ def run_incremental_lint(session: str, full: bool = False) -> dict:
     """
     wiki_root = ren_paths.wiki_root()
     total_journal_lines = len(journal.entries())
+    retracted = _retract_resolved_findings(wiki_root)
 
     if not full and not watermark.watermark_exists():
         # FIRST RUN AFTER UPGRADE. No watermark means "seen 0 lines", which
@@ -463,6 +533,7 @@ def run_incremental_lint(session: str, full: bool = False) -> dict:
             "fixed": [],
             "held": [],
             "queued_suggestions": 0,
+            "retracted": retracted,
             "watermark_advanced": True,
         }
 
@@ -477,6 +548,7 @@ def run_incremental_lint(session: str, full: bool = False) -> dict:
             "fixed": [],
             "held": [],
             "queued_suggestions": 0,
+            "retracted": retracted,
             "watermark_advanced": True,
         }
 
@@ -563,6 +635,7 @@ def run_incremental_lint(session: str, full: bool = False) -> dict:
         "fixed": fixed,
         "held": held,
         "queued_suggestions": queued,
+        "retracted": retracted,
         "watermark_advanced": True,
     }
 

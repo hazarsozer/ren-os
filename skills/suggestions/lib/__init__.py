@@ -31,6 +31,9 @@ this module is what turns an "accepted" decision into a real write, by
   orphan_page       → applies nothing; hands the orphan page off to the
                        session to place, same convention as
                        review_lint_finding.
+  place_durable_item → applies nothing (#73); hands the unplaceable durable
+                       item off to the session, same convention as
+                       orphan_page.
 
 Failure contract (0.4.5): "accepted" means the change actually landed. The
 apply runs FIRST; only a successful apply (including intentional no-op
@@ -231,6 +234,19 @@ def _apply(sid: str, kind: str, payload: dict, session: str) -> dict:
             "detail": {"page": payload.get("page")},
         }
 
+    if action == "place_durable_item":
+        # #73 — judgment finding: the distiller/wrap routed a durable item it
+        # could not place (`wrap._route_unplaced`). The payload carries no
+        # target page, so there is nothing to write to; the live session
+        # places it with the friend. Accepting records the review handoff,
+        # same convention as orphan_page and review_lint_finding.
+        return {
+            "sid": sid,
+            "applied": False,
+            "detail": {"item": payload.get("item"),
+                       "session": payload.get("session")},
+        }
+
     raise ValueError(f"unknown suggestion kind {kind!r} / action {action!r}")
 
 
@@ -252,8 +268,9 @@ def accept(sid: str, session: str) -> dict:
     `"detail"`, plus `"decision_recorded": False` (decide() was never
     reached). Intentional non-write outcomes (duplicate content,
     review_contradiction handoff, quarantine_release held-on-contradicts,
-    review_lint_finding handoff) still count as decided — retrying them
-    cannot change the outcome. An unknown kind/action is NOT one of these:
+    review_lint_finding handoff, place_durable_item handoff) still count as
+    decided — retrying them cannot change the outcome. An unknown
+    kind/action is NOT one of these:
     `_apply()` raises for it, so it takes the same apply-raised path as any
     other failure — pending, retryable, `decision_recorded: False`.
 

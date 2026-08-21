@@ -68,7 +68,7 @@ End-of-session consolidation. The friend runs `/ren:wrap`; this skill writes the
 
 1. **Compose the L1 narrative.** The live session writes this ITSELF — never a subagent (`execution_tier: judgment`; the exception to worker delegation: only the main model holds the conversation being summarized in context). A short narrative markdown summary of what happened this session — what was done, what's open, what changed. Lead with outcomes. Target ≤1,000 tokens. This is data, not doctrine; it always gets quarantined on write (queue Task 2.4 wiring), so nothing here needs to hedge its own confidence.
 2. **Extract candidate durable items.** The live session identifies zero or more candidate strings that MIGHT be worth durable, cross-session memory (a decision, a lesson, a reusable pattern). When in doubt, extract fewer, not more — the classifier gate is the second line of defense, not the first.
-   - The classifier's verdict, when "durable", also carries placement: `scope` (`"project"` vs `"global"`) and `action` (`"create"` vs `"update"`, plus a `target_page` for updates). A `create` lands under `projects/<slug>/knowledge/lessons/<slug>.md` for a project-scoped item (global `lessons/` otherwise), with a folder-note hub (`<dir>/lessons.md`) auto-maintained alongside it — created in full the first time, and thereafter only APPENDED to (a human's prose on the hub is never re-rendered away, and a hub whose `ren_trust` is `"user"` is left alone entirely). An `update` may ONLY target a page from this session's own eligibility set (wake-up injections plus `/ren:recall` fetches, verified on disk) and is merged in via a strict merge call that never touches frontmatter and gates out on any merge failure. Either way, an update to a page whose `ren_trust` is `"user"` is NEVER auto-applied — it's routed to the suggestions store for the friend to approve instead.
+   - The classifier's verdict, when "durable", also carries placement: `scope` (`"project"` vs `"global"`) and `action` (`"create"` vs `"update"`, plus a `target_page` for updates). A `create` lands under `projects/<slug>/knowledge/lessons/<slug>.md` for a project-scoped item (global `lessons/` otherwise), with a folder-note hub (`<dir>/lessons.md`) auto-maintained alongside it — created in full the first time, and thereafter only APPENDED to (a human's prose on the hub is never re-rendered away, and a hub whose `ren_trust` is `"user"` is left alone entirely). An `update` may ONLY target a page from this session's own eligibility set (wake-up injections plus `/ren:recall` fetches, verified on disk) and is merged in via a strict merge call that never touches frontmatter and routes to suggestions (never gated out) on any merge failure (spec 2026-08-21 §5.2). Either way, an update to a page whose `ren_trust` is `"user"` is NEVER auto-applied — it's routed to the suggestions store for the friend to approve instead.
    - Extraction floor: before settling on zero candidates, check the session for
      (a) recorded rulings or decisions made in chat, (b) issues closed or filed,
      (c) releases cut, (d) lessons stated after a failure. Each of those is a
@@ -98,6 +98,23 @@ End-of-session consolidation. The friend runs `/ren:wrap`; this skill writes the
 
      `llm_call` remains supported for callers that have a live callable; the
      subagent + `verdicts` transport is the standard path for `/ren:wrap`.
+   - **Phase 2 — merges (spec 2026-08-21 §5.3).** When any verdict came back
+     `durable` with `action: "update"`, those items need a merged page body,
+     and the `verdicts=` path has no live `llm_call` to produce one. Call
+     `skills.wrap.lib.eligible_update_targets(session)` for the eligible set,
+     then dispatch ONE batched worker-class subagent (a bounded text
+     transformation over one page — never orchestrator-class) over the
+     update-verdicts whose `target_page` is in it, giving each the item text
+     plus the target page's current text and asking for the COMPLETE merged
+     page back — it must copy
+     the YAML frontmatter verbatim and change only the section(s) the learning
+     affects. Assemble the results into an array index-aligned with the
+     candidate list, `null` wherever no merge came back, and pass it as
+     `wrap_session(..., verdicts=<array>, merges=<array>)`.
+   - An update whose merge is missing or fails validation is NOT discarded:
+     it routes to the suggestions store for the friend to place, same as an
+     unplaceable item. Passing no `merges` at all is safe — every
+     update-verdict simply routes to suggestions instead of auto-applying.
    - ALWAYS pass `cwd=` explicitly, set to the session's actual working directory — the Python process's own cwd may be the plugin cache dir rather than the project checkout (the documented invocation pattern), and defaulting to it silently misfiles the L1 under global `l1/` (#45).
    - Do NOT pass `project=` yourself — leave it unset. `wrap_session` derives the current project from `cwd` via the same `lib.ren_paths.detect_project` helper the wake-up hook's read path uses, so the L1 page lands exactly where the NEXT wake-up for this project will read it (codex D4 wiring). Non-project cwds (or a cwd that doesn't match any `wiki/projects/<slug>/`) fall through to the original global `l1/` path unchanged — `render_wrap_screen` shouts about this on the close-out screen so it's never silent.
    - When a durable candidate is project-specific, it belongs under that project's `projects/<slug>/knowledge/` tree — read `projects/<slug>/schema.md` (the project's own SCHEMA document: taxonomy + conventions, issue #20 amendment) first and place the page where the taxonomy says it goes, updating the relevant hub (the folder note named after its directory, `<topic>/<topic>.md`). Never a root-tier page for one project's fact.

@@ -102,9 +102,35 @@ def test_project_hub_frontmatter(wiki):
     hub_path = lessons_dir / "lessons.md"
     assert hub_path.is_file()
     text = hub_path.read_text(encoding="utf-8")
-    assert "type: project-knowledge" in text
+    assert "type: hub" in text
     assert "project: p" in text
     assert "hub: true" in text
+
+
+def test_project_hub_type_agrees_with_derive_type(wiki):
+    """Final-review finding 2 (2026-08-21): the hard-coded `type:` this
+    helper stamps on a NEW project lessons hub must equal
+    `lib.memory.page_types.derive_type()`'s answer for that exact path —
+    invariant I1 means whichever value lands here wins permanently at the
+    write door, so a disagreement would leave the wiki accumulating project
+    lessons hubs of both types depending on which code path created the
+    page."""
+    from lib.memory.page_types import derive_type
+
+    lessons_dir = wiki / "projects" / "p" / "knowledge" / "lessons"
+    lessons_dir.mkdir(parents=True, exist_ok=True)
+    (lessons_dir / "insight-one.md").write_text("Insight.\n", encoding="utf-8")
+
+    _ensure_lessons_hub("projects/p/knowledge/lessons", "s1", "p")
+
+    hub_path = lessons_dir / "lessons.md"
+    text = hub_path.read_text(encoding="utf-8")
+    stamped = next(
+        line.split(":", 1)[1].strip()
+        for line in text.splitlines()
+        if line.startswith("type:")
+    )
+    assert stamped == derive_type("projects/p/knowledge/lessons/lessons.md")
 
 
 def test_existing_hub_keeps_human_prose_and_gains_only_the_new_link(wiki):

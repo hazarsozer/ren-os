@@ -37,6 +37,7 @@ _SUGGESTIONS_DIRNAME = "suggestions"
 _PENDING = "pending"
 _DECISIONS = ("accepted", "declined")
 _EXPIRED = "expired"
+_RESOLVED = "resolved"
 
 DECIDED_RETENTION_DAYS = 90
 PENDING_MAX_AGE_DAYS = 30
@@ -253,22 +254,48 @@ def decide(sid: str, decision: str) -> dict:
     return entry
 
 
+def retract(sid: str, reason: str) -> dict:
+    """Close `sid` because the finding it reports no longer holds.
+
+    Models `expire_stale_pending`, NOT `decide`: the fingerprint is
+    deliberately NOT ledgered, so if the same defect returns to the same page
+    `record()` is free to file it again. Retracting via `decide(sid,
+    "declined")` would ledger the fingerprint and permanently deafen the
+    producer for that page+rule — the exact bug spec §3.2 exists to prevent.
+
+    Raises `KeyError` for an unknown sid and `ValueError` if the entry is not
+    currently pending (decided, expired and resolved entries are immutable,
+    same rule as `decide`).
+    """
+    entry = _load(sid)
+    if entry["status"] != _PENDING:
+        raise ValueError(
+            f"suggestion {sid!r} is already {entry['status']!r} — "
+            "retract() only accepts pending entries"
+        )
+    entry["status"] = _RESOLVED
+    entry["resolved_at"] = _now_iso()
+    entry["resolved_reason"] = reason
+    _persist(entry)
+    return entry
+
+
 def _parse_ts(ts: str) -> datetime:
     return datetime.strptime(ts, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
 
 
 def prune_decided(retention_days: int = DECIDED_RETENTION_DAYS) -> int:
-    """Delete decided (accepted/declined) entry files whose `decided_at` is
-    older than `retention_days`. The decision ledger is untouched — dedup
-    stays intact after pruning (see module docstring). Entries with a
-    missing or unparsable `decided_at` are skipped (never delete on
-    ambiguity). Returns the count of files deleted."""
+    """Delete decided (accepted/declined) and resolved entry files whose
+    timestamp is older than `retention_days`. The decision ledger is
+    untouched — dedup stays intact after pruning (see module docstring).
+    Entries with a missing or unparsable timestamp are skipped (never delete
+    on ambiguity). Returns the count of files deleted."""
     cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
     deleted = 0
     for entry in all_suggestions():
-        if entry.get("status") not in _DECISIONS:
+        if entry.get("status") not in (*_DECISIONS, _RESOLVED):
             continue
-        decided_at = entry.get("decided_at")
+        decided_at = entry.get("decided_at") or entry.get("resolved_at")
         if not decided_at:
             continue
         try:
@@ -315,6 +342,8 @@ __all__ = [
     "ledger_fingerprints",
     "ledger_entries",
     "decide",
+    "retract",
+    "_RESOLVED",
     "prune_decided",
     "expire_stale_pending",
 ]
