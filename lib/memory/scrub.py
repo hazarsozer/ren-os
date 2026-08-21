@@ -98,11 +98,14 @@ PATTERNS: list[tuple[str, re.Pattern[str]]] = [
         # and NOT a type-like annotation identifier (`Final[float]`,
         # `float | None`). A guard word only counts when followed by annotation
         # punctuation/whitespace/end — a secret merely STARTING with one
-        # (`none.of.your.business`) still matches (0.7.7 review). The pure-number
-        # guard (`4.0`, `128000`) applies only to token/api_key keys, where
-        # numeric tuning constants live; a digits-only password/secret is a
-        # plausible PIN and stays a hit. Guards are lowercase but match
-        # case-insensitively via re.IGNORECASE.
+        # (`none.of.your.business`) still matches (0.7.7 review). The
+        # terminator set includes `,`, `)` and `]` (#72): without them a bare
+        # annotated parameter (`secret: str,`) fell through to the value
+        # branch and scanned as a password pair, blocking a release push.
+        # The pure-number guard (`4.0`, `128000`) applies only to token/api_key
+        # keys, where numeric tuning constants live; a digits-only
+        # password/secret is a plausible PIN and stays a hit. Guards are
+        # lowercase but match case-insensitively via re.IGNORECASE.
         "password-pair",
         re.compile(
             r"(?:"
@@ -114,7 +117,7 @@ PATTERNS: list[tuple[str, re.Pattern[str]]] = [
             r"(?![\w.]+\()"  # not a call expression
             r"(?!(?:none|true|false|final|float|int|str|bool|bytes|optional"
             r"|literal|classvar|any|list|dict|set|tuple|frozenset)"
-            r"(?:[\[\|]|[\s'\"]|$))"  # not a whole type-like token
+            r"(?:[\[\|,)\]]|[\s'\"]|$))"  # not a whole type-like token
             r"[^\s'\"(]{4,}"
             r")"
             r"|"
@@ -127,7 +130,7 @@ PATTERNS: list[tuple[str, re.Pattern[str]]] = [
             r"(?!\d+(?:\.\d+)?(?![^\s'\"]))"  # not a pure int/float
             r"(?!(?:none|true|false|final|float|int|str|bool|bytes|optional"
             r"|literal|classvar|any|list|dict|set|tuple|frozenset)"
-            r"(?:[\[\|]|[\s'\"]|$))"  # not a whole type-like token
+            r"(?:[\[\|,)\]]|[\s'\"]|$))"  # not a whole type-like token
             r"[^\s'\"(]{4,}"
             r")"
             r")",
