@@ -48,6 +48,7 @@ from __future__ import annotations
 import importlib
 import json
 import os
+import platform
 import re
 import shutil
 import subprocess
@@ -909,6 +910,60 @@ def check_cache_env_hygiene() -> CheckResult:
     )
 
 
+def check_interpreter_freshness() -> CheckResult:
+    """The wake-up hook's fast-path re-exec target (spec 2026-08-21 (0.8.2) §8).
+
+    `hooks/wake-up/ren-wake-up.py` re-execs under an interpreter recorded by
+    `skills.install.lib.warm_environment` to avoid a cold-`uv` cost that trips
+    `_REEXEC_TIMEOUT_S` (#11 §4). The record is written at INSTALL and never
+    refreshed by `/ren:update`, so a version bump silently strands it: the hook
+    guards with `p.is_file()`, falls through to `uv run`, and degrades
+    quietly — which is exactly why nothing surfaced a record that had been
+    dangling for roughly ten releases.
+
+    A record from ANOTHER machine or platform is `skip`, never `warn`:
+    `state_dir()` lives under the wiki root, which may be synced across
+    machines, and the hook ignores foreign records by design (see
+    `_recorded_interpreter_path`). Warning would fire on every second machine.
+    """
+    name = "interpreter_freshness"
+    info_path = ren_paths.state_dir() / "interpreter.json"
+    try:
+        data = json.loads(info_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return CheckResult(name, "info", "no recorded interpreter (never warmed)")
+
+    if data.get("machine") != platform.node() or data.get("platform") != sys.platform:
+        return CheckResult(
+            name, "skip",
+            "record belongs to another machine/platform (the hook ignores it)",
+        )
+
+    recorded = str(data.get("interpreter") or "")
+    if not recorded:
+        return CheckResult(name, "info", "no recorded interpreter (never warmed)")
+
+    path = Path(recorded)
+    version = next(
+        (p.name for p in path.parents if p.parent.name == "ren"), "unknown"
+    )
+    if not path.is_file():
+        return CheckResult(
+            name, "warn",
+            f"recorded interpreter is gone (version {version}) — the wake-up "
+            f"fast path is degraded to cold uv; re-run /ren:install to re-warm",
+        )
+
+    current = ren_paths.current_plugin_cache_version()
+    if current is not None and version not in ("unknown", current):
+        return CheckResult(
+            name, "warn",
+            f"recorded interpreter is from {version}, current is {current} — "
+            f"re-run /ren:install to re-warm",
+        )
+    return CheckResult(name, "ok", f"recorded interpreter valid ({version})")
+
+
 _ALL_CHECK_NAMES: tuple[str, ...] = (
     "check_env",
     "check_wiki_structure",
@@ -935,6 +990,7 @@ _ALL_CHECK_NAMES: tuple[str, ...] = (
     "check_standing_instructions_drift",
     "check_agent_shadowing",
     "check_cache_env_hygiene",
+    "check_interpreter_freshness",
 )
 
 
@@ -981,5 +1037,6 @@ __all__ = [
     "check_standing_instructions_drift",
     "check_agent_shadowing",
     "check_cache_env_hygiene",
+    "check_interpreter_freshness",
     "run_checks",
 ]

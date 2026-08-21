@@ -59,7 +59,7 @@ def test_run_checks_returns_one_result_per_check(wiki):
         "suggestion_store", "apply_integrity", "judge_health", "archive_integrity",
         "routing_audit", "model_map_staleness", "orphaned_projects",
         "execution_doctrine", "standing_instructions_drift", "agent_shadowing",
-        "cache_env_hygiene",
+        "cache_env_hygiene", "interpreter_freshness",
     }
 
 
