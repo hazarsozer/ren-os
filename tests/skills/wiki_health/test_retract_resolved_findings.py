@@ -89,3 +89,33 @@ def test_non_lint_suggestions_are_left_alone(wiki):
     lint._retract_resolved_findings(wiki)
 
     assert entry["sid"] in {e["sid"] for e in pending_suggestions()}
+
+
+def test_archived_duplicate_basename_does_not_falsely_retract_dangling_link(wiki):
+    """Regression (fix round 1): the retraction walk's `all_pages` must
+    mirror the production detection walk's `skip_archive=True`, or a page
+    later moved into `archive/` with a matching basename counts as a valid
+    unique resolution target during retraction even though production
+    detection — which excludes `archive/` — would never accept it. That let
+    a still-broken `dangling-link` finding vanish from the pending queue
+    while the link on the unchanged page was still broken."""
+    _write(wiki, "lessons/a.md", "# A\n\nsee [[foo]]\n")
+
+    result = lint.run_incremental_lint(session="s-1", full=True)
+    pend = pending_suggestions()
+    assert any(
+        s["payload"]["rule"] == "dangling-link" and s["payload"]["page"] == "lessons/a.md"
+        for s in pend
+    ), result
+    entry = next(
+        s for s in pend
+        if s["payload"]["rule"] == "dangling-link" and s["payload"]["page"] == "lessons/a.md"
+    )
+
+    # A same-basename page later lands under archive/ — production detection
+    # excludes archive/ from its match pool, so the link is STILL dangling.
+    _write(wiki, "archive/foo.md", "# Foo (archived)\n")
+
+    lint._retract_resolved_findings(wiki)
+
+    assert entry["sid"] in {e["sid"] for e in pending_suggestions()}

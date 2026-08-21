@@ -406,7 +406,7 @@ def _retract_resolved_findings(wiki_root: Path) -> int:
     Returns the number retracted.
     """
     retracted = 0
-    all_pages = walk_wiki_pages(wiki_root)  # list[str] of wiki-relative paths
+    all_pages = walk_wiki_pages(wiki_root, skip_archive=True)  # mirror the detection walk
     deleted = _deleted_basenames()
 
     for entry in pending_suggestions():
