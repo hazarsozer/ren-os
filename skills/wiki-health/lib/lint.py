@@ -245,14 +245,29 @@ def _hub_missing_entries(wiki_root: Path, page: str, text: str) -> tuple[str, li
 
 
 def _resolves(wiki_root: Path, page: str, target: str) -> bool:
+    """True if `target` — a wikilink body, possibly `../`-relative — names a
+    file inside the wiki.
+
+    #79: resolution base and containment boundary are DIFFERENT concerns. A
+    candidate is resolved relative to the wiki root or to the page's own
+    parent, but containment is always validated against `wiki_root`. Passing
+    the parent as `safe_join`'s base made every `../` target raise
+    PathTraversalError by construction, and the enclosing `except` swallowed
+    it — so a valid link read as dangling, and on a fence-free page could be
+    silently repointed by `_link_findings`.
+    """
     candidates = [target, target if target.endswith(".md") else target + ".md"]
+    page_parent = (wiki_root / page).parent
+    root = wiki_root.resolve()
     for cand in candidates:
-        for base in (wiki_root, (wiki_root / page).parent):
+        for base in (wiki_root, page_parent):
+            resolved = (base / cand).resolve()
             try:
-                if ren_paths.safe_join(base, cand).is_file():
-                    return True
-            except ren_paths.PathTraversalError:
-                continue
+                resolved.relative_to(root)
+            except ValueError:
+                continue  # genuinely escapes the wiki — still refused
+            if resolved.is_file():
+                return True
     return False
 
 
