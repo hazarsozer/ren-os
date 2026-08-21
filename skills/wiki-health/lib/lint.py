@@ -42,11 +42,12 @@ waiting".
 from __future__ import annotations
 
 import re
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from lib import ren_paths
 from lib.governance.tiers import is_instruction_plane_page
 from lib.memory import journal, quarantine
+from lib.memory.page_types import _is_folder_note_hub
 from lib.memory.queue import Proposal, propose_and_apply
 from lib.suggestions import SuggestionSpec, pending_suggestions, record, retract
 
@@ -186,21 +187,21 @@ def _hub_candidates(directory: Path) -> tuple[Path, Path]:
 
 
 def _is_hub_page(page: str) -> bool:
-    p = Path(page)
-    if p.name == "index.md":  # root index + legacy hubs
+    """Should hub-entry maintenance (`_hub_missing_entries`) run on this page?
+
+    #76: this is NOT `page_types.derive_type`'s question. That one asks what
+    `type:` a page carries and answers `l2-map` for root index.md; this one
+    asks whether to keep a hub's bullets current and answers yes — the spine
+    and legacy `**/index.md` hubs both want that. Two questions, two right
+    answers, documented at both sites.
+
+    Only the folder-note sub-condition was genuinely duplicated. It now lives
+    once, in `lib.memory.page_types._is_folder_note_hub` (skills import lib;
+    lib never imports skills).
+    """
+    if Path(page).name == "index.md":  # root index + legacy hubs
         return True
-    # Folder-note branch: string-scoped so a project literally named
-    # "knowledge" (projects/knowledge/notes/notes.md) or an archived/raw
-    # knowledge-named dir can't false-positive — same over-match class Task 3
-    # already fixed elsewhere in this plan.
-    parts = p.parts
-    return (
-        p.name == f"{p.parent.name}.md"
-        and len(parts) > 2
-        and parts[0] == "projects"
-        and "knowledge" in parts[2:-1]
-        and not any(part.startswith(".") or part in ("raw", "archive") for part in parts)
-    )
+    return _is_folder_note_hub(PurePosixPath(page).parts)
 
 
 def _hub_missing_entries(wiki_root: Path, page: str, text: str) -> tuple[str, list[str]]:

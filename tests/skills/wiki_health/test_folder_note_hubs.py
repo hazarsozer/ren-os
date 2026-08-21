@@ -201,3 +201,41 @@ def test_leaf_linked_only_from_folder_note_hub_is_not_unlinked(migrated_wiki):
     # is a false-positive "unlinked" finding.
     hubless, unlinked = wiki_health._knowledge_tree_findings(migrated_wiki)
     assert "projects/demo/knowledge/research/alpha.md" not in unlinked
+
+
+def test_is_hub_page_folder_note_branch_delegates_to_page_types():
+    """#76: the folder-note condition was written twice, independently.
+
+    One predicate now, in lib/ (skills may import lib; lib must not import
+    skills). The index.md branch is NOT part of this — it answers a different
+    question and stays in the lint.
+    """
+    import importlib
+    from pathlib import PurePosixPath
+
+    page_types = importlib.import_module("lib.memory.page_types")
+    lint_mod = importlib.import_module("skills.wiki-health.lib.lint")
+
+    folder_notes = [
+        "projects/demo/knowledge/research/research.md",
+        "projects/demo/knowledge/lessons/lessons.md",
+    ]
+    non_folder_notes = [
+        "projects/demo/demo.md",
+        "projects/knowledge/notes/notes.md",
+        "archive/knowledge/misc/misc.md",
+        "projects/demo/raw/knowledge/x/x.md",
+    ]
+    for page in folder_notes + non_folder_notes:
+        parts = PurePosixPath(page).parts
+        assert lint_mod._is_hub_page(page) == page_types._is_folder_note_hub(parts), page
+
+
+def test_is_hub_page_index_branch_is_untouched():
+    """The index.md branch answers a DIFFERENT question and must survive."""
+    import importlib
+
+    lint_mod = importlib.import_module("skills.wiki-health.lib.lint")
+
+    assert lint_mod._is_hub_page("index.md")
+    assert lint_mod._is_hub_page("projects/demo/knowledge/research/index.md")
