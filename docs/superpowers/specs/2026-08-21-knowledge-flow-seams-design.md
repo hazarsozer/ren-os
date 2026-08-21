@@ -74,12 +74,19 @@ New module `lib/memory/page_types.py`, exporting:
 def derive_type(page: str) -> str | None
 ```
 
-Three consumers, one table, no drift:
+Two consumers, one table, no drift:
 
 1. `queue.propose()` — fills a missing `type:` on new content
 2. `migrations/frontmatter-type-1/` — the backfill (§2.5)
-3. `skills/wiki-health/lib/lint.py` — so the lint's own rule and the door
-   agree on what a page's type should be
+
+The lint is **not** a third consumer: its `missing-frontmatter-type` rule
+checks only that a `type:` is present, never what it should be. It becomes
+one if a rule ever validates the value.
+
+`skills/wrap/lib/_ensure_l1_type` already stamps `type: l1` on L1 narratives
+before they reach the door. I1 means its value wins, and both agree on `l1`,
+so the overlap is benign — noted here so a future reader knows which one is
+authoritative if they ever diverge.
 
 ### 2.3 Two invariants
 
