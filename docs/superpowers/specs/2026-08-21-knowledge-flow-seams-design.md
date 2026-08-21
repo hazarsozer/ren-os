@@ -368,6 +368,47 @@ Per task, test-first:
 - `secret: str,` passes the pre-push scan
 - full suite green; `/ren:doctor` no worse than its pre-train baseline
 
+### Acceptance run — 2026-08-21 (measured)
+
+Run against the live wiki after a successful `/ren:backup` (git push to
+`renos-wiki`, the revert substrate). Every prediction above held.
+
+| Criterion | Predicted | Measured |
+|---|---|---|
+| Untyped pages | 29 → 0 | **29 → 0** (156 pages, all typed) |
+| Derivation split | lesson ×17, project-knowledge ×6, l1 ×3, hub ×2, project-schema ×1 | **exact match** |
+| Findings retracted | 26 | **26** |
+| Pending suggestions | 49 → ~23 | **49 → 23** |
+| Retracted status | `resolved`, not `declined` | **26 `resolved`** |
+| Fingerprints leaked to ledger | 0 | **0** |
+| New findings filed by the sweep | 0 | **0** (`queued_suggestions: 0`) |
+| Fresh write typed on FIRST write | yes | **yes** — `type: lesson`, 1 journal entry |
+| Doctor | no worse than baseline | **17 ok, 4 skip, 4 info, 0 warn, 0 fail** |
+
+Two results worth recording beyond the table:
+
+**The §3.4 rule-set gate was load-bearing, and only the final whole-branch
+review caught it.** The retraction pass originally treated "rule absent from
+`_lint_page`'s judgments" as "finding resolved". But the lint *driver*
+synthesizes `held:<cls>` and `blocked:<cls>` rule families into the same
+`wiki-lint:` fingerprint namespace, and the live store also held findings for
+rules `_lint_page` no longer emits (3 `map-pointer-missing`, 1
+`hub-split-link-lists`). Un-gated, all four would have been retracted with a
+reason asserting something never checked — landing this run at 19 pending and
+reading as a *better* result than the 23 predicted. Retraction is now gated on
+`_RECHECKABLE_RULES`; those four correctly survived, and the 2 `dangling-link`
+findings survived because they genuinely still hold.
+
+**The remaining 23 are a legible queue, not a wall**: 17 quarantine-release
+decisions, 3 map-pointer-missing, 2 dangling-link, 1 hub-split-link-lists.
+Draining them is the next session's work (§10).
+
+**Ordering constraint discovered in review:** the backfill must run *before*
+the next distill or wrap. Until a page is typed, a re-propose of unchanged
+content no longer normalizes equal (the proposal carries `type:`, the page on
+disk does not), costing one self-healing extra write per page and a distiller
+`WRITE_CAP` slot. Satisfied here — the migration ran before any producer did.
+
 ## 10. Out of scope
 
 - **Hub typing inconsistency.** Three pages disagree today: global
