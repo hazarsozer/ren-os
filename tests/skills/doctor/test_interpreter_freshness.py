@@ -62,15 +62,20 @@ def test_no_record_is_info_not_warn(state):
     assert result.status == "info"
 
 
-def test_foreign_machine_record_skips(state, tmp_path):
+def test_foreign_machine_record_warns(state, tmp_path):
+    """Fix round 2: the hook REJECTS a machine/platform mismatch and falls
+    through to cold uv regardless of whether the path exists — so doctor
+    must report `warn`, not `skip`, or the practical degradation on this
+    machine goes silent. (Deliberate behavior change from `skip`.)"""
     interp = _executable(tmp_path / "python3")
     _record(state, interp, machine="some-other-laptop")
 
     result = doctor.check_interpreter_freshness()
 
-    assert result.status == "skip", \
-        "a synced record from another machine, whose interpreter path " \
-        "still exists, is ignored by the hook by design"
+    assert result.status == "warn", \
+        "the hook rejects a machine/platform mismatch and falls through to " \
+        "cold uv, so this is a real degradation on this machine, not a " \
+        "foreign record safely none of doctor's business"
 
 
 def test_foreign_machine_dangling_record_still_warns(state):
@@ -117,3 +122,43 @@ def test_valid_but_non_current_version_warns(state, tmp_path, monkeypatch):
     result = doctor.check_interpreter_freshness()
 
     assert result.status == "warn"
+
+
+def test_exec_bit_missing_warns(state, tmp_path):
+    """A synced or restored .venv that lost its exec bit: the hook rejects
+    it (`os.access(p, os.X_OK)` is False), so doctor must warn — reporting
+    `ok` here is exactly the silent degradation this check exists to catch."""
+    path = tmp_path / "cache" / "ren-os" / "ren" / "9.9.9" / ".venv" / "bin" / "python3"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("", encoding="utf-8")
+    path.chmod(0o644)  # no execute bit
+    _record(state, path)
+
+    result = doctor.check_interpreter_freshness()
+
+    assert result.status == "warn"
+    assert "not executable" in result.message
+
+
+def test_not_a_python_name_warns(state, tmp_path):
+    """The hook requires `p.name.startswith("python")`; a record pointing at
+    a differently-named binary is rejected by the hook and must warn here
+    too, not report `ok`."""
+    interp = _executable(tmp_path / "some-other-binary")
+    _record(state, interp)
+
+    result = doctor.check_interpreter_freshness()
+
+    assert result.status == "warn"
+    assert "not a python binary" in result.message
+
+
+def test_non_dict_record_is_info_not_crash(state):
+    """A top-level non-dict `interpreter.json` (`null`, a number, a list)
+    parses fine but has no `.get(...)` — must degrade to `info`, not raise
+    `AttributeError`."""
+    (state / "interpreter.json").write_text("null", encoding="utf-8")
+
+    result = doctor.check_interpreter_freshness()
+
+    assert result.status == "info"

@@ -69,12 +69,25 @@ def test_parent_relative_link_not_reported_on_fence_free_page(wiki):
 
 
 def test_link_escaping_the_wiki_is_still_refused(wiki):
-    """The traversal guard must still guard — against the wiki root."""
-    _write(wiki, "projects/p/knowledge/codebase/codebase.md", "# Codebase\n")
+    """The traversal guard must still guard — against the wiki root.
 
-    assert not lint._resolves(
-        wiki, "projects/p/knowledge/codebase/codebase.md", "../../../../../../etc/passwd"
-    )
+    A target that merely resolves to a NONEXISTENT path (like `/etc/passwd`
+    under a tmp_path fixture) satisfies `not _resolves(...)` on `is_file()`
+    alone — deleting the containment guard entirely would still pass. To make
+    this falsifiable, write a REAL file just outside the wiki root and link
+    to it at the exact depth that reaches it, so the assertion depends on
+    containment, not absence.
+
+    Page: "projects/p/knowledge/codebase/codebase.md" — its parent dir is 4
+    path segments below `wiki` (projects/p/knowledge/codebase). Reaching
+    `wiki.parent` therefore needs 4 "../" to climb back to `wiki` plus 1 more
+    to leave it: 5 "../" segments total.
+    """
+    page = "projects/p/knowledge/codebase/codebase.md"
+    _write(wiki, page, "# Codebase\n")
+    (wiki.parent / "secret.md").write_text("x", encoding="utf-8")
+
+    assert not lint._resolves(wiki, page, "../../../../../secret")
 
 
 def test_same_directory_link_still_resolves(wiki):

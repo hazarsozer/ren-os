@@ -320,6 +320,26 @@ def test_unfixable_aliased_link_is_never_claimed_as_fixed(wiki):
 # ---- IMPORTANT 3: `## Pages`-lookalike must not crash the run
 
 
+def test_undecodable_page_in_scope_does_not_crash_the_run(wiki):
+    """`UnicodeDecodeError` is a `ValueError`, NOT an `OSError`, so the
+    detection walk's `except OSError` used to let it escape and crash the
+    whole lint pass. An undecodable page cannot be linted; it must be
+    skipped, and the run must still complete and advance the watermark. No
+    hub page is created here — deliberately, so this hits the plain
+    detection-walk read directly rather than routing through a hub-fix
+    write (a separate call path)."""
+    path = wiki / "projects/p/knowledge/topic/alpha.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"# Caf\xe9 notes\n")
+    _touch_journal("projects/p/knowledge/topic/alpha.md")
+
+    result = wiki_health.run_incremental_lint(session="s-1")  # must not raise
+
+    assert result["watermark_advanced"] is True
+    assert result["fixed"] == []
+    assert result["held"] == []
+
+
 @pytest.mark.parametrize(
     "hub_body",
     [

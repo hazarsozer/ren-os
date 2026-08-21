@@ -48,7 +48,7 @@ from lib import ren_paths
 from lib.governance.tiers import is_instruction_plane_page
 from lib.memory import journal, quarantine
 from lib.memory.page_types import _is_folder_note_hub
-from lib.memory.queue import Proposal, propose_and_apply
+from lib.memory.queue import NOOP_DUPLICATE, Proposal, propose_and_apply
 from lib.suggestions import SuggestionSpec, pending_suggestions, record, retract
 
 from . import watermark
@@ -453,6 +453,13 @@ def _retract_resolved_findings(wiki_root: Path) -> int:
         # held:/blocked: finding on a deleted page pending until expiry.
         try:
             text = ren_paths.safe_join(wiki_root, page).read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            # UnicodeDecodeError is a ValueError, NOT an OSError, so it would
+            # otherwise escape both handlers below and crash the whole lint
+            # pass. An undecodable page is not evidence the finding was
+            # resolved — "no longer exists" would be a false claim, same
+            # reasoning as the PathTraversalError arm below. Leave pending.
+            continue
         except OSError:
             retract(entry["sid"], f"page {page} no longer exists")
             retracted += 1
@@ -585,6 +592,11 @@ def run_incremental_lint(session: str, full: bool = False) -> dict:
             text = path.read_text(encoding="utf-8")
         except OSError:  # pragma: no cover - vanished mid-run is not a finding
             continue
+        except UnicodeDecodeError:
+            # Same hole as _retract_resolved_findings above: UnicodeDecodeError
+            # is a ValueError, not an OSError. An undecodable page cannot be
+            # linted; skip it rather than crashing the whole run.
+            continue
 
         new_text, fix_classes, judgments = _lint_page(wiki_root, page, text, all_pages, deleted)
 
@@ -610,7 +622,7 @@ def run_incremental_lint(session: str, full: bool = False) -> dict:
                     session=session,
                 )
             )
-            if prov is None and getattr(entry, "status", None) == "noop-duplicate":
+            if prov is None and getattr(entry, "status", None) == NOOP_DUPLICATE:
                 # NOT a hold: `queue.propose` returns a SYNTHETIC, never-persisted
                 # entry with this status when the rewrite normalizes equal to what
                 # is already on the page (the `_rejoin` trailing-newline path is

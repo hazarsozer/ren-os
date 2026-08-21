@@ -1769,6 +1769,14 @@ def render_wrap_screen(wrap_result: dict, session: str) -> str:
             f"the project in projects.json"
         )
     lines.append(f"- project overview: {wrap_result.get('overview', 'skipped')}")
+    # #78 finding 5: the durable loop's `unchanged` bucket (noop-duplicate
+    # entries — content that normalized equal to what's already on the
+    # target page) is NEVER persisted to disk, so it cannot come from
+    # `_session_queue_entries`; it must be read from `wrap_result` directly.
+    # Same idiom as the L1 "unchanged (already saved)" line above (#49) —
+    # quiet, factual, one line per page.
+    for item in wrap_result.get("unchanged") or []:
+        lines.append(f"- {item['page']}: unchanged (already saved)")
     lines.append("")
 
     # --- Saved this session (revertible) ---

@@ -667,6 +667,32 @@ def test_wrap_screen_missing_qid_without_noop_status_still_not_found(wiki):
     assert "- session summary: (not found)" in screen
 
 
+def test_wrap_screen_renders_durable_unchanged_pages(wiki):
+    """Finding 5 (2026-08-22 final-review): the durable loop routes
+    noop-duplicate content into `wrap_result["unchanged"]` instead of
+    wrongly reporting it as held, but nothing rendered it — so where the
+    friend used to see a WRONG held line they saw nothing at all. Noop-
+    duplicate entries are never persisted to disk (their qid is absent from
+    the queue dir by design), so this must come from `wrap_result`, not from
+    `_session_queue_entries`."""
+    result = {
+        "l1_qid": "q-does-not-exist",
+        "applied": [],
+        "held": [],
+        "unchanged": [{"page": "projects/p/knowledge/topic/alpha.md"}],
+        "gated_out": [],
+        "refused": [],
+        "fail_closed": False,
+    }
+
+    screen = render_wrap_screen(result, session="sess-unchanged-durable")
+
+    assert (
+        "- projects/p/knowledge/topic/alpha.md: unchanged (already saved)"
+        in screen
+    )
+
+
 def test_wrap_screen_writes_nothing(wiki):
     session = "sess-screen-3"
     result = wrap_session(
