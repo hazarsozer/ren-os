@@ -13,6 +13,9 @@ from __future__ import annotations
 
 import pytest
 
+from lib import suggestions
+from lib.instrument import collect
+from skills.wrap.lib import wrap_session
 from skills.wrap.lib.merge import MergeError, validate_merged
 
 
@@ -39,11 +42,6 @@ class TestValidateMerged:
             validate_merged(current, "   ")
         with pytest.raises(MergeError, match="empty or not a string"):
             validate_merged(current, None)
-
-
-from lib import suggestions
-from lib.instrument import collect
-from skills.wrap.lib import wrap_session
 
 
 @pytest.fixture

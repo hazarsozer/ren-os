@@ -54,6 +54,10 @@ def main(argv: list[str] | None = None) -> int:
         try:
             text = path.read_text(encoding="utf-8")
         except OSError:
+            # Left deliberately silent, and NOT counted (#78): this matches
+            # trust-backfill-1's existing pattern. Fixing it here alone would
+            # make two sibling migrations disagree; fixing both would pull a
+            # working, untouched migration into a defect train.
             continue
 
         new_text = ensure_type(text, rel.as_posix())

@@ -1037,6 +1037,9 @@ def wrap_session(
                 elif llm_call is not None:
                     merged = merge_update(current, item, llm_call)
                 else:
+                    # Raised and caught one line later rather than branching directly:
+                    # this matches the other two call sites in this file (#78). Left as-is
+                    # for local consistency -- change all three or none.
                     raise MergeError(
                         "no merge available: the verdicts= transport supplied "
                         "none and there is no live llm_call"
