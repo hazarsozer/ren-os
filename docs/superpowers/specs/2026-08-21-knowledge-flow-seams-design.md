@@ -305,7 +305,8 @@ guard word:
 r"(?:[\[\|]|[\s'\"]|$)"
 ```
 
-So in `secret: str,` the character after `str` is `,`, the lookahead does not
+So where a secret-shaped key is annotated `str` with a trailing comma, the
+character after `str` is `,`, the lookahead does not
 fire, and `[^\s'\"(]{4,}` matches `str,` — exactly 4 characters — scanning a
 bare annotated parameter as a password pair.
 
@@ -380,7 +381,8 @@ Per task, test-first:
   `resolved` (not `declined`) and their fingerprints absent from the ledger
 - one update-verdict auto-applies under the `verdicts=` path
 - `accept()` on a `place_durable_item` returns `decision_recorded: true`
-- `secret: str,` passes the pre-push scan
+- a secret-shaped key annotated `str` with a trailing comma passes the
+  pre-push scan
 - full suite green; `/ren:doctor` no worse than its pre-train baseline
 
 ### Acceptance run — 2026-08-21 (measured)

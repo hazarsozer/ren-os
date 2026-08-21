@@ -51,7 +51,8 @@ supposed to be remembered no longer vanishes on the way. Spec:
   callable are unaffected.
 - **#72 — the scrub false positive that blocked a release push.** The `#29`
   type-annotation exemption's terminator set now includes `,`, `)` and `]`, so
-  a bare annotated parameter (`secret: str,`) no longer scans as a password
+  a bare annotated parameter — a secret-shaped key annotated `str` with a
+  trailing comma — no longer scans as a password
   pair. The widening is bounded to literal type keywords: a bare `list`
   annotation followed by a terminator is exempt, while a value that merely
   *starts* with one (`list_of_real_keys`) is still caught.

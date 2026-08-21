@@ -100,7 +100,8 @@ PATTERNS: list[tuple[str, re.Pattern[str]]] = [
         # punctuation/whitespace/end — a secret merely STARTING with one
         # (`none.of.your.business`) still matches (0.7.7 review). The
         # terminator set includes `,`, `)` and `]` (#72): without them a bare
-        # annotated parameter (`secret: str,`) fell through to the value
+        # annotated parameter (a secret-shaped key annotated `str` with a
+        # trailing comma) fell through to the value
         # branch and scanned as a password pair, blocking a release push.
         # The pure-number guard (`4.0`, `128000`) applies only to token/api_key
         # keys, where numeric tuning constants live; a digits-only

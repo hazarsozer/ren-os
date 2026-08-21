@@ -1637,7 +1637,7 @@ EOF
 **Interfaces:**
 - Consumes: nothing. Produces: nothing. Fully independent of Tasks 1-5.
 
-**Context you need:** The `#29` type-annotation exemption's negative lookahead only accepts `[`, `|`, whitespace, a quote, or end-of-string after a guard word. In `secret: str,` the character after `str` is `,`, so the lookahead does not fire and `[^\s'\"(]{4,}` matches `str,` — exactly 4 characters. This blocked the 0.7.9 release push. The fix below was verified before approval on a 20-case matrix: 7 false positives cleared, 0 regressions.
+**Context you need:** The `#29` type-annotation exemption's negative lookahead only accepts `[`, `|`, whitespace, a quote, or end-of-string after a guard word. Where a secret-shaped key is annotated `str` with a trailing comma, the character after `str` is `,`, so the lookahead does not fire and `[^\s'\"(]{4,}` matches `str,` — exactly 4 characters. This blocked the 0.7.9 release push. The fix below was verified before approval on a 20-case matrix: 7 false positives cleared, 0 regressions.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -1719,7 +1719,8 @@ Update the comment block above the pattern (around line 99) so the reason is rec
         # punctuation/whitespace/end — a secret merely STARTING with one
         # (`none.of.your.business`) still matches (0.7.7 review). The
         # terminator set includes `,`, `)` and `]` (#72): without them a bare
-        # annotated parameter (`secret: str,`) fell through to the value
+        # annotated parameter (a secret-shaped key annotated `str` with a
+        # trailing comma) fell through to the value
         # branch and scanned as a password pair, blocking a release push.
 ```
 
@@ -1739,7 +1740,8 @@ git commit -m "$(cat <<'EOF'
 fix(scrub): trailing comma no longer defeats the #29 exemption (#72)
 
 The type-annotation lookahead accepted only [ | whitespace quote or
-end-of-string after a guard word, so `secret: str,` fell through to the
+end-of-string after a guard word, so a secret-shaped key annotated `str`
+with a trailing comma fell through to the
 value branch and matched `str,` as a password pair. Blocked the 0.7.9
 release push.
 
