@@ -1,5 +1,73 @@
 # Changelog
 
+## [0.8.2] - 2026-08-22 — "the instruments themselves"
+
+0.8.1 fixed the seams between producers and consumers. This train fixes the
+things that were supposed to be watching them. A lint rule that misjudged every
+`../` link and could silently rewrite a correct one; a predicate written twice
+so the two copies could drift; a retraction pass that crashed the whole sweep on
+one undecodable byte; a diagnostic that reported `skip` on the exact machine it
+was built to diagnose; and a test that could not fail. Spec:
+`docs/superpowers/specs/2026-08-21-0.8.2-defect-train-design.md`.
+
+- **#79 — link containment is validated against the wiki root.**
+  `_resolves()` resolved a candidate against two bases but handed that same base
+  to `safe_join`, which enforces containment against its first argument. Any
+  `../` target therefore escaped the page's own parent *by construction*, raised
+  `PathTraversalError`, and was swallowed into a false `dangling-link` finding.
+  Resolution base and containment boundary are now separate concerns. The live
+  hazard was never the noisy finding: on a page without a code fence,
+  `_link_findings` treats an unambiguous basename match as a safe automatic
+  repoint, so a **valid link could be silently rewritten**. Both affected pages
+  happened to contain a fence, which is the only reason nothing was corrupted.
+  The regression test is therefore deliberately fence-free.
+- **#76 — one folder-note predicate, and two questions kept apart.** The
+  folder-note condition existed twice, written independently; it now lives once
+  in `lib/memory/page_types.py` and the lint imports it. The lint's separate
+  `index.md` branch is deliberately preserved: `derive_type` asks what `type:` a
+  page carries (root `index.md` → `l2-map`), while the lint asks whether
+  hub-entry maintenance should run (root `index.md` → yes). Two questions, two
+  right answers. Verified neutral against all 163 live wiki pages: zero
+  classification changes. `derive_type` also gains a narrow rule so root
+  `lessons/lessons.md` derives `hub`, matching the only producer that writes it.
+- **A crash that took the whole lint down.** `UnicodeDecodeError` is a
+  `ValueError`, so it slipped past both the `OSError` and `PathTraversalError`
+  handlers guarding the retraction pass — which is the *first* statement of
+  `run_incremental_lint`. One undecodable page killed the entire sweep, the
+  watermark never advanced, and the nudge fired forever, every run. Both read
+  sites now catch it and leave the finding **pending** rather than retracting:
+  an unreadable page is not evidence a finding was resolved.
+- **A doctor check for the wake-up fast path.** The hook re-execs under an
+  interpreter recorded at install to avoid a cold-`uv` cost that trips its
+  re-exec timeout. Nothing ever re-stamped that record — `warm_environment` runs
+  at install, never at update — and no check read it. On the development machine
+  it had pointed at a plugin version absent from the cache since 2026-07-31,
+  roughly ten releases. It fails safe, so nothing broke; every session simply
+  paid the cost the fast path exists to avoid, invisibly.
+  `check_interpreter_freshness` now mirrors the hook's own accept/reject
+  decision rather than approximating it, and warns whenever the hook would
+  reject.
+- **#78 — eight deferred minors closed.** Wrap no longer reports an unchanged
+  page as `held` citing a queue id that never existed on disk, and now renders
+  those as `unchanged`; `NOOP_DUPLICATE` became public so callers stop comparing
+  string literals; `_RESOLVED` was renamed rather than exported privately;
+  `decide()`'s docstring names every status it rejects. Two minors were
+  deliberately **left** with their reasoning recorded in the code — each matches
+  an existing sibling pattern, and fixing one instance alone would manufacture
+  the inconsistency the issue was filed to avoid.
+- **The update flow re-renders the global CLAUDE.md block.** Its closing steps
+  covered project-tier blocks only, so the global doctrine index kept absolute
+  paths pinned to the *previous* version after every release — resolving only
+  until that cache directory was collected, then dead links inside a file
+  injected into every session.
+- **#40 — the stale-venv check was exonerated.** An earlier draft called it
+  blind; it is not, and the evidence was the open-work ledger's own line, which
+  exists because the check warned. What remained was unperformed remediation.
+
+Tests: 3566 → 3604. Three separate implementers caught errors in the plan's own
+briefs rather than transcribing them, and one defect was found only by running
+the finished check against the real machine instead of against a fixture.
+
 ## [0.8.1] - 2026-08-21 — "nothing falls through"
 
 The knowledge-flow seams train: 0.8.0 shipped the producers that write

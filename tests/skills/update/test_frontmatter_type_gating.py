@@ -52,10 +52,23 @@ def test_unparseable_versions_does_not_run_backfill():
     assert update_lib.should_run_frontmatter_type_1("garbage", "0.8.1") is False
 
 
-def test_gate_constant_matches_the_shipped_version():
-    """The gate fires on `old < GATE <= new`, so a gate above the shipped
-    version can never fire for anyone upgrading TO this release — the exact
-    silent no-op #77 exists to prevent. Pin them together."""
+def test_gate_is_not_above_the_shipped_version():
+    """The gate fires on `old < GATE <= new`, so a gate ABOVE the shipped
+    version can never fire for anyone upgrading TO this release — the silent
+    no-op #77 exists to prevent.
+
+    This asserted equality until 0.8.2, which was correct only for the release
+    that INTRODUCED the migration. `frontmatter-type-1` shipped in 0.8.1 and
+    its gate must stay at 0.8.1 forever: someone on 0.8.0 upgrading to any
+    later version still needs the backfill (`0.8.0 < 0.8.1 <= new`), while
+    someone who already came through 0.8.1 must not re-run it
+    (`0.8.1 < 0.8.1` is false). Bumping the gate each release to satisfy an
+    equality check would falsify what the constant means — it records where
+    the migration was introduced, not what is shipping today.
+
+    The real invariant is the one the rationale above actually supports:
+    the gate must never exceed the shipped version.
+    """
     from pathlib import Path
     import json
 
@@ -63,7 +76,11 @@ def test_gate_constant_matches_the_shipped_version():
     manifest = json.loads(
         (repo_root / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8")
     )
-    assert update_lib._FRONTMATTER_TYPE_GATE == manifest["version"], (
-        "the frontmatter-type-1 gate must equal the shipped plugin version, "
-        "or nobody upgrading to this release runs the backfill"
+
+    def key(v: str) -> tuple[int, ...]:
+        return tuple(int(part) for part in v.split("."))
+
+    assert key(update_lib._FRONTMATTER_TYPE_GATE) <= key(manifest["version"]), (
+        "the frontmatter-type-1 gate must not exceed the shipped plugin "
+        "version, or nobody upgrading to this release runs the backfill"
     )
