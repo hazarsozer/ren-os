@@ -11,11 +11,12 @@ Run with: uv run pytest tests/migrations/test_frontmatter_type_1.py -v
 from __future__ import annotations
 
 import importlib.util
+import json
 from pathlib import Path
 
 import pytest
 
-from lib.ren_paths import wiki_root
+from lib.ren_paths import state_dir, wiki_root
 
 _MIGRATE_PATH = (
     Path(__file__).resolve().parents[2] / "migrations" / "frontmatter-type-1" / "migrate.py"
@@ -107,3 +108,63 @@ def test_is_idempotent(wiki):
 
     assert first == second
     assert first.count("type: lesson") == 1
+
+
+def _journal_path(wiki: Path) -> Path:
+    return state_dir() / "migrations" / "frontmatter-type-1.jsonl"
+
+
+def test_real_run_journals_one_line_per_stamped_page(wiki):
+    _write(wiki, "lessons/a.md", "# Body\n")
+    _write(wiki, "identity.md", "# Body\n")
+    # Already typed — must NOT be journaled (I1, no write happens for it).
+    _write(
+        wiki,
+        "projects/h/knowledge/lessons/lessons.md",
+        "---\ntype: project-knowledge\n---\n# Body\n",
+    )
+    # Unmapped — must NOT be journaled (I2, no write happens for it).
+    _write(wiki, "some/novel/shape.md", "# Body\n")
+
+    migrate = _load_migrate()
+    assert migrate.main([]) == 0
+
+    journal = _journal_path(wiki)
+    assert journal.is_file()
+
+    lines = journal.read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 2
+
+    records = [json.loads(line) for line in lines]
+    pages = {r["page"] for r in records}
+    assert pages == {"lessons/a.md", "identity.md"}
+    for record in records:
+        assert record["migration"] == "frontmatter-type-1"
+        assert "ts" in record
+
+
+def test_check_writes_no_journal_file(wiki):
+    _write(wiki, "lessons/a.md", "# Body\n")
+
+    migrate = _load_migrate()
+    assert migrate.main(["--check"]) == 0
+
+    assert not _journal_path(wiki).exists()
+
+
+def test_second_run_appends_no_duplicate_journal_lines(wiki):
+    _write(wiki, "lessons/a.md", "# Body\n")
+    _write(wiki, "identity.md", "# Body\n")
+
+    migrate = _load_migrate()
+    migrate.main([])
+
+    journal = _journal_path(wiki)
+    first_lines = journal.read_text(encoding="utf-8").splitlines()
+    assert len(first_lines) == 2
+
+    migrate.main([])
+
+    second_lines = journal.read_text(encoding="utf-8").splitlines()
+    assert len(second_lines) == len(first_lines) == 2
+    assert second_lines == first_lines
