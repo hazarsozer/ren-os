@@ -119,3 +119,39 @@ def test_archived_duplicate_basename_does_not_falsely_retract_dangling_link(wiki
     lint._retract_resolved_findings(wiki)
 
     assert entry["sid"] in {e["sid"] for e in pending_suggestions()}
+
+
+def test_held_finding_stays_pending(wiki):
+    """A `held:<cls>` finding names a fix the write queue held — it is not a
+    rule `_lint_page()` can ever emit, so the pass must never treat its
+    absence from a fresh `_lint_page()` call as "resolved" (finding 1,
+    2026-08-21 whole-branch review)."""
+    _write(wiki, "lessons/held.md", "---\ntype: lesson\n---\n# Held\n")
+    entry = _file_finding("lessons/held.md", rule="held:hub-missing-entry")
+
+    lint._retract_resolved_findings(wiki)
+
+    assert entry["sid"] in {e["sid"] for e in pending_suggestions()}
+
+
+def test_blocked_finding_stays_pending(wiki):
+    """A `blocked:<cls>` finding names a fix class on a page the lint may not
+    write — same non-re-checkable shape as `held:`."""
+    _write(wiki, "lessons/blocked.md", "---\ntype: lesson\n---\n# Blocked\n")
+    entry = _file_finding("lessons/blocked.md", rule="blocked:dangling-link-repointed")
+
+    lint._retract_resolved_findings(wiki)
+
+    assert entry["sid"] in {e["sid"] for e in pending_suggestions()}
+
+
+def test_retired_rule_finding_stays_pending(wiki):
+    """A finding for a rule `_lint_page()` no longer emits (e.g. a retired
+    rule like `map-pointer-missing`) must stay pending — its absence from
+    fresh judgments proves nothing about whether it still holds."""
+    _write(wiki, "lessons/retired.md", "---\ntype: lesson\n---\n# Retired\n")
+    entry = _file_finding("lessons/retired.md", rule="map-pointer-missing")
+
+    lint._retract_resolved_findings(wiki)
+
+    assert entry["sid"] in {e["sid"] for e in pending_suggestions()}

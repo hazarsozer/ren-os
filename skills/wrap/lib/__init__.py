@@ -717,16 +717,36 @@ def _ensure_lessons_hub(dir_rel: str, session: str, project: str | None) -> bool
         else:
             links = "\n".join(f"- [{PurePosixPath(n).stem}]({n})" for n in entries)
             if project:
-                fm = (f"---\ntype: project-knowledge\nschema_version: 1\n"
+                # `type: hub`, not `project-knowledge`: `lib.memory.page_types
+                # .derive_type()` (spec 2026-08-21 §2.2, rule 2) types this
+                # exact path shape — `projects/<slug>/knowledge/lessons/
+                # lessons.md` — as `hub`, and I1 ("never override an existing
+                # `type:`") means whichever value lands here wins permanently
+                # at the write door. Disagreeing would leave the wiki
+                # accumulating project lessons hubs of both types depending on
+                # which code path created the page (final-review finding 2,
+                # 2026-08-21).
+                fm = (f"---\ntype: hub\nschema_version: 1\n"
                       f"project: {project}\nhub: true\ntitle: \"Lessons Hub\"\n---\n")
             else:
                 # #I6: wiki-lint files a `missing-frontmatter-type` judgment
                 # on any page without a frontmatter `type:` — wrap's own hub
-                # was tripping it. `hub` is the honest minimal stamp: lint
-                # accepts ANY non-empty type string, and `hub` is NOT in
-                # `skills/wiki-migration/schemas.json`'s `page_types`, so
-                # doctor's schema check skips it rather than demanding a
-                # schema_version chain that doesn't exist for this shape.
+                # was tripping it. `hub` is the honest minimal stamp.
+                #
+                # `derive_type()` does NOT recognize this path
+                # (`lessons/lessons.md`, 2 segments): its rule 2 (folder-note
+                # hub) requires a path nested under `projects/`, so this
+                # global hub falls through to rule 3 and would derive
+                # `lesson` if the door ever had to type it itself. It never
+                # does — this pre-stamp lands before the page reaches the
+                # door, and I1 makes it win — so the mismatch is deliberate
+                # and load-bearing, not a bug to reconcile (final-review
+                # finding 2, 2026-08-21). `hub` IS now registered in
+                # `skills/wiki-migration/schemas.json`'s `page_types` (Task 1
+                # of this branch), but with `current: 1` and an empty
+                # migration chain, so `migration_chain()` still returns `[]`
+                # and doctor's schema check still passes this page — the
+                # registration changed, the benign outcome didn't.
                 fm = "---\ntype: hub\nhub: true\ntitle: \"Lessons\"\n---\n"
             content = f"{fm}\n# Lessons\n\nDurable lessons in this folder:\n\n{links}\n"
             op = "ADD"

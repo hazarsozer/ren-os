@@ -68,6 +68,17 @@ _FENCE_RE = re.compile(r"^\s*```", re.MULTILINE)
 _HUB_SECTION = "## Pages"
 _LINT_FINGERPRINT_PREFIX = "wiki-lint:"
 
+#: The only judgment rules `_lint_page()` can ever emit (`missing-frontmatter-
+#: type` and `dangling-link`) — the sole re-checkable universe for
+#: `_retract_resolved_findings()` (spec 2026-08-21 §3.4, final-review finding
+#: 1). The driver also files `blocked:<cls>` and `held:<cls>` findings
+#: through the same `wiki-lint:` fingerprint namespace, and a rule can be
+#: retired from `_lint_page()` while a pending finding for it still exists —
+#: neither shape is something a fresh `_lint_page()` call can ever reproduce,
+#: so their absence from its judgments proves nothing. Register a rule here
+#: the day `_lint_page()` starts emitting it, and not before.
+_RECHECKABLE_RULES = frozenset({"missing-frontmatter-type", "dangling-link"})
+
 
 # ------------------------------------------------------------------- walking
 
@@ -418,6 +429,13 @@ def _retract_resolved_findings(wiki_root: Path) -> int:
         page = payload.get("page")
         rule = payload.get("rule")
         if not isinstance(page, str) or not isinstance(rule, str):
+            continue
+
+        if rule not in _RECHECKABLE_RULES:
+            # `held:<cls>` / `blocked:<cls>` fix-class findings and any rule
+            # `_lint_page()` no longer emits are not re-checkable by this
+            # pass — leave them pending rather than reading their absence
+            # from fresh judgments as "resolved".
             continue
 
         try:
