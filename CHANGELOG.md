@@ -52,8 +52,9 @@ supposed to be remembered no longer vanishes on the way. Spec:
 - **#72 — the scrub false positive that blocked a release push.** The `#29`
   type-annotation exemption's terminator set now includes `,`, `)` and `]`, so
   a bare annotated parameter (`secret: str,`) no longer scans as a password
-  pair. The widening is bounded to literal type keywords — `secret: list,` is
-  clean, `secret: list_of_real_keys,` still hits.
+  pair. The widening is bounded to literal type keywords: a bare `list`
+  annotation followed by a terminator is exempt, while a value that merely
+  *starts* with one (`list_of_real_keys`) is still caught.
 
 Acceptance, measured on a live wiki: 29 untyped pages → 0, 26 findings
 retracted, pending suggestions 49 → 23, zero retracted fingerprints leaked into

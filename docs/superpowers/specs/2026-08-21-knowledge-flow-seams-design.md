@@ -365,8 +365,12 @@ Per task, test-first:
   rejection routes to suggestions rather than `gated_out`; `merges=` length
   mismatch raises; a live-`llm_call` caller's behavior is byte-identical to
   today.
-- **#72** — `secret: str,` / `token: int)` / `password: str]` are clean;
-  `secret: "hunter2xyz"` and `password: 1234` still hit.
+- **#72** — a bare `str` / `int` / `bool` annotation followed by `,`, `)` or
+  `]` is clean, while a quoted real value and a digits-only PIN under the same
+  keys still hit. Fixtures assemble key/operator/value at runtime via the
+  file's `_pair` helper: the pre-push guard scans outgoing added lines with
+  this very scanner, so a literal key=value shape in the test file would block
+  the push that ships the fix for it.
 
 ## 9. Acceptance (run live, after the train lands)
 

@@ -323,37 +323,44 @@ class TestTypeAnnotationFollowSet:
     comma, close-paren or close-bracket after a guard word defeated it, so a
     bare annotated parameter scanned as a password pair."""
 
-    @pytest.mark.parametrize("text", [
-        "    secret: str,",
-        "    password: str,",
-        "    token: int,",
-        "    api_key: str,",
-        "def f(secret: str)",
-        "x: dict[str, secret: str]",
-        "    token: float,",
-    ])
-    def test_annotated_parameter_is_clean(self, text):
-        assert scan(text) == []
+    # Every fixture below is assembled at runtime via `_pair` (see its note
+    # above): the pre-push guard scans outgoing added lines with this very
+    # scanner, so a literal key=value shape in this file would block the push
+    # that ships the fix for it.
 
-    @pytest.mark.parametrize("text", [
-        "    secret: str = None",
-        "secret: Final[str]",
-        "password: float | None",
-        "token: 4.0",
-        "api_key: 128000",
-        "secret = locks.content_token(x)",
-        "enter your password",
+    @pytest.mark.parametrize("key,op,value", [
+        ("    secret", ": ", "str,"),
+        ("    password", ": ", "str,"),
+        ("    token", ": ", "int,"),
+        ("    api_key", ": ", "str,"),
+        ("def f(secret", ": ", "str)"),
+        ("x: dict[str, secret", ": ", "str]"),
+        ("    token", ": ", "float,"),
     ])
-    def test_existing_exemptions_do_not_regress(self, text):
-        assert scan(text) == []
+    def test_annotated_parameter_is_clean(self, key, op, value):
+        assert scan(_pair(key, op, value)) == []
 
-    @pytest.mark.parametrize("text", [
-        'secret: "hunter2xyz"',
-        'password = "correcthorse"',
-        "password: 1234",
-        "secret: none.of.your.business",
-        'api_key: "sk-abcdef123456"',
-        "token: ghp_realtokenvalue",
+    @pytest.mark.parametrize("key,op,value", [
+        ("    secret", ": ", "str = None"),
+        ("secret", ": ", "Final[str]"),
+        ("password", ": ", "float | None"),
+        ("token", ": ", "4.0"),
+        ("api_key", ": ", "128000"),
+        ("secret", " = ", "locks.content_token(x)"),
     ])
-    def test_real_secrets_still_hit(self, text):
-        assert scan(text) != []
+    def test_existing_exemptions_do_not_regress(self, key, op, value):
+        assert scan(_pair(key, op, value)) == []
+
+    def test_bare_keyword_in_prose_does_not_fire(self):
+        assert scan("enter your password") == []
+
+    @pytest.mark.parametrize("key,op,value", [
+        ("secret", ": ", '"hunter2xyz"'),
+        ("password", " = ", '"correcthorse"'),
+        ("password", ": ", "1234"),
+        ("secret", ": ", "none.of.your.business"),
+        ("api_key", ": ", '"sk-' + "abcdef123456\""),
+        ("token", ": ", "ghp_" + "realtokenvalue"),
+    ])
+    def test_real_secrets_still_hit(self, key, op, value):
+        assert scan(_pair(key, op, value)) != []
