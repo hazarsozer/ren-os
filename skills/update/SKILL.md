@@ -265,7 +265,9 @@ Carried near-verbatim from donor `skills/update/` (Task 7.3) — the migration s
   the block's FORMAT (adapter changes, doctrine index refresh) for every
   project at once without touching instructions.md at all — this closes
   that spec §3(b) gap (#64). Best-effort per slug — the returned
-  `{slug: "ok" | "error: <msg>"}` dict is informational, never a gate.
+  `{slug: "ok" | "error: <msg>"}` dict is informational, never a gate. An
+  `Unknown` return means the project registry could not be read: say so and
+  name `.reason`, rather than reporting zero projects re-rendered.
 
 - **Re-render the global CLAUDE.md block** — call
   `lib.adapter.claude_md.write_global_claude_md()`. The global block's

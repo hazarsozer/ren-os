@@ -8,6 +8,7 @@ raising, because the digest is a courtesy, never a gate.
 
 from __future__ import annotations
 
+import json
 import re
 import shutil
 from pathlib import Path
@@ -205,7 +206,29 @@ def should_run_folder_note_hubs_1(wiki_root_path: Path | None = None) -> bool:
     return False
 
 
-def rerender_all_project_claude_md() -> dict[str, str]:
+def _registry_has_entries(registry_path: Path) -> bool:
+    """True when the registry file has content that was meant to parse.
+
+    Distinguishes "the file is validly empty" from "the file is malformed":
+    `load_project_registry()` returns {} for both, so this reads the raw text
+    and asks whether there was anything there to lose.
+    """
+    try:
+        text = registry_path.read_text(encoding="utf-8").strip()
+    except OSError:
+        # Unreadable is already handled by the caller; nothing was lost here.
+        return False
+    if not text or text in ("{}", '{"projects": {}}'):
+        return False
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError:
+        return True  # there was content, and it did not parse
+    projects = data.get("projects") if isinstance(data, dict) else None
+    return bool(projects)
+
+
+def rerender_all_project_claude_md() -> dict[str, str] | Unknown:
     """#64 spec §3(b) trigger: `/ren:update`'s closing steps call this so
     every project's repo CLAUDE.md managed block reflects the CURRENT
     adapter/format after migrations land — the queue's post-apply hook and
@@ -219,9 +242,27 @@ def rerender_all_project_claude_md() -> dict[str, str]:
     `skills/doctor/lib/check_standing_instructions_drift` uses), calls
     `write_project_claude_md`. Returns `{slug: "ok"}` on success or
     `{slug: "error: <msg>"}` on failure — never raises, so one broken repo
-    path never stops the rest of the run."""
+    path never stops the rest of the run.
+
+    Returns `Unknown` when the project registry is missing content it should
+    have had, or cannot be read — `{}` alone cannot distinguish that from
+    "no project carries an instructions.md".
+    """
     from lib import ren_paths
     from lib.adapter import claude_md
+
+    # load_project_registry() returns {} for "no projects" AND for
+    # "missing, unreadable, or malformed" (its own docstring). Read the file
+    # first so those two can be told apart — {} used to render as "nothing
+    # to do" for both (spec 2026-08-22 §3.1).
+    registry_path = ren_paths.projects_registry_path()
+    if registry_path.exists():
+        try:
+            registry_path.read_text(encoding="utf-8")
+        except OSError as exc:
+            return Unknown(reason=f"project registry unreadable: {exc}")
+        if not ren_paths.load_project_registry() and _registry_has_entries(registry_path):
+            return Unknown(reason="project registry malformed")
 
     wiki = wiki_root()
     results: dict[str, str] = {}
