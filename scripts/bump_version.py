@@ -18,12 +18,15 @@ Sites covered
 - `pyproject.toml` `version = "..."`
 - `lib/ren_paths.py` `FALLBACK_FRAMEWORK_VERSION = "..."`
 - `skills/interview/lib/__init__.py` `FRAMEWORK_VERSION = "..."`
-- `skills/ingest-project/lib/scan.py` `return "..."` fallback (the historical
-  docstring prose mentioning the version is intentionally left untouched —
-  only the literal return value is a live site)
 - `README.md` version badge
 - every `skills/*/SKILL.md` `version:` and `framework_version:` frontmatter
   fields
+
+`skills/ingest-project/lib/scan.py` is NOT a site: its `_framework_version()`
+used to fall back to a pinned literal that had to be hand-bumped here every
+release, which made staleness invisible. It now returns None on resolver
+failure instead (spec 2026-08-22 §5.2, fail-open-declared Task 3) — there is
+no literal left to track.
 
 Stdlib only — runs anywhere Python 3.11+ runs.
 """
@@ -44,7 +47,6 @@ _FIXED_SITES: tuple[tuple[str, re.Pattern], ...] = (
     ("pyproject.toml", re.compile(r'^version = "(\d+\.\d+\.\d+)"', re.MULTILINE)),
     ("lib/ren_paths.py", re.compile(r'^FALLBACK_FRAMEWORK_VERSION = "(\d+\.\d+\.\d+)"', re.MULTILINE)),
     ("skills/interview/lib/__init__.py", re.compile(r'^FRAMEWORK_VERSION = "(\d+\.\d+\.\d+)"', re.MULTILINE)),
-    ("skills/ingest-project/lib/scan.py", re.compile(r'return "(\d+\.\d+\.\d+)"')),
     ("README.md", re.compile(r'version-(\d+\.\d+\.\d+)-e34234')),
 )
 

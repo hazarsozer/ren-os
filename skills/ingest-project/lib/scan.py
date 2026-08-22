@@ -62,17 +62,20 @@ NEVER_READ_GLOBS = (
 )
 
 
-def _framework_version() -> str:
+def _framework_version() -> str | None:
     """Best-effort framework version for page frontmatter. Imports lib.ren_paths
-    from the repo root; falls back to the pinned literal below in a bare checkout. Read-only."""
+    from the repo root. Returns None when the version cannot be resolved —
+    never a literal: a hardcoded fallback reports a plausible WRONG version
+    and must be hand-bumped every release, which makes staleness invisible
+    (spec 2026-08-22 §5.2). Read-only."""
     try:
         plugin_root = Path(__file__).resolve().parents[3]  # lib→ingest-project→skills→<repo root>
         if str(plugin_root) not in sys.path:
             sys.path.insert(0, str(plugin_root))
         from lib.ren_paths import framework_version
         return framework_version()
-    except Exception:
-        return "0.8.3"
+    except Exception:  # noqa: BLE001 - best-effort: callers record a warning on None
+        return None
 
 
 def _is_never_read(name: str) -> bool:
@@ -520,6 +523,8 @@ def scan(path: str, *, depth: str = "standard") -> dict:
         # consumer never KeyErrors on a bad path.
         facts["warnings"].append(f"path is not a directory: {root}")
         facts["framework_version"] = _framework_version()
+        if facts["framework_version"] is None:
+            facts["warnings"].append("framework version could not be resolved")
         facts["name_candidates"] = {"dir": "", "manifest": None, "chosen": "project"}
         facts["stack"] = {"languages": [], "package_managers": [],
                           "frameworks": [], "manifests": []}
@@ -550,6 +555,8 @@ def scan(path: str, *, depth: str = "standard") -> dict:
     facts["git"] = git
     facts["size_signals"] = _build_size_signals(files)
     facts["framework_version"] = _framework_version()
+    if facts["framework_version"] is None:
+        facts["warnings"].append("framework version could not be resolved")
 
     if not has_readme:
         facts["warnings"].append("no README found")
