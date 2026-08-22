@@ -286,9 +286,11 @@ Carried near-verbatim from donor `skills/update/` (Task 7.3) — the migration s
   `skills.update.lib.changelog_digest(<old-version>, <new-version>,
   <plugin-root>/CHANGELOG.md)` (plugin root = `$CLAUDE_PLUGIN_ROOT`, falling
   back to the framework root). Print it verbatim under a "What changed in
-  your RenOS" heading. If it returns "" (unparseable/missing), say the
-  update landed and point at CHANGELOG.md instead — the digest is a
-  courtesy, never a gate.
+  your RenOS" heading. `""` means the range is genuinely empty — say the
+  update landed with no changelog entries in range. An `Unknown` means the
+  digest could not be produced at all: say so, name `.reason`, and point at
+  CHANGELOG.md. The digest is a courtesy, never a gate — but a courtesy
+  that cannot run should not read as a courtesy that found nothing.
 
 - **Offer new companions** — call `lib.companions.pending_offers()`. If
   non-empty, say: "This update recommends companions you haven't decided

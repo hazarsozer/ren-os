@@ -24,19 +24,25 @@ def _version_key(version: str) -> tuple[int, ...]:
     return tuple(int(part) for part in version.split("."))
 
 
-def changelog_digest(old: str, new: str, changelog_path: Path | str) -> str:
+def changelog_digest(old: str, new: str, changelog_path: Path | str) -> str | Unknown:
     """CHANGELOG.md sections for versions in (old, new], in file order.
 
     Accepts a `Path` or `str` path — the digest is a courtesy, never a
     gate, so an argument-type detail must not crash the closing flow.
-    Returns "" when the range is empty, a bound is unparseable, or the
-    file is missing/unreadable.
+    Returns "" when the range is genuinely empty — a real answer. Returns
+    `Unknown` when the file could not be read or a version bound could not
+    be parsed: the digest did not run, which is a different fact.
     """
+    # Spec 2026-08-22: these were one handler returning "", which the caller
+    # could not tell from "the range is genuinely empty".
     try:
         text = Path(changelog_path).read_text(encoding="utf-8")
+    except OSError as exc:
+        return Unknown(reason=f"changelog could not be read: {exc}")
+    try:
         old_key, new_key = _version_key(old), _version_key(new)
-    except (OSError, ValueError):
-        return ""
+    except ValueError as exc:
+        return Unknown(reason=f"version bound is unparseable: {exc}")
 
     # Compute boundaries from ALL headers (including prerelease ones).
     boundaries = sorted(m.start() for m in _ANY_HEADER_RE.finditer(text))
