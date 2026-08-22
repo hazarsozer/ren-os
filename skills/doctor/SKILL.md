@@ -75,6 +75,7 @@ Donor's Node/gh/claude-cli checks, activity-feed/RC-channel/fleet checks, and th
 | `check_agent_shadowing` | 0.6.5: a user or project `.claude/agents/<name>.md` filename colliding with a shipped `agents/*.md` → `warn` naming the colliding agent(s); checks both `claude_user_dir()/agents` and, when the cwd resolves to a registered project, that project's `.claude/agents/`; `skip` when neither directory exists |
 | `check_cache_env_hygiene` | #40: any `<cache>/<version>/.venv` inside the versioned plugin cache dir → `warn` naming the version(s) — invocations should redirect via `UV_PROJECT_ENVIRONMENT` (see `ren_paths.envs_dir()`); `ok` when none found; `skip` when the cache root is unresolvable |
 | `check_interpreter_freshness` | spec 2026-08-21 (0.8.2) §8: the wake-up hook's recorded fast-path interpreter — dangling path or non-current version → `warn` (fast path degraded to cold `uv`); valid + current → `ok`; no record → `info`; another machine's synced record → `skip` |
+| `check_doctrine_index_pins` | spec 2026-08-22 §5: the global CLAUDE.md doctrine index's absolute paths pin a plugin version — a bump leaves them naming the previous one, dead once that cache dir is GC'd. Pins match → `ok`; any pin naming another version → `warn` with both; no file, no managed block, or no pins → `skip` |
 
 ## Behavior
 
