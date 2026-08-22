@@ -22,6 +22,7 @@ import pytest
 
 import skills.install.lib as install_lib
 from lib.ren_paths import state_dir, wiki_root
+from lib.ren_paths import interpreter_record_path
 from skills.install.lib import warm_environment
 
 
@@ -48,7 +49,7 @@ def test_warm_records_existing_interpreter(wiki):
     assert info["machine"] == platform.node()
     assert info["platform"] == sys.platform
 
-    on_disk = json.loads((state_dir() / "interpreter.json").read_text(encoding="utf-8"))
+    on_disk = json.loads(interpreter_record_path().read_text(encoding="utf-8"))
     assert on_disk["interpreter"] == info["interpreter"]
     assert on_disk["warmed_at"] == info["warmed_at"]
     assert on_disk["machine"] == platform.node()
@@ -56,7 +57,7 @@ def test_warm_records_existing_interpreter(wiki):
 
 
 def test_warm_overwrites_stale_record(wiki):
-    stale_path = state_dir() / "interpreter.json"
+    stale_path = interpreter_record_path()
     stale_path.parent.mkdir(parents=True, exist_ok=True)
     stale_path.write_text(
         json.dumps({"interpreter": "/nonexistent/python", "warmed_at": "2000-01-01T00:00:00+00:00"}),
@@ -115,6 +116,6 @@ def test_warm_falls_back_to_unfrozen_sync_when_lockfile_absent(fake_uv):
     assert "--frozen" not in calls[0]
     # Still records interpreter state — the fallback must not skip the point.
     assert info["interpreter"] == "/fake/venv/bin/python"
-    on_disk = json.loads((state_dir() / "interpreter.json").read_text(encoding="utf-8"))
+    on_disk = json.loads(interpreter_record_path().read_text(encoding="utf-8"))
     assert on_disk["interpreter"] == "/fake/venv/bin/python"
     assert on_disk["machine"] == platform.node()

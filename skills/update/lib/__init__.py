@@ -235,6 +235,52 @@ def rerender_all_project_claude_md() -> dict[str, str]:
     return results
 
 
+def rewarm_interpreter() -> dict:
+    """Re-record the wake-up fast-path interpreter, and retire the legacy
+    synced copy of that record.
+
+    `warm_environment()` was called only by `/ren:install`, never by
+    `/ren:update`, so the recorded interpreter kept pointing into a plugin
+    cache dir the update had just superseded. It fails safe — the hook falls
+    through to `uv run` — so nothing broke and nothing surfaced it: on this
+    project's own machine the record named a version absent from the cache
+    since 2026-07-31, roughly ten releases. This is the update-side half of
+    that fix; `skills.doctor.lib.check_interpreter_freshness` is the
+    reporting half.
+
+    Also removes `state_dir()/interpreter.json` if present. That was the
+    pre-0.8.3 location, under the wiki and therefore inside `/ren:backup`'s
+    push; the record has moved to `ren_paths.machine_state_dir()`. Leaving
+    the old one behind would keep syncing a machine-specific absolute path
+    to every other machine that restores the wiki.
+
+    Returns `{"status": "warmed"|"skipped"|"error: <msg>", "interpreter":
+    <path or "">, "legacy_removed": <bool>}`. Best-effort by contract: a
+    failed re-warm degrades the fast path, it does not fail the update, so
+    this NEVER raises and is never a gate.
+    """
+    from lib import ren_paths
+
+    legacy_removed = False
+    try:
+        legacy = ren_paths.state_dir() / "interpreter.json"
+        if legacy.is_file():
+            legacy.unlink()
+            legacy_removed = True
+    except OSError:
+        pass
+
+    try:
+        from skills.install.lib import warm_environment
+
+        info = warm_environment()
+        return {"status": "warmed", "interpreter": info.get("interpreter", ""),
+                "legacy_removed": legacy_removed}
+    except Exception as exc:  # noqa: BLE001 - never gate the update on a warm
+        return {"status": f"error: {exc}", "interpreter": "",
+                "legacy_removed": legacy_removed}
+
+
 def gc_stale_envs() -> list[str]:
     """Remove `framework_root()/.envs/<v>` dirs whose version `<v>` has no
     corresponding dir in the plugin cache (#40) — GCs the per-version uv

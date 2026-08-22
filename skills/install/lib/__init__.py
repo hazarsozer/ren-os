@@ -231,7 +231,16 @@ INTERPRETER_STATE_FILENAME = "interpreter.json"
 
 
 def _interpreter_state_path() -> Path:
-    return ren_paths.state_dir() / INTERPRETER_STATE_FILENAME
+    """Machine-local (0.8.3), not `state_dir()`.
+
+    This record names an absolute interpreter path on THIS filesystem.
+    `state_dir()` is under the wiki, which `/ren:backup` pushes to a remote,
+    so the record used to travel to other machines and was guarded by a
+    `platform.node()` comparison — a guard that broke whenever macOS returned
+    an IP-derived node name. `ren_paths.machine_state_dir()` is never backed
+    up, so the record cannot travel and needs no such guard.
+    """
+    return ren_paths.interpreter_record_path()
 
 
 def _repo_root() -> Path:
@@ -288,6 +297,10 @@ def warm_environment() -> dict:
         check=True, capture_output=True, text=True, timeout=30,
     )
     interpreter = proc.stdout.strip()
+    # `machine`/`platform` are diagnostics only — recorded so a human reading
+    # the file knows where it came from, never compared against this machine.
+    # The record is machine-local now, so there is no foreign record to detect
+    # (and `platform.node()` was too unstable to detect one with anyway).
     info = {
         "interpreter": interpreter,
         "warmed_at": datetime.now(timezone.utc).isoformat(),

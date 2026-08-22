@@ -24,9 +24,9 @@ doctor = importlib.import_module("skills.doctor.lib")
 @pytest.fixture
 def state(monkeypatch, tmp_path):
     monkeypatch.setenv("REN_FRAMEWORK_ROOT", str(tmp_path))
-    from lib.ren_paths import state_dir
+    from lib.ren_paths import interpreter_record_path
 
-    d = state_dir()
+    d = interpreter_record_path().parent
     d.mkdir(parents=True, exist_ok=True)
     return d
 
@@ -62,38 +62,53 @@ def test_no_record_is_info_not_warn(state):
     assert result.status == "info"
 
 
-def test_foreign_machine_record_warns(state, tmp_path):
-    """Fix round 2: the hook REJECTS a machine/platform mismatch and falls
-    through to cold uv regardless of whether the path exists — so doctor
-    must report `warn`, not `skip`, or the practical degradation on this
-    machine goes silent. (Deliberate behavior change from `skip`.)"""
-    interp = _executable(tmp_path / "python3")
-    _record(state, interp, machine="some-other-laptop")
+def test_record_lives_outside_the_synced_wiki(monkeypatch, tmp_path):
+    """0.8.3: the record names an absolute interpreter path on THIS
+    filesystem, so it must not sit under the wiki root — `/ren:backup` pushes
+    the wiki to a remote, which is how a machine-specific path used to reach
+    other machines. That sync is the only reason the old `platform.node()`
+    guard existed; storing the record where it cannot travel retires it."""
+    monkeypatch.setenv("REN_FRAMEWORK_ROOT", str(tmp_path))
+    from lib.ren_paths import interpreter_record_path, wiki_root
+
+    record = interpreter_record_path()
+    assert wiki_root() not in record.parents, \
+        f"{record} is inside the synced wiki and would be backed up"
+
+
+def test_legacy_record_under_the_wiki_is_ignored(state, monkeypatch, tmp_path):
+    """A pre-0.8.3 record left at `state_dir()/interpreter.json` must not be
+    read. `/ren:update`'s re-warm deletes it, but a wiki restored from backup
+    can reintroduce one — pointing at another machine's filesystem."""
+    from lib.ren_paths import state_dir
+
+    legacy = state_dir()
+    legacy.mkdir(parents=True, exist_ok=True)
+    _record(legacy, _executable(tmp_path / "python3"))
 
     result = doctor.check_interpreter_freshness()
 
-    assert result.status == "warn", \
-        "the hook rejects a machine/platform mismatch and falls through to " \
-        "cold uv, so this is a real degradation on this machine, not a " \
-        "foreign record safely none of doctor's business"
+    assert result.status == "info", \
+        "a legacy record under the wiki was read; only the machine-local one counts"
 
 
-def test_foreign_machine_dangling_record_still_warns(state):
-    """Fix round 1: platform.node() is not stable for the same physical
-    machine (observed: macOS can return an IP-derived node name instead of
-    the hostname warm_environment recorded). A record can therefore look
-    "foreign" by the machine/platform test while still being THIS machine's
-    own dangling record. Dangling must win: skip would silently hide the
-    exact condition this check exists to detect."""
-    _record(
-        state, "/nonexistent/cache/ren-os/ren/0.6.1/.venv/bin/python3",
-        machine="some-other-laptop",
+def test_machine_field_is_diagnostic_only(state, tmp_path, monkeypatch):
+    """`machine` is still recorded so a human reading the file knows where it
+    came from, but nothing compares it. `platform.node()` returned an
+    IP-derived name on the development machine (`192.168.1.17` vs the
+    recorded `Hazars-MacBook-Air.local`, same laptop), so comparing it
+    rejected valid records after every network change — a permanent silent
+    degrade. Validity is now only ever "does this path work here"."""
+    interp = _executable(tmp_path / "cache" / "ren-os" / "ren" / "9.9.9" / "python3")
+    _record(state, interp, machine="some-other-laptop", plat="plan9")
+    monkeypatch.setattr(
+        doctor.ren_paths, "current_plugin_cache_version", lambda: "9.9.9"
     )
 
     result = doctor.check_interpreter_freshness()
 
-    assert result.status == "warn"
-    assert "0.6.1" in result.message
+    assert result.status == "ok", \
+        "a live, current interpreter was rejected over a diagnostic-only field"
 
 
 def test_valid_current_interpreter_is_ok(state, tmp_path, monkeypatch):
@@ -162,3 +177,21 @@ def test_non_dict_record_is_info_not_crash(state):
     result = doctor.check_interpreter_freshness()
 
     assert result.status == "info"
+
+
+@pytest.mark.parametrize(
+    "recorded,expected",
+    [
+        ("/h/.claude/plugins/cache/ren-os/ren/0.8.2/.venv/bin/python3", "0.8.2"),
+        ("/h/.renos/.envs/0.8.2/bin/python3", "0.8.2"),
+        ("/somewhere/else/bin/python3", "unknown"),
+    ],
+)
+def test_version_derived_from_both_venv_layouts(recorded, expected):
+    """`warm_environment` resolves through `uv run`, which honors
+    `UV_PROJECT_ENVIRONMENT` — and #40 has every invocation point that at
+    `ren_paths.envs_dir()` so uv does not write a `.venv` into the immutable
+    plugin cache dir. So the recorded interpreter is normally under
+    `~/.renos/.envs/<version>/`, not `.../ren/<version>/`. Recognizing only
+    the latter returned "unknown" and silently skipped the currency check."""
+    assert doctor._recorded_interpreter_version(recorded) == expected

@@ -415,6 +415,29 @@ def detect_project(cwd: Path, wiki_root_: Path, dev_root: Path | None = None) ->
     return None
 
 
+_MACHINE_STATE_DIR_NAME = ".machine"
+
+
+def machine_state_dir() -> Path:
+    """Machine-local state that must NOT travel with the wiki.
+
+    `state_dir()` lives under the wiki root, which `/ren:backup` pushes to a
+    remote — so anything written there may reappear on another machine. This
+    directory is a sibling of the wiki under `framework_root()` instead, and
+    is never backed up. For records that describe THIS machine's filesystem
+    (interpreter paths, venvs) that is the difference between a guard against
+    cross-machine collisions and no need for one.
+
+    Pure path math — never creates the directory.
+    """
+    return framework_root() / _MACHINE_STATE_DIR_NAME
+
+
+def interpreter_record_path() -> Path:
+    """Where `warm_environment()` records the wake-up fast-path interpreter."""
+    return machine_state_dir() / "interpreter.json"
+
+
 def state_dir() -> Path:
     """Return the framework's internal state directory, nested under the wiki root.
 

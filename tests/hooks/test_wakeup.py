@@ -2050,7 +2050,9 @@ def _write_interpreter_record(
 ) -> Path:
     import platform as _platform
 
-    info_path = state_dir() / "interpreter.json"
+    from lib.ren_paths import interpreter_record_path
+
+    info_path = interpreter_record_path()
     info_path.parent.mkdir(parents=True, exist_ok=True)
     info_path.write_text(
         json.dumps({
@@ -2099,21 +2101,57 @@ def test_recorded_interpreter_stale_path_falls_through(wiki):
     assert _ENTRY._reexec_under_recorded_interpreter("{}") is None
 
 
-def test_recorded_interpreter_foreign_machine_falls_through(wiki):
-    # Fix round 1 (reviewer IMPORTANT): interpreter.json lives under
-    # state_dir() (inside the wiki root), which may be synced/backed up
-    # across machines. A record stamped by a DIFFERENT machine (same
-    # username, different host) must not be trusted even if the path
-    # happens to exist on this one — that's the sticky-degrade collision.
-    _write_interpreter_record(wiki, sys.executable, machine="some-other-host")
+def test_recorded_interpreter_ignores_legacy_wiki_located_record(wiki):
+    """Pre-0.8.3 the record lived at `state_dir()/interpreter.json` — inside
+    the wiki, which `/ren:backup` pushes to a remote, so it could arrive from
+    another machine. It moved to `ren_paths.machine_state_dir()`. A wiki
+    restored from backup can still carry the old file; the hook must not read
+    it, or the cross-machine collision the move eliminates comes straight
+    back.
+
+    Written deliberately as a POSITIVE assertion about the legacy path rather
+    than reusing the old machine-mismatch tests: those wrote to the legacy
+    location, so after the move they passed without exercising anything.
+    """
+    import platform as _platform
+
+    legacy = state_dir() / "interpreter.json"
+    legacy.parent.mkdir(parents=True, exist_ok=True)
+    legacy.write_text(
+        json.dumps({
+            "interpreter": sys.executable,
+            "warmed_at": "2026-07-30T00:00:00+00:00",
+            "machine": _platform.node(),
+            "platform": sys.platform,
+        }),
+        encoding="utf-8",
+    )
 
     assert _ENTRY._reexec_under_recorded_interpreter("{}") is None
 
 
-def test_recorded_interpreter_foreign_platform_falls_through(wiki):
-    _write_interpreter_record(wiki, sys.executable, platform_="not-a-real-platform")
+def test_recorded_interpreter_does_not_compare_machine_or_platform(wiki, monkeypatch):
+    """The `machine`/`platform` fields are diagnostics; nothing gates on them.
 
-    assert _ENTRY._reexec_under_recorded_interpreter("{}") is None
+    `platform.node()` is not stable for one physical machine — macOS returned
+    `192.168.1.17` on the development laptop where `warm_environment` had
+    recorded `Hazars-MacBook-Air.local` — so comparing it rejected this
+    machine's own valid record after any network change, degrading the fast
+    path silently and permanently. Validity is now exactly "does this
+    interpreter work here".
+    """
+    _write_interpreter_record(
+        wiki, sys.executable, machine="some-other-host", platform_="not-a-real-platform"
+    )
+
+    class _FakeProc:
+        returncode = 0
+        stdout = json.dumps({"hookSpecificOutput": {"additionalContext": "FROM RECORDED"}})
+        stderr = ""
+
+    monkeypatch.setattr(_ENTRY.subprocess, "run", lambda cmd, **kw: _FakeProc())
+
+    assert _ENTRY._reexec_under_recorded_interpreter("{}") == "FROM RECORDED"
 
 
 def test_recorded_interpreter_reexec_guard_prevents_recursion(wiki, monkeypatch):

@@ -30,7 +30,6 @@ from __future__ import annotations
 import json
 import logging
 import os
-import platform
 import shutil
 import subprocess
 import sys
@@ -150,38 +149,27 @@ def _reexec_under_uv(raw_stdin: str, timeout: float = _REEXEC_BUDGET_S) -> str |
 
 
 def _recorded_interpreter_path() -> Path | None:
-    """Read the interpreter recorded by `/ren:install`'s `warm_environment()`
-    (`skills.install.lib.warm_environment`) from `state_dir()/interpreter.json`.
-    Cheap and stdlib-only (`json` + `lib.ren_paths`, itself stdlib-only), so it
-    is safe to call from bare `python3` before any self-heal has happened.
-    Returns None on any error, missing file, a recorded path that no longer
-    exists / isn't an executable python file on disk (machine wiped/moved),
-    or a record whose `machine`/`platform` don't match THIS machine — two
-    machines sharing a username could otherwise collide on a foreign,
-    wiki-synced `interpreter.json` (`state_dir()` lives under the wiki root,
-    which may be synced/backed up across machines) and feed the sticky-degrade
-    bug. The caller then falls through to the existing `uv run` re-exec
-    path."""
+    """The interpreter recorded by `/ren:install`/`/ren:update`'s
+    `warm_environment()`, or None to fall through to the `uv run` re-exec.
+
+    The validity test itself lives in `lib.interpreter` (stdlib-only, safe to
+    import from bare `python3` before any self-heal), shared verbatim with
+    `skills.doctor.lib.check_interpreter_freshness`. It used to be written out
+    twice — here and in doctor — under a comment requiring the two to "stay in
+    step"; they drifted, and doctor reported `ok` for records this function
+    rejected. One predicate, two callers, no drift.
+
+    No machine/platform comparison happens any more: the record is stored
+    machine-locally (`ren_paths.machine_state_dir()`), outside the synced
+    wiki, so it cannot arrive from another machine. See `lib/interpreter.py`.
+    """
     try:
         _ensure_plugin_root_on_path()
-        from lib.ren_paths import state_dir
-        info_path = state_dir() / "interpreter.json"
-        data = json.loads(info_path.read_text(encoding="utf-8"))
-        if data.get("machine") != platform.node() or data.get("platform") != sys.platform:
-            return None
-        interpreter = data.get("interpreter", "")
-        if not interpreter:
-            return None
-        p = Path(interpreter)
-        if (
-            p.is_file()
-            and p.name.startswith("python")
-            and os.access(p, os.X_OK)
-        ):
-            return p
+        from lib.interpreter import recorded_interpreter
+
+        return recorded_interpreter()
     except Exception:  # noqa: BLE001 - never block the caller's fallback
-        pass
-    return None
+        return None
 
 
 def _reexec_under_recorded_interpreter(raw_stdin: str) -> str | None:
