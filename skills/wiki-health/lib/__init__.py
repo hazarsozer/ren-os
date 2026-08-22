@@ -569,7 +569,13 @@ def _stale_facts(wiki_root: Path, session: str, apply_corrections: bool = False)
     for path in sorted(wiki_root.rglob("*.md")):
         rel = path.relative_to(wiki_root).as_posix()
         parts = tuple(PurePosixPath(rel).parts)
-        if _in_archive(parts) or "raw" in parts:
+        # `.ren/` is the write-safety substrate, not wiki content: its
+        # per-write snapshots are what `revert` restores from. Scanning it
+        # reported a snapshot's copy of a page as its own finding, and on
+        # the apply path rewrote that snapshot through the write queue —
+        # a later revert would restore the doctored copy and look fine.
+        # `_quarantined_pages` already excludes `.ren/`; this walk didn't.
+        if _in_archive(parts) or "raw" in parts or ".ren" in parts:
             continue
         try:
             text = path.read_text(encoding="utf-8")
