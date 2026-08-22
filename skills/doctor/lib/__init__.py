@@ -800,11 +800,13 @@ def _project_agents_dir() -> Path | None:
     repo-path↔slug registry (`ren_paths.load_project_registry`) — same
     resolution `detect_project` uses, so this agrees with the wake-up hook
     and the wrap skill on which project "here" is. Returns None when no
-    wiki, no mapped project, or no recorded repo path — never raises."""
-    try:
-        wiki_root_ = ren_paths.wiki_root()
-    except Exception:
-        return None
+    wiki, no mapped project, or no recorded repo path.
+
+    Does NOT catch a failing `wiki_root()`: `None` means "no project here",
+    and conflating that with "resolution failed" left the health checker
+    unable to report its own blindness. A raise propagates to `_wrap`,
+    which renders it as an `"error"` result (spec 2026-08-22 §5.1)."""
+    wiki_root_ = ren_paths.wiki_root()
     if not wiki_root_.is_dir():
         return None
     project_slug = ren_paths.detect_project(Path.cwd(), wiki_root_)
