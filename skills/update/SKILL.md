@@ -296,6 +296,20 @@ Carried near-verbatim from donor `skills/update/` (Task 7.3) — the migration s
   restart note; declines are recorded and never re-asked; no answer records
   nothing. Nothing installs without an explicit yes in chat.
 
+- **Re-warm the fast-path interpreter** — call
+  `skills.update.lib.rewarm_interpreter()`. `warm_environment()` runs at
+  install and never at update, so the recorded interpreter kept naming the
+  cache dir the update just superseded; the wake-up hook then falls through
+  to cold `uv` every session, silently, because it fails safe. This also
+  deletes the pre-0.8.3 record at `state_dir()/interpreter.json` — that
+  location is inside the wiki and therefore inside `/ren:backup`'s push, so
+  it carried one machine's absolute paths to every machine restoring the
+  wiki. The record now lives in `ren_paths.machine_state_dir()`, which is
+  never backed up; that is what retired the `platform.node()` comparison
+  guarding it (macOS returns an IP-derived node name on some networks, so
+  the guard rejected the machine's own valid record after any network
+  change). Best-effort, never a gate — report the returned `status`.
+
 - **GC stale uv envs** — call `skills.update.lib.gc_stale_envs()`. It
   removes `framework_root()/.envs/<v>` dirs whose version is no longer in
   the plugin cache (#40 — the versions this same update just made stale)
