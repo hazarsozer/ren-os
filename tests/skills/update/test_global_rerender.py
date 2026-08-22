@@ -63,11 +63,12 @@ def test_skill_documents_the_global_rerender_step():
         "update's closing steps must re-render the global tier, not only projects"
 
 
-def test_rerender_unreadable_registry_is_unknown(tmp_path, monkeypatch):
+def test_rerender_malformed_registry_is_unknown(tmp_path, monkeypatch):
     """{} used to mean both "no project has an instructions.md" (benign)
-    and "the registry could not be read" (blind)."""
-    import json
-
+    and "the registry could not be parsed" (blind). This exercises the
+    malformed-but-readable branch — syntactically invalid JSON in a file
+    that reads fine. See test_rerender_unreadable_registry_is_unknown below
+    for the separate OSError-on-read branch."""
     from lib.reporting import Unknown
 
     wiki = tmp_path / "wiki"
@@ -83,7 +84,31 @@ def test_rerender_unreadable_registry_is_unknown(tmp_path, monkeypatch):
     result = update_lib.rerender_all_project_claude_md()
 
     assert isinstance(result, Unknown)
-    assert "registry" in result.reason
+    assert "malformed" in result.reason
+
+
+def test_rerender_unreadable_registry_is_unknown(tmp_path, monkeypatch):
+    """Genuinely exercises the `except OSError` branch: making the registry
+    "path" a directory means Path.read_text() raises IsADirectoryError (an
+    OSError subclass) on the read attempt — this works regardless of user
+    privileges, unlike a chmod(0o000) approach which silently fails to deny
+    root, and CI often runs as root."""
+    from lib.reporting import Unknown
+
+    wiki = tmp_path / "wiki"
+    (wiki / "projects").mkdir(parents=True)
+    monkeypatch.setenv("REN_WIKI_ROOT", str(wiki))
+
+    registry = tmp_path / "projects.json"
+    registry.mkdir()
+    monkeypatch.setattr(
+        "lib.ren_paths.projects_registry_path", lambda: registry
+    )
+
+    result = update_lib.rerender_all_project_claude_md()
+
+    assert isinstance(result, Unknown)
+    assert "unreadable" in result.reason
 
 
 def test_rerender_readable_but_empty_registry_is_not_unknown(tmp_path, monkeypatch):
