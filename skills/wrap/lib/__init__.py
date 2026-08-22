@@ -1349,7 +1349,7 @@ def _run_link_duties(
                     out["warnings"].append(
                         f"touched-pages section for {l1_page} not applied (held or already current)"
                     )
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 - D1 touched-pages is independent; the failure is reported in out["warnings"] and later duties still run
         out["warnings"].append(f"touched-pages section failed: {exc}")
 
     # D2 — log.md session entry
@@ -1368,7 +1368,7 @@ def _run_link_duties(
                 out["warnings"].append("log.md entry not applied (held or already current)")
         else:
             out["warnings"].append("log.md missing — session entry skipped")
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 - D2 log entry is independent; the failure is reported in out["warnings"] and later duties still run
         out["warnings"].append(f"log entry failed: {exc}")
 
     # D3 — map "## Sessions" + D4 — auto-pointers + spine (project scope only)
@@ -1390,7 +1390,7 @@ def _run_link_duties(
                     )
             else:
                 out["warnings"].append(f"{map_page} missing — Sessions entry skipped")
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001 - D3 Sessions entry is independent; the failure is reported in out["warnings"] and later duties still run
             out["warnings"].append(f"Sessions entry failed: {exc}")
 
         _EXCLUDE_NAMES = {"map.md", "overview.md", "open-work.md"}
@@ -1419,7 +1419,7 @@ def _run_link_duties(
                         out["warnings"].append(
                             f"auto-pointer for {page} not applied (held or already current)"
                         )
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:  # noqa: BLE001 - D4 auto-pointer is per-page; the failure is reported in out["warnings"] and the remaining pages still run
                 out["warnings"].append(f"auto-pointer for {page} failed: {exc}")
 
         # spine: index.md links this project's map. write_id = the map's
@@ -1448,7 +1448,7 @@ def _run_link_duties(
                     out["warnings"].append(
                         "index.md spine pointer not applied (held or already current)"
                     )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001 - spine pointer is independent; the failure is reported in out["warnings"]
             out["warnings"].append(f"index spine failed: {exc}")
     else:
         out["warnings"].append("no project in scope — map/pointer duties skipped")

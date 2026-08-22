@@ -126,7 +126,7 @@ def quarantined_rel_pages(wiki_root: Path) -> set[str]:
         # Skip unreadable files (never raise)
         try:
             text = md_path.read_text(encoding="utf-8", errors="replace")
-        except Exception:
+        except Exception:  # noqa: BLE001 - an unreadable page is skipped, not fatal to the sweep
             continue
 
         # If quarantined, add the relative posix path to the set

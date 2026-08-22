@@ -1173,7 +1173,7 @@ def _quarantine_backlog_count() -> int:
 
         pages = quarantine.quarantined_rel_pages(wiki_root())
         return sum(1 for rel in pages if "l1" not in PurePosixPath(rel).parts)
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 - wake-up must not die over a nudge; 0 hides the nudge, never blocks the session
         return 0
 
 

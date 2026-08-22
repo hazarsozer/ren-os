@@ -1053,3 +1053,20 @@ def test_check_cache_env_hygiene_warns_on_stale_even_alongside_current_venv(tmp_
 
 def test_check_cache_env_hygiene_registered_in_all_check_names():
     assert "check_cache_env_hygiene" in doctor._ALL_CHECK_NAMES
+
+
+def test_agent_shadowing_reports_error_when_wiki_root_raises(monkeypatch):
+    """A raised wiki_root() must surface as an 'error' result, never as a
+    clean skip. Before this fix _project_agents_dir swallowed the raise and
+    returned None, which is indistinguishable from 'no project here'."""
+
+    def boom():
+        raise RuntimeError("wiki root exploded")
+
+    monkeypatch.setattr(doctor.ren_paths, "wiki_root", boom)
+
+    results = {r.name: r for r in doctor.run_checks()}
+    result = results["agent_shadowing"]
+
+    assert result.status == "error"
+    assert "wiki root exploded" in result.message
