@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import ast
 import io
+import re
 import tokenize
 from pathlib import Path
 
@@ -22,7 +23,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 # Copied verbatim from tests/test_repo_hygiene.py:28 — the shippable surface.
 SHIPPABLE_DIRS = ["skills", "hooks", "lib", "doctrine", "wiki-skeleton", ".claude-plugin", "agents"]
 
-_MARKER = "BLE001"
+_MARKER_RE = re.compile(r"noqa:\s*BLE001\b")
 # Separators a reason may follow the code with: "BLE001 - why", "BLE001: why".
 _REASON_SEPARATORS = " -–—:"
 
@@ -62,10 +63,11 @@ def undeclared_broad_handlers(src: str, label: str) -> list[str]:
         if not isinstance(node, ast.ExceptHandler) or not _is_broad(node):
             continue
         comment = comments.get(node.lineno, "")
-        if _MARKER not in comment:
+        match = _MARKER_RE.search(comment)
+        if match is None:
             offenders.append(f"{label}:{node.lineno}")
             continue
-        reason = comment.split(_MARKER, 1)[1].lstrip(_REASON_SEPARATORS).strip()
+        reason = comment[match.end():].lstrip(_REASON_SEPARATORS).strip()
         if not reason:
             offenders.append(f"{label}:{node.lineno}")
     return offenders
@@ -116,4 +118,12 @@ def test_return_shape_is_irrelevant():
     spec §2.1. A handler returning a plausible-but-wrong literal is exactly
     the case a return-shape rule would miss."""
     src = 'try:\n    f()\nexcept Exception:\n    return "0.8.3"\n'
+    assert undeclared_broad_handlers(src, "x.py") == ["x.py:3"]
+
+
+def test_decoy_substring_is_not_a_marker():
+    """A comment merely containing the characters BLE001 is not a marker —
+    the convention is `noqa: BLE001`, and a substring match let
+    `# see NOBLE0011 ticket` pass as validly marked."""
+    src = "try:\n    f()\nexcept Exception:  # see NOBLE0011 ticket\n    pass\n"
     assert undeclared_broad_handlers(src, "x.py") == ["x.py:3"]
