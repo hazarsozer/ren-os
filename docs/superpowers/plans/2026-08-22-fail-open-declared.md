@@ -723,11 +723,17 @@ Spec: docs/superpowers/specs/2026-08-22-fail-open-declared-design.md 3"
 
 The work is done when all of the following hold:
 
-- [ ] `uv run pytest tests/ -q` reports 3627 passed, 1 skipped.
-- [ ] `uv run pytest tests/audit/test_fail_open_declared.py -q` reports 10 passed.
-- [ ] The Task 5 Step 3 probe was run and observed to FAIL, then reverted cleanly (`git diff --stat` empty).
-- [ ] `grep -rn 'return "0\.8\.3"' skills/` returns nothing.
-- [ ] `git log --oneline` shows five commits on `worktree-fail-open-declared` above the spec commit.
+Numbers below are the AS-EXECUTED figures. The per-task counts written into
+Tasks 1-5 above are the pre-execution estimates and drifted upward as review
+rounds added tests: a fix round added one detector test, and the final
+review's fix wave added six more. The estimates are left in place as the
+record of what was predicted.
+
+- [x] `uv run pytest tests/ -q` reports 3634 passed, 1 skipped (estimated 3627).
+- [x] `uv run pytest tests/audit/test_fail_open_declared.py -q` reports 17 passed (estimated 10).
+- [x] The Task 5 Step 3 probe was run and observed to FAIL naming `lib/ren_paths.py:711`, then reverted cleanly (`git diff --stat` empty). Three further independent probes were run by reviewers, each with a different handler shape, in `skills/pin/lib/__init__.py`, `lib/memory/quarantine.py`, and `lib/pointer.py`.
+- [x] `grep -rn 'return "0\.8\.3"' skills/` returns nothing.
+- [x] `git log --oneline` shows nine commits on `worktree-fail-open-declared` above the spec commit (estimated five; the plan commit, a plan correction, a fix round, and the final fix wave were not predicted).
 
 ## Deliberate non-goals
 
