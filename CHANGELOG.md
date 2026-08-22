@@ -1,5 +1,47 @@
 # Changelog
 
+## [0.8.4] - 2026-08-22 — "fail-open must declare itself"
+
+0.8.2 shipped an audit that found broad exception handlers; 0.8.3 fixed some
+of them. Neither stopped new ones arriving, so the same discovery queue
+refilled every review session. This release makes the convention binding
+instead of advisory: a handler that swallows everything must say, in the
+code, why that is the right behavior — and CI fails the build if it does
+not.
+
+- **The BLE001 reason convention is now enforced.**
+  `tests/audit/test_fail_open_declared.py` fails on any broad `except` whose
+  `noqa: BLE001` carries no written reason. Seven deliberate fail-open sites
+  across `wrap`, `wake-up`, `quarantine`, and `ingest-project` now carry
+  reasons a reviewer verified true against the code — each one states what
+  is lost when the handler fires and why continuing is correct. The gate was
+  probed five times, by five agents, with five handler shapes in five files;
+  every probe fired and reverted clean.
+- **The gate's first design had a bypass, closed before release.**
+  `except (Exception,):` and `except (ValueError, Exception):` passed
+  unflagged — precisely the shape a developer produces by half-narrowing a
+  handler. The detector now matches tuple and attribute forms. Closing it
+  required zero migration, which is the evidence it was a genuine gap and
+  not a judgement call. A related fix: the detector matched `noqa:` as a
+  substring rather than a prefix.
+- **`doctor` conflated "no project here" with its own resolver failure.**
+  `_project_agents_dir` wrapped `ren_paths.wiki_root()` in a bare `except`
+  and returned `None`, the same value it returns for a healthy machine with
+  no project mapped. A health checker that cannot report its own blindness
+  is worse than no check. The handler is gone; a raise now propagates to
+  `_wrap`, which renders it as an `"error"` result.
+- **`ingest` returned a hardcoded version literal on resolver failure.**
+  `scan._framework_version()` fell back to a pinned `"0.8.3"` — a build-time
+  constant returned as though it were a resolved value, making failure
+  indistinguishable from success. It now returns `None`, and `scan()`
+  records `"framework version could not be resolved"` in `warnings`. The
+  literal is no longer a tracked version site; `scripts/bump_version.py` and
+  `test_repo_hygiene` were updated to match.
+
+Deliberately out of scope: the guard-clause half of the same class
+(`if not root.is_dir(): return []`), which needs its own evidence pass — a
+rule written today would fire on hundreds of legitimate sites.
+
 ## [0.8.3] - 2026-08-22 — "what must not travel"
 
 Two records crossed a boundary they were never meant to cross, and in both
