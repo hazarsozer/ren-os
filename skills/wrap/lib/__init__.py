@@ -52,6 +52,7 @@ from lib.memory.provenance import new_provenance, read_frontmatter_provenance
 from lib.memory.queue import NOOP_DUPLICATE, Proposal, propose_and_apply
 from lib.memory.scrub import SecretsFound
 from lib.memory.semantics import shortlist_pairs
+from lib.reporting import Unknown
 from lib.suggestions import expire_stale_pending, prune_decided
 from lib.suggestions import record as record_suggestion
 from lib.suggestions import SuggestionSpec
@@ -1456,7 +1457,7 @@ def _run_link_duties(
     return out
 
 
-def _run_wiki_health_sweep() -> dict:
+def _run_wiki_health_sweep() -> dict | Unknown:
     """Run `skills.wiki_health.lib.sweep()` (imported via importlib for the
     hyphen in `skills/wiki-health`, same pattern as
     `hooks/wake-up/wakeup/__init__.py::rank_extras`).
@@ -1525,7 +1526,12 @@ def harvest_suggestions(session: str, cwd: str | None = None) -> int:
     except Exception:  # noqa: BLE001 - sweep failure must not starve the other producers
         sweep_result = None
 
-    if sweep_result is not None:
+    # Spec 2026-08-22: an Unknown sweep is skipped exactly as a raised one
+    # is. Wrap is NOT a reporting surface — skills/wrap/SKILL.md step 5:
+    # "nothing in the end screen below depends on its return value" — so
+    # there is no channel here that would carry the reason to the friend,
+    # and inventing one would add a warning nothing reads.
+    if sweep_result is not None and not isinstance(sweep_result, Unknown):
         try:
             specs.extend(wiki_health_critical(sweep_result))
         except Exception:  # noqa: BLE001 - one producer's failure must not starve the others

@@ -983,3 +983,27 @@ def test_render_report_includes_hierarchy_sections(wiki):
     assert "## Knowledge dirs without a hub" in text
     assert "projects/flux/knowledge/mechanics" in text
     assert "## Unlinked knowledge pages" in text
+
+
+def test_sweep_absent_wiki_root_is_unknown(tmp_path):
+    """The flagship instance: an absent wiki root used to return a fully
+    populated all-clear report — every findings key present and empty."""
+    from lib.reporting import Unknown
+
+    absent = tmp_path / "no-such-wiki"
+    result = wiki_health.sweep(wiki_root=absent)
+
+    assert isinstance(result, Unknown)
+    assert "not a directory" in result.reason
+    assert str(absent) in result.reason
+
+
+def test_render_report_names_the_reason_when_unknown():
+    from lib.reporting import Unknown
+
+    out = wiki_health.render_report(Unknown(reason="wiki root is not a directory: /nope"))
+
+    assert "could not run" in out
+    assert "/nope" in out
+    # It must NOT render the normal all-clear body.
+    assert "- none" not in out
