@@ -63,7 +63,7 @@ REPORTING_SURFACES: tuple[Surface, ...] = (
     Surface(
         module="skills.update.lib",
         function="rerender_all_project_claude_md",
-        blind_when="project registry missing or unreadable",
+        blind_when="project registry unreadable or malformed",
     ),
     Surface(
         module="skills.update.lib",

@@ -2,8 +2,9 @@
 
 The update flow's bash scripts own snapshot/restore/semver; this lib holds
 the post-update conveniences. ``changelog_digest`` powers the "what changed
-in your RenOS" report — best-effort by design: it returns "" rather than
-raising, because the digest is a courtesy, never a gate.
+in your RenOS" report — best-effort by design: it returns "" for a
+genuinely empty range and `Unknown` when it could not read the file or
+parse a version bound, because the digest is a courtesy, never a gate.
 """
 
 from __future__ import annotations
@@ -224,7 +225,7 @@ def _registry_has_entries(registry_path: Path) -> bool:
     except OSError:
         # Unreadable is already handled by the caller; nothing was lost here.
         return False
-    if not text or text in ("{}", '{"projects": {}}'):
+    if not text:
         return False
     try:
         data = json.loads(text)
@@ -250,8 +251,8 @@ def rerender_all_project_claude_md() -> dict[str, str] | Unknown:
     `{slug: "error: <msg>"}` on failure — never raises, so one broken repo
     path never stops the rest of the run.
 
-    Returns `Unknown` when the project registry is missing content it should
-    have had, or cannot be read — `{}` alone cannot distinguish that from
+    Returns `Unknown` when the project registry is unreadable or malformed
+    — `{}` alone cannot distinguish that from
     "no project carries an instructions.md".
     """
     from lib import ren_paths

@@ -100,7 +100,7 @@ def test_changelog_digest_signals_when_blind(tmp_path):
     assert isinstance(result, Unknown)
 
 
-def test_rerender_signals_when_blind(tmp_path, monkeypatch):
+def test_rerender_all_project_claude_md_signals_when_blind(tmp_path, monkeypatch):
     module = importlib.import_module("skills.update.lib")
     registry = tmp_path / "projects.json"
     registry.write_text("{ not json", encoding="utf-8")
@@ -111,14 +111,17 @@ def test_rerender_signals_when_blind(tmp_path, monkeypatch):
 
 def test_every_surface_has_a_blind_test():
     """The registry and this file must not drift apart: adding a surface
-    without a blind-condition test is the gap this audit exists to close."""
-    covered = {
-        "sweep",
-        "gc_stale_envs",
-        "changelog_digest",
-        "rerender_all_project_claude_md",
-    }
-    registered = {s.function for s in REPORTING_SURFACES}
-    assert registered <= covered, (
-        f"registered surfaces with no blind test: {sorted(registered - covered)}"
+    without a blind-condition test is the gap this audit exists to close.
+
+    `covered` is derived from this module's own `globals()` rather than a
+    hardcoded set, so deleting a blind test — not just forgetting to add
+    one — makes this fail too."""
+    missing = sorted(
+        surface.function
+        for surface in REPORTING_SURFACES
+        if f"test_{surface.function}_signals_when_blind" not in globals()
+    )
+    assert not missing, (
+        f"registered surfaces with no test named "
+        f"test_<function>_signals_when_blind: {missing}"
     )

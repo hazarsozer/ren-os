@@ -1128,5 +1128,6 @@ __all__ = [
     "check_agent_shadowing",
     "check_cache_env_hygiene",
     "check_interpreter_freshness",
+    "check_doctrine_index_pins",
     "run_checks",
 ]
