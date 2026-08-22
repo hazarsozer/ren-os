@@ -374,7 +374,9 @@ def test_scan_warns_when_framework_version_is_unresolvable(monkeypatch, tmp_path
     monkeypatch.setattr(scan, "_framework_version", lambda: None)
     (tmp_path / "README.md").write_text("# demo\n")
 
-    facts = scan.scan_repo(tmp_path)
+    # The module is `scan` and its public entrypoint is also `scan`, taking a
+    # str path (skills/ingest-project/lib/scan.py:509) — not a Path.
+    facts = scan.scan(str(tmp_path))
 
     assert "framework_version" in facts
     assert facts["framework_version"] is None
