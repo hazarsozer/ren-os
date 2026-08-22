@@ -190,10 +190,16 @@ be discovered by a friend.
 | `gc_stale_envs`, `rerender_all_project_claude_md`, `changelog_digest` | no in-repo callers — invoked by the live session per `skills/update/SKILL.md` closing steps, so the SKILL.md instruction is the only consumer |
 
 `render_report` renders `Unknown` as a single line naming the reason, in
-place of the findings body. Wrap's close-out treats `Unknown` as "no
-suggestions harvested this session" **and says so in its warnings** — it
-must not silently harvest zero, which would recreate this spec's defect one
-level up.
+place of the findings body. That is the whole user-facing fix for `sweep`.
+
+Wrap is **not** a second reporting surface, and an earlier draft of this
+section was wrong to treat it as one. `skills/wrap/SKILL.md` step 5 states
+that `harvest_suggestions`'s return value is never rendered: *"nothing in
+the end screen below depends on its return value."* Wrap's obligation is
+therefore only to not crash — `_run_wiki_health_sweep` propagates the
+`Unknown`, and `harvest_suggestions` skips the `wiki_health_critical` leg,
+exactly as it already does when the sweep raises. No warnings channel is
+added, because nothing would read it.
 
 ### 3.3 What is NOT on the list
 
