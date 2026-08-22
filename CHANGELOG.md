@@ -1,5 +1,60 @@
 # Changelog
 
+## [0.8.3] - 2026-08-22 — "what must not travel"
+
+Two records crossed a boundary they were never meant to cross, and in both
+cases the guard that should have stopped it either did not exist or was
+testing the wrong thing. Found by running 0.8.2's own instruments against the
+live wiki rather than a fixture.
+
+- **The stale-fact sweep walked the write-safety substrate.** `_stale_facts`
+  skipped `archive/` and `raw/` but never `.ren/`, so every per-write snapshot
+  was scanned as live wiki content — 12 findings where 2 were real. The
+  reporting noise was the harmless half. On the apply path each snapshot copy
+  became its own `propose_and_apply(op="UPDATE", page=".ren/snapshots/...")`,
+  and nothing rejects it: `queue.py` has no `.ren` guard and `safe_join` only
+  blocks escapes OUTSIDE the wiki, which a snapshot path is not. The sweep
+  would have rewritten the snapshots `revert` restores from, so a later revert
+  would return a doctored page and report success. Verified against a
+  throwaway `HOME` before fixing. `_quarantined_pages`, 250 lines up in the
+  same module, already had the exclusion. This closes the caller, not the
+  door — a `.ren/` guard at the write door is still owed.
+- **The fast-path interpreter record was synced, and guarded by an unstable
+  identity.** Three defects that had to be fixed as one. `warm_environment()`
+  ran at install and never at update, so the record kept naming a superseded
+  cache dir — on the development machine, plugin 0.6.1, absent since
+  2026-07-31 and roughly ten releases stale. It fails safe to `uv run`, so
+  every session silently paid the cost the fast path exists to avoid. But
+  re-warming alone would have held only until the next network change: the
+  hook rejected any record whose `machine` != `platform.node()`, and
+  `platform.node()` returned `192.168.1.17` — the DHCP address — where
+  `warm_environment` had recorded `Hazars-MacBook-Air.local`. Same laptop,
+  different answer. That comparison existed solely because the record lived at
+  `state_dir()/interpreter.json`, inside the wiki, inside `/ren:backup`'s
+  push. It now lives in `ren_paths.machine_state_dir()`, which is never backed
+  up: it cannot travel, so nothing needs to detect that it did. `/ren:update`
+  gains a `rewarm_interpreter()` closing step (best-effort, never a gate) that
+  also retires the legacy synced file.
+- **One predicate, two callers.** The hook's validity test and doctor's
+  `check_interpreter_freshness` were written out twice under a comment
+  requiring them to "stay in step". They drifted anyway. Both now call
+  `lib.interpreter.recorded_interpreter_status` — stdlib-only, since the hook
+  imports it from bare `python3` before any self-heal.
+- **Two more instruments caught lying, while verifying the above.**
+  `_recorded_interpreter_version` understood only `.../ren/<version>/`, but
+  `warm_environment` resolves through `uv run`, which honors
+  `UV_PROJECT_ENVIRONMENT` — and #40 points that at `envs_dir()` precisely so
+  uv writes no `.venv` into the immutable cache dir. Under that normal path
+  the version read `unknown` and the currency comparison was skipped rather
+  than performed. Separately, the two hook tests for machine mismatch kept
+  PASSING after the record moved: they wrote to the legacy location, which is
+  no longer read, so they asserted `None` without exercising any gate.
+  Replaced with positive assertions.
+
+Tests: 3604 → 3613. Both fixes were found by running the 0.8.2 diagnostics
+against the real wiki and the real machine; neither would have surfaced from a
+fixture, and one test suite was green across a gate that no longer existed.
+
 ## [0.8.2] - 2026-08-22 — "the instruments themselves"
 
 0.8.1 fixed the seams between producers and consumers. This train fixes the
