@@ -225,3 +225,31 @@ def test_two_stale_markers_on_one_page_both_corrected_in_one_write(wiki, monkeyp
 
     page_writes = [e for e in queue.all_entries() if e.proposal.page == rel]
     assert len(page_writes) == 1
+
+
+def test_ren_internal_tree_is_never_scanned_or_written(wiki, monkeypatch):
+    """`.ren/` holds the write-safety substrate — per-write snapshots revert
+    restores from. `_stale_facts` walked it like ordinary wiki content, so a
+    snapshot's copy of a page reported as its own stale finding and, on the
+    apply path, was REWRITTEN through the write queue: a later revert would
+    restore a doctored copy and look successful.
+
+    `_quarantined_pages` in this same module already excludes `.ren/`; this
+    walk didn't. Asserts both halves — not reported, and not mutated on disk.
+    """
+    from lib.memory.volatile import CHECKERS
+
+    monkeypatch.setitem(CHECKERS, "release-count", lambda root: "44")
+    body = "# Versions\nRenOS has shipped 12 releases. <!-- ren-volatile: release-count -->\n"
+    rel = _write_page(wiki, "projects/app/knowledge/versions.md", body)
+
+    snapshot = wiki / ".ren" / "snapshots" / "w-TESTID" / "projects" / "app" / "knowledge" / "versions.md"
+    snapshot.parent.mkdir(parents=True, exist_ok=True)
+    snapshot.write_text((wiki / rel).read_text(encoding="utf-8"), encoding="utf-8")
+    before = snapshot.read_bytes()
+
+    result = wiki_health.sweep(wiki, apply_corrections=True)
+
+    pages = [s["page"] for s in result["stale_facts"]["stale"]]
+    assert pages == [rel], f"`.ren/` tree leaked into the scan: {pages}"
+    assert snapshot.read_bytes() == before, "the write-safety snapshot was mutated"
