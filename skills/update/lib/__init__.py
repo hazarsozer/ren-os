@@ -13,6 +13,7 @@ import shutil
 from pathlib import Path
 
 from lib.ren_paths import framework_root, plugin_cache_versions_root, wiki_root
+from lib.reporting import Unknown
 
 _HEADER_RE = re.compile(r"^## \[(\d+\.\d+\.\d+)\]", re.MULTILINE)
 _ANY_HEADER_RE = re.compile(r"^## \[", re.MULTILINE)
@@ -281,12 +282,15 @@ def rewarm_interpreter() -> dict:
                 "legacy_removed": legacy_removed}
 
 
-def gc_stale_envs() -> list[str]:
+def gc_stale_envs() -> list[str] | Unknown:
     """Remove `framework_root()/.envs/<v>` dirs whose version `<v>` has no
     corresponding dir in the plugin cache (#40) — GCs the per-version uv
     project environments `ren_paths.envs_dir()` points invocations at, once
     that version is no longer installed. Returns the removed version
     strings, in sorted order.
+
+    Returns `Unknown` when the plugin cache root cannot be resolved: the
+    sweep did not run, which is not the same as finding nothing to remove.
 
     Never raises: an unresolvable cache root is a no-op (nothing removed —
     we never guess and delete everything just because we can't confirm
@@ -295,7 +299,10 @@ def gc_stale_envs() -> list[str]:
     directory rather than aborting the sweep."""
     cache_versions_root = plugin_cache_versions_root()
     if cache_versions_root is None or not cache_versions_root.is_dir():
-        return []
+        # Spec 2026-08-22: refusing to delete what we cannot confirm is live
+        # is correct and unchanged. What changes is that the caller can now
+        # tell this apart from "nothing was stale" — both used to be [].
+        return Unknown(reason="plugin cache root unresolvable")
 
     live_versions = {p.name for p in cache_versions_root.iterdir() if p.is_dir()}
 

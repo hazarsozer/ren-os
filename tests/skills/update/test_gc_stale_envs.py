@@ -41,6 +41,8 @@ def test_gc_stale_envs_no_envs_dir_is_noop(tmp_path, monkeypatch):
 
 
 def test_gc_stale_envs_unresolvable_cache_root_is_noop(tmp_path, monkeypatch):
+    from lib.reporting import Unknown
+
     monkeypatch.delenv("CLAUDE_PLUGIN_ROOT", raising=False)
     framework_root = tmp_path / "framework"
     monkeypatch.setenv("REN_FRAMEWORK_ROOT", str(framework_root))
@@ -48,7 +50,8 @@ def test_gc_stale_envs_unresolvable_cache_root_is_noop(tmp_path, monkeypatch):
     (envs_root / "0.7.3").mkdir(parents=True)
 
     # No cache root to compare against — never delete blind.
-    assert update_lib.gc_stale_envs() == []
+    result = update_lib.gc_stale_envs()
+    assert isinstance(result, Unknown)
     assert (envs_root / "0.7.3").is_dir()
 
 
@@ -71,3 +74,21 @@ def test_gc_stale_envs_never_raises_on_per_dir_oserror(tmp_path, monkeypatch):
 
     assert update_lib.gc_stale_envs() == []
     assert (envs_root / "0.7.3").is_dir()
+
+
+def test_gc_stale_envs_unresolvable_cache_root_is_unknown(tmp_path, monkeypatch):
+    """[] used to mean both "nothing was stale" and "I could not tell what
+    is live". The refusal to delete is correct; the silence about it is not."""
+    from lib.reporting import Unknown
+
+    monkeypatch.delenv("CLAUDE_PLUGIN_ROOT", raising=False)
+    framework_root = tmp_path / "framework"
+    (framework_root / ".envs" / "0.7.3").mkdir(parents=True)
+    monkeypatch.setenv("REN_FRAMEWORK_ROOT", str(framework_root))
+
+    result = update_lib.gc_stale_envs()
+
+    assert isinstance(result, Unknown)
+    assert "cache root" in result.reason
+    # The refusal to delete must be unchanged — this is a reporting fix.
+    assert (framework_root / ".envs" / "0.7.3").is_dir()

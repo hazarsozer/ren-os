@@ -314,7 +314,9 @@ Carried near-verbatim from donor `skills/update/` (Task 7.3) — the migration s
   removes `framework_root()/.envs/<v>` dirs whose version is no longer in
   the plugin cache (#40 — the versions this same update just made stale)
   and returns the removed version list; report it if non-empty, silent
-  otherwise. Best-effort, never a gate.
+  otherwise. If it returns `Unknown`, say the GC did not run and name
+  `.reason` — silence there would report a sweep that never happened as a
+  clean one. Best-effort, never a gate.
 
 ## References
 
