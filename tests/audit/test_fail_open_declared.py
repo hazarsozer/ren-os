@@ -127,3 +127,42 @@ def test_decoy_substring_is_not_a_marker():
     `# see NOBLE0011 ticket` pass as validly marked."""
     src = "try:\n    f()\nexcept Exception:  # see NOBLE0011 ticket\n    pass\n"
     assert undeclared_broad_handlers(src, "x.py") == ["x.py:3"]
+
+
+def _shippable_py_files() -> list[Path]:
+    files: list[Path] = []
+    for rel in SHIPPABLE_DIRS:
+        root = REPO_ROOT / rel
+        if not root.is_dir():
+            continue
+        files.extend(
+            p for p in sorted(root.rglob("*.py")) if "__pycache__" not in p.parts
+        )
+    return files
+
+
+def test_every_broad_handler_declares_its_reason():
+    """The invariant. A new broad handler is a failing test until someone
+    writes down why its failure path is honest — the same contract
+    test_destructive_write_paths uses for new write primitives."""
+    offenders: list[str] = []
+    for path in _shippable_py_files():
+        label = str(path.relative_to(REPO_ROOT))
+        offenders.extend(
+            undeclared_broad_handlers(path.read_text(encoding="utf-8"), label)
+        )
+
+    assert not offenders, (
+        "Broad exception handler(s) with no written reason:\n\n  "
+        + "\n  ".join(offenders)
+        + "\n\nA broad handler (`except:`, `except Exception:`, "
+        "`except BaseException:`) must say why its failure path is honest:\n\n"
+        "    except Exception:  # noqa: BLE001 - <reason>\n\n"
+        "Three dispositions:\n"
+        "  1. MARK it   - the clean return is a correct answer here. Write the reason.\n"
+        "  2. FIX it    - the clean return conceals a failure. Log it, return a\n"
+        "                 tri-state, or let it raise.\n"
+        "  3. NARROW it - catch the exception you actually expect. A named\n"
+        "                 exception is self-documenting and leaves this rule's scope.\n\n"
+        "See docs/superpowers/specs/2026-08-22-fail-open-declared-design.md"
+    )
