@@ -199,11 +199,11 @@ renders as a clean "no project".
     except Exception:
         return "0.8.3"
 
-On resolver failure this reports a plausible but wrong framework version,
-and the literal must be hand-bumped every release or it silently reports a
-version that has not shipped for months. This is worse than silence: it is a
-confident wrong answer, and it is the only site in the sweep with that
-property.
+On resolver failure this reports a plausible but wrong framework version: a
+build-time constant is returned as though it were a resolved value, so
+resolver failure is indistinguishable from resolver success. This is worse
+than silence: it is a confident wrong answer, and it is the only site in the
+sweep with that property.
 
 This defect is **not** in the open-work ledger. It was found by the §1 sweep.
 

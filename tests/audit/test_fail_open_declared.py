@@ -8,6 +8,9 @@ The convention enforced here already exists — 66 handlers carried
 `# noqa: BLE001 - <reason>` before this test was written. Ruff is not
 configured in this repo and never runs, so the comment functions as
 documentation, not suppression. This test is what makes it binding.
+
+Honest floor: an aliased handler (`E = Exception; except E:`) is
+undetectable by AST — the gate does not claim to catch it.
 """
 
 from __future__ import annotations
@@ -18,14 +21,15 @@ import re
 import tokenize
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+from tests.test_repo_hygiene import SHIPPABLE_DIRS
 
-# Copied verbatim from tests/test_repo_hygiene.py:28 — the shippable surface.
-SHIPPABLE_DIRS = ["skills", "hooks", "lib", "doctrine", "wiki-skeleton", ".claude-plugin", "agents"]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 _MARKER_RE = re.compile(r"noqa:\s*BLE001\b")
 # Separators a reason may follow the code with: "BLE001 - why", "BLE001: why".
 _REASON_SEPARATORS = " -–—:"
+# Exception names/attrs treated as broad — the entire point of this rule.
+_BROAD_NAMES = ("Exception", "BaseException")
 
 
 def _comments_by_line(src: str) -> dict[int, str]:
@@ -44,25 +48,59 @@ def _comments_by_line(src: str) -> dict[int, str]:
     return out
 
 
+def _is_broad_expr(expr: ast.expr) -> bool:
+    """True if `expr` denotes a broad exception type. Handles the three
+    shapes an `except` clause's type expression can take: `ast.Name`
+    (`Exception`), `ast.Attribute` (`builtins.Exception`), and `ast.Tuple`
+    (broad if ANY element is broad — `(ValueError, Exception)` is broad,
+    `(ValueError, TypeError)` is not)."""
+    if isinstance(expr, ast.Name):
+        return expr.id in _BROAD_NAMES
+    if isinstance(expr, ast.Attribute):
+        return expr.attr in _BROAD_NAMES
+    if isinstance(expr, ast.Tuple):
+        return any(_is_broad_expr(elt) for elt in expr.elts)
+    return False
+
+
 def _is_broad(handler: ast.ExceptHandler) -> bool:
     """True for `except:`, `except Exception:`, `except BaseException:` —
-    including the `as exc` forms. A tuple or a named exception is not broad."""
+    including the `as exc` forms, tuple forms (`except (Exception,):`,
+    `except (ValueError, Exception):`), and attribute forms
+    (`except builtins.Exception:`). A tuple of only named exceptions, or a
+    lone named exception, is not broad."""
     caught = handler.type
     if caught is None:
         return True
-    return isinstance(caught, ast.Name) and caught.id in ("Exception", "BaseException")
+    return _is_broad_expr(caught)
 
 
 def undeclared_broad_handlers(src: str, label: str) -> list[str]:
     """Return "<label>:<lineno>" for every broad handler in `src` that lacks a
-    `# noqa: BLE001` marker with a non-empty reason on its `except` line."""
+    `# noqa: BLE001` marker with a non-empty reason anywhere in its header —
+    from `except` (`node.lineno`) through the line before its body starts
+    (`node.body[0].lineno - 1`), inclusive. A multi-line handler such as
+
+        except (
+            Exception
+        ):  # noqa: BLE001 - reason
+
+    carries its marker on a line other than `node.lineno`; searching only
+    that line would make this a false positive. The first header line that
+    carries a marker wins."""
     tree = ast.parse(src)
     comments = _comments_by_line(src)
     offenders: list[str] = []
     for node in ast.walk(tree):
         if not isinstance(node, ast.ExceptHandler) or not _is_broad(node):
             continue
-        comment = comments.get(node.lineno, "")
+        header_end = node.body[0].lineno - 1
+        comment = ""
+        for lineno in range(node.lineno, header_end + 1):
+            candidate = comments.get(lineno, "")
+            if _MARKER_RE.search(candidate):
+                comment = candidate
+                break
         match = _MARKER_RE.search(comment)
         if match is None:
             offenders.append(f"{label}:{node.lineno}")
@@ -111,6 +149,57 @@ def test_named_exception_is_out_of_scope():
 def test_tuple_of_named_exceptions_is_out_of_scope():
     src = "try:\n    f()\nexcept (OSError, ValueError):\n    return None\n"
     assert undeclared_broad_handlers(src, "x.py") == []
+
+
+def test_single_element_tuple_of_exception_is_flagged():
+    """`except (Exception,):` is semantically identical to `except Exception:`
+    — the bypass this test closes (spec finding 1)."""
+    src = "try:\n    f()\nexcept (Exception,):\n    pass\n"
+    assert undeclared_broad_handlers(src, "x.py") == ["x.py:3"]
+
+
+def test_tuple_with_one_broad_member_is_flagged():
+    """A tuple is broad if ANY element is broad."""
+    src = "try:\n    f()\nexcept (ValueError, Exception):\n    pass\n"
+    assert undeclared_broad_handlers(src, "x.py") == ["x.py:3"]
+
+
+def test_tuple_of_two_named_exceptions_is_out_of_scope():
+    src = "try:\n    f()\nexcept (ValueError, TypeError):\n    pass\n"
+    assert undeclared_broad_handlers(src, "x.py") == []
+
+
+def test_attribute_form_is_flagged():
+    """`except builtins.Exception:` is an `ast.Attribute`, not an `ast.Name`
+    — the second bypass this test closes (spec finding 1)."""
+    src = "try:\n    f()\nexcept builtins.Exception:\n    pass\n"
+    assert undeclared_broad_handlers(src, "x.py") == ["x.py:3"]
+
+
+def test_multiline_handler_with_marker_in_header_range_passes():
+    """The marker sits on the line closing the parenthesised type, not on
+    `node.lineno` — the multi-line false positive spec finding 2 closes."""
+    src = (
+        "try:\n"
+        "    f()\n"
+        "except (\n"
+        "    Exception\n"
+        "):  # noqa: BLE001 - reason\n"
+        "    pass\n"
+    )
+    assert undeclared_broad_handlers(src, "x.py") == []
+
+
+def test_multiline_handler_without_marker_is_flagged():
+    src = (
+        "try:\n"
+        "    f()\n"
+        "except (\n"
+        "    Exception\n"
+        "):\n"
+        "    pass\n"
+    )
+    assert undeclared_broad_handlers(src, "x.py") == ["x.py:3"]
 
 
 def test_return_shape_is_irrelevant():

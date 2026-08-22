@@ -65,9 +65,9 @@ NEVER_READ_GLOBS = (
 def _framework_version() -> str | None:
     """Best-effort framework version for page frontmatter. Imports lib.ren_paths
     from the repo root. Returns None when the version cannot be resolved —
-    never a literal: a hardcoded fallback reports a plausible WRONG version
-    and must be hand-bumped every release, which makes staleness invisible
-    (spec 2026-08-22 §5.2). Read-only."""
+    never a literal: a hardcoded fallback would return a build-time constant
+    as though it were a resolved value, making resolver failure
+    indistinguishable from success (spec 2026-08-22 §5.2). Read-only."""
     try:
         plugin_root = Path(__file__).resolve().parents[3]  # lib→ingest-project→skills→<repo root>
         if str(plugin_root) not in sys.path:
