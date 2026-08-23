@@ -999,6 +999,60 @@ def check_interpreter_freshness() -> CheckResult:
     )
 
 
+_DOCTRINE_PIN_RE = re.compile(r"/cache/ren-os/ren/(\d+\.\d+\.\d+)/doctrine/")
+
+
+def check_doctrine_index_pins(claude_dir: Path | None = None) -> CheckResult:
+    """The global CLAUDE.md doctrine index's version pins (spec 2026-08-22 §5).
+
+    `lib.adapter.claude_md._doctrine_index` renders each doctrine file as an
+    ABSOLUTE path under the running plugin's versioned cache dir. A version
+    bump leaves every one naming the previous version — live only until that
+    cache dir is GC'd, then dead links in a file injected into every session.
+
+    `write_global_claude_md()` fixes it, and `/ren:update`'s closing steps
+    call that — but nothing reported when the closing step had not run.
+    Observed 2026-08-22: v0.8.4 installed with the block still pinning
+    0.8.3, silently.
+
+    `check_global_drift` does NOT cover this: it checks page typing under
+    `global/`, never the doctrine index.
+
+    Obeys the spec's own rule — an absent file or a missing managed block is
+    `skip` ("could not look"), never `ok`.
+    """
+    from lib.adapter import claude_md
+
+    name = "doctrine_index_pins"
+    target_dir = Path(claude_dir) if claude_dir is not None else ren_paths.claude_user_dir()
+    path = target_dir / "CLAUDE.md"
+
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        return CheckResult(name, "skip", f"{path} unreadable: {exc}")
+
+    begin = text.find(claude_md.MARKER_BEGIN)
+    end = text.find(claude_md.MARKER_END)
+    if begin == -1 or end == -1 or end < begin:
+        return CheckResult(name, "skip", "no ren-managed block in the global CLAUDE.md")
+
+    block = text[begin:end]
+    pinned = sorted({m.group(1) for m in _DOCTRINE_PIN_RE.finditer(block)})
+    if not pinned:
+        return CheckResult(name, "skip", "managed block carries no doctrine index pins")
+
+    current = ren_paths.framework_version()
+    stale = [v for v in pinned if v != current]
+    if stale:
+        return CheckResult(
+            name, "warn",
+            f"doctrine index pins {', '.join(stale)} but the framework is {current} — "
+            f"re-render with lib.adapter.claude_md.write_global_claude_md()",
+        )
+    return CheckResult(name, "ok", f"doctrine index pins match the framework ({current})")
+
+
 _ALL_CHECK_NAMES: tuple[str, ...] = (
     "check_env",
     "check_wiki_structure",
@@ -1026,6 +1080,7 @@ _ALL_CHECK_NAMES: tuple[str, ...] = (
     "check_agent_shadowing",
     "check_cache_env_hygiene",
     "check_interpreter_freshness",
+    "check_doctrine_index_pins",
 )
 
 
@@ -1073,5 +1128,6 @@ __all__ = [
     "check_agent_shadowing",
     "check_cache_env_hygiene",
     "check_interpreter_freshness",
+    "check_doctrine_index_pins",
     "run_checks",
 ]

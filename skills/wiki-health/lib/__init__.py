@@ -94,6 +94,7 @@ from lib.memory.judge import (
 )
 from lib.pointer import REPO_REF_PREFIX as _REPO_REF_PREFIX, parse_pointer_line
 from lib.ren_paths import PathTraversalError
+from lib.reporting import Unknown
 from skills.recall.lib import rank as _recall_rank
 
 from .lint import run_incremental_lint, walk_wiki_pages, in_archive as _in_archive
@@ -849,7 +850,7 @@ def sweep(
     llm_call: Callable[[str], str] | None = None,
     session: str = "wiki-health-sweep",
     apply_corrections: bool = False,
-) -> dict:
+) -> dict | Unknown:
     """Run the full coherence sweep. Read-only by default — fixing findings
     is the live session's job (see SKILL.md).
 
@@ -916,28 +917,17 @@ def sweep(
     durable page's `ren-volatile` markers (see `_stale_facts`). `session`
     (default `"wiki-health-sweep"`) threads through to the correction
     proposals/suggestions this raises WHEN `apply_corrections=True`;
-    `corrections_queued` is always `0` on the default read-only path."""
+    `corrections_queued` is always `0` on the default read-only path.
+
+    Returns `Unknown` instead when the wiki root is not a directory — the
+    check could not run, which is neither a finding nor health. Callers
+    must branch on `isinstance(result, Unknown)` before touching keys."""
     wiki_root = wiki_root or ren_paths.wiki_root()
     if not wiki_root.is_dir():
-        return {
-            "dangling_pointers": [],
-            "contradiction_pairs": [],
-            "duplicate_pairs": [],
-            "numeric_drift_pairs": [],
-            "contradiction_scan_note": None,
-            "mass_deletions": _mass_deletions(),
-            "quarantined_pages": {"count": 0, "pages": []},
-            "single_project_global_pages": [],
-            "hubless_knowledge_dirs": [],
-            "unlinked_knowledge_pages": [],
-            "orphan_pages": [],
-            "stale_facts": {"stale": [], "unverifiable": [], "corrections_queued": 0},
-            "judge_dismissed": [],
-            "judge_supersedes": [],
-            "retrieval_eval": _retrieval_eval(),
-            "machine_released_total": 0,
-            "generated_at": _now_iso(),
-        }
+        # Spec 2026-08-22: this used to return a fully-populated all-clear
+        # report — every findings key present and empty — which render_report
+        # printed as a clean bill of health for a wiki that does not exist.
+        return Unknown(reason=f"wiki root is not a directory: {wiki_root}")
     contradiction_pairs, duplicate_pairs, numeric_drift_pairs, contradiction_scan_note = _pair_findings(wiki_root)
     judge_dismissed: list[dict] = []
     judge_supersedes: list[dict] = []
@@ -985,10 +975,22 @@ def sweep(
     }
 
 
-def render_report(findings: dict) -> str:
+def render_report(findings: dict | Unknown) -> str:
     """Render `sweep()`'s findings as the markdown a live session shows the
     friend — one section per finding kind, "none" when a section is empty
-    (an explicit "checked, found nothing" beats a silently missing section)."""
+    (an explicit "checked, found nothing" beats a silently missing section).
+
+    An `Unknown` renders as a single stanza naming the reason and stating
+    plainly that nothing was checked — never as an empty findings body."""
+    if isinstance(findings, Unknown):
+        return (
+            "# Wiki health sweep\n"
+            "\n"
+            f"The sweep could not run: {findings.reason}\n"
+            "\n"
+            "This is not a clean result — nothing was checked.\n"
+        )
+
     lines = [f"# Wiki health sweep — {findings.get('generated_at', '')}", ""]
 
     lines.append("## Dangling pointers")

@@ -43,11 +43,19 @@ def test_equal_versions_yield_empty(tmp_path):
 
 
 def test_missing_file_yields_empty(tmp_path):
-    assert update_lib.changelog_digest("0.3.2", "0.3.4", tmp_path / "nope.md") == ""
+    from lib.reporting import Unknown
+
+    result = update_lib.changelog_digest("0.3.2", "0.3.4", tmp_path / "nope.md")
+    assert isinstance(result, Unknown)
+    assert "could not be read" in result.reason
 
 
 def test_unparseable_bound_yields_empty(tmp_path):
-    assert update_lib.changelog_digest("garbage", "0.3.4", _write(tmp_path)) == ""
+    from lib.reporting import Unknown
+
+    result = update_lib.changelog_digest("garbage", "0.3.4", _write(tmp_path))
+    assert isinstance(result, Unknown)
+    assert "version" in result.reason
 
 
 def test_prerelease_header_does_not_glue(tmp_path):
@@ -93,4 +101,43 @@ def test_str_path_matches_path_result(tmp_path):
 
 
 def test_garbage_str_path_returns_empty(tmp_path):
-    assert update_lib.changelog_digest("0.6.2", "0.6.5", str(tmp_path / "missing.md")) == ""
+    from lib.reporting import Unknown
+
+    result = update_lib.changelog_digest("0.6.2", "0.6.5", str(tmp_path / "missing.md"))
+    assert isinstance(result, Unknown)
+    assert "could not be read" in result.reason
+
+
+def test_changelog_digest_missing_file_is_unknown(tmp_path):
+    from lib.reporting import Unknown
+
+    result = update_lib.changelog_digest("0.8.3", "0.8.4", tmp_path / "nope.md")
+
+    assert isinstance(result, Unknown)
+    assert "could not be read" in result.reason
+
+
+def test_changelog_digest_unparseable_bound_is_unknown(tmp_path):
+    from lib.reporting import Unknown
+
+    changelog = tmp_path / "CHANGELOG.md"
+    changelog.write_text("# Changelog\n\n## [0.8.4] - 2026-08-22\n\nstuff\n", encoding="utf-8")
+
+    result = update_lib.changelog_digest("not-a-version", "0.8.4", changelog)
+
+    assert isinstance(result, Unknown)
+    assert "version" in result.reason
+
+
+def test_changelog_digest_empty_range_is_empty_string_not_unknown(tmp_path):
+    """A readable changelog with no sections in range is a real answer:
+    nothing changed. It must NOT be reported as blindness."""
+    from lib.reporting import Unknown
+
+    changelog = tmp_path / "CHANGELOG.md"
+    changelog.write_text("# Changelog\n\n## [0.8.4] - 2026-08-22\n\nstuff\n", encoding="utf-8")
+
+    result = update_lib.changelog_digest("0.8.4", "0.8.4", changelog)
+
+    assert not isinstance(result, Unknown)
+    assert result == ""

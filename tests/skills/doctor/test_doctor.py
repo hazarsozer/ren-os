@@ -59,7 +59,7 @@ def test_run_checks_returns_one_result_per_check(wiki):
         "suggestion_store", "apply_integrity", "judge_health", "archive_integrity",
         "routing_audit", "model_map_staleness", "orphaned_projects",
         "execution_doctrine", "standing_instructions_drift", "agent_shadowing",
-        "cache_env_hygiene", "interpreter_freshness",
+        "cache_env_hygiene", "interpreter_freshness", "doctrine_index_pins",
     }
 
 
@@ -1070,3 +1070,56 @@ def test_agent_shadowing_reports_error_when_wiki_root_raises(monkeypatch):
 
     assert result.status == "error"
     assert "wiki root exploded" in result.message
+
+
+def _write_global_block(claude_dir, pinned_version):
+    from lib.adapter.claude_md import MARKER_BEGIN, MARKER_END
+
+    claude_dir.mkdir(parents=True, exist_ok=True)
+    (claude_dir / "CLAUDE.md").write_text(
+        f"my own notes\n\n{MARKER_BEGIN}\n"
+        "## Doctrine index\n\n"
+        f"- **Model classes** (`/x/cache/ren-os/ren/{pinned_version}/doctrine/model-classes.md`): pull on demand.\n"
+        f"{MARKER_END}\n",
+        encoding="utf-8",
+    )
+
+
+def test_doctrine_index_pins_ok_when_current(tmp_path, monkeypatch):
+    monkeypatch.setenv("CLAUDE_PLUGIN_OPTION_FRAMEWORK_VERSION", "0.8.4")
+    _write_global_block(tmp_path / ".claude", "0.8.4")
+
+    result = doctor.check_doctrine_index_pins(claude_dir=tmp_path / ".claude")
+
+    assert result.status == "ok"
+
+
+def test_doctrine_index_pins_warn_on_drift(tmp_path, monkeypatch):
+    """The live 2026-08-22 case: 0.8.4 installed, block still pinning 0.8.3."""
+    monkeypatch.setenv("CLAUDE_PLUGIN_OPTION_FRAMEWORK_VERSION", "0.8.4")
+    _write_global_block(tmp_path / ".claude", "0.8.3")
+
+    result = doctor.check_doctrine_index_pins(claude_dir=tmp_path / ".claude")
+
+    assert result.status == "warn"
+    assert "0.8.3" in result.message
+    assert "0.8.4" in result.message
+
+
+def test_doctrine_index_pins_skip_when_no_block(tmp_path, monkeypatch):
+    """No managed block is not health and not drift — it is 'could not look'."""
+    monkeypatch.setenv("CLAUDE_PLUGIN_OPTION_FRAMEWORK_VERSION", "0.8.4")
+    (tmp_path / ".claude").mkdir(parents=True)
+    (tmp_path / ".claude" / "CLAUDE.md").write_text("just my notes\n", encoding="utf-8")
+
+    result = doctor.check_doctrine_index_pins(claude_dir=tmp_path / ".claude")
+
+    assert result.status == "skip"
+
+
+def test_doctrine_index_pins_skip_when_file_absent(tmp_path, monkeypatch):
+    monkeypatch.setenv("CLAUDE_PLUGIN_OPTION_FRAMEWORK_VERSION", "0.8.4")
+
+    result = doctor.check_doctrine_index_pins(claude_dir=tmp_path / "nothing-here")
+
+    assert result.status == "skip"

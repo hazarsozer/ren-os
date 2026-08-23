@@ -279,7 +279,7 @@ shows it under `## Machine-released (quarantine screen)`.
 
 | Failure | Behavior | User-visible |
 |---|---|---|
-| No wiki root | `sweep()` returns empty findings for wiki-derived checks, journal-derived `mass_deletions` still runs | Report shows "none" in every wiki-derived section |
+| No wiki root | `sweep()` returns `Unknown(reason=...)` — the check could not run, not a clean result | `render_report` prints a "could not run" stanza naming the reason and stating nothing was checked — not a report with "none" in every section |
 | Journal file absent | `mass_deletions` is `[]` (`journal.entries()` returns `[]` cleanly) | "## Mass deletions\n- none" |
 | A page is unreadable (permissions, encoding) | Skipped in that page's checks, doesn't crash the sweep | Absent from findings, not called out individually (known v1 gap) |
 

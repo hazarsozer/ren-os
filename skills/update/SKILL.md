@@ -265,7 +265,9 @@ Carried near-verbatim from donor `skills/update/` (Task 7.3) — the migration s
   the block's FORMAT (adapter changes, doctrine index refresh) for every
   project at once without touching instructions.md at all — this closes
   that spec §3(b) gap (#64). Best-effort per slug — the returned
-  `{slug: "ok" | "error: <msg>"}` dict is informational, never a gate.
+  `{slug: "ok" | "error: <msg>"}` dict is informational, never a gate. An
+  `Unknown` return means the project registry could not be read: say so and
+  name `.reason`, rather than reporting zero projects re-rendered.
 
 - **Re-render the global CLAUDE.md block** — call
   `lib.adapter.claude_md.write_global_claude_md()`. The global block's
@@ -284,9 +286,11 @@ Carried near-verbatim from donor `skills/update/` (Task 7.3) — the migration s
   `skills.update.lib.changelog_digest(<old-version>, <new-version>,
   <plugin-root>/CHANGELOG.md)` (plugin root = `$CLAUDE_PLUGIN_ROOT`, falling
   back to the framework root). Print it verbatim under a "What changed in
-  your RenOS" heading. If it returns "" (unparseable/missing), say the
-  update landed and point at CHANGELOG.md instead — the digest is a
-  courtesy, never a gate.
+  your RenOS" heading. `""` means the range is genuinely empty — say the
+  update landed with no changelog entries in range. An `Unknown` means the
+  digest could not be produced at all: say so, name `.reason`, and point at
+  CHANGELOG.md. The digest is a courtesy, never a gate — but a courtesy
+  that cannot run should not read as a courtesy that found nothing.
 
 - **Offer new companions** — call `lib.companions.pending_offers()`. If
   non-empty, say: "This update recommends companions you haven't decided
@@ -314,7 +318,9 @@ Carried near-verbatim from donor `skills/update/` (Task 7.3) — the migration s
   removes `framework_root()/.envs/<v>` dirs whose version is no longer in
   the plugin cache (#40 — the versions this same update just made stale)
   and returns the removed version list; report it if non-empty, silent
-  otherwise. Best-effort, never a gate.
+  otherwise. If it returns `Unknown`, say the GC did not run and name
+  `.reason` — silence there would report a sweep that never happened as a
+  clean one. Best-effort, never a gate.
 
 ## References
 

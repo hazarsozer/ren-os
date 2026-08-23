@@ -2,17 +2,20 @@
 
 The update flow's bash scripts own snapshot/restore/semver; this lib holds
 the post-update conveniences. ``changelog_digest`` powers the "what changed
-in your RenOS" report — best-effort by design: it returns "" rather than
-raising, because the digest is a courtesy, never a gate.
+in your RenOS" report — best-effort by design: it returns "" for a
+genuinely empty range and `Unknown` when it could not read the file or
+parse a version bound, because the digest is a courtesy, never a gate.
 """
 
 from __future__ import annotations
 
+import json
 import re
 import shutil
 from pathlib import Path
 
 from lib.ren_paths import framework_root, plugin_cache_versions_root, wiki_root
+from lib.reporting import Unknown
 
 _HEADER_RE = re.compile(r"^## \[(\d+\.\d+\.\d+)\]", re.MULTILINE)
 _ANY_HEADER_RE = re.compile(r"^## \[", re.MULTILINE)
@@ -22,19 +25,25 @@ def _version_key(version: str) -> tuple[int, ...]:
     return tuple(int(part) for part in version.split("."))
 
 
-def changelog_digest(old: str, new: str, changelog_path: Path | str) -> str:
+def changelog_digest(old: str, new: str, changelog_path: Path | str) -> str | Unknown:
     """CHANGELOG.md sections for versions in (old, new], in file order.
 
     Accepts a `Path` or `str` path — the digest is a courtesy, never a
     gate, so an argument-type detail must not crash the closing flow.
-    Returns "" when the range is empty, a bound is unparseable, or the
-    file is missing/unreadable.
+    Returns "" when the range is genuinely empty — a real answer. Returns
+    `Unknown` when the file could not be read or a version bound could not
+    be parsed: the digest did not run, which is a different fact.
     """
+    # Spec 2026-08-22: these were one handler returning "", which the caller
+    # could not tell from "the range is genuinely empty".
     try:
         text = Path(changelog_path).read_text(encoding="utf-8")
+    except OSError as exc:
+        return Unknown(reason=f"changelog could not be read: {exc}")
+    try:
         old_key, new_key = _version_key(old), _version_key(new)
-    except (OSError, ValueError):
-        return ""
+    except ValueError as exc:
+        return Unknown(reason=f"version bound is unparseable: {exc}")
 
     # Compute boundaries from ALL headers (including prerelease ones).
     boundaries = sorted(m.start() for m in _ANY_HEADER_RE.finditer(text))
@@ -204,7 +213,29 @@ def should_run_folder_note_hubs_1(wiki_root_path: Path | None = None) -> bool:
     return False
 
 
-def rerender_all_project_claude_md() -> dict[str, str]:
+def _registry_has_entries(registry_path: Path) -> bool:
+    """True when the registry file has content that was meant to parse.
+
+    Distinguishes "the file is validly empty" from "the file is malformed":
+    `load_project_registry()` returns {} for both, so this reads the raw text
+    and asks whether there was anything there to lose.
+    """
+    try:
+        text = registry_path.read_text(encoding="utf-8").strip()
+    except OSError:
+        # Unreadable is already handled by the caller; nothing was lost here.
+        return False
+    if not text:
+        return False
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError:
+        return True  # there was content, and it did not parse
+    projects = data.get("projects") if isinstance(data, dict) else None
+    return bool(projects)
+
+
+def rerender_all_project_claude_md() -> dict[str, str] | Unknown:
     """#64 spec §3(b) trigger: `/ren:update`'s closing steps call this so
     every project's repo CLAUDE.md managed block reflects the CURRENT
     adapter/format after migrations land — the queue's post-apply hook and
@@ -218,9 +249,27 @@ def rerender_all_project_claude_md() -> dict[str, str]:
     `skills/doctor/lib/check_standing_instructions_drift` uses), calls
     `write_project_claude_md`. Returns `{slug: "ok"}` on success or
     `{slug: "error: <msg>"}` on failure — never raises, so one broken repo
-    path never stops the rest of the run."""
+    path never stops the rest of the run.
+
+    Returns `Unknown` when the project registry is unreadable or malformed
+    — `{}` alone cannot distinguish that from
+    "no project carries an instructions.md".
+    """
     from lib import ren_paths
     from lib.adapter import claude_md
+
+    # load_project_registry() returns {} for "no projects" AND for
+    # "missing, unreadable, or malformed" (its own docstring). Read the file
+    # first so those two can be told apart — {} used to render as "nothing
+    # to do" for both (spec 2026-08-22 §3.1).
+    registry_path = ren_paths.projects_registry_path()
+    if registry_path.exists():
+        try:
+            registry_path.read_text(encoding="utf-8")
+        except OSError as exc:
+            return Unknown(reason=f"project registry unreadable: {exc}")
+        if not ren_paths.load_project_registry() and _registry_has_entries(registry_path):
+            return Unknown(reason="project registry malformed")
 
     wiki = wiki_root()
     results: dict[str, str] = {}
@@ -281,12 +330,15 @@ def rewarm_interpreter() -> dict:
                 "legacy_removed": legacy_removed}
 
 
-def gc_stale_envs() -> list[str]:
+def gc_stale_envs() -> list[str] | Unknown:
     """Remove `framework_root()/.envs/<v>` dirs whose version `<v>` has no
     corresponding dir in the plugin cache (#40) — GCs the per-version uv
     project environments `ren_paths.envs_dir()` points invocations at, once
     that version is no longer installed. Returns the removed version
     strings, in sorted order.
+
+    Returns `Unknown` when the plugin cache root cannot be resolved: the
+    sweep did not run, which is not the same as finding nothing to remove.
 
     Never raises: an unresolvable cache root is a no-op (nothing removed —
     we never guess and delete everything just because we can't confirm
@@ -295,7 +347,10 @@ def gc_stale_envs() -> list[str]:
     directory rather than aborting the sweep."""
     cache_versions_root = plugin_cache_versions_root()
     if cache_versions_root is None or not cache_versions_root.is_dir():
-        return []
+        # Spec 2026-08-22: refusing to delete what we cannot confirm is live
+        # is correct and unchanged. What changes is that the caller can now
+        # tell this apart from "nothing was stale" — both used to be [].
+        return Unknown(reason="plugin cache root unresolvable")
 
     live_versions = {p.name for p in cache_versions_root.iterdir() if p.is_dir()}
 

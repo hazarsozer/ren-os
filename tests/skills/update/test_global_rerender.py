@@ -15,6 +15,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from lib.adapter import claude_md
+from skills.update import lib as update_lib
 
 
 def _doctrine(tmp_path):
@@ -60,3 +61,74 @@ def test_skill_documents_the_global_rerender_step():
 
     assert "write_global_claude_md" in text, \
         "update's closing steps must re-render the global tier, not only projects"
+
+
+def test_rerender_malformed_registry_is_unknown(tmp_path, monkeypatch):
+    """{} used to mean both "no project has an instructions.md" (benign)
+    and "the registry could not be parsed" (blind). This exercises the
+    malformed-but-readable branch — syntactically invalid JSON in a file
+    that reads fine. See test_rerender_unreadable_registry_is_unknown below
+    for the separate OSError-on-read branch."""
+    from lib.reporting import Unknown
+
+    wiki = tmp_path / "wiki"
+    (wiki / "projects").mkdir(parents=True)
+    monkeypatch.setenv("REN_WIKI_ROOT", str(wiki))
+
+    registry = tmp_path / "projects.json"
+    registry.write_text("{ this is not json", encoding="utf-8")
+    monkeypatch.setattr(
+        "lib.ren_paths.projects_registry_path", lambda: registry
+    )
+
+    result = update_lib.rerender_all_project_claude_md()
+
+    assert isinstance(result, Unknown)
+    assert "malformed" in result.reason
+
+
+def test_rerender_unreadable_registry_is_unknown(tmp_path, monkeypatch):
+    """Genuinely exercises the `except OSError` branch: making the registry
+    "path" a directory means Path.read_text() raises IsADirectoryError (an
+    OSError subclass) on the read attempt — this works regardless of user
+    privileges, unlike a chmod(0o000) approach which silently fails to deny
+    root, and CI often runs as root."""
+    from lib.reporting import Unknown
+
+    wiki = tmp_path / "wiki"
+    (wiki / "projects").mkdir(parents=True)
+    monkeypatch.setenv("REN_WIKI_ROOT", str(wiki))
+
+    registry = tmp_path / "projects.json"
+    registry.mkdir()
+    monkeypatch.setattr(
+        "lib.ren_paths.projects_registry_path", lambda: registry
+    )
+
+    result = update_lib.rerender_all_project_claude_md()
+
+    assert isinstance(result, Unknown)
+    assert "unreadable" in result.reason
+
+
+def test_rerender_readable_but_empty_registry_is_not_unknown(tmp_path, monkeypatch):
+    """A registry that reads fine and lists nothing is a real answer: no
+    projects. It must NOT be reported as blindness."""
+    import json
+
+    from lib.reporting import Unknown
+
+    wiki = tmp_path / "wiki"
+    (wiki / "projects").mkdir(parents=True)
+    monkeypatch.setenv("REN_WIKI_ROOT", str(wiki))
+
+    registry = tmp_path / "projects.json"
+    registry.write_text(json.dumps({"projects": {}}), encoding="utf-8")
+    monkeypatch.setattr(
+        "lib.ren_paths.projects_registry_path", lambda: registry
+    )
+
+    result = update_lib.rerender_all_project_claude_md()
+
+    assert not isinstance(result, Unknown)
+    assert result == {}

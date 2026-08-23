@@ -91,13 +91,20 @@ def test_sweep_carries_key_and_report_renders(wiki, clean_path_env):
     assert "session-orphan.md" in report
 
 
-def test_sweep_degraded_path_has_key(clean_path_env, tmp_path):
+def test_sweep_degraded_path_is_unknown(clean_path_env, tmp_path):
     # M9: a clean env so the degraded (no-wiki-root) path's other sweep
     # calls (e.g. `_mass_deletions`' journal read) hit tmp_path, never the
     # real ~/.renos state.
+    #
+    # Spec 2026-08-22 (unknown-is-an-outcome): a missing wiki root used to
+    # produce a fully-populated all-clear dict (this test asserted
+    # `findings["orphan_pages"] == []`, i.e. the defect). It now returns
+    # `Unknown` — the check could not run.
+    from lib.reporting import Unknown
+
     clean_path_env.setenv("REN_FRAMEWORK_ROOT", str(tmp_path))
     findings = wiki_health.sweep(tmp_path / "nope")
-    assert findings["orphan_pages"] == []
+    assert isinstance(findings, Unknown)
 
 
 def test_quarantined_page_not_orphan_candidate_until_released(wiki):
