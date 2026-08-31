@@ -27,16 +27,26 @@ contract:
     write:
       - "~/.renos/wiki/**"
       - "~/.renos/wiki/.ren/distiller-watermark.json"
+      - "~/.renos/wiki/.ren/seed-tree-watermark-*.json"
       - "~/.renos/wiki/.ren/journal.jsonl"
+      # --seed-tree (Task 7, spec 2026-08-31 §3) widens the write surface
+      # past lessons/: a concept-kind lesson lands as a taxonomy leaf, with
+      # its leaf/parent hubs and schema.md's fence additively updated.
+      - "~/.renos/wiki/projects/*/knowledge/**"
+      - "~/.renos/wiki/projects/*/schema.md"
   completion_conditions:
     - "Watermark advanced only to result[\"watermark_after\"], and only if mining, classification, and application all succeeded"
     - "Malformed agent reply stops the flow; watermark untouched"
     - "Every candidate passed through apply_candidates (no silent drops)"
     - "A capped run's remainder stays behind the watermark (spec §3.4) — watermark_after never advances past an unprocessed session's earliest L1"
+    - "--seed-tree: a missing/unparseable schema.md refuses the WHOLE run — zero writes — rather than guessing a placement"
   output_paths:
     - "~/.renos/wiki/lessons/"
     - "~/.renos/wiki/projects/*/knowledge/lessons/"
+    - "~/.renos/wiki/projects/*/knowledge/**"
+    - "~/.renos/wiki/projects/*/schema.md"
     - "~/.renos/wiki/.ren/distiller-watermark.json"
+    - "~/.renos/wiki/.ren/seed-tree-watermark-*.json"
 
 tags: [knowledge-synthesis, wiki-distill, batch-mining, routine]
 related_skills: [wrap, routine-init]
@@ -55,6 +65,12 @@ WRITE_CAP writes per run.
 
 - `/ren:distill` — on-demand run (the first backlog-rescue run is this).
 - The weekly routine (routines/distiller-weekly.md) runs the same flow.
+- `/ren:distill --seed-tree <project>` — MANUAL TRIGGER ONLY (spec 2026-08-31
+  §3 behavior 1). Backfills the concept tree from a project's EXISTING
+  `knowledge/lessons/` pages — durable concepts written before concept-tree
+  routing existed, or missed by a session's own wrap gate. This mode is
+  NEVER part of the scheduled weekly routine; it runs only when a friend (or
+  the live session, deliberately) asks for it by name.
 
 ## Flow
 
@@ -66,8 +82,40 @@ WRITE_CAP writes per run.
 6. **Advance the watermark** to `result["watermark_after"]` — ONLY if steps 3-5 completed without an exception AND `watermark_after` is not `None`. The lib computes it: a fully-processed batch (no remainder) advances to the batch's max `ren_ts`; a capped run advances only up to (not past) the earliest L1 belonging to a session with unprocessed candidates, so that session's L1s stay behind the watermark and get re-mined next run (spec §3.4, §3.5). A `None` watermark_after with a non-empty remainder means no advance this run — say so on the report screen. Any exception in steps 3-5 leaves the watermark untouched (re-run safe; the journal dedup makes replays idempotent).
 7. **Report.** One screen: batch size, candidates, applied/held/suggested/gated_out/refused/duplicates, capped remainder, new watermark (or "no advance this run" when `watermark_after` is `None`).
 
+## `--seed-tree <project>` flow (Task 7, spec 2026-08-31 §3)
+
+Manual trigger only — see "When to use" above. A single call does the whole
+run; there is no separate mine/classify subagent hand-off like the L1 flow
+above, because the candidates are already-written lessons, not narrative to
+mine, and this mode always has a live `llm_call` to gate them with.
+
+1. **Run.** `seed_tree(project, llm_call, cap=None)` (from `skills.distill.lib`).
+2. Internally: loads `projects/<project>/schema.md`'s taxonomy — a missing
+   or unparseable schema.md refuses the WHOLE run (`result["blind"]` is set,
+   "no taxonomy — run ingest's taxonomy draft first"; run `/ren:ingest-project`
+   or hand-seed a taxonomy first). Otherwise it enumerates
+   `projects/<project>/knowledge/lessons/*.md` newer than the project's own
+   `seed_tree_watermark` (kept separate from the scheduled distiller's
+   watermark), gates each lesson body through the LIVE classifier, and for
+   every `kind == "concept"` verdict that resolves to a brand-new taxonomy
+   leaf: places it via the SAME concept-create machinery `/ren:wrap` uses
+   (mints the page, maintains its leaf/parent hubs, additively splices
+   `schema.md`), then appends a `See: [[<node>]]` pointer to the source
+   lesson. Everything else (already-a-lesson verdicts, non-durable verdicts,
+   a concept placement that isn't a new leaf) is skipped — advancing the
+   watermark past it, since there is nothing to write for a lesson that's
+   already sitting on disk as a lesson.
+3. **Report.** Same counter shape as the L1 flow (`applied`/`held`/
+   `suggested`/`gated_out`/`refused`/`duplicates`/`capped_remainder`), plus
+   `annotated` (the `See:` pointer UPDATEs — these count toward the cap
+   exactly like any other write) and `blind`.
+
 ## What this skill does NOT do
 
-- Write any wiki file directly — apply_candidates is the only write path.
+- Write any wiki file directly — apply_candidates (and, for `--seed-tree`,
+  the same concept-create machinery `/ren:wrap` uses) are the only write
+  paths.
 - Advance the watermark on a failed run, or past an unprocessed session's earliest L1 on a capped run.
 - Touch quarantine banners, trust stamps, or the backup remote.
+- Run `--seed-tree` on a schedule — it is manual-trigger only, never folded
+  into the weekly routine.

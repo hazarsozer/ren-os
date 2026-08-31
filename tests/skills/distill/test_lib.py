@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 import pytest
 
@@ -81,6 +82,22 @@ def test_apply_candidates_placement_error_to_suggestions(wiki):
     bad["verdict"]["scope"] = None
     result = apply_candidates([bad], run_session="distill-run-2")
     assert result["applied"] == [] and len(result["suggested"]) == 1
+
+
+def test_apply_candidates_create_maintains_lessons_hub(wiki):
+    """Distiller hub gap (spec 2026-08-31 §3 behavior 7): a lesson CREATE
+    landing through `apply_candidates` must maintain its directory's
+    folder-note hub, same as wrap's own lesson-create path — the gap this
+    task closes (distiller writes previously never touched a hub at all)."""
+    cand = _durable_create("a fresh durable fact", "# L\nbody")
+    result = apply_candidates([cand], run_session="distill-run-hub")
+    assert len(result["applied"]) == 1
+    hub_path = wiki / "lessons" / "lessons.md"
+    assert hub_path.is_file()
+    text = hub_path.read_text(encoding="utf-8")
+    assert "hub: true" in text
+    page_name = Path(result["applied"][0]["page"]).name
+    assert f"- [{Path(page_name).stem}]({page_name})" in text
 
 
 def test_apply_candidates_non_durable_gates_out(wiki):
