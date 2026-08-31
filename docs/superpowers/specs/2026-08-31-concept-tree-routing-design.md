@@ -139,9 +139,12 @@ prompt-injection rationale for the eligibility set is preserved).
 
 ## 5. Concept pages
 
-- `type: concept`, derived positionally in `lib/memory/page_types.py`: a
-  non-hub page under `knowledge/` that is not under `lessons/` is a concept
-  page. (Existing rule 3 for `lessons/` unchanged; hubs unchanged.)
+- Page type: **`project-knowledge`**, unchanged — `page_types.py` rule 5
+  already types every non-hub, non-lesson page under a project `knowledge/`
+  tree as `project-knowledge`, and existing hand-built concept pages carry
+  it. No new type is introduced; concept-ness is shape + location.
+  (Amended from the draft's `type: concept` during plan grounding: a
+  parallel type for identical positions would fork `derive_type`.)
 - Shape: frontmatter; one-line definition; `## Facts` bullet list, each
   bullet a standalone fact with `[[links]]` to related nodes; optional
   `## See also`. Rendered for retrieval first: rank()'s heading/title
