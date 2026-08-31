@@ -828,20 +828,25 @@ def _ensure_hub(dir_rel: str, session: str, project: str | None, *, heading: str
 
 
 def _concept_node_page(project: str, placement: str) -> str | None:
-    """Behavior 4 (spec 2026-08-31 §3): the on-disk page for an EXISTING
-    taxonomy node, so a concept "create" whose placement already resolves
-    against the taxonomy accretes onto that node's own page instead of
-    minting a duplicate.
+    """Behavior 4 (spec 2026-08-31 §3): the on-disk CONTENT page for an
+    EXISTING taxonomy node, so a concept "create" whose placement already
+    resolves against the taxonomy accretes onto that node's own page
+    instead of minting a duplicate.
 
-    Every leaf `_apply_concept_create` ever created carries a folder-note
-    hub named `<lastseg>.md` inside its own directory (`_ensure_hub`'s
-    convention) — that hub page IS the node's page for accretion purposes in
-    the overwhelmingly common case, so it is tried first, by its exact path.
-    Falls back to "the single OTHER `*.md` file in that directory" for a
-    node whose taxonomy entry predates (or otherwise didn't go through) this
-    code path — e.g. a hand-seeded `schema.md`. Returns `None` (caller
-    fails closed to a lesson create + a `node_page_missing` placement_event)
-    when neither resolves to exactly one file.
+    Review fix (CRITICAL #1, post-implementation): the node's folder-note
+    HUB (`<lastseg>.md`, minted by `_apply_concept_create` for EVERY leaf
+    and therefore present for essentially every node this code path ever
+    created) must NOT be tried first — doing so made a second concept item
+    on the same node silently accrete `## Facts` into the hub's link-list
+    page while the real content page (`<placement>/<slug(title)>.md`) never
+    grew. The content page — "the single OTHER `*.md` file directly in the
+    node's directory, excluding the hub" — is tried FIRST now. The hub
+    itself is the fallback, used only when NO other page exists (a
+    hand-seeded/legacy taxonomy node that has a hub but no content page
+    yet — or none at all, in which case there's nothing to accrete onto).
+    More than one non-hub page is ambiguous and never guessed at: returns
+    `None` just like "nothing at all", so the caller fails closed to a
+    lesson create + a `node_page_missing` placement_event.
 
     Never raises: any filesystem/path error degrades to `None`, same
     isolated-duty posture as `_ensure_hub`."""
@@ -849,14 +854,21 @@ def _concept_node_page(project: str, placement: str) -> str | None:
         wiki = ren_paths.wiki_root()
         lastseg = placement.rsplit("/", 1)[-1]
         node_dir_rel = f"projects/{project}/knowledge/{placement}"
-        candidate_rel = f"{node_dir_rel}/{lastseg}.md"
-        if ren_paths.safe_join(wiki, candidate_rel).is_file():
-            return candidate_rel
+        hub_name = f"{lastseg}.md"
         node_dir = ren_paths.safe_join(wiki, node_dir_rel)
-        if node_dir.is_dir():
-            others = [p for p in node_dir.glob("*.md") if p.is_file()]
-            if len(others) == 1:
-                return f"{node_dir_rel}/{others[0].name}"
+        if not node_dir.is_dir():
+            return None
+        others = sorted(
+            p.name for p in node_dir.glob("*.md")
+            if p.is_file() and p.name != hub_name
+        )
+        if len(others) == 1:
+            return f"{node_dir_rel}/{others[0]}"
+        if len(others) > 1:
+            return None  # ambiguous — never guess which page the item belongs to
+        hub_rel = f"{node_dir_rel}/{hub_name}"
+        if ren_paths.safe_join(wiki, hub_rel).is_file():
+            return hub_rel  # legacy/hand-seeded node: hub exists, content page doesn't yet
         return None
     except Exception:  # noqa: BLE001 - fails closed to the caller's lesson fallback
         return None
@@ -961,6 +973,17 @@ def _apply_concept_create(item: str, decision: Decision, project: str, session: 
         result.update(status="held", qid=entry.qid, conflicts=entry.conflicts)
         return result  # nothing landed on disk — no hub/taxonomy follow-up
 
+    # Write order (controller ruling, review round 1 MEDIUM #3): the spec's
+    # §4 ordering is page-then-hub-then-taxonomy in principle, but this is
+    # deliberately PAGE-FIRST in practice — `_ensure_hub`'s glob-backfill
+    # needs the concept page to already be on disk to link it (it lists
+    # `dir_path.glob("*.md")` fresh each call, not an in-memory set), so
+    # writing the hub before the page would mint a hub that never
+    # advertises the very page it exists for. A crash/interrupt between
+    # this point and the hub/schema writes below leaves a page with no hub
+    # link and no taxonomy entry — wiki-health's unlinked-page audit is the
+    # spec's own answer for that partial-failure window, not a rollback
+    # here.
     _ensure_hub(leaf_dir, session, project, heading=title)
     parent_name = parts[-2] if len(parts) > 1 else "knowledge"
     _ensure_hub(parent_dir, session, project, heading=_hub_heading_default(parent_name))

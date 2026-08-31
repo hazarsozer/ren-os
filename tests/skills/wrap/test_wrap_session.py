@@ -147,6 +147,49 @@ def test_concept_create_existing_node_appends_facts_bullet(wiki):
     assert outcome["concept_updates"] == 1
 
 
+def test_second_concept_item_accretes_onto_content_page_not_hub(wiki):
+    """Regression (review round 1, CRITICAL #1): a second concept item
+    landing on an EXISTING node — created via a real prior `_apply_concept_
+    create` new-leaf wrap, NOT hand-seeded — must accrete onto the node's
+    own CONTENT page (`<placement>/<slug(title)>.md`), never onto the
+    folder-note HUB (`<placement>/<lastseg>.md`) that the first wrap also
+    minted. `_concept_node_page` previously tried the hub path first,
+    which always exists once a leaf has been created, so the fallback to
+    the real content page never ran."""
+    _seed_schema(wiki, "p", "billing/\n")
+
+    first_item = "The topic subsystem owns routing for cross-cutting concerns."
+    first_verdict = _concept_verdict(placement="topic", title="New Topic")
+    first_result = wrap_session(
+        "# n", [first_item], "s-first", project="p", verdicts=[first_verdict],
+    )
+    assert len(first_result["applied"]) == 1
+    content_page = first_result["applied"][0]["page"]
+    assert content_page == "projects/p/knowledge/topic/new-topic.md"
+
+    hub_path = wiki / "projects/p/knowledge/topic/topic.md"
+    hub_before = hub_path.read_text(encoding="utf-8")
+
+    second_item = "It also owns rate limiting for those same concerns."
+    second_verdict = _concept_verdict(placement="topic", title=None)
+    second_result = wrap_session(
+        "# n", [second_item], "s-second", project="p", verdicts=[second_verdict],
+    )
+
+    assert second_result["applied"] == [], "no new page must be minted"
+    assert len(second_result["updated"]) == 1
+    assert second_result["updated"][0]["page"] == content_page
+
+    content_text = (wiki / content_page).read_text(encoding="utf-8")
+    assert first_item in content_text
+    assert second_item in content_text
+    assert "## Facts" in content_text
+
+    hub_after = hub_path.read_text(encoding="utf-8")
+    assert "## Facts" not in hub_after, "the hub must never gain a Facts section"
+    assert hub_after == hub_before, "the hub's link list is unchanged by the second item"
+
+
 def test_concept_placement_error_falls_back_to_lesson(wiki):
     """(c) a `ConceptPlacementError` (here: concept + scope="global", which
     the classifier disallows — no global taxonomy) is NEVER `unplaced`; it
