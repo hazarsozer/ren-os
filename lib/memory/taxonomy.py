@@ -1,4 +1,4 @@
-"""Parse, validate, and manage taxonomy from schema.md.
+"""Parse, validate, and manage taxonomy from schema.md (spec 2026-08-31 §3).
 
 Provides facilities for parsing the ```taxonomy fenced block from schema.md,
 validating structure against depth/naming constraints, classifying concept
@@ -10,7 +10,7 @@ import re
 from dataclasses import dataclass
 from typing import Final
 
-import lib.ren_paths as ren_paths
+from lib import ren_paths
 
 _SEGMENT_RE: Final = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 _FENCE_RE: Final = re.compile(r"```taxonomy\n(.*?)```", re.DOTALL)
@@ -43,7 +43,7 @@ class Taxonomy:
 
 
 def parse_taxonomy(schema_md_text: str) -> Taxonomy:
-    """Parse taxonomy from schema.md fence block.
+    """Parse taxonomy from schema.md fence block (spec 2026-08-31 §3.1).
 
     Raises TaxonomyError on:
     - no ```taxonomy fence
@@ -87,15 +87,15 @@ def parse_taxonomy(schema_md_text: str) -> Taxonomy:
 
 
 def load_taxonomy(project: str) -> Taxonomy:
-    """Load taxonomy from projects/<project>/schema.md.
+    """Load taxonomy from projects/<project>/schema.md (spec 2026-08-31 §3.1).
 
-    Raises TaxonomyError on any OSError or parsing error.
+    Raises TaxonomyError on any OSError, PathTraversalError, or parsing error.
     """
     try:
         path = ren_paths.safe_join(ren_paths.wiki_root(), f"projects/{project}/schema.md")
         with open(path, encoding="utf-8") as f:
             return parse_taxonomy(f.read())
-    except OSError as exc:
+    except (OSError, ren_paths.PathTraversalError) as exc:
         raise TaxonomyError(f"cannot load {project}/schema.md: {exc}") from exc
 
 
@@ -132,19 +132,48 @@ def render_block(tax: Taxonomy) -> str:
     """Render taxonomy nodes as fenced block content with 2-space indentation.
 
     Returns the content between ```taxonomy fences (without fence markers).
+    Uses tree-based depth-first walk to ensure round-trip stability across
+    lexicographic sort variations.
     """
     if not tax.nodes:
         return ""
 
-    # Group nodes by parent to build hierarchical structure
-    lines: list[str] = []
+    # Build a tree: map from parent path to sorted list of child segments
+    children: dict[str, list[str]] = {}
+    roots: list[str] = []
 
     for node in tax.nodes:
         parts = node.split("/")
-        depth = len(parts) - 1
+        if len(parts) == 1:
+            roots.append(node)
+        else:
+            parent = "/".join(parts[:-1])
+            segment = parts[-1]
+            if parent not in children:
+                children[parent] = []
+            children[parent].append(segment)
+
+    # Sort each level for deterministic output
+    roots.sort()
+    for segs in children.values():
+        segs.sort()
+
+    # Render depth-first
+    lines: list[str] = []
+
+    def render_subtree(parent_path: str, depth: int) -> None:
+        """Recursively render a node and its children."""
         indent = "  " * depth
-        segment = parts[-1]
+        segment = parent_path.split("/")[-1]
         lines.append(f"{indent}{segment}/")
+
+        # Render children if any
+        if parent_path in children:
+            for child_seg in children[parent_path]:
+                render_subtree(f"{parent_path}/{child_seg}", depth + 1)
+
+    for root in roots:
+        render_subtree(root, 0)
 
     return "\n".join(lines) + "\n"
 
