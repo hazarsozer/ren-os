@@ -84,6 +84,54 @@ def test_rank_empty_query_returns_all_candidates_with_no_error(wiki):
     assert set(ranked) == {"decisions/d.md", "research/r.md"}
 
 
+def test_rank_concept_tree_knowledge_pages_get_decisions_boost(wiki):
+    # Concept pages under projects/*/knowledge/* (except lessons/) should get
+    # the decisions-tier boost (1.5x multiplier), same as decisions/ pages.
+    # Lesson pages should keep their default multiplier (1.0x).
+
+    # All three have identical token_score by design (single "architecture" token)
+    # so the multiplier determines the ranking.
+    _write(
+        wiki,
+        "projects/p/knowledge/architecture/write-door.md",
+        "---\ntitle: \"Write-Door Pattern\"\n---\n\n# Architecture\n\narchitecture details",
+    )
+    _write(
+        wiki,
+        "projects/p/knowledge/lessons/design-lesson.md",
+        "---\ntitle: \"Design Lesson\"\n---\n\n# Architecture\n\narchitecture lesson content",
+    )
+    _write(
+        wiki,
+        "decisions/database-choice.md",
+        "---\ntitle: \"Database Choice\"\n---\n\n# Architecture\n\narchitecture decision details",
+    )
+    _write(
+        wiki,
+        "research/generic.md",
+        "---\ntitle: \"Research Note\"\n---\n\n# Architecture\n\narchitecture research",
+    )
+
+    candidates = [
+        "projects/p/knowledge/architecture/write-door.md",
+        "projects/p/knowledge/lessons/design-lesson.md",
+        "decisions/database-choice.md",
+        "research/generic.md",
+    ]
+    ranked = rank("architecture", candidates, wiki)
+
+    # The concept-tree page and decisions page should be boosted to the top
+    # (both have 1.5x multiplier), lessons page gets default (1.0x),
+    # research gets default (1.0x).
+    # Within the boosted tier, mtime breaks ties (but all are written now,
+    # so order between concept and decisions may vary).
+    assert set(ranked[:2]) == {
+        "projects/p/knowledge/architecture/write-door.md",
+        "decisions/database-choice.md",
+    }
+    assert ranked[2] == "projects/p/knowledge/lessons/design-lesson.md" or ranked[2] == "research/generic.md"
+
+
 # --------------------------------------------------------------------- fetch
 
 

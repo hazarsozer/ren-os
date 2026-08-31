@@ -72,7 +72,16 @@ def tokenize_query(query: str) -> list[str]:
 
 
 def _classify_kind(rel_path: str) -> float:
-    """Map a wiki-relative path to its kind multiplier (path hint)."""
+    """Map a wiki-relative path to its kind multiplier (path hint).
+
+    Concept pages (projects/*/knowledge/*) get the decisions-tier boost (1.5x),
+    except for lesson pages (projects/*/knowledge/lessons/*) which keep the
+    default multiplier. Spec §5, Task 5.
+    """
+    # Concept-tree pages get decisions-tier boost, except lessons.
+    if "/knowledge/" in f"/{rel_path}/" and "/knowledge/lessons/" not in f"/{rel_path}/":
+        return KIND_MULTIPLIERS["decisions"]
+
     for prefix, mult in KIND_MULTIPLIERS.items():
         if f"/{prefix}/" in f"/{rel_path}/" or rel_path.startswith(prefix + "/"):
             return mult
