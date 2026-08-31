@@ -21,7 +21,12 @@ from lib.memory import journal
 from lib.memory.quarantine import escape_untrusted
 from lib.memory.queue import NOOP_DUPLICATE, Proposal, propose_and_apply
 from lib.memory.scrub import SecretsFound
-from lib.memory.taxonomy import TaxonomyError, classify_placement, load_taxonomy, render_block
+from lib.memory.taxonomy import (
+    TaxonomyError,
+    classify_placement,
+    load_taxonomy,
+    render_block,
+)
 from lib.suggestions import SuggestionSpec
 from lib.suggestions import record as record_suggestion
 from skills.wrap.lib import (

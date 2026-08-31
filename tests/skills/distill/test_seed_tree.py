@@ -16,7 +16,6 @@ from skills.distill.lib import (
     read_seed_tree_watermark,
     seed_tree,
     seed_tree_batch,
-    seed_tree_watermark_path,
     write_seed_tree_watermark,
 )
 
