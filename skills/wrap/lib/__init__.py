@@ -37,7 +37,7 @@ import re
 from dataclasses import asdict
 from datetime import date, timedelta
 from pathlib import Path, PurePosixPath
-from typing import Callable
+from typing import Callable, Final
 
 import yaml
 
@@ -52,6 +52,14 @@ from lib.memory.provenance import new_provenance, read_frontmatter_provenance
 from lib.memory.queue import NOOP_DUPLICATE, Proposal, propose_and_apply
 from lib.memory.scrub import SecretsFound
 from lib.memory.semantics import shortlist_pairs
+from lib.memory.taxonomy import (
+    Taxonomy,
+    TaxonomyError,
+    classify_placement,
+    load_taxonomy,
+    parse_taxonomy,
+    render_block,
+)
 from lib.reporting import Unknown
 from lib.suggestions import expire_stale_pending, prune_decided
 from lib.suggestions import record as record_suggestion
@@ -62,7 +70,7 @@ from lib.suggestions.producers import (
     wiki_health_critical,
 )
 
-from .classifier import gate, gate_precomputed, PlacementError
+from .classifier import Decision, gate, gate_precomputed, ConceptPlacementError, PlacementError
 from .merge import merge_update, validate_merged, MergeError
 
 _SLUG_WORD_RE = re.compile(r"[a-z0-9]+")
@@ -70,6 +78,19 @@ _PREVIEW_MAX_CHARS = 100
 _PREVIEW_FRONTMATTER_RE = re.compile(r"\A---\n.*?\n---\n?", re.DOTALL)
 
 _L1_TYPE_RE = re.compile(r"^type:\s*\S", re.MULTILINE)
+
+# --- concept-tree routing (spec 2026-08-31 §3, Task 3) ----------------------
+
+#: Split-suggestion threshold (plan Global Constraints): a concept node page
+#: accreting past this many `## Facts` bullets gets a (never auto-applied)
+#: split suggestion rather than growing without bound.
+_CONCEPT_SPLIT_BULLETS: Final = 40
+
+_TAXONOMY_FENCE_RE = re.compile(r"```taxonomy\n.*?```", re.DOTALL)
+_FACTS_HEADING_RE = re.compile(r"^## Facts\s*$", re.MULTILINE)
+_ANY_HEADING_RE = re.compile(r"^#{1,6} ", re.MULTILINE)
+_BULLET_LINE_RE = re.compile(r"^- ", re.MULTILINE)
+_SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+")
 
 
 def _ensure_l1_type(narrative_md: str) -> str:
@@ -649,9 +670,24 @@ def _target_trust(page: str) -> str | None:
     return trust if isinstance(trust, str) else None
 
 
-def _durable_create_page(item: str, scope: str, project: str | None) -> str:
-    """Placement for a durable CREATE (spec §2): project-scoped when the
-    classifier said so AND a project is in scope; global lessons/ otherwise."""
+def _durable_create_page(
+    item: str, scope: str, project: str | None, *,
+    placement: str | None = None, title: str | None = None,
+) -> str:
+    """Placement for a durable CREATE (spec §2, extended 2026-08-31 §3 for
+    concept-tree routing — Task 7 reuses this for the distiller's own
+    routing): project-scoped `lessons/` when the classifier said so AND a
+    project is in scope; global `lessons/` otherwise.
+
+    `placement` (given together with `title` for a concept new-leaf create)
+    routes into the project's concept taxonomy instead: the page lives
+    ALONGSIDE the leaf directory's folder-note hub, named by the concept's
+    own title rather than the item text — `knowledge/<placement>/<slug
+    (title)>.md`. Concepts require a project (spec §9: no global taxonomy),
+    so `placement` without `project` is a caller error, not a fallback."""
+    if placement is not None:
+        assert project, "concept placement requires a project (no global taxonomy)"
+        return f"projects/{project}/knowledge/{placement}/{_slugify(title or '')}.md"
     if scope == "project" and project:
         return f"projects/{project}/knowledge/lessons/{_slugify(item)}.md"
     return f"lessons/{_slugify(item)}.md"
@@ -666,24 +702,39 @@ def _hub_links(text: str) -> list[str]:
     hub is missing: the write door stamps `ren_*` provenance frontmatter onto
     every applied page, so the on-disk file never byte-equals a freshly
     rendered body; comparing advertised targets is what makes
-    `_ensure_lessons_hub` idempotent."""
+    `_ensure_hub` idempotent."""
     return _HUB_LINK_RE.findall(text)
 
 
-def _ensure_lessons_hub(dir_rel: str, session: str, project: str | None) -> bool:
-    """Folder-note hub for a lessons/ directory (spec §2, 0.7.2 hub
-    convention: `<dir>/<dirname>.md`, `hub: true`).
+def _hub_heading_default(name: str) -> str:
+    """Human-readable heading for a folder-note hub whose node carries no
+    explicit `title` — an ancestor taxonomy directory, or the project's
+    `knowledge/` root itself. The taxonomy segment name, de-hyphenated and
+    title-cased (`"open-questions"` -> `"Open Questions"`)."""
+    return name.replace("-", " ").replace("_", " ").title()
+
+
+def _ensure_hub(dir_rel: str, session: str, project: str | None, *, heading: str) -> bool:
+    """Folder-note hub for a directory (spec §2, 0.7.2 hub convention:
+    `<dir>/<dirname>.md`, `hub: true`; extended 2026-08-31 §3 for the concept
+    tree — renamed from `_ensure_lessons_hub`, no longer lessons-only).
 
     Two distinct paths (fix round 2, #I2 — the old code re-rendered the whole
     body and UPDATEd it, silently deleting any prose a human had written on
     the hub):
 
-      * **Hub absent** — write the full template (frontmatter + heading +
-        one link per lesson page, backfilling every pre-existing one).
+      * **Hub absent** — write the full template (frontmatter + `heading` +
+        one link per page in the directory, PLUS one link per immediate
+        subdirectory that itself carries a folder-note hub (`<sub>/<sub>
+        .md`) — a concept node's hub advertises its child taxonomy nodes the
+        same way it advertises its own content pages, so the tree is
+        browsable top-down.
       * **Hub present** — APPEND ONLY the link lines it is missing to the
         body it already has (same shape as
         `skills/wiki-health/lib/lint.py::_hub_missing_entries`), never a
-        re-render. Nothing missing → no write at all (idempotent).
+        re-render. Nothing missing → no write at all (idempotent). `heading`
+        is UNUSED on this path — an existing hub keeps whatever heading a
+        human (or an earlier create) already gave it.
 
     A hub whose `ren_trust` is `user` is a human-owned page: skipped
     entirely (returns False), same hold rule the durable-update path applies
@@ -698,10 +749,22 @@ def _ensure_lessons_hub(dir_rel: str, session: str, project: str | None) -> bool
         hub_path = ren_paths.safe_join(wiki, hub_rel)
         dir_path = ren_paths.safe_join(wiki, dir_rel)
 
-        entries = sorted(
+        page_entries = sorted(
             p.name for p in dir_path.glob("*.md")
             if p.is_file() and p.name != f"{dirname}.md"
         ) if dir_path.is_dir() else []
+        # Child directory folder-notes: a subdirectory advertises itself the
+        # same way THIS hub does, `<sub>/<sub>.md` — listing it here is what
+        # makes the concept tree browsable from any ancestor hub.
+        subdir_entries = sorted(
+            p.name for p in dir_path.iterdir()
+            if p.is_dir() and (p / f"{p.name}.md").is_file()
+        ) if dir_path.is_dir() else []
+
+        entries = sorted(
+            [(PurePosixPath(n).stem, n) for n in page_entries]
+            + [(n, f"{n}/{n}.md") for n in subdir_entries]
+        )
 
         if hub_path.is_file():
             # Human-authored hub: never auto-edited (see docstring).
@@ -709,26 +772,25 @@ def _ensure_lessons_hub(dir_rel: str, session: str, project: str | None) -> bool
                 return False
             existing_text = hub_path.read_text(encoding="utf-8")
             advertised = set(_hub_links(existing_text))
-            missing = [n for n in entries if n not in advertised]
+            missing = [(name, target) for name, target in entries if target not in advertised]
             if not missing:
                 return False
-            appended = "\n".join(f"- [{PurePosixPath(n).stem}]({n})" for n in missing)
+            appended = "\n".join(f"- [{name}]({target})" for name, target in missing)
             content = existing_text.rstrip("\n") + "\n" + appended + "\n"
             op = "UPDATE"
         else:
-            links = "\n".join(f"- [{PurePosixPath(n).stem}]({n})" for n in entries)
+            links = "\n".join(f"- [{name}]({target})" for name, target in entries)
             if project:
                 # `type: hub`, not `project-knowledge`: `lib.memory.page_types
                 # .derive_type()` (spec 2026-08-21 §2.2, rule 2) types this
-                # exact path shape — `projects/<slug>/knowledge/lessons/
-                # lessons.md` — as `hub`, and I1 ("never override an existing
+                # exact path shape — `projects/<slug>/knowledge/.../<dir>/
+                # <dir>.md` — as `hub`, and I1 ("never override an existing
                 # `type:`") means whichever value lands here wins permanently
                 # at the write door. Disagreeing would leave the wiki
-                # accumulating project lessons hubs of both types depending on
-                # which code path created the page (final-review finding 2,
-                # 2026-08-21).
+                # accumulating hubs of both types depending on which code
+                # path created the page (final-review finding 2, 2026-08-21).
                 fm = (f"---\ntype: hub\nschema_version: 1\n"
-                      f"project: {project}\nhub: true\ntitle: \"Lessons Hub\"\n---\n")
+                      f"project: {project}\nhub: true\ntitle: \"{heading} Hub\"\n---\n")
             else:
                 # #I6: wiki-lint files a `missing-frontmatter-type` judgment
                 # on any page without a frontmatter `type:` — wrap's own hub
@@ -748,21 +810,201 @@ def _ensure_lessons_hub(dir_rel: str, session: str, project: str | None) -> bool
                 # migration chain, so `migration_chain()` still returns `[]`
                 # and doctor's schema check still passes this page — the
                 # registration changed, the benign outcome didn't.
-                fm = "---\ntype: hub\nhub: true\ntitle: \"Lessons\"\n---\n"
-            content = f"{fm}\n# Lessons\n\nDurable lessons in this folder:\n\n{links}\n"
+                fm = f"---\ntype: hub\nhub: true\ntitle: \"{heading}\"\n---\n"
+            content = f"{fm}\n# {heading}\n\nPages in this folder:\n\n{links}\n"
             op = "ADD"
 
         _, prov = propose_and_apply(
             Proposal(
                 op=op,
                 page=hub_rel, content=content,
-                reason="lessons folder-note hub (spec 2026-08-14 §2)",
+                reason="folder-note hub (spec 2026-08-14 §2, extended 2026-08-31 §3)",
                 producer="wrap", writer="routine", session=session,
             )
         )
         return prov is not None
     except Exception:  # noqa: BLE001 - hub upkeep must never fail wrap close-out
         return False
+
+
+def _concept_node_page(project: str, placement: str) -> str | None:
+    """Behavior 4 (spec 2026-08-31 §3): the on-disk page for an EXISTING
+    taxonomy node, so a concept "create" whose placement already resolves
+    against the taxonomy accretes onto that node's own page instead of
+    minting a duplicate.
+
+    Every leaf `_apply_concept_create` ever created carries a folder-note
+    hub named `<lastseg>.md` inside its own directory (`_ensure_hub`'s
+    convention) — that hub page IS the node's page for accretion purposes in
+    the overwhelmingly common case, so it is tried first, by its exact path.
+    Falls back to "the single OTHER `*.md` file in that directory" for a
+    node whose taxonomy entry predates (or otherwise didn't go through) this
+    code path — e.g. a hand-seeded `schema.md`. Returns `None` (caller
+    fails closed to a lesson create + a `node_page_missing` placement_event)
+    when neither resolves to exactly one file.
+
+    Never raises: any filesystem/path error degrades to `None`, same
+    isolated-duty posture as `_ensure_hub`."""
+    try:
+        wiki = ren_paths.wiki_root()
+        lastseg = placement.rsplit("/", 1)[-1]
+        node_dir_rel = f"projects/{project}/knowledge/{placement}"
+        candidate_rel = f"{node_dir_rel}/{lastseg}.md"
+        if ren_paths.safe_join(wiki, candidate_rel).is_file():
+            return candidate_rel
+        node_dir = ren_paths.safe_join(wiki, node_dir_rel)
+        if node_dir.is_dir():
+            others = [p for p in node_dir.glob("*.md") if p.is_file()]
+            if len(others) == 1:
+                return f"{node_dir_rel}/{others[0].name}"
+        return None
+    except Exception:  # noqa: BLE001 - fails closed to the caller's lesson fallback
+        return None
+
+
+def _count_facts_bullets(text: str) -> int:
+    """`^- ` bullet lines under a `## Facts` heading in `text` (up to the
+    next heading of any level, or end of text) — the split-suggestion
+    threshold's input (behavior 8). `0` when there's no `## Facts` heading
+    at all."""
+    m = _FACTS_HEADING_RE.search(text)
+    if m is None:
+        return 0
+    rest = text[m.end():]
+    next_heading = _ANY_HEADING_RE.search(rest)
+    section = rest[:next_heading.start()] if next_heading else rest
+    return len(_BULLET_LINE_RE.findall(section))
+
+
+def _append_facts_bullet(text: str, item_text: str) -> str:
+    """Mechanical (no-LLM) merge for a concept node accretion (behavior 4):
+    append `- <item_text>` as the LAST bullet under `text`'s `## Facts`
+    heading, creating the heading (at the end of the page) if `text` has
+    none yet. Deterministic and dependency-free — the fallback used when
+    neither a precomputed merge nor a live `llm_call` is available, and the
+    no-LLM-fallback used in place of `MergeError`-to-unplaced for this one
+    branch (spec 2026-08-31 §3 behavior 4)."""
+    bullet = f"- {item_text}"
+    m = _FACTS_HEADING_RE.search(text)
+    if m is None:
+        return text.rstrip("\n") + "\n\n## Facts\n\n" + bullet + "\n"
+    rest = text[m.end():]
+    next_heading = _ANY_HEADING_RE.search(rest)
+    if next_heading is None:
+        return text.rstrip("\n") + "\n" + bullet + "\n"
+    insert_at = m.end() + next_heading.start()
+    section = text[m.end():insert_at].rstrip("\n")
+    return text[:m.end()] + section + "\n" + bullet + "\n\n" + text[insert_at:]
+
+
+def _apply_concept_create(item: str, decision: Decision, project: str, session: str) -> dict:
+    """New-leaf concept CREATE (spec 2026-08-31 §3 behaviors 3+5, Task 7
+    reuses this): writes the concept's own content page, then — ONLY once
+    that page write actually lands (never for a `held` write; there is
+    nothing on disk yet for a hub or a taxonomy line to point at) —
+    (b) ensures the leaf directory's own folder-note hub, (c) ensures the
+    PARENT directory's folder-note hub (which now also advertises this new
+    child directory, per `_ensure_hub`'s subdirectory listing), and
+    (d) additively splices the new leaf into `schema.md`'s taxonomy fence —
+    or, when `schema.md` is human-owned (`ren_trust: user`), records that
+    edit as a suggestion instead (the page/hub writes still land; per the
+    plan's fail-closed rule an invalid/blocked placement never discards a
+    durable item, and per spec §wiki-health the tree/fence drift is the
+    auditor's job to reconcile, not this call's).
+
+    Returns `{"status": "applied"|"unchanged"|"held", "page", "qid",
+    "write_id", "op", "conflicts", "schema_suggestion"}` — `schema_suggestion`
+    is `{"page", "sid"}` when the taxonomy edit was held as a suggestion,
+    else `None`. `SecretsFound` propagates (caller routes it to `refused`,
+    same as every other write in the durable loop)."""
+    placement = decision.placement
+    title = decision.title
+    parts = placement.split("/")
+    leaf_dir = f"projects/{project}/knowledge/{placement}"
+    parent_dir = (
+        f"projects/{project}/knowledge/{'/'.join(parts[:-1])}"
+        if len(parts) > 1 else f"projects/{project}/knowledge"
+    )
+
+    sentence_match = _SENTENCE_SPLIT_RE.split(item.strip(), maxsplit=1)
+    first_sentence = sentence_match[0] if sentence_match else item.strip()
+    content = (
+        "---\n"
+        "type: project-knowledge\n"
+        "schema_version: 1\n"
+        f"project: {project}\n"
+        f'title: "{title}"\n'
+        "---\n\n"
+        f"# {title}\n\n"
+        f"{first_sentence}\n\n"
+        "## Facts\n\n"
+        f"- {item}\n"
+    )
+    page = _durable_create_page(item, decision.scope, project, placement=placement, title=title)
+
+    entry, prov = propose_and_apply(
+        Proposal(
+            op="ADD", page=page, content=content, reason=decision.reason,
+            producer="wrap", writer="llm-auto", session=session,
+        )
+    )
+
+    result: dict = {
+        "page": page, "qid": None, "write_id": None, "op": None,
+        "conflicts": None, "schema_suggestion": None,
+    }
+    if prov is not None:
+        result.update(status="applied", qid=entry.qid, write_id=prov.write_id, op=prov.op)
+    elif entry.status == NOOP_DUPLICATE:
+        result["status"] = "unchanged"
+    else:
+        result.update(status="held", qid=entry.qid, conflicts=entry.conflicts)
+        return result  # nothing landed on disk — no hub/taxonomy follow-up
+
+    _ensure_hub(leaf_dir, session, project, heading=title)
+    parent_name = parts[-2] if len(parts) > 1 else "knowledge"
+    _ensure_hub(parent_dir, session, project, heading=_hub_heading_default(parent_name))
+
+    try:
+        schema_page = f"projects/{project}/schema.md"
+        schema_path = ren_paths.safe_join(ren_paths.wiki_root(), schema_page)
+        schema_text = schema_path.read_text(encoding="utf-8")
+        current_tax = parse_taxonomy(schema_text)
+        new_tax = Taxonomy(nodes=tuple(sorted(set(current_tax.nodes) | {placement})))
+        new_fence = f"```taxonomy\n{render_block(new_tax)}```"
+        new_schema_text = _TAXONOMY_FENCE_RE.sub(lambda _m: new_fence, schema_text, count=1)
+    except Exception:  # noqa: BLE001 - the page/hub writes above must still stand
+        new_schema_text = None
+
+    if new_schema_text is not None and new_schema_text != schema_text:
+        proposal_kwargs = dict(
+            op="UPDATE", page=schema_page, content=new_schema_text,
+            reason=f"taxonomy: additive leaf {placement}",
+            producer="wrap", writer="llm-auto", session=session,
+        )
+        if _target_trust(schema_page) == "user":
+            sug_entry = record_suggestion(
+                SuggestionSpec(
+                    producer="wrap",
+                    title=f"Add taxonomy leaf: {placement}",
+                    rationale=f"taxonomy: additive leaf {placement}",
+                    evidence={"item": item, "session": session,
+                             "page": schema_page, "placement": placement},
+                    kind="page_write",
+                    payload=proposal_kwargs,
+                    fingerprint=f"wrap-taxonomy:{session}:{placement}",
+                )
+            )
+            result["schema_suggestion"] = {
+                "page": schema_page, "sid": sug_entry["sid"] if sug_entry else None,
+            }
+        else:
+            try:
+                propose_and_apply(Proposal(**proposal_kwargs))
+            except SecretsFound:
+                pass  # a taxonomy line can't realistically trip scrub; degrade quietly
+
+    return result
 
 
 def _route_unplaced(item: str, session: str, index: int, *, reason: str,
@@ -880,6 +1122,17 @@ def wrap_session(
         `open_threads` / `completed_ptrs` the live session passes and by this
         session's own queue writes. The zero-value dict when no project is in
         scope or the reconcile failed (isolated like the sweeps above).
+      - "concept_routing": `{"blind": <reason str> | None}` — present iff
+        `project` is in scope (concept-tree routing, spec 2026-08-31 §3
+        behavior 7). `{"blind": None}` once `projects/<project>/schema.md`
+        loaded and parsed cleanly. `{"blind": <reason>}` when it didn't
+        (missing/unparseable — `TaxonomyError`'s message) AND this wrap had
+        at least one durable candidate to route; key is OMITTED entirely
+        when there was nothing to route, so a broken schema.md with an
+        empty session never manufactures a false alarm. Blindness is
+        Unknown, not a guess (`lib/reporting.py` conventions): while blind,
+        every concept-kind verdict falls back to a lesson create rather than
+        a silent misroute.
 
     `project` (codex D4): when the wrap is scoped to a project, the L1 page
     is written to `projects/<project>/l1/session-<id>.md`, the EXACT path
@@ -985,6 +1238,26 @@ def wrap_session(
     unplaced: list[dict] = []
     unchanged: list[dict] = []
 
+    # Concept-tree routing (spec 2026-08-31 §3, behavior 1): loaded ONCE for
+    # this whole wrap, not per-item — `gate`/`gate_precomputed` below get the
+    # same `taxonomy` object for every candidate. `routing_blind` (the
+    # `TaxonomyError` message, when the project's `schema.md` is missing or
+    # unparseable) is Unknown, not a guess: it is surfaced on the result
+    # (below, after the loop) rather than silently degrading every concept
+    # verdict to a lesson with no signal anyone could act on.
+    taxonomy: Taxonomy | None = None
+    routing_blind: str | None = None
+    if project:
+        try:
+            taxonomy = load_taxonomy(project)
+        except TaxonomyError as exc:
+            routing_blind = str(exc)
+
+    created_concept = 0
+    created_lesson = 0
+    concept_updates = 0
+    placement_rejected = 0
+
     eligible = _eligible_update_targets(session)
 
     # Spec 2026-08-18 §2.3 die-loudly rule: candidates present, but no
@@ -999,32 +1272,211 @@ def wrap_session(
 
     for i, item in enumerate(durable_items):
         if no_classifier:
-            gate(item, None, eligible_targets=eligible, project=project)  # records no_llm
+            gate(item, None, eligible_targets=eligible, project=project,
+                 taxonomy=taxonomy)  # records no_llm
             unplaced.append(_route_unplaced(
                 item, session, i, reason="no classifier available at wrap time",
                 fingerprint=f"wrap-noclassifier:{session}:{i}"))
             continue
 
-        if verdicts is not None:
-            try:
+        try:
+            if verdicts is not None:
                 decision = gate_precomputed(
-                    item, verdicts[i], eligible_targets=eligible, project=project)
-            except PlacementError as exc:
-                unplaced.append(_route_unplaced(
-                    item, session, i, reason=exc.reason,
-                    fingerprint=f"wrap-unplaced:{session}:{i}",
-                    claimed={"claimed_scope": exc.claimed_scope,
-                             "claimed_action": exc.claimed_action,
-                             "claimed_target": exc.claimed_target}))
-                continue
-        else:
-            decision = gate(item, llm_call, eligible_targets=eligible, project=project)
+                    item, verdicts[i], eligible_targets=eligible, project=project,
+                    taxonomy=taxonomy)
+            else:
+                decision = gate(item, llm_call, eligible_targets=eligible,
+                                project=project, taxonomy=taxonomy)
+        except ConceptPlacementError as exc:
+            # Spec 2026-08-31 §3 behavior 2: the classifier affirmed this
+            # item is DURABLE — only its concept/taxonomy routing was
+            # invalid (no taxonomy, an unresolvable placement, a missing
+            # new-leaf title, or a global-scope concept). That is never
+            # "unplaceable" (never `_route_unplaced` — this class of item
+            # IS placeable, just not conceptually), so it falls back to a
+            # plain lesson create/update using exactly the scope/action/
+            # target the classifier already validated before the
+            # concept-specific check failed (`exc.claimed_*` — populated
+            # from data that passed VALID_SCOPES/VALID_ACTIONS/eligibility
+            # checks upstream in `decision_from_data`, so it's safe to
+            # reuse directly).
+            placement_rejected += 1
+            collect.record(
+                collect.KIND_PLACEMENT_EVENT,
+                {"event": "placement_rejected", "reason": exc.reason, "session": session},
+            )
+            decision = Decision(
+                verdict="durable",
+                reason=f"concept placement rejected, falling back to lesson: {exc.reason}",
+                scope=exc.claimed_scope or "global",
+                action=exc.claimed_action or "create",
+                target_page=exc.claimed_target,
+                kind="lesson",
+            )
+        except PlacementError as exc:
+            unplaced.append(_route_unplaced(
+                item, session, i, reason=exc.reason,
+                fingerprint=f"wrap-unplaced:{session}:{i}",
+                claimed={"claimed_scope": exc.claimed_scope,
+                         "claimed_action": exc.claimed_action,
+                         "claimed_target": exc.claimed_target}))
+            continue
 
         if decision.verdict != "durable":
             gated_out.append(
                 {"item": item, "verdict": decision.verdict, "reason": decision.reason}
             )
             continue
+
+        # Concept "create" behaviors 3/4: a taxonomy-valid placement is
+        # either a brand-new leaf (mint a page + hubs + taxonomy line) or an
+        # EXISTING node (accrete onto that node's own page instead — this
+        # must run BEFORE the generic action=="update"/"create" dispatch
+        # below, since it decides which of those two this item actually is).
+        # A concept `action=="update"` (the Task 2 "known quirk" — placement/
+        # title pass through UNVALIDATED on that Decision) skips this block
+        # entirely and falls through to the generic update branch below,
+        # which deliberately IGNORES `decision.placement`/`decision.title`:
+        # `target_page` there is one of THIS session's eligible update
+        # targets, not necessarily a taxonomy node page at all, so
+        # re-validating unvalidated placement data against it would be
+        # trusting a field the classifier never checked for this action.
+        if decision.kind == "concept" and decision.action == "create":
+            try:
+                placement_kind = classify_placement(taxonomy, decision.placement)
+            except TaxonomyError as exc:
+                # Defensive only: `taxonomy` hasn't changed since `gate`/
+                # `gate_precomputed` already validated this exact placement
+                # against it moments ago. Fails closed to a lesson rather
+                # than crash the loop if it ever does happen.
+                decision = Decision(
+                    verdict="durable",
+                    reason=f"concept placement re-check failed: {exc}",
+                    scope=decision.scope, action="create", kind="lesson",
+                )
+                placement_kind = None
+
+            if placement_kind == "new-leaf":
+                try:
+                    concept_result = _apply_concept_create(item, decision, project, session)
+                except SecretsFound as exc:
+                    refused.append({"item": item, "reason": str(exc)})
+                    continue
+                if concept_result["status"] == "applied":
+                    applied.append({"qid": concept_result["qid"],
+                                    "write_id": concept_result["write_id"],
+                                    "page": concept_result["page"],
+                                    "op": concept_result["op"]})
+                    created_concept += 1
+                elif concept_result["status"] == "unchanged":
+                    unchanged.append({"page": concept_result["page"]})
+                else:
+                    held.append({"qid": concept_result["qid"],
+                                 "page": concept_result["page"],
+                                 "conflicts": concept_result["conflicts"]})
+                if concept_result["schema_suggestion"]:
+                    suggested.append(concept_result["schema_suggestion"])
+                continue
+
+            if placement_kind == "existing":
+                node_page = _concept_node_page(project, decision.placement)
+                if node_page is None:
+                    collect.record(
+                        collect.KIND_PLACEMENT_EVENT,
+                        {"event": "node_page_missing", "session": session,
+                         "placement": decision.placement},
+                    )
+                    decision = Decision(
+                        verdict="durable",
+                        reason=f"concept node page missing for {decision.placement}",
+                        scope=decision.scope, action="create", kind="lesson",
+                    )
+                else:
+                    try:
+                        current = ren_paths.safe_join(
+                            ren_paths.wiki_root(), node_page
+                        ).read_text(encoding="utf-8")
+                    except OSError as exc:
+                        collect.record(
+                            collect.KIND_PLACEMENT_EVENT,
+                            {"event": "node_page_missing", "session": session,
+                             "placement": decision.placement},
+                        )
+                        decision = Decision(
+                            verdict="durable",
+                            reason=f"concept node page unreadable for {decision.placement}: {exc}",
+                            scope=decision.scope, action="create", kind="lesson",
+                        )
+                    else:
+                        supplied = merges[i] if merges is not None else None
+                        try:
+                            if supplied is not None:
+                                merged = validate_merged(current, supplied)
+                            elif llm_call is not None:
+                                merged = merge_update(current, item, llm_call)
+                            else:
+                                merged = _append_facts_bullet(current, item)
+                        except MergeError:
+                            # Behavior 4: a bad/absent merge for a concept
+                            # node degrades to the mechanical `## Facts`
+                            # append rather than `unplaced` — accretion is
+                            # expected to be common and mechanical here,
+                            # unlike the generic lesson-update branch below.
+                            merged = _append_facts_bullet(current, item)
+
+                        proposal_kwargs = dict(
+                            op="UPDATE", page=node_page, content=merged,
+                            reason=decision.reason, producer="wrap",
+                            writer="llm-auto", session=session,
+                        )
+                        if _target_trust(node_page) == "user":
+                            entry = record_suggestion(
+                                SuggestionSpec(
+                                    producer="wrap",
+                                    title=f"Update human-authored concept node: {node_page}",
+                                    rationale=decision.reason,
+                                    evidence={"item": item, "session": session,
+                                             "page": node_page},
+                                    kind="page_write",
+                                    payload=proposal_kwargs,
+                                    fingerprint=f"wrap-update:{session}:{node_page}",
+                                )
+                            )
+                            suggested.append({"page": node_page,
+                                              "sid": entry["sid"] if entry else None})
+                        else:
+                            try:
+                                entry, prov = propose_and_apply(Proposal(**proposal_kwargs))
+                            except SecretsFound as exc:
+                                refused.append({"item": item, "reason": str(exc)})
+                            else:
+                                if prov is not None:
+                                    updated.append({"qid": entry.qid,
+                                                    "write_id": prov.write_id,
+                                                    "page": node_page, "op": prov.op})
+                                    concept_updates += 1
+                                    if _count_facts_bullets(merged) > _CONCEPT_SPLIT_BULLETS:
+                                        record_suggestion(
+                                            SuggestionSpec(
+                                                producer="wrap",
+                                                title=f"Split large concept node: {node_page}",
+                                                rationale=(
+                                                    f"{node_page} has more than "
+                                                    f"{_CONCEPT_SPLIT_BULLETS} Facts bullets"
+                                                ),
+                                                evidence={"page": node_page, "session": session},
+                                                kind="structured_action",
+                                                payload={"action": "split_concept_node",
+                                                         "page": node_page},
+                                                fingerprint=f"wrap-split:{node_page}",
+                                            )
+                                        )
+                                elif entry.status == NOOP_DUPLICATE:
+                                    unchanged.append({"page": node_page})
+                                else:
+                                    held.append({"qid": entry.qid, "page": node_page,
+                                                 "conflicts": entry.conflicts})
+                        continue
 
         if decision.action == "update":
             target = decision.target_page
@@ -1084,6 +1536,8 @@ def wrap_session(
             if prov is not None:
                 updated.append({"qid": entry.qid, "write_id": prov.write_id,
                                 "page": target, "op": prov.op})
+                if decision.kind == "concept":
+                    concept_updates += 1
             elif entry.status == NOOP_DUPLICATE:
                 # #78: content normalized equal to the page on disk. The entry
                 # is synthetic and never persisted, so its qid is absent from
@@ -1096,6 +1550,10 @@ def wrap_session(
                              "conflicts": entry.conflicts})
             continue
 
+        # Plain lesson create — including every concept item coerced to a
+        # lesson above (placement rejected, node page missing/unreadable, or
+        # a defensive re-check failure): `decision.kind` is always "lesson"
+        # by this point.
         page = _durable_create_page(item, decision.scope, project)
         try:
             entry, prov = propose_and_apply(
@@ -1117,9 +1575,11 @@ def wrap_session(
             applied.append(
                 {"qid": entry.qid, "write_id": prov.write_id, "page": page, "op": prov.op}
             )
+            created_lesson += 1
             hub_dir = str(PurePosixPath(page).parent)
-            _ensure_lessons_hub(
-                hub_dir, session, project if page.startswith("projects/") else None
+            _ensure_hub(
+                hub_dir, session, project if page.startswith("projects/") else None,
+                heading="Lessons",
             )
         elif entry.status == NOOP_DUPLICATE:
             # #78: same discrimination as the update branch above — a
@@ -1145,6 +1605,14 @@ def wrap_session(
          "created": len(applied),
          "created_project": created_project,
          "created_global": len(applied) - created_project,
+         # Concept-tree routing (spec 2026-08-31 §3 behavior 6): partitions
+         # of the existing "created"/"updated" totals, plus the
+         # placement-rejection count — `created_concept + created_lesson ==
+         # created`; `concept_updates` is a subset of `updated`.
+         "created_concept": created_concept,
+         "created_lesson": created_lesson,
+         "concept_updates": concept_updates,
+         "placement_rejected": placement_rejected,
          "updated": len(updated),
          "gated_out": len(gated_out), "suggested": len(suggested),
          "held": len(held), "refused": len(refused),
@@ -1208,6 +1676,19 @@ def wrap_session(
             "auto_pointers": [], "warnings": [],
         },
     }
+
+    # Behavior 7: blindness is Unknown, not a guess (`lib/reporting.py`
+    # conventions). Only surfaced when a project was in scope at all (no
+    # project means concept routing was never attempted, blind or not) —
+    # the blind case only when there was actually something to route
+    # (`durable_items` non-empty), so a project with a broken schema.md but
+    # nothing durable this session doesn't manufacture a false alarm.
+    if project:
+        if routing_blind is not None:
+            if durable_items:
+                result["concept_routing"] = {"blind": routing_blind}
+        else:
+            result["concept_routing"] = {"blind": None}
 
     try:
         _append_session_summary(session, project, result)

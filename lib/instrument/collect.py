@@ -97,6 +97,15 @@ KIND_DURABLE_OUTCOME = "durable_outcome"
 #: distiller, alongside the shared `KIND_DURABLE_OUTCOME` counters it also
 #: emits with `producer="distiller"`.
 KIND_DISTILLER_RUN = "distiller_run"
+#: One per concept-tree routing decision worth surfacing on its own (spec
+#: 2026-08-31 §3, Task 3): a `ConceptPlacementError` rejection (a "concept"
+#: verdict whose taxonomy placement didn't validate — falls back to a
+#: lesson create) or a `node_page_missing` (an "existing" taxonomy node with
+#: no resolvable on-disk page — also falls back to a lesson create).
+#: Distinct from `KIND_CLASSIFIER_EVENT`: that kind is the classifier's own
+#: parse/fail-closed signal, this one is wrap's routing decision made
+#: AFTER a valid "durable" verdict was already returned.
+KIND_PLACEMENT_EVENT = "placement_event"
 
 
 def _now_iso() -> str:
@@ -276,6 +285,7 @@ __all__ = [
     "KIND_QUARANTINE_RELEASE",
     "KIND_DURABLE_OUTCOME",
     "KIND_DISTILLER_RUN",
+    "KIND_PLACEMENT_EVENT",
     "record",
     "read",
     "harvest_session_usage",

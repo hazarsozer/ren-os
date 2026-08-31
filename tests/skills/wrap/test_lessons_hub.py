@@ -1,8 +1,10 @@
 """
-Tests for `_ensure_lessons_hub` (Task 5): the lessons/ folder-note hub —
-`<dir>/<dirname>.md`, `hub: true` frontmatter — created/backfilled the first
-time a durable lesson lands in a directory, and left alone (idempotent) on
-every call after that.
+Tests for `_ensure_hub` (Task 5; renamed from `_ensure_lessons_hub` by Task 3
+— 2026-08-31 concept-tree routing, which generalized it past lessons-only):
+the lessons/ folder-note hub — `<dir>/<dirname>.md`, `hub: true`
+frontmatter — created/backfilled the first time a durable lesson lands in a
+directory, and left alone (idempotent) on every call after that. Every call
+site here passes `heading="Lessons"` to keep the pre-rename behavior exactly.
 
 Reuses test_durable_loop.py's isolation pattern (REN_FRAMEWORK_ROOT-pointed
 `wiki` fixture).
@@ -11,7 +13,7 @@ CONTROLLER RULING: the write door stamps `ren_*` provenance frontmatter onto
 every applied page, so the on-disk hub file never byte-equals the freshly
 rendered body. Idempotence is therefore checked by comparing the LINK LIST
 extracted from the on-disk hub body against the freshly rendered link list
-(same helper `_ensure_lessons_hub` uses internally to decide whether to
+(same helper `_ensure_hub` uses internally to decide whether to
 write) — not by raw byte-equality of the whole file.
 
 Run with: uv run pytest tests/skills/wrap/test_lessons_hub.py -v
@@ -25,7 +27,7 @@ import re
 import pytest
 
 from lib.ren_paths import wiki_root
-from skills.wrap.lib import _ensure_lessons_hub
+from skills.wrap.lib import _ensure_hub
 
 _LINK_RE = re.compile(r"^- \[[^\]]+\]\([^)]+\)$", re.MULTILINE)
 
@@ -59,7 +61,7 @@ def test_global_hub_created_with_backfill(wiki):
     (lessons_dir / "old-one.md").write_text("Old lesson one.\n", encoding="utf-8")
     (lessons_dir / "old-two.md").write_text("Old lesson two.\n", encoding="utf-8")
 
-    result = _ensure_lessons_hub("lessons", "s1", None)
+    result = _ensure_hub("lessons", "s1", None, heading="Lessons")
 
     assert result is True
     hub_path = lessons_dir / "lessons.md"
@@ -75,14 +77,14 @@ def test_hub_idempotent(wiki):
     lessons_dir.mkdir(parents=True, exist_ok=True)
     (lessons_dir / "old-one.md").write_text("Old lesson one.\n", encoding="utf-8")
 
-    first = _ensure_lessons_hub("lessons", "s1", None)
+    first = _ensure_hub("lessons", "s1", None, heading="Lessons")
     assert first is True
 
     hub_path = lessons_dir / "lessons.md"
     before = hub_path.read_text(encoding="utf-8")
     before_links = _links(before)
 
-    second = _ensure_lessons_hub("lessons", "s1", None)
+    second = _ensure_hub("lessons", "s1", None, heading="Lessons")
 
     assert second is False
     after = hub_path.read_text(encoding="utf-8")
@@ -96,7 +98,7 @@ def test_project_hub_frontmatter(wiki):
     lessons_dir.mkdir(parents=True, exist_ok=True)
     (lessons_dir / "insight-one.md").write_text("Insight.\n", encoding="utf-8")
 
-    result = _ensure_lessons_hub("projects/p/knowledge/lessons", "s1", "p")
+    result = _ensure_hub("projects/p/knowledge/lessons", "s1", "p", heading="Lessons")
 
     assert result is True
     hub_path = lessons_dir / "lessons.md"
@@ -121,7 +123,7 @@ def test_project_hub_type_agrees_with_derive_type(wiki):
     lessons_dir.mkdir(parents=True, exist_ok=True)
     (lessons_dir / "insight-one.md").write_text("Insight.\n", encoding="utf-8")
 
-    _ensure_lessons_hub("projects/p/knowledge/lessons", "s1", "p")
+    _ensure_hub("projects/p/knowledge/lessons", "s1", "p", heading="Lessons")
 
     hub_path = lessons_dir / "lessons.md"
     text = hub_path.read_text(encoding="utf-8")
@@ -150,7 +152,7 @@ def test_existing_hub_keeps_human_prose_and_gains_only_the_new_link(wiki):
     )
 
     (lessons_dir / "new-one.md").write_text("New lesson.\n", encoding="utf-8")
-    assert _ensure_lessons_hub("lessons", "s1", None) is True
+    assert _ensure_hub("lessons", "s1", None, heading="Lessons") is True
 
     text = hub_path.read_text(encoding="utf-8")
     assert "These are the ones I actually reread — the rest is noise." in text
@@ -173,7 +175,7 @@ def test_trust_user_hub_is_never_touched(wiki):
     )
     hub_path.write_text(before, encoding="utf-8")
 
-    assert _ensure_lessons_hub("lessons", "s1", None) is False
+    assert _ensure_hub("lessons", "s1", None, heading="Lessons") is False
     assert hub_path.read_text(encoding="utf-8") == before
 
 
@@ -184,7 +186,7 @@ def test_new_global_hub_has_frontmatter_type(wiki):
     lessons_dir.mkdir(parents=True, exist_ok=True)
     (lessons_dir / "old-one.md").write_text("Old lesson one.\n", encoding="utf-8")
 
-    assert _ensure_lessons_hub("lessons", "s1", None) is True
+    assert _ensure_hub("lessons", "s1", None, heading="Lessons") is True
 
     text = (lessons_dir / "lessons.md").read_text(encoding="utf-8")
     assert "type: hub" in text
@@ -203,6 +205,6 @@ def test_hub_failure_never_raises(wiki, monkeypatch):
 
     monkeypatch.setattr("skills.wrap.lib.propose_and_apply", boom)
 
-    result = _ensure_lessons_hub("lessons", "s1", None)
+    result = _ensure_hub("lessons", "s1", None, heading="Lessons")
 
     assert result is False
