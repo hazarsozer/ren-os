@@ -109,6 +109,24 @@ def test_rerender_all_project_claude_md_signals_when_blind(tmp_path, monkeypatch
     assert isinstance(module.rerender_all_project_claude_md(), Unknown)
 
 
+def test_render_wrap_screen_signals_when_blind():
+    """`render_wrap_screen` always returns a rendered str (it's the wrap
+    screen itself, never the missing-check channel), so unlike the other
+    three surfaces this asserts on the rendered text rather than
+    `isinstance(..., Unknown)`: the literal "concept routing blind" phrase
+    plus the reason must appear when `concept_routing.blind` is set."""
+    module = importlib.import_module("skills.wrap.lib")
+    result = {
+        "l1_qid": "q-does-not-exist",
+        "applied": [], "held": [], "gated_out": [], "refused": [],
+        "fail_closed": False,
+        "concept_routing": {"blind": "no taxonomy"},
+    }
+    screen = module.render_wrap_screen(result, session="sess-audit-blind")
+    assert "concept routing blind" in screen
+    assert "no taxonomy" in screen
+
+
 def test_every_surface_has_a_blind_test():
     """The registry and this file must not drift apart: adding a surface
     without a blind-condition test is the gap this audit exists to close.

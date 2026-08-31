@@ -70,4 +70,10 @@ REPORTING_SURFACES: tuple[Surface, ...] = (
         function="changelog_digest",
         blind_when="changelog missing or unparseable",
     ),
+    Surface(
+        module="skills.wrap.lib",
+        function="render_wrap_screen",
+        blind_when="a project's schema.md has no taxonomy fence, or an "
+        "unparseable one, and this wrap had a durable item to route",
+    ),
 )

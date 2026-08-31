@@ -627,6 +627,41 @@ def test_wrap_screen_empty_session_is_graceful_minimal(wiki):
     assert "- (none)" in screen
 
 
+def test_wrap_screen_shows_concept_routing_blind(wiki):
+    """Behavior 7 / Task 4: `concept_routing.blind` set to a reason must
+    render the literal phrase "concept routing blind" plus the reason —
+    the friend-facing signal that everything this session routed to
+    lessons instead of the concept tree because the taxonomy couldn't be
+    read (`lib/reporting.py` Unknown convention)."""
+    result = {
+        "l1_qid": "q-does-not-exist",
+        "applied": [], "held": [], "gated_out": [], "refused": [],
+        "fail_closed": False,
+        "concept_routing": {"blind": 'no ```taxonomy fence in schema.md'},
+    }
+
+    screen = render_wrap_screen(result, session="sess-concept-blind")
+
+    assert "concept routing blind" in screen
+    assert 'no ```taxonomy fence in schema.md' in screen
+
+
+def test_wrap_screen_omits_concept_routing_note_when_not_blind(wiki):
+    """`{"blind": None}` — taxonomy loaded and parsed cleanly — must NOT
+    render the blindness phrase; silence is the correct signal for the
+    healthy case."""
+    result = {
+        "l1_qid": "q-does-not-exist",
+        "applied": [], "held": [], "gated_out": [], "refused": [],
+        "fail_closed": False,
+        "concept_routing": {"blind": None},
+    }
+
+    screen = render_wrap_screen(result, session="sess-concept-clean")
+
+    assert "concept routing blind" not in screen
+
+
 def test_wrap_screen_unchanged_rerun_says_already_saved(wiki):
     """#49: an unchanged same-session re-run dedups the L1 propose to the
     synthetic, never-persisted `noop-duplicate` queue entry — its qid is

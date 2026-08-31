@@ -2279,6 +2279,14 @@ def render_wrap_screen(wrap_result: dict, session: str) -> str:
             f"the project in projects.json"
         )
     lines.append(f"- project overview: {wrap_result.get('overview', 'skipped')}")
+    # Behavior 7 / Task 4: `concept_routing.blind` is Unknown, not a guess
+    # (`lib/reporting.py` conventions) — wrapped here so the friend sees
+    # exactly why everything this session routed to lessons instead of the
+    # concept tree. Omitted entirely when routing wasn't blind (or wasn't
+    # in scope at all).
+    concept_blind = (wrap_result.get("concept_routing") or {}).get("blind")
+    if concept_blind is not None:
+        lines.append(f"- ⚠ concept routing blind: {Unknown(reason=concept_blind).reason}")
     # #78 finding 5: the durable loop's `unchanged` bucket (noop-duplicate
     # entries — content that normalized equal to what's already on the
     # target page) is NEVER persisted to disk, so it cannot come from
