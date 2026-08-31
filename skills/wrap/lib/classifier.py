@@ -30,19 +30,26 @@ work (L1) and item extraction itself; this module only gates.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Callable, Final
 
 from lib.adapter.worker import WorkerOutputError, parse_worker_json
 from lib.instrument import collect
 from lib.memory import scrub
+from lib.memory.taxonomy import Taxonomy, TaxonomyError, classify_placement
 
 VALID_VERDICTS: Final[frozenset[str]] = frozenset({"durable", "session-only", "discard"})
 VALID_SCOPES: Final[frozenset[str]] = frozenset({"project", "global"})
 VALID_ACTIONS: Final[frozenset[str]] = frozenset({"create", "update"})
+VALID_KINDS: Final[frozenset[str]] = frozenset({"concept", "lesson"})
 
 _MAX_ITEM_CHARS: Final[int] = 4_000
 _PREVIEW_CHARS: Final[int] = 80
+_TITLE_SLUG_RE: Final = re.compile(r"^[a-z0-9][a-z0-9-]*$")
+_NO_TAXONOMY_BLOCK: Final[str] = (
+    '(no taxonomy available — "kind" must be "lesson", "placement" must be null)'
+)
 
 _CLASSIFIER_PROMPT_TEMPLATE: Final[str] = """\
 You are deciding whether ONE candidate item from an end-of-session wrap
@@ -69,6 +76,20 @@ If (and only if) the verdict is "durable", also decide placement:
 - "scope": "project" when the item is specific to the active project
   ({project}); "global" when it is a cross-project lesson.
 
+Also decide "kind":
+- "concept" — structural knowledge about the system being studied (how a
+  component works, what connects to what, what owns what). Concepts are
+  placed into the project taxonomy below: set "placement" to the
+  best-matching node path, or an existing node + ONE new child segment if
+  nothing fits (then also set "title": a 2-4 word name for the new node).
+- "lesson" — episodic learning about how we work: what failed, what to
+  avoid, process learnings. Lessons take no placement.
+When in doubt, "lesson". Concepts require scope "project".
+
+Project taxonomy (placement must come from here):
+{taxonomy_block}
+{branch_notes}
+
 Eligible update targets (pages this session actually read; pick from these
 EXACTLY or use "create"):
 {targets_block}
@@ -77,7 +98,9 @@ Output JSON ONLY (no surrounding prose, no code fence). Schema:
 
 {{"verdict": "durable" | "session-only" | "discard", "reason": "<one sentence>",
  "scope": "project" | "global", "action": "create" | "update",
- "target_page": "<one of the eligible targets>" | null}}
+ "target_page": "<one of the eligible targets>" | null,
+ "kind": "concept" | "lesson", "placement": "<taxonomy path>" | null,
+ "title": "<2-4 word name>" | null}}
 
 Candidate item:
 ---
@@ -111,6 +134,26 @@ class PlacementError(ClassifierError):
         self.claimed_target = claimed_target
 
 
+class ConceptPlacementError(PlacementError):
+    """A "concept" verdict whose taxonomy routing is invalid: no taxonomy is
+    available, the placement doesn't resolve against it, a new leaf is
+    missing a valid title, or the scope isn't "project" (no global taxonomy —
+    spec §9).
+
+    Distinct from `PlacementError` on purpose: the caller (Task 3) treats
+    these as fail-closed lesson-fallbacks — degrade to a routable lesson
+    rather than get stuck as a concept-shaped suggestion nobody can place."""
+
+    def __init__(self, msg: str, *, claimed_scope=None, claimed_action=None,
+                 claimed_target=None, claimed_kind=None, claimed_placement=None,
+                 claimed_title=None):
+        super().__init__(msg, claimed_scope=claimed_scope, claimed_action=claimed_action,
+                          claimed_target=claimed_target)
+        self.claimed_kind = claimed_kind
+        self.claimed_placement = claimed_placement
+        self.claimed_title = claimed_title
+
+
 @dataclass(frozen=True)
 class Decision:
     verdict: str   # "durable" | "session-only" | "discard"
@@ -118,14 +161,22 @@ class Decision:
     scope: str = "global"          # "project" | "global"
     action: str = "create"         # "create" | "update"
     target_page: str | None = None # required iff action == "update"
+    kind: str = "lesson"           # "concept" | "lesson"
+    placement: str | None = None   # concept only: taxonomy node path
+    title: str | None = None       # concept new-leaf only: 2-4 word name
 
 
 def build_classifier_prompt(
-    item_text: str, *, eligible_targets: tuple[str, ...] = (), project: str | None = None
+    item_text: str, *, eligible_targets: tuple[str, ...] = (), project: str | None = None,
+    taxonomy_block: str = "", branch_notes: str = "",
 ) -> str:
     """Build the strict, JSON-only classification prompt for one candidate
     item. Truncates defensively (from the end, keeping the most recent/final
-    text) so a runaway-length item can't blow the prompt budget."""
+    text) so a runaway-length item can't blow the prompt budget.
+
+    `taxonomy_block` is the rendered project taxonomy (Task 3 supplies it via
+    `render_block`); when empty, concept routing is unavailable and the
+    prompt tells the LLM "kind" must be "lesson"."""
     if not isinstance(item_text, str):
         raise TypeError(f"item_text must be str, got {type(item_text).__name__}")
     text = item_text
@@ -135,18 +186,38 @@ def build_classifier_prompt(
     return _CLASSIFIER_PROMPT_TEMPLATE.format(
         item_text=text, project=project or "(no project in scope)",
         targets_block=targets_block,
+        taxonomy_block=taxonomy_block or _NO_TAXONOMY_BLOCK,
+        branch_notes=branch_notes,
     )
 
 
+def _valid_concept_title(title: object) -> bool:
+    """A new-leaf title must be a 2-4 word string whose slug — words
+    lowercased and joined with '-' — matches the taxonomy segment pattern
+    (spec 2026-08-31 §3.1's `_SEGMENT_RE`)."""
+    if not isinstance(title, str):
+        return False
+    words = title.split()
+    if not 2 <= len(words) <= 4:
+        return False
+    slug = "-".join(words).lower()
+    return bool(_TITLE_SLUG_RE.match(slug))
+
+
 def decision_from_data(
-    data: dict, *, eligible_targets: tuple[str, ...] = ()
+    data: dict, *, eligible_targets: tuple[str, ...] = (),
+    taxonomy: Taxonomy | None = None,
 ) -> Decision:
-    """Validate one pre-computed verdict object (spec 2026-08-18 §2.2).
+    """Validate one pre-computed verdict object (spec 2026-08-18 §2.2,
+    extended 2026-08-31 §3 for concept-tree routing).
 
     EXACTLY `classify_llm`'s post-parse rules — this IS the extracted body —
     with one refinement: when the verdict is "durable" but scope/action/
     target is invalid, raise `PlacementError` (routable) rather than the
-    plain `ClassifierError` (fail-closed discard)."""
+    plain `ClassifierError` (fail-closed discard). Concept-placement
+    failures (no taxonomy, unresolvable placement, missing new-leaf title,
+    or a global-scope concept) raise `ConceptPlacementError` instead — the
+    caller (Task 3) routes those to a lesson-fallback, never a guess."""
     if not isinstance(data, dict):
         raise ClassifierError(
             f"classifier output must be a JSON object, got {type(data).__name__}"
@@ -189,25 +260,72 @@ def decision_from_data(
     else:
         if target is not None:
             raise _placement_or_plain('target_page must be null when action is "create"')
-    return Decision(verdict=verdict, reason=reason, scope=scope, action=action,
-                    target_page=target if action == "update" else None)
+
+    kind = data.get("kind", "lesson")
+    if kind not in VALID_KINDS:
+        raise _placement_or_plain(
+            f"unknown kind {kind!r}; must be one of {sorted(VALID_KINDS)}")
+
+    placement = data.get("placement")
+    title = data.get("title")
+
+    def _concept_error(msg: str) -> ConceptPlacementError:
+        return ConceptPlacementError(
+            msg, claimed_scope=data.get("scope"), claimed_action=data.get("action"),
+            claimed_target=data.get("target_page"), claimed_kind=kind,
+            claimed_placement=placement, claimed_title=title,
+        )
+
+    if kind == "lesson":
+        if placement is not None or title is not None:
+            raise _placement_or_plain(
+                'placement and title must be null when kind is "lesson"')
+    else:  # kind == "concept"
+        if scope == "global":
+            raise _concept_error(
+                'concepts require scope "project" — there is no global taxonomy (spec §9)')
+        if taxonomy is None:
+            raise _concept_error("no taxonomy available — concept routing is blind")
+        if action == "create":
+            if not isinstance(placement, str):
+                raise _concept_error('"placement" must be a string for a concept create')
+            try:
+                result = classify_placement(taxonomy, placement)
+            except TaxonomyError as exc:
+                raise _concept_error(f"invalid placement: {exc}") from exc
+            if result == "new-leaf" and not _valid_concept_title(title):
+                raise _concept_error(
+                    'a new taxonomy leaf requires a 2-4 word "title"')
+        # action == "update": today's target_page eligibility rule (checked
+        # above) already applies — no additional concept-specific check.
+
+    return Decision(
+        verdict=verdict, reason=reason, scope=scope, action=action,
+        target_page=target if action == "update" else None,
+        kind=kind,
+        placement=placement if kind == "concept" else None,
+        title=title if kind == "concept" else None,
+    )
 
 
 def classify_llm(
     item_text: str, llm_call: Callable[[str], str], *,
     eligible_targets: tuple[str, ...] = (), project: str | None = None,
+    taxonomy: Taxonomy | None = None, taxonomy_block: str = "", branch_notes: str = "",
 ) -> Decision:
     """The REAL gate: ask `llm_call` to classify `item_text`, parse STRICTLY.
 
     Raises `ClassifierError` on anything that isn't a clean
     `{"verdict": <valid>, "reason": <str>, "scope": <valid>, "action": <valid>,
-    "target_page": <str|null>}` object — malformed JSON, wrong shape, or an
-    unrecognized verdict/scope/action string all raise rather than guessing.
-    `gate()` is the only intended caller in production; it catches this
-    exception and falls back to `classify_deterministic`.
+    "target_page": <str|null>, "kind": <valid>, "placement": <str|null>,
+    "title": <str|null>}` object — malformed JSON, wrong shape, or an
+    unrecognized verdict/scope/action/kind string all raise rather than
+    guessing. `gate()` is the only intended caller in production; it catches
+    this exception and falls back to `classify_deterministic`.
     """
     prompt = build_classifier_prompt(
-        item_text, eligible_targets=eligible_targets, project=project
+        item_text, eligible_targets=eligible_targets, project=project,
+        taxonomy_block=taxonomy_block, branch_notes=branch_notes,
     )
     raw = llm_call(prompt)
 
@@ -219,7 +337,7 @@ def classify_llm(
     except WorkerOutputError as exc:
         raise ClassifierError(f"classifier output is not valid JSON: {exc}") from exc
 
-    return decision_from_data(data, eligible_targets=eligible_targets)
+    return decision_from_data(data, eligible_targets=eligible_targets, taxonomy=taxonomy)
 
 
 def classify_deterministic(item_text: str) -> Decision:
@@ -239,6 +357,7 @@ def classify_deterministic(item_text: str) -> Decision:
 def gate(
     item_text: str, llm_call: Callable[[str], str] | None = None, *,
     eligible_targets: tuple[str, ...] = (), project: str | None = None,
+    taxonomy: Taxonomy | None = None, taxonomy_block: str = "", branch_notes: str = "",
 ) -> Decision:
     """The single entry point `wrap_session` (and anything else gating a
     durable-write candidate) calls.
@@ -261,7 +380,9 @@ def gate(
     if llm_call is not None:
         try:
             return classify_llm(item_text, llm_call,
-                                eligible_targets=eligible_targets, project=project)
+                                eligible_targets=eligible_targets, project=project,
+                                taxonomy=taxonomy, taxonomy_block=taxonomy_block,
+                                branch_notes=branch_notes)
         except Exception as exc:  # noqa: BLE001 - any failure here is fail-closed, not fatal
             collect.record(
                 collect.KIND_CLASSIFIER_EVENT,
@@ -279,18 +400,20 @@ def gate(
 def gate_precomputed(
     item_text: str, data: object, *,
     eligible_targets: tuple[str, ...] = (), project: str | None = None,
+    taxonomy: Taxonomy | None = None,
 ) -> Decision:
     """`gate()`'s sibling for the verdicts-as-data transport (spec §2.2):
     validate a pre-computed verdict instead of calling an LLM.
 
-    `PlacementError` PROPAGATES — the caller owns the route to suggestions.
-    Any other malformation is fail-closed exactly like `gate()`'s LLM-error
-    path: record a classifier_event and fall back to deterministic."""
+    `PlacementError` (and its `ConceptPlacementError` subclass) PROPAGATES —
+    the caller owns the route to suggestions / lesson-fallback. Any other
+    malformation is fail-closed exactly like `gate()`'s LLM-error path:
+    record a classifier_event and fall back to deterministic."""
     preview = str(item_text)[:_PREVIEW_CHARS]
     if scrub.scan(str(item_text)):
         preview = "<redacted: secret-shaped content>"
     try:
-        return decision_from_data(data, eligible_targets=eligible_targets)  # type: ignore[arg-type]
+        return decision_from_data(data, eligible_targets=eligible_targets, taxonomy=taxonomy)  # type: ignore[arg-type]
     except PlacementError:
         raise
     except Exception as exc:  # noqa: BLE001 - fail-closed, mirrors gate()
@@ -305,9 +428,11 @@ __all__ = [
     "VALID_VERDICTS",
     "VALID_SCOPES",
     "VALID_ACTIONS",
+    "VALID_KINDS",
     "Decision",
     "ClassifierError",
     "PlacementError",
+    "ConceptPlacementError",
     "build_classifier_prompt",
     "decision_from_data",
     "classify_llm",

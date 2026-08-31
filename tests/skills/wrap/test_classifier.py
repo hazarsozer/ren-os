@@ -16,12 +16,15 @@ import json
 import pytest
 
 from lib.instrument import collect
+from lib.memory.taxonomy import parse_taxonomy
 from lib.ren_paths import wiki_root
 from skills.wrap.lib.classifier import (
     ClassifierError,
+    ConceptPlacementError,
     Decision,
     classify_deterministic,
     classify_llm,
+    decision_from_data,
     gate,
 )
 
@@ -258,3 +261,63 @@ def test_gate_fail_closed_on_bad_target_falls_back_deterministic(wiki):
                            "action": "update", "target_page": "not-eligible.md"}),
              eligible_targets=("a.md",))
     assert d.verdict in {"session-only", "discard"}  # never durable via fallback
+
+
+# --- v3: kind / placement / title (concept-tree routing) --------------------
+
+
+TAX = parse_taxonomy("```taxonomy\narchitecture/\n  memory-plane/\n```\n")
+
+
+def _durable(**kw):
+    return {"verdict": "durable", "reason": "r", "scope": "project",
+            "action": "create", "target_page": None, **kw}
+
+
+def test_kind_defaults_to_lesson():
+    d = decision_from_data(_durable(), taxonomy=TAX)
+    assert d.kind == "lesson" and d.placement is None
+
+
+def test_concept_existing_node():
+    d = decision_from_data(
+        _durable(kind="concept", placement="architecture/memory-plane"),
+        taxonomy=TAX)
+    assert d.kind == "concept" and d.placement == "architecture/memory-plane"
+
+
+def test_concept_new_leaf_needs_title():
+    with pytest.raises(ConceptPlacementError):
+        decision_from_data(
+            _durable(kind="concept", placement="architecture/write-door"),
+            taxonomy=TAX)
+    d = decision_from_data(
+        _durable(kind="concept", placement="architecture/write-door",
+                 title="Write Door"),
+        taxonomy=TAX)
+    assert d.title == "Write Door"
+
+
+def test_concept_without_taxonomy_routes_to_fallback():
+    with pytest.raises(ConceptPlacementError):
+        decision_from_data(_durable(kind="concept",
+                                    placement="architecture"), taxonomy=None)
+
+
+def test_concept_bad_placement():
+    with pytest.raises(ConceptPlacementError):
+        decision_from_data(
+            _durable(kind="concept", placement="missing/child"), taxonomy=TAX)
+
+
+def test_global_concept_rejected():
+    with pytest.raises(ConceptPlacementError):
+        decision_from_data(
+            _durable(kind="concept", placement="architecture",
+                     scope="global"), taxonomy=TAX)
+
+
+def test_lesson_with_placement_rejected():
+    with pytest.raises(Exception):
+        decision_from_data(_durable(kind="lesson", placement="architecture"),
+                           taxonomy=TAX)
