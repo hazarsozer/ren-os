@@ -453,3 +453,117 @@ def test_ingest_survives_unwritable_repo_root(wiki, tmp_path, monkeypatch):
     result = ingest("fixture-widget", ["a fact"], [], session="sess-1", repo_root=repo)
     assert result["write_id"] is not None
     assert result["claude_md"] == "error"
+
+
+# ------------------------------------------------------------- Task 6: taxonomy
+
+
+_VALID_SCHEMA_PAGE = (
+    "---\n"
+    "type: project-schema\n"
+    "schema_version: 1\n"
+    "project: demo\n"
+    "---\n"
+    "# demo — schema\n"
+    "\n"
+    "```taxonomy\n"
+    "architecture/\n"
+    "governance/\n"
+    "```\n"
+)
+
+_INVALID_SCHEMA_PAGE = "# demo — schema\n\nNo taxonomy fence here at all.\n"
+
+
+def test_ingest_with_valid_taxonomy_queues_schema_hubs_and_map_pointers(wiki):
+    """Task 6, spec §6: a valid `schema_page` + `hub_pages` queues schema.md
+    first, then one page per hub, then a map whose Decision-map pointers
+    reference the real hub paths — all in the Karpathy order."""
+    hub_pages = {
+        "architecture": "# architecture hub\n\nWhat belongs here: system structure.\n",
+        "governance": "# governance hub\n\nWhat belongs here: process + policy.\n",
+    }
+
+    result = ingest(
+        "demo",
+        ["a scan fact"],
+        [],
+        session="sess-1",
+        schema_page=_VALID_SCHEMA_PAGE,
+        hub_pages=hub_pages,
+    )
+
+    assert result["taxonomy_error"] is None
+    assert result["write_id"] is not None
+
+    schema_path = wiki / "projects" / "demo" / "schema.md"
+    assert schema_path.exists()
+    assert "```taxonomy" in schema_path.read_text(encoding="utf-8")
+
+    arch_hub = wiki / "projects" / "demo" / "knowledge" / "architecture" / "architecture.md"
+    gov_hub = wiki / "projects" / "demo" / "knowledge" / "governance" / "governance.md"
+    assert arch_hub.exists()
+    assert gov_hub.exists()
+
+    map_text = (wiki / "projects" / "demo" / "map.md").read_text(encoding="utf-8")
+    assert "projects/demo/knowledge/architecture/architecture.md" in map_text
+    assert "projects/demo/knowledge/governance/governance.md" in map_text
+    assert "projects/demo/knowledge/architecture/architecture.md" in result["artifact"]
+
+    assert result["schema_write_id"] is not None
+    assert set(result["hub_write_ids"]) == {"architecture", "governance"}
+    assert all(v is not None for v in result["hub_write_ids"].values())
+
+
+def test_ingest_with_invalid_taxonomy_refuses_schema_and_hubs_but_map_proceeds(wiki):
+    """Task 6 fail-closed rule: an unparseable `schema_page` refuses the
+    whole schema/hub write group (no partial tree) — but existing map-only
+    behavior still proceeds, so the durable knowledge is never dropped."""
+    result = ingest(
+        "bad-demo",
+        ["a scan fact"],
+        [],
+        session="sess-1",
+        schema_page=_INVALID_SCHEMA_PAGE,
+        hub_pages={"architecture": "# architecture hub\n"},
+    )
+
+    assert result["taxonomy_error"] is not None
+    assert "taxonomy" in result["taxonomy_error"]
+
+    assert not (wiki / "projects" / "bad-demo" / "schema.md").exists()
+    assert not (wiki / "projects" / "bad-demo" / "knowledge").exists()
+
+    # Map-only behavior proceeds exactly as it does without schema_page at all.
+    assert result["write_id"] is not None
+    map_text = (wiki / "projects" / "bad-demo" / "map.md").read_text(encoding="utf-8")
+    assert "a scan fact" in map_text
+    assert result["schema_write_id"] is None
+    assert result["hub_write_ids"] == {}
+
+
+def test_ingest_without_schema_page_is_unaffected_regression(wiki):
+    """Step 1(c): a legacy call with no `schema_page`/`hub_pages` must behave
+    exactly as it did before Task 6 — no schema/hub writes, no taxonomy
+    fields populated beyond their defaults, map content unchanged."""
+    from datetime import datetime, timezone
+
+    knowledge = ["Python project using FastAPI"]
+    pointers = [{"topic": "stack", "path": "decisions/stack.md", "anchor": "fastapi", "write_id": None}]
+
+    result = ingest("legacy-demo", knowledge, pointers, session="sess-1")
+
+    assert result["taxonomy_error"] is None
+    assert result["schema_write_id"] is None
+    assert result["hub_write_ids"] == {}
+    assert not (wiki / "projects" / "legacy-demo" / "schema.md").exists()
+
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    expected_content = assemble_l2(
+        "legacy-demo", knowledge, pointers, f"{today}: ingested from existing repository"
+    )
+    # ingest() -> propose_and_apply stamps ren_write_id/ren_ts provenance
+    # onto the written page, so compare artifact (which carries the
+    # pre-provenance content it queued) rather than the written page body.
+    assert expected_content in result["artifact"]
+    assert "Python project using FastAPI" in result["artifact"]

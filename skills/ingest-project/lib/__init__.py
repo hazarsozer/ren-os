@@ -46,6 +46,7 @@ from lib.adapter.claude_md import write_project_claude_md
 from lib.governance.backup_gate import require_backup
 from lib.memory import quarantine
 from lib.memory.queue import Proposal, QueueEntry, propose_and_apply
+from lib.memory.taxonomy import TaxonomyError, parse_taxonomy
 from lib.pointer import parse_pointer_line, render_pointer_line
 
 from . import scan as _scan_module
@@ -85,7 +86,11 @@ def assemble_l2(
     exist, or be created in the same batch — issue #20's pointer-existence
     rule) or external repo references written `repo:<name>:<path>`, which
     `/ren:doctor` and `/ren:wiki-health` skip rather than report dangling.
-    Durable project pages belong under `projects/<slug>/knowledge/`.
+    Durable project pages belong under `projects/<slug>/knowledge/`. Per
+    Task 6 (spec §6, Karpathy order), `ingest`'s caller for the Decision map
+    is normally the taxonomy's branch hubs, not deep leaves — `pointers`
+    entries pointing at hub pages are what `ingest` itself appends when
+    `hub_pages` is given, alongside whatever the caller passes directly.
 
     The frontmatter carries `schema_version: 2` (#53): version 1 stamped the
     version but emitted wiki-target pointers in arrow form; version 2 renders
@@ -125,12 +130,26 @@ def assemble_l2(
     return "\n".join(lines) + "\n"
 
 
+def _page_op(page_abs: Path) -> str:
+    return "UPDATE" if page_abs.exists() else "ADD"
+
+
+def _hub_page(project_slug: str, branch: str) -> str:
+    """Folder-note hub path for a taxonomy branch (`<branch>/<branch>.md`,
+    nested branches keep their trailing segment as the filename)."""
+    branch = branch.rstrip("/")
+    name = branch.rsplit("/", 1)[-1]
+    return f"projects/{project_slug}/knowledge/{branch}/{name}.md"
+
+
 def ingest(
     project_slug: str,
     knowledge: list[str],
     pointers: list[dict],
     session: str,
     repo_root: Path | None = None,
+    schema_page: str | None = None,
+    hub_pages: dict[str, str] | None = None,
 ) -> dict:
     """Assemble and queue an L2 map from scan-derived (LLM-shaped) knowledge.
 
@@ -177,11 +196,83 @@ def ingest(
     Gated on a configured backup once the wiki holds grown content (0.6.0
     Task 4, issue #11 §2) — see `lib.governance.backup_gate.require_backup`.
     A fresh/empty wiki always passes.
+
+    Task 6 (spec §6, Karpathy order): when `schema_page` (the drafted
+    `schema.md` body — a ```taxonomy fence plus per-branch prose) and
+    `hub_pages` (`{branch: <folder-note markdown>}`, one per branch) are
+    given, `ingest` validates `schema_page` with
+    `lib.memory.taxonomy.parse_taxonomy` BEFORE queuing anything new.
+    `TaxonomyError` ⇒ refuse the whole schema/hub write group — no partial
+    tree, nothing queued for schema.md or any hub — and fall back to the
+    existing map-only behavior (the durable knowledge is still saved); the
+    refusal message comes back as `result["taxonomy_error"]`. On a valid
+    taxonomy, the queue order is schema.md, then each hub
+    (`projects/<slug>/knowledge/<branch>/<branch>.md`, same
+    `producer="ingest"`/`writer="llm-auto"` as the map), then the map itself
+    — one pointer per hub is added to the Decision map automatically (topic
+    = branch name, `write_id` from the hub's own queue entry) so the map's
+    pointers reference the real, already-written hub pages in the same
+    batch. `result["schema_write_id"]` and `result["hub_write_ids"]`
+    (`{branch: write_id}`) report what was queued; both are `None`/`{}`
+    when `schema_page` is omitted or refused. A legacy call with no
+    `schema_page` is unaffected — byte-identical to pre-Task-6 behavior.
     """
     require_backup(ren_paths.wiki_root(), operation="ingest-project")
 
+    taxonomy_error: str | None = None
+    schema_write_id: str | None = None
+    hub_write_ids: dict[str, str | None] = {}
+    all_pointers = list(pointers)
+
+    if schema_page is not None:
+        try:
+            parse_taxonomy(schema_page)
+        except TaxonomyError as exc:
+            taxonomy_error = str(exc)
+        else:
+            schema_page_path = f"projects/{project_slug}/schema.md"
+            schema_abs = ren_paths.safe_join(ren_paths.wiki_root(), schema_page_path)
+            schema_entry, _ = propose_and_apply(
+                Proposal(
+                    op=_page_op(schema_abs),
+                    page=schema_page_path,
+                    content=schema_page,
+                    reason="ingest-project",
+                    producer="ingest",
+                    writer="llm-auto",
+                    session=session,
+                    salience=False,
+                )
+            )
+            schema_write_id = schema_entry.write_id
+
+            for branch, body in (hub_pages or {}).items():
+                hub_page = _hub_page(project_slug, branch)
+                hub_abs = ren_paths.safe_join(ren_paths.wiki_root(), hub_page)
+                hub_entry, _ = propose_and_apply(
+                    Proposal(
+                        op=_page_op(hub_abs),
+                        page=hub_page,
+                        content=body,
+                        reason="ingest-project",
+                        producer="ingest",
+                        writer="llm-auto",
+                        session=session,
+                        salience=False,
+                    )
+                )
+                hub_write_ids[branch] = hub_entry.write_id
+                all_pointers.append(
+                    {
+                        "topic": branch,
+                        "path": hub_page,
+                        "anchor": None,
+                        "write_id": hub_entry.write_id,
+                    }
+                )
+
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    content = assemble_l2(project_slug, knowledge, pointers, f"{today}: ingested from existing repository")
+    content = assemble_l2(project_slug, knowledge, all_pointers, f"{today}: ingested from existing repository")
 
     instruction_shaped = [hit for fact in knowledge for hit in quarantine.detect_instruction_shaped(fact)]
     if instruction_shaped:
@@ -189,7 +280,7 @@ def ingest(
 
     page = _map_page(project_slug)
     page_abs = ren_paths.safe_join(ren_paths.wiki_root(), page)
-    op = "UPDATE" if page_abs.exists() else "ADD"
+    op = _page_op(page_abs)
 
     entry, _ = propose_and_apply(
         Proposal(
@@ -221,6 +312,9 @@ def ingest(
         "artifact": artifact,
         "instruction_shaped": instruction_shaped,
         "claude_md": claude_md,
+        "taxonomy_error": taxonomy_error,
+        "schema_write_id": schema_write_id,
+        "hub_write_ids": hub_write_ids,
     }
 
 
