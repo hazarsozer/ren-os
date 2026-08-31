@@ -87,49 +87,107 @@ def test_rank_empty_query_returns_all_candidates_with_no_error(wiki):
 def test_rank_concept_tree_knowledge_pages_get_decisions_boost(wiki):
     # Concept pages under projects/*/knowledge/* (except lessons/) should get
     # the decisions-tier boost (1.5x multiplier), same as decisions/ pages.
-    # Lesson pages should keep their default multiplier (1.0x).
+    # Lesson pages (immediate parent == "lessons") and hub pages should keep
+    # their default multiplier (1.0x).
 
-    # All three have identical token_score by design (single "architecture" token)
+    # All pages have identical token_score by design (single "architecture" token
+    # twice each: once in heading, once in body)
     # so the multiplier determines the ranking.
     _write(
         wiki,
         "projects/p/knowledge/architecture/write-door.md",
-        "---\ntitle: \"Write-Door Pattern\"\n---\n\n# Architecture\n\narchitecture details",
+        "---\ntitle: \"Write-Door Pattern\"\n---\n\n# Architecture\n\narchitecture content",
+    )
+    _write(
+        wiki,
+        "projects/p/knowledge/architecture/architecture.md",
+        "---\ntitle: \"Write-Door Pattern\"\n---\n\n# Architecture\n\narchitecture content",
     )
     _write(
         wiki,
         "projects/p/knowledge/lessons/design-lesson.md",
-        "---\ntitle: \"Design Lesson\"\n---\n\n# Architecture\n\narchitecture lesson content",
+        "---\ntitle: \"Write-Door Pattern\"\n---\n\n# Architecture\n\narchitecture content",
     )
     _write(
         wiki,
         "decisions/database-choice.md",
-        "---\ntitle: \"Database Choice\"\n---\n\n# Architecture\n\narchitecture decision details",
-    )
-    _write(
-        wiki,
-        "research/generic.md",
-        "---\ntitle: \"Research Note\"\n---\n\n# Architecture\n\narchitecture research",
+        "---\ntitle: \"Write-Door Pattern\"\n---\n\n# Architecture\n\narchitecture content",
     )
 
     candidates = [
         "projects/p/knowledge/architecture/write-door.md",
+        "projects/p/knowledge/architecture/architecture.md",
         "projects/p/knowledge/lessons/design-lesson.md",
         "decisions/database-choice.md",
-        "research/generic.md",
     ]
     ranked = rank("architecture", candidates, wiki)
 
-    # The concept-tree page and decisions page should be boosted to the top
-    # (both have 1.5x multiplier), lessons page gets default (1.0x),
-    # research gets default (1.0x).
-    # Within the boosted tier, mtime breaks ties (but all are written now,
-    # so order between concept and decisions may vary).
+    # Boosted pages (concept content + decisions, both 1.5x) should rank first.
+    # Default pages (hub + lessons, both 1.0x) should rank lower.
     assert set(ranked[:2]) == {
         "projects/p/knowledge/architecture/write-door.md",
         "decisions/database-choice.md",
     }
-    assert ranked[2] == "projects/p/knowledge/lessons/design-lesson.md" or ranked[2] == "research/generic.md"
+    # Hub and lessons pages both have default multiplier
+    assert set(ranked[2:]) == {
+        "projects/p/knowledge/architecture/architecture.md",
+        "projects/p/knowledge/lessons/design-lesson.md",
+    }
+
+
+def test_rank_hub_page_excluded_from_concept_boost(wiki):
+    # Hub pages (stem == parent name) should NOT be boosted, even in /knowledge/.
+    # E.g., projects/p/knowledge/architecture/architecture.md has stem "architecture"
+    # matching parent "architecture", so it gets DEFAULT multiplier.
+    _write(
+        wiki,
+        "projects/p/knowledge/architecture/architecture.md",
+        "---\ntitle: \"Shared Title\"\n---\n\narchitecture content",
+    )
+    _write(
+        wiki,
+        "projects/p/knowledge/architecture/patterns.md",
+        "---\ntitle: \"Shared Title\"\n---\n\narchitecture content",
+    )
+
+    candidates = [
+        "projects/p/knowledge/architecture/architecture.md",
+        "projects/p/knowledge/architecture/patterns.md",
+    ]
+    ranked = rank("architecture", candidates, wiki)
+
+    # patterns.md (non-hub) should rank first with 1.5x boost;
+    # architecture.md (hub) should rank second with 1.0x default.
+    assert ranked[0] == "projects/p/knowledge/architecture/patterns.md"
+    assert ranked[1] == "projects/p/knowledge/architecture/architecture.md"
+
+
+def test_rank_lessons_exclusion_checks_immediate_parent(wiki):
+    # The lessons exclusion checks the immediate parent directory name, not
+    # substring matching. So:
+    # - projects/p/knowledge/architecture/lessons/x.md (parent="lessons") → NOT boosted
+    # - projects/p/knowledge/lessons/subdir/x.md (parent="subdir") → boosted
+    _write(
+        wiki,
+        "projects/p/knowledge/architecture/lessons/nested-lesson.md",
+        "---\ntitle: \"Shared Title\"\n---\n\narchitecture content",
+    )
+    _write(
+        wiki,
+        "projects/p/knowledge/lessons/subdir/deep-lesson.md",
+        "---\ntitle: \"Shared Title\"\n---\n\narchitecture content",
+    )
+
+    candidates = [
+        "projects/p/knowledge/architecture/lessons/nested-lesson.md",
+        "projects/p/knowledge/lessons/subdir/deep-lesson.md",
+    ]
+    ranked = rank("architecture", candidates, wiki)
+
+    # deep-lesson.md (immediate parent="subdir") should rank first with 1.5x boost;
+    # nested-lesson.md (immediate parent="lessons") should rank second with 1.0x.
+    assert ranked[0] == "projects/p/knowledge/lessons/subdir/deep-lesson.md"
+    assert ranked[1] == "projects/p/knowledge/architecture/lessons/nested-lesson.md"
 
 
 # --------------------------------------------------------------------- fetch

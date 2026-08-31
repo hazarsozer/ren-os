@@ -30,7 +30,7 @@ from __future__ import annotations
 
 import re
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Final
 
 from lib import ren_paths
@@ -75,11 +75,23 @@ def _classify_kind(rel_path: str) -> float:
     """Map a wiki-relative path to its kind multiplier (path hint).
 
     Concept pages (projects/*/knowledge/*) get the decisions-tier boost (1.5x),
-    except for lesson pages (projects/*/knowledge/lessons/*) which keep the
-    default multiplier. Spec §5, Task 5.
+    except for:
+    - Lesson pages whose immediate parent dir is "lessons"
+    - Hub pages (filename stem == parent dirname, e.g. architecture/architecture.md)
+    Both exceptions keep the default multiplier. Spec §5, Task 5.
     """
-    # Concept-tree pages get decisions-tier boost, except lessons.
-    if "/knowledge/" in f"/{rel_path}/" and "/knowledge/lessons/" not in f"/{rel_path}/":
+    if "/knowledge/" in f"/{rel_path}/":
+        path_obj = PurePosixPath(rel_path)
+
+        # Hub pages (stem == parent name) keep default multiplier
+        if path_obj.stem == path_obj.parent.name:
+            return DEFAULT_KIND_MULTIPLIER
+
+        # Lesson pages (immediate parent is "lessons") keep default multiplier
+        if path_obj.parent.name == "lessons":
+            return DEFAULT_KIND_MULTIPLIER
+
+        # Other concept pages get decisions-tier boost
         return KIND_MULTIPLIERS["decisions"]
 
     for prefix, mult in KIND_MULTIPLIERS.items():
