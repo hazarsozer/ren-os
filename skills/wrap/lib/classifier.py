@@ -174,9 +174,11 @@ def build_classifier_prompt(
     item. Truncates defensively (from the end, keeping the most recent/final
     text) so a runaway-length item can't blow the prompt budget.
 
-    `taxonomy_block` is the rendered project taxonomy (Task 3 supplies it via
-    `render_block`); when empty, concept routing is unavailable and the
-    prompt tells the LLM "kind" must be "lesson"."""
+    `taxonomy_block` is the rendered project taxonomy — the caller (wrap's
+    live-`llm_call` `gate()` call site, `skills/wrap/lib/__init__.py`, and
+    the distiller's `seed_tree`) supplies it via `render_block(taxonomy)`
+    when a taxonomy loaded; when empty, concept routing is unavailable and
+    the prompt tells the LLM "kind" must be "lesson"."""
     if not isinstance(item_text, str):
         raise TypeError(f"item_text must be str, got {type(item_text).__name__}")
     text = item_text
@@ -364,9 +366,18 @@ def gate(
 
     - `llm_call` given and it succeeds cleanly: returns `classify_llm`'s
       Decision directly.
-    - `llm_call` given but it (or the parse) raises: records a
-      `classifier_event` with `"event": "fail_closed"` via
-      `lib.instrument.collect`, then falls back to `classify_deterministic`.
+    - `llm_call` given but the item is `"durable"` and only its
+      scope/action/target-page (`PlacementError`) or its concept/taxonomy
+      routing (`ConceptPlacementError`) is invalid: PROPAGATES (M5+M7 fix,
+      mirrors `gate_precomputed`) — the caller owns the route to
+      suggestions / lesson-fallback. Swallowing these into the deterministic
+      fallback would silently DISCARD a durable fact as merely
+      "session-only" instead of keeping it (spec §4: "the fact is kept —
+      routing failed, not durability").
+    - `llm_call` given but anything else raises (malformed JSON, unknown
+      verdict, a plain `ClassifierError`): records a `classifier_event` with
+      `"event": "fail_closed"` via `lib.instrument.collect`, then falls back
+      to `classify_deterministic`.
     - `llm_call` is `None` (no LLM available at all): records a
       `classifier_event` with `"event": "no_llm"`, then falls back to
       `classify_deterministic` directly — no attempt, no exception needed.
@@ -383,6 +394,8 @@ def gate(
                                 eligible_targets=eligible_targets, project=project,
                                 taxonomy=taxonomy, taxonomy_block=taxonomy_block,
                                 branch_notes=branch_notes)
+        except PlacementError:
+            raise
         except Exception as exc:  # noqa: BLE001 - any failure here is fail-closed, not fatal
             collect.record(
                 collect.KIND_CLASSIFIER_EVENT,

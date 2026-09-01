@@ -22,6 +22,7 @@ from skills.wrap.lib.classifier import (
     ClassifierError,
     ConceptPlacementError,
     Decision,
+    PlacementError,
     classify_deterministic,
     classify_llm,
     decision_from_data,
@@ -256,11 +257,18 @@ def test_classify_llm_missing_v2_fields_defaults_create_global(wiki):
     assert d.action == "create" and d.scope == "global" and d.target_page is None
 
 
-def test_gate_fail_closed_on_bad_target_falls_back_deterministic(wiki):
-    d = gate("item", _llm({"verdict": "durable", "reason": "r", "scope": "global",
+def test_gate_propagates_placement_error_instead_of_discarding(wiki):
+    """M5+M7 fix: `gate()` used to swallow a `PlacementError` into the
+    deterministic fallback, which silently DISCARDED a durable item
+    (`classify_deterministic` can only return "session-only"/"discard",
+    never "durable") instead of keeping it — spec §4 says the fact is
+    kept, routing failed, not durability. `gate()` now PROPAGATES
+    `PlacementError` (mirroring `gate_precomputed`) so the caller routes it
+    to `unplaced`/suggestions instead of losing it."""
+    with pytest.raises(PlacementError):
+        gate("item", _llm({"verdict": "durable", "reason": "r", "scope": "global",
                            "action": "update", "target_page": "not-eligible.md"}),
              eligible_targets=("a.md",))
-    assert d.verdict in {"session-only", "discard"}  # never durable via fallback
 
 
 # --- v3: kind / placement / title (concept-tree routing) --------------------
@@ -321,3 +329,40 @@ def test_lesson_with_placement_rejected():
     with pytest.raises(Exception):
         decision_from_data(_durable(kind="lesson", placement="architecture"),
                            taxonomy=TAX)
+
+
+def test_gate_propagates_concept_placement_error(wiki):
+    """M5+M7 fix: an invalid CONCEPT placement (here: a global-scope
+    concept, disallowed — no global taxonomy) must PROPAGATE out of
+    `gate()` as `ConceptPlacementError`, not get swallowed into the
+    deterministic fallback (which would discard the item as
+    "session-only" instead of keeping it as a lesson, per spec §4)."""
+    with pytest.raises(ConceptPlacementError):
+        gate(
+            "item",
+            _llm({"verdict": "durable", "reason": "r", "scope": "global",
+                  "action": "create", "target_page": None,
+                  "kind": "concept", "placement": "architecture", "title": None}),
+            taxonomy=TAX,
+        )
+
+
+# --- C2: taxonomy_block actually reaches the prompt -------------------------
+
+
+def test_build_classifier_prompt_substitutes_taxonomy_block_when_given():
+    from skills.wrap.lib.classifier import _NO_TAXONOMY_BLOCK, build_classifier_prompt
+
+    prompt = build_classifier_prompt(
+        "an item", taxonomy_block="architecture/\n  memory-plane/\n",
+    )
+    assert "architecture/" in prompt
+    assert "memory-plane/" in prompt
+    assert _NO_TAXONOMY_BLOCK not in prompt
+
+
+def test_build_classifier_prompt_falls_back_to_no_taxonomy_block_when_omitted():
+    from skills.wrap.lib.classifier import _NO_TAXONOMY_BLOCK, build_classifier_prompt
+
+    prompt = build_classifier_prompt("an item")
+    assert _NO_TAXONOMY_BLOCK in prompt
