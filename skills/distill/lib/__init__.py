@@ -285,8 +285,15 @@ _LESSON_FRONTMATTER_RE = re.compile(r"\A---\n.*?\n---\n?", re.DOTALL)
 def seed_tree_watermark_path(project: str) -> Path:
     """Beside the distiller's own watermark (spec 2026-08-31 §3 behavior 2),
     keyed per project — `--seed-tree` runs one project at a time and each
-    project's lessons backlog is mined independently."""
-    return ren_paths.state_dir() / f"seed-tree-watermark-{project}.json"
+    project's lessons backlog is mined independently.
+
+    Routed through `safe_join` (matching `load_taxonomy`'s discipline,
+    review fix round 1 CRITICAL #1): `project` is an untrusted string this
+    module never controls the shape of, and plain `Path` joining let a
+    traversal-shaped value (`"a/../../../../etc/pwned"`) escape the state
+    dir entirely. Raises `PathTraversalError` (a `ValueError`) rather than
+    silently resolving outside `state_dir()`."""
+    return ren_paths.safe_join(ren_paths.state_dir(), f"seed-tree-watermark-{project}.json")
 
 
 def read_seed_tree_watermark(project: str) -> str | None:
@@ -295,6 +302,10 @@ def read_seed_tree_watermark(project: str) -> str | None:
         ts = data.get("ts")
         return ts if isinstance(ts, str) else None
     except (OSError, ValueError):
+        # ValueError also catches `PathTraversalError` from a malicious
+        # `project` — refuses (no watermark) rather than escaping the state
+        # dir; `seed_tree`'s own `load_taxonomy(project)` call, immediately
+        # after, independently refuses the SAME malicious project too.
         return None
 
 
@@ -330,9 +341,16 @@ def seed_tree_batch(project: str, after: str | None) -> list[dict]:
     creation), which would otherwise make an already-routed lesson outrun its
     own watermark and get re-batched forever. This is the idempotency
     backstop for that self-referential case; ordinary un-annotated lessons
-    are unaffected."""
+    are unaffected.
+
+    `project` is routed through `safe_join` (review fix round 1 CRITICAL
+    #1, same discipline as `seed_tree_watermark_path`): a traversal-shaped
+    `project` refuses (empty batch) rather than reading outside the wiki."""
     root = ren_paths.wiki_root()
-    lessons_dir = root / "projects" / project / "knowledge" / "lessons"
+    try:
+        lessons_dir = ren_paths.safe_join(root, f"projects/{project}/knowledge/lessons")
+    except ren_paths.PathTraversalError:
+        return []
     if not lessons_dir.is_dir():
         return []
     pages: list[dict] = []
@@ -368,10 +386,20 @@ def seed_tree(project: str, llm_call, *, cap: int | None = None) -> dict:
     `kind == "concept"` (and a placement that resolves to a brand-new
     taxonomy leaf — `_apply_concept_create` is a NEW-LEAF create, spec §3
     behaviors 3+5) places the concept and then annotates the source lesson;
-    anything else (kind == "lesson", non-durable, or a concept placement
-    that isn't a new leaf) is skipped and the watermark still advances past
-    it — there is nothing to write for an item that is already sitting on
-    disk as a lesson.
+    anything else is skipped and the watermark still advances past it —
+    there is nothing to write for an item that is already sitting on disk
+    as a lesson. This "anything else" bucket has three distinct shapes,
+    each reported separately (controller ruling, review fix round 1
+    IMPORTANT #2 — a placement resolving to an EXISTING node is a valid
+    classifier decision, not rejected noise, and must not be conflated with
+    an actually-invalid one): kind == "lesson" or a non-durable verdict
+    (ordinary skip, no counter); a concept placement `classify_placement`
+    rejects outright (`placement_rejected`, spec §8 — classifier noise);
+    and a concept placement that resolves to an EXISTING taxonomy node
+    (`existing_node_skipped` — seed_tree does NOT gain accretion onto
+    existing nodes in this task; that machinery is wrap's
+    `_concept_node_page` + merge path, out of this task's Interfaces scope
+    — known limitation, backfill accretion is future work).
 
     Behavior 5: cap is checked once per LESSON (not per write) — a lesson's
     concept-create and its `See:` annotation land as a pair, so a capped run
@@ -380,10 +408,11 @@ def seed_tree(project: str, llm_call, *, cap: int | None = None) -> dict:
 
     Behavior 6: one `KIND_DISTILLER_RUN` event, `"mode": "seed_tree"`, carries
     Task 3's counter names (`created_concept`, `created_lesson`,
-    `concept_updates`, `placement_rejected`) alongside this mode's own
-    counts, even though several are structurally always 0 here (seed_tree
-    never creates a lesson page or accretes onto an existing node) — kept for
-    dashboard/counter-name parity with wrap's concept-routing metrics.
+    `concept_updates`, `placement_rejected`) plus this mode's own
+    `existing_node_skipped`, even though several are structurally always 0
+    here (seed_tree never creates a lesson page or accretes onto an existing
+    node) — kept for dashboard/counter-name parity with wrap's
+    concept-routing metrics.
 
     Behavior 7: `_apply_concept_create` already calls `_ensure_hub` for its
     leaf and parent directories internally (Task 3) — no extra hub call is
@@ -401,14 +430,14 @@ def seed_tree(project: str, llm_call, *, cap: int | None = None) -> dict:
             "candidates": 0, "applied": 0, "annotated": 0, "held": 0,
             "suggested": 0, "gated_out": 0, "refused": 0, "duplicates": 0,
             "capped_remainder": 0, "created_concept": 0, "created_lesson": 0,
-            "concept_updates": 0, "placement_rejected": 0,
+            "concept_updates": 0, "placement_rejected": 0, "existing_node_skipped": 0,
             "watermark_before": watermark_before, "watermark_after": watermark_before,
         })
         return {
             "blind": _NO_TAXONOMY_REFUSAL,
             "applied": [], "annotated": [], "held": [], "suggested": [],
             "gated_out": [], "refused": [], "duplicates": [],
-            "capped_remainder": 0,
+            "capped_remainder": 0, "existing_node_skipped": 0,
             "watermark_before": watermark_before, "watermark_after": watermark_before,
         }
 
@@ -426,6 +455,7 @@ def seed_tree(project: str, llm_call, *, cap: int | None = None) -> dict:
     duplicates: list[dict] = []
     capped_remainder = 0
     placement_rejected = 0
+    existing_node_skipped = 0
     writes = 0
     processed_through = watermark_before
 
@@ -438,19 +468,47 @@ def seed_tree(project: str, llm_call, *, cap: int | None = None) -> dict:
         decision = gate(body, llm_call, project=project, taxonomy=taxonomy,
                         taxonomy_block=taxonomy_block)
 
-        is_new_leaf = False
+        # `placement_kind` is `None` for anything that isn't a concept
+        # `action == "create"` verdict at all (kind=="lesson", non-durable,
+        # or — structurally unreachable via the live `gate()` path, whose
+        # deterministic fallback never sets kind=="concept" — a concept
+        # `action == "update"`), and also `None` when `classify_placement`
+        # itself rejects the placement (`TaxonomyError`: not a real node and
+        # not a valid new-leaf slot).
+        placement_kind = None
         if decision.verdict == "durable" and decision.kind == "concept" \
                 and decision.action == "create":
             try:
-                is_new_leaf = classify_placement(taxonomy, decision.placement) == "new-leaf"
+                placement_kind = classify_placement(taxonomy, decision.placement)
             except TaxonomyError:
-                is_new_leaf = False
+                placement_kind = None
 
-        if not is_new_leaf:
-            if decision.verdict == "durable" and decision.kind == "concept":
+        if placement_kind != "new-leaf":
+            if placement_kind == "existing":
+                # Controller ruling (review fix round 1 IMPORTANT #2): an
+                # EXISTING-node placement is a valid classifier decision,
+                # not rejected noise — seed_tree simply doesn't gain
+                # accretion onto existing nodes in this task (that machinery
+                # is wrap's `_concept_node_page` + merge path, out of this
+                # task's Interfaces scope). Counted and reported distinctly
+                # from `placement_rejected` so a dashboard can't conflate
+                # "the classifier proposed garbage" with "seed_tree just
+                # doesn't handle this yet" (spec §8: placement_rejected is
+                # classifier noise).
+                existing_node_skipped += 1
+                gated_out.append({
+                    "page": lesson["page"], "kind": "concept",
+                    "reason": "concept placement resolves to an existing "
+                              "taxonomy node — accretion is not supported "
+                              "by seed_tree (known limitation)",
+                })
+            elif decision.verdict == "durable" and decision.kind == "concept":
                 placement_rejected += 1
-            gated_out.append({"page": lesson["page"], "kind": decision.kind,
-                              "verdict": decision.verdict})
+                gated_out.append({"page": lesson["page"], "kind": "concept",
+                                  "reason": "invalid concept placement"})
+            else:
+                gated_out.append({"page": lesson["page"], "kind": decision.kind,
+                                  "verdict": decision.verdict})
             processed_through = lesson["ren_ts"]
             continue
 
@@ -535,6 +593,7 @@ def seed_tree(project: str, llm_call, *, cap: int | None = None) -> dict:
         "capped_remainder": capped_remainder,
         "created_concept": created_concept, "created_lesson": 0,
         "concept_updates": 0, "placement_rejected": placement_rejected,
+        "existing_node_skipped": existing_node_skipped,
         "watermark_before": watermark_before, "watermark_after": watermark_after,
     })
 
@@ -543,5 +602,6 @@ def seed_tree(project: str, llm_call, *, cap: int | None = None) -> dict:
         "applied": applied, "annotated": annotated, "held": held,
         "suggested": suggested, "gated_out": gated_out, "refused": refused,
         "duplicates": duplicates, "capped_remainder": capped_remainder,
+        "existing_node_skipped": existing_node_skipped,
         "watermark_before": watermark_before, "watermark_after": watermark_after,
     }

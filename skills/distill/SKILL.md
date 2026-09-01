@@ -102,13 +102,20 @@ mine, and this mode always has a live `llm_call` to gate them with.
    (mints the page, maintains its leaf/parent hubs, additively splices
    `schema.md`), then appends a `See: [[<node>]]` pointer to the source
    lesson. Everything else (already-a-lesson verdicts, non-durable verdicts,
-   a concept placement that isn't a new leaf) is skipped — advancing the
-   watermark past it, since there is nothing to write for a lesson that's
-   already sitting on disk as a lesson.
+   an invalid concept placement) is skipped — advancing the watermark past
+   it, since there is nothing to write for a lesson that's already sitting
+   on disk as a lesson.
+   **Known limitation:** a concept placement that resolves to an ALREADY-
+   EXISTING taxonomy node is also skipped, and the source lesson is left
+   un-annotated (`result["existing_node_skipped"]`, distinct from
+   `result["gated_out"]`'s classifier-noise cases) — `--seed-tree` does not
+   accrete onto existing nodes; that machinery is `/ren:wrap`'s own
+   `_concept_node_page` + merge path. Backfilling accretion for this mode
+   is future work, not this task's scope.
 3. **Report.** Same counter shape as the L1 flow (`applied`/`held`/
    `suggested`/`gated_out`/`refused`/`duplicates`/`capped_remainder`), plus
    `annotated` (the `See:` pointer UPDATEs — these count toward the cap
-   exactly like any other write) and `blind`.
+   exactly like any other write), `existing_node_skipped`, and `blind`.
 
 ## What this skill does NOT do
 

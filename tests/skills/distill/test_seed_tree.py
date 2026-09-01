@@ -12,10 +12,12 @@ import json
 import pytest
 
 from lib.instrument import collect
+from lib.ren_paths import PathTraversalError
 from skills.distill.lib import (
     read_seed_tree_watermark,
     seed_tree,
     seed_tree_batch,
+    seed_tree_watermark_path,
     write_seed_tree_watermark,
 )
 
@@ -211,3 +213,79 @@ def test_seed_tree_rerun_after_completion_is_idempotent(wiki):
         wiki / "projects/alpha/knowledge/lessons/concept-one.md"
     ).read_text(encoding="utf-8")
     assert concept_lesson_text.count("See: [[event-loop]]") == 1
+
+
+def test_seed_tree_existing_node_placement_is_skipped_not_rejected(wiki):
+    """Controller ruling (review fix round 1 IMPORTANT #2): a concept
+    placement that resolves to an EXISTING taxonomy node is a valid
+    classifier decision, not rejected noise — seed_tree just doesn't gain
+    accretion onto existing nodes in this task. Must be counted under its
+    own `existing_node_skipped` key, distinct from `placement_rejected`
+    (spec §8: that counter is classifier noise), and left un-annotated."""
+    _lesson(wiki, "concept-existing.md", "2026-08-01T00:00:00Z",
+            "architecture as a whole handles every cross-cutting concern.")
+
+    def llm_call(prompt: str) -> str:
+        return json.dumps({
+            "verdict": "durable", "reason": "structural fact",
+            "scope": "project", "action": "create", "target_page": None,
+            "kind": "concept", "placement": "architecture", "title": None,
+        })
+
+    result = seed_tree("alpha", llm_call)
+
+    assert result["applied"] == [] and result["annotated"] == []
+    assert result["existing_node_skipped"] == 1
+    assert len(result["gated_out"]) == 1
+    entry = result["gated_out"][0]
+    assert entry["page"] == "projects/alpha/knowledge/lessons/concept-existing.md"
+    assert entry["kind"] == "concept"
+    assert "existing" in entry["reason"]
+
+    run_event = collect.read(kind=collect.KIND_DISTILLER_RUN)[-1]
+    assert run_event["existing_node_skipped"] == 1
+    assert run_event["placement_rejected"] == 0
+
+    lesson_text = (
+        wiki / "projects/alpha/knowledge/lessons/concept-existing.md"
+    ).read_text(encoding="utf-8")
+    assert "See:" not in lesson_text
+    # Nothing new landed under knowledge/ besides the pre-existing lesson.
+    knowledge_files = sorted(
+        p.relative_to(wiki) for p in (wiki / "projects/alpha/knowledge").rglob("*.md")
+    )
+    assert [str(p) for p in knowledge_files] == [
+        "projects/alpha/knowledge/lessons/concept-existing.md"
+    ]
+
+
+def test_seed_tree_watermark_path_rejects_path_traversal(wiki):
+    """Review fix round 1 CRITICAL #1: a traversal-shaped `project` string
+    must never resolve outside the state dir."""
+    with pytest.raises(PathTraversalError):
+        seed_tree_watermark_path("../../../../../../../../tmp/pwned-marker")
+
+
+def test_read_seed_tree_watermark_refuses_traversal_project(wiki):
+    """The read side degrades gracefully (`None`) rather than raising —
+    `seed_tree`'s own `load_taxonomy(project)` call, immediately after,
+    independently refuses the same malicious project via its own
+    `safe_join` guard."""
+    assert read_seed_tree_watermark("../../../../../../../../tmp/pwned-marker") is None
+
+
+def test_seed_tree_batch_refuses_path_traversal_project(wiki):
+    """Same guard applied to the lessons-dir construction (review fix round
+    1 CRITICAL #1) — a traversal-shaped `project` returns an empty batch
+    rather than reading outside the wiki."""
+    assert seed_tree_batch("../../../../../../../../tmp", None) == []
+
+
+def test_seed_tree_refuses_path_traversal_project_end_to_end(wiki):
+    """`seed_tree` itself, given a malicious `project`, must never touch
+    anything outside the wiki: `load_taxonomy` fails closed on the same
+    string (no `projects/<traversal>/schema.md` can exist), so the whole
+    run refuses exactly like the missing-schema.md case — zero writes."""
+    result = seed_tree("../../../../../../../../tmp/pwned", _fake_llm)
+    assert result["blind"] == "no taxonomy — run ingest's taxonomy draft first"
+    assert result["applied"] == [] and result["annotated"] == []
