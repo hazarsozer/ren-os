@@ -84,14 +84,24 @@ class BackupRequired(Exception):
 
 def _is_grown_page(text: str) -> bool:
     """True if `text` (a whole markdown file, frontmatter included) carries
-    real content beyond a bare skeleton page — a heading and/or HTML
-    comments only, or nothing at all, doesn't count."""
+    real content beyond a bare skeleton page — a heading, HTML comments,
+    and/or an EMPTY fenced code block's own delimiter lines only, or nothing
+    at all, doesn't count.
+
+    The fence-delimiter allowance (2026-08-31 concept-tree routing) covers
+    the ```` ```taxonomy ```` / ```` ``` ```` pair `schema.md.tmpl` stamps
+    empty (`TaxonomyError("taxonomy fence is empty")` until a session adds
+    branches) — without it, that stub's own scaffolding read as grown
+    content and every second `bootstrap-project` on an otherwise-pristine
+    wiki tripped the gate. A line of actual FENCE CONTENT (a real taxonomy
+    branch, or anything else between two fence markers) still counts as
+    grown, same as any other non-heading, non-comment line."""
     body = _FRONTMATTER_RE.sub("", text, count=1)
     body = _HTML_COMMENT_RE.sub("", body)
     lines = [line.strip() for line in body.splitlines() if line.strip()]
     if not lines:
         return False
-    return not all(line.startswith("#") for line in lines)
+    return not all(line.startswith(("#", "```")) for line in lines)
 
 
 def _read(path: Path) -> str | None:

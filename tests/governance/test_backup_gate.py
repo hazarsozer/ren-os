@@ -155,6 +155,28 @@ def test_grown_global_page_on_real_skeleton_raises(tmp_path, monkeypatch):
         require_backup(target, operation="ingest-project")
 
 
+def test_filled_taxonomy_fence_on_real_skeleton_raises(tmp_path, monkeypatch):
+    """Concept-tree routing: the stamped `schema.md`'s empty ```taxonomy
+    fence doesn't trip the gate (`test_skeleton_plus_project_skeleton_passes`
+    pins that), but once a session actually adds a branch inside it, that IS
+    grown content the friend would lose."""
+    target = _stamp_master(tmp_path, monkeypatch)
+    stamp_skeleton(
+        skeleton_root=SKELETON_ROOT,
+        target_root=target,
+        profile="project",
+        placeholders=_PLACEHOLDERS,
+        path_prefix="projects/demo/",
+    )
+    schema_path = target / "projects" / "demo" / "schema.md"
+    text = schema_path.read_text(encoding="utf-8")
+    assert "```taxonomy\n```" in text
+    schema_path.write_text(text.replace("```taxonomy\n```", "```taxonomy\nentities/\n```"), encoding="utf-8")
+    monkeypatch.setattr("lib.governance.backup_gate.backup_configured", lambda root: False)
+    with pytest.raises(BackupRequired):
+        require_backup(target, operation="bootstrap-project")
+
+
 def test_grown_log_on_real_skeleton_raises(tmp_path, monkeypatch):
     """The stamped log has exactly one `init` entry; a second entry means the
     friend has real history worth backing up."""

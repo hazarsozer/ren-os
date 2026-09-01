@@ -1,5 +1,72 @@
 # Changelog
 
+## [0.8.5] - 2026-09-01 — "durable knowledge finds its shelf"
+
+Concept-tree routing: durable memory stops being flat. A project's own
+`schema.md` taxonomy (spec 2026-08-31 §3) now decides where a `kind:
+"concept"` item lives — an existing node's content page, or a freshly minted
+leaf — instead of every project fact defaulting into `lessons/` regardless
+of whether it is structural knowledge about the system being studied or an
+episodic lesson about how the work went. Spec:
+`docs/superpowers/specs/2026-08-31-concept-tree-routing-design.md`. Plan:
+`docs/superpowers/plans/2026-08-31-concept-tree-routing.md`.
+
+- **`lib/memory/taxonomy` parses, validates, and renders `schema.md`'s
+  fenced taxonomy block.** One slug per line, two-space-indented children,
+  depth capped at two levels below `knowledge/`; `parse_taxonomy` raises
+  `TaxonomyError` on a missing fence, bad indentation, an invalid segment, a
+  duplicate path, or an empty fence — a defined, reported outcome, never a
+  crash. `classify_placement` resolves a placement to `"existing"` or
+  `"new-leaf"` against a loaded `Taxonomy`.
+- **The classifier gains `kind`/`placement`/`title`.** A durable verdict now
+  also decides `kind` (`"concept"` vs `"lesson"`) and, for a concept, a
+  `placement` (an existing node, or one new child segment with a `title`).
+  An invalid concept placement raises `ConceptPlacementError` rather than
+  the plain `PlacementError` a bad scope/action/target raises — the caller
+  distinguishes "not placeable as a concept" from "not durable at all" and
+  routes the former to an ordinary lesson create instead of discarding it.
+- **`wrap` applies placement-aware creates.** A new-leaf concept mints its
+  own content page, then (page-write-first, so the glob-backfilled hub has
+  something to link) refreshes the leaf's and parent's folder-note hubs and
+  additively splices the leaf into `schema.md`'s taxonomy fence — held as a
+  suggestion instead of auto-applied when `schema.md` is human-owned
+  (`ren_trust: "user"`). An existing node accretes: the item appends as a
+  `## Facts` bullet on the node's own content page (never its hub, except a
+  legacy hand-seeded node with no content page yet); a node whose Facts pass
+  40 bullets raises a (never-auto-applied) split suggestion. Every routing
+  failure — no taxonomy, an unresolvable placement, a missing new-leaf
+  title, a global-scope concept — falls back to a `kind: "lesson"` create
+  and records a `placement_event` metric; it never discards the item.
+- **Blindness is reported, not guessed.** A missing or unparseable
+  `schema.md` makes concept routing BLIND for the rest of that wrap: every
+  concept-kind verdict falls back to a lesson create, `wrap_session`'s
+  result carries `concept_routing: {"blind": <reason>}`, and the close-out
+  screen says so explicitly ("concept routing blind: ..."), per
+  `lib/reporting.py`'s Unknown-is-an-outcome convention.
+- **`ingest-project` drafts the taxonomy first.** The Karpathy ordering
+  gains one more step ahead of any knowledge page: the ingest worker drafts
+  `schema.md`'s taxonomy block before drafting content, so the first
+  concept-kind item a project ever sees already has somewhere to land.
+- **`recall` boosts concept-tree pages** the same as decisions-tier content,
+  excluding hub pages and correcting a lessons-parent check found while
+  wiring the boost in.
+- **`distill --seed-tree` backfills existing lessons into the concept
+  tree** — a one-time path for wikis that grew flat `lessons/` pages before
+  this feature existed, with existing-node accretion kept distinct from a
+  placement the taxonomy actually rejects, and a path-traversal gap in the
+  seed-tree write path closed before it shipped.
+- **Docs match the shipped mechanism.** `skills/wrap/SKILL.md`'s placement
+  instruction used to ask the live session to read `schema.md` and place the
+  page itself — an ask the classifier, not the session, actually fulfills.
+  It now describes the real code path: classifier-decided `kind`/`placement`,
+  validated by `lib.memory.taxonomy`, fail-closed to a lesson. The
+  `schema.md` skeleton stub now ships the empty `taxonomy` fence itself
+  (previously only prose describing the concept), so a fresh project hits
+  the documented blind-routing path rather than a missing-fence surprise
+  the first time wrap sees a concept-kind item.
+
+Tests: 3661 → 3708.
+
 ## [0.8.4] - 2026-08-22 — "fail-open must declare itself"
 
 0.8.2 shipped an audit that found broad exception handlers; 0.8.3 fixed some

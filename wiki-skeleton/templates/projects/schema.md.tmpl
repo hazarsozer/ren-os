@@ -22,7 +22,21 @@ updated: {{today}}
        knowledge/entities/…    domain objects
        knowledge/mechanics/…   how the system behaves
      Every subdirectory carries a hub index.md that links its children;
-     the L2 map points at hubs and top-level pages, never deep leaves. -->
+     the L2 map points at hubs and top-level pages, never deep leaves.
+     The fenced block below is this project's machine-readable taxonomy
+     (spec 2026-08-31 §3, parsed by lib.memory.taxonomy): one slug per
+     line, children indented two spaces under their parent, depth capped
+     at two levels below knowledge/, e.g.
+       entities/
+         characters/
+     A concept-kind durable item can only land on a node listed here (or
+     one new child segment added under one) — the ingest worker drafts
+     the real taxonomy before any knowledge page lands, so this fence
+     starts empty. -->
+
+```taxonomy
+```
+<!-- # add branches as slug/ lines, two-space indent -->
 
 ## Naming conventions
 

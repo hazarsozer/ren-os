@@ -114,9 +114,14 @@ profiles:
           The project's own SCHEMA document (issue #20 amendment, Karpathy
           LLM-wiki pattern): taxonomy tree (which knowledge/ subdirs exist
           and what belongs in each), naming conventions, what raw/ holds.
-          Bootstrap stamps only this stub; the ingest worker drafts the real
-          taxonomy BEFORE any knowledge page, and future sessions read and
-          follow it. Registered page type `project-schema`.
+          Bootstrap stamps only this stub, including an empty ```taxonomy```
+          fence (spec 2026-08-31 §3): `lib.memory.taxonomy.parse_taxonomy`
+          raises `TaxonomyError("taxonomy fence is empty")` on it until a
+          session adds branches, so the first `/ren:wrap` with a durable
+          candidate to route reports concept routing as blind rather than
+          guessing a placement. The ingest worker drafts the real taxonomy
+          BEFORE any knowledge page, and future sessions read and follow it.
+          Registered page type `project-schema`.
 
       - path: "open-work.md"
         template: "templates/projects/open-work.md.tmpl"

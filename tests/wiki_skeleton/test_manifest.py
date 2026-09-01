@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 import yaml
 
 SKELETON_ROOT = Path(__file__).resolve().parents[2] / "wiki-skeleton"
@@ -181,6 +182,30 @@ def test_project_schema_page_type_is_registered():
 
     registry = importlib.import_module("skills.wiki-migration.lib").load_registry()
     assert registry["page_types"]["project-schema"]["current"] == 1
+
+
+def test_schema_template_stamps_empty_taxonomy_fence():
+    """Concept-tree routing (spec 2026-08-31 §3): the schema.md stub must
+    carry a ```taxonomy fence — the machine-readable slot `lib.memory.
+    taxonomy` parses — so a freshly bootstrapped project fails BLIND (a
+    defined, reported outcome) rather than crashing or silently guessing a
+    placement the first time a concept-kind durable item shows up. The fence
+    is deliberately empty until a session adds branches: `parse_taxonomy`
+    raises `TaxonomyError("taxonomy fence is empty")` on it specifically —
+    not any other TaxonomyError shape — which is exactly the reason string
+    `skills.wrap.lib.wrap_session` surfaces as `concept_routing.blind` and
+    the wrap screen renders as "concept routing blind: ..."."""
+    from lib.memory.taxonomy import TaxonomyError, parse_taxonomy
+
+    manifest = _load_manifest()
+    entry = next(e for e in _project_profile_entries(manifest) if e["path"] == "schema.md")
+    template_path = SKELETON_ROOT / entry["template"]
+    template_text = template_path.read_text(encoding="utf-8")
+
+    assert "```taxonomy\n```" in template_text, "expected an empty ```taxonomy fence in the stub"
+
+    with pytest.raises(TaxonomyError, match=r"^taxonomy fence is empty$"):
+        parse_taxonomy(template_text)
 
 
 def test_project_profile_includes_open_work_ledger():
