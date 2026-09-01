@@ -90,12 +90,12 @@ def _is_grown_page(text: str) -> bool:
 
     The fence-delimiter allowance (2026-08-31 concept-tree routing) covers
     the ```` ```taxonomy ```` / ```` ``` ```` pair `schema.md.tmpl` stamps
-    empty (`TaxonomyError("taxonomy fence is empty")` until a session adds
-    branches) — without it, that stub's own scaffolding read as grown
-    content and every second `bootstrap-project` on an otherwise-pristine
-    wiki tripped the gate. A line of actual FENCE CONTENT (a real taxonomy
-    branch, or anything else between two fence markers) still counts as
-    grown, same as any other non-heading, non-comment line."""
+    empty (parses to `Taxonomy(nodes=())` — defined-but-empty, I4, spec §6 —
+    until a session adds branches) — without it, that stub's own scaffolding
+    read as grown content and every second `bootstrap-project` on an
+    otherwise-pristine wiki tripped the gate. A line of actual FENCE CONTENT
+    (a real taxonomy branch, or anything else between two fence markers)
+    still counts as grown, same as any other non-heading, non-comment line."""
     body = _FRONTMATTER_RE.sub("", text, count=1)
     body = _HTML_COMMENT_RE.sub("", body)
     lines = [line.strip() for line in body.splitlines() if line.strip()]

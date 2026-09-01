@@ -33,6 +33,20 @@ def test_parse_no_fence_raises():
     with pytest.raises(TaxonomyError):
         parse_taxonomy("# Schema\n\nno block here\n")
 
+def test_parse_empty_fence_is_defined_but_empty_not_blind():
+    """I4 (ruled, spec §6 authoritative): an empty fence is NOT an error —
+    it parses to `Taxonomy(nodes=())`, the state the bootstrap stub stamps
+    before a session ever adds a branch. Only a missing/unparseable fence
+    is 'blind' (`lib/reporting.py` Unknown conventions)."""
+    tax = parse_taxonomy("```taxonomy\n```\n")
+    assert tax.nodes == ()
+
+def test_parse_comment_only_fence_is_also_empty():
+    """A `#`-prefixed comment line inside the fence is ignored, not a
+    segment — a fence that carries only comments is still empty."""
+    tax = parse_taxonomy("```taxonomy\n# add branches as slug/ lines\n```\n")
+    assert tax.nodes == ()
+
 def test_parse_bad_segment_raises():
     with pytest.raises(TaxonomyError):
         parse_taxonomy("```taxonomy\nBad_Name/\n```\n")
@@ -51,6 +65,21 @@ def test_classify_orphan_parent_raises():
     tax = parse_taxonomy(FENCED)
     with pytest.raises(TaxonomyError):
         classify_placement(tax, "missing-parent/child")
+
+def test_classify_bad_segment_raises():
+    """C1: every segment of `placement` is validated against `_SEGMENT_RE`
+    before anything else — a raw invalid segment must never reach
+    `render_block`'s splice into schema.md or a filesystem path."""
+    tax = parse_taxonomy(FENCED)
+    with pytest.raises(TaxonomyError):
+        classify_placement(tax, "architecture/Bad_Seg")
+
+def test_classify_traversal_segment_raises():
+    """C1: a `..` segment must be rejected by `classify_placement` itself,
+    not left to trip `Proposal`'s path-traversal guard downstream."""
+    tax = parse_taxonomy(FENCED)
+    with pytest.raises(TaxonomyError):
+        classify_placement(tax, "architecture/..")
 
 def test_render_block_round_trips():
     tax = parse_taxonomy(FENCED)
