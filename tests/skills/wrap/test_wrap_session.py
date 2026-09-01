@@ -14,6 +14,8 @@ Run with: uv run pytest tests/skills/wrap/test_wrap_session.py -v
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from lib.instrument import collect
@@ -79,6 +81,8 @@ def _lesson_verdict(**overrides) -> dict:
 def test_concept_create_new_leaf(wiki):
     """(a) concept create to a new leaf: concept page + leaf hub + parent
     hub link + schema.md fence gains the node."""
+    from skills.recall.lib import _classify_kind
+
     _seed_schema(wiki, "p", "billing/\n")
     item = "The topic subsystem owns routing for cross-cutting concerns."
     verdict = _concept_verdict(placement="topic", title="New Topic")
@@ -96,6 +100,10 @@ def test_concept_create_new_leaf(wiki):
     assert "## Facts" in content
     assert item in content
 
+    # recall's concept-boost (spec §5) applies to what wrap just wrote —
+    # never the hub's own default-multiplier treatment.
+    assert _classify_kind(page) > _classify_kind("projects/p/knowledge/topic/topic.md")
+
     leaf_hub = wiki / "projects/p/knowledge/topic/topic.md"
     assert leaf_hub.is_file()
     assert "hub: true" in leaf_hub.read_text(encoding="utf-8")
@@ -110,17 +118,27 @@ def test_concept_create_new_leaf(wiki):
     assert "billing" in tax.nodes
 
 
-def test_concept_create_existing_node_appends_facts_bullet(wiki):
-    """(b) concept "create" whose placement resolves to an EXISTING node
-    accretes onto the node's own page (no new page minted)."""
+def test_concept_create_existing_node_hub_only_mints_content_page(wiki):
+    """(b) I3 ruled: a folder-note hub is NEVER a Facts target. A concept
+    "create" whose placement resolves to an EXISTING node, but whose
+    directory holds ONLY the hand-seeded folder-note hub (no content page
+    yet), MINTS a fresh content page onto that node — same shape as a
+    new-leaf create — instead of ever appending Facts to the hub. The node
+    is already in the taxonomy, so schema.md is untouched.
+
+    (Formerly this test asserted the OLD hub-append behavior; I3 flips it.)
+    """
+    from skills.recall.lib import _classify_kind
+
     _seed_schema(wiki, "p", "auth/\n")
-    node_page = wiki / "projects/p/knowledge/auth/auth.md"
-    node_page.parent.mkdir(parents=True, exist_ok=True)
-    node_page.write_text(
+    hub_page = wiki / "projects/p/knowledge/auth/auth.md"
+    hub_page.parent.mkdir(parents=True, exist_ok=True)
+    hub_page.write_text(
         "---\ntype: hub\nhub: true\ntitle: \"Auth Hub\"\n---\n\n"
-        "# Auth\n\n## Facts\n\n- Existing fact.\n",
+        "# Auth\n\nPages in this folder:\n\n",
         encoding="utf-8",
     )
+    schema_before = (wiki / "projects/p/schema.md").read_text(encoding="utf-8")
 
     item = "Sessions expire after 30 minutes of inactivity."
     verdict = _concept_verdict(placement="auth", title=None)
@@ -129,22 +147,41 @@ def test_concept_create_existing_node_appends_facts_bullet(wiki):
         "# n", [item], "s-existing", project="p", verdicts=[verdict],
     )
 
-    assert result["applied"] == []
-    assert len(result["updated"]) == 1
-    assert result["updated"][0]["page"] == "projects/p/knowledge/auth/auth.md"
+    assert result["updated"] == []
+    assert len(result["applied"]) == 1
+    minted_page = result["applied"][0]["page"]
+    # I3(a): the minted title ("Auth", derived from the node name) slugifies
+    # to the leaf segment itself, so the collision-guard "-concept" suffix
+    # applies — this is the same mechanism that names a same-titled new leaf.
+    assert minted_page == "projects/p/knowledge/auth/auth-concept.md"
+    assert (wiki / minted_page).is_file()
 
-    on_disk = node_page.read_text(encoding="utf-8")
-    assert "- Existing fact." in on_disk
-    assert f"- {item}" in on_disk
+    content = (wiki / minted_page).read_text(encoding="utf-8")
+    assert "type: project-knowledge" in content
+    assert "## Facts" in content
+    assert item in content
 
-    md_files = list((wiki / "projects/p/knowledge/auth").glob("*.md"))
-    assert [p.name for p in md_files] == ["auth.md"], "no new page must be minted"
+    hub_after = hub_page.read_text(encoding="utf-8")
+    assert "## Facts" not in hub_after, "the hub must never gain a Facts section"
+    assert "- [auth-concept](auth-concept.md)" in hub_after, \
+        "the hub must advertise the newly minted content page"
+
+    # I3(b): the node was already in the taxonomy — schema.md is untouched.
+    schema_after = (wiki / "projects/p/schema.md").read_text(encoding="utf-8")
+    assert schema_after == schema_before
 
     outcome = [
         e for e in collect.read(kind=collect.KIND_DURABLE_OUTCOME)
         if e.get("session") == "s-existing"
     ][-1]
-    assert outcome["concept_updates"] == 1
+    assert outcome["created_concept"] == 1
+    assert outcome["concept_updates"] == 0
+
+    # recall's concept-boost applies to the minted page, same as a
+    # brand-new-leaf create — it must not read as a hub.
+    assert _classify_kind(minted_page) > _classify_kind(
+        "projects/p/knowledge/auth/auth.md"
+    )
 
 
 def test_second_concept_item_accretes_onto_content_page_not_hub(wiki):
@@ -223,6 +260,40 @@ def test_concept_placement_error_falls_back_to_lesson(wiki):
     assert outcome["created_concept"] == 0
 
 
+@pytest.mark.parametrize("bad_placement", ["architecture/Bad_Seg", "architecture/.."])
+def test_concept_bad_segment_placement_falls_back_to_lesson_schema_untouched(wiki, bad_placement):
+    """C1: `classify_placement` validates EVERY segment against
+    `_SEGMENT_RE` — an invalid segment (`Bad_Seg`) or a traversal-shaped one
+    (`..`) must never reach `schema.md`'s fence splice or a filesystem
+    path. Both become an ordinary `ConceptPlacementError` lesson-fallback,
+    `wrap_session` completes normally (no crash, no `unplaced`), and
+    schema.md is byte-identical to before."""
+    _seed_schema(wiki, "p", "architecture/\n")
+    schema_before = (wiki / "projects/p/schema.md").read_text(encoding="utf-8")
+    item = "A structural fact the classifier tried to misplace."
+    verdict = _concept_verdict(placement=bad_placement, title="Bad Title")
+
+    result = wrap_session(
+        "# n", [item], "s-bad-seg", project="p", verdicts=[verdict],
+    )
+
+    assert result["unplaced"] == []
+    assert len(result["applied"]) == 1
+    page = result["applied"][0]["page"]
+    assert page.startswith("projects/p/knowledge/lessons/")
+
+    schema_after = (wiki / "projects/p/schema.md").read_text(encoding="utf-8")
+    assert schema_after == schema_before
+
+    outcome = [
+        e for e in collect.read(kind=collect.KIND_DURABLE_OUTCOME)
+        if e.get("session") == "s-bad-seg"
+    ][-1]
+    assert outcome["placement_rejected"] == 1
+    assert outcome["created_lesson"] == 1
+    assert outcome["created_concept"] == 0
+
+
 def test_absent_schema_routes_everything_to_lessons_and_reports_blind(wiki):
     """(d) no schema.md at all: concept routing is blind — every durable
     item (even a concept-kind one) lands as a lesson, and the wrap result
@@ -289,14 +360,25 @@ def test_trust_user_schema_suggests_taxonomy_edit_but_page_still_created(wiki):
 
 def test_split_suggestion_on_41st_bullet(wiki):
     """(f) the 41st `## Facts` bullet on a concept node triggers a (never
-    auto-applied) split suggestion, deduped by page fingerprint."""
+    auto-applied) split suggestion, deduped by page fingerprint.
+
+    I3 ruled: a folder-note hub is NEVER a Facts target, so the fixture
+    seeds a real CONTENT page (`access-control.md`) alongside the hub —
+    exactly the shape `_apply_concept_create` itself would have left on
+    disk — not a hub carrying `## Facts` bullets directly."""
     _seed_schema(wiki, "p", "auth/\n")
-    node_page = wiki / "projects/p/knowledge/auth/auth.md"
-    node_page.parent.mkdir(parents=True, exist_ok=True)
-    existing_bullets = "\n".join(f"- fact {i}" for i in range(40))
-    node_page.write_text(
+    hub_page = wiki / "projects/p/knowledge/auth/auth.md"
+    hub_page.parent.mkdir(parents=True, exist_ok=True)
+    hub_page.write_text(
         "---\ntype: hub\nhub: true\ntitle: \"Auth Hub\"\n---\n\n"
-        f"# Auth\n\n## Facts\n\n{existing_bullets}\n",
+        "# Auth\n\nPages in this folder:\n\n- [access-control](access-control.md)\n",
+        encoding="utf-8",
+    )
+    content_page = wiki / "projects/p/knowledge/auth/access-control.md"
+    existing_bullets = "\n".join(f"- fact {i}" for i in range(40))
+    content_page.write_text(
+        "---\ntype: project-knowledge\nproject: p\ntitle: \"Access Control\"\n---\n\n"
+        f"# Access Control\n\n## Facts\n\n{existing_bullets}\n",
         encoding="utf-8",
     )
 
@@ -308,11 +390,12 @@ def test_split_suggestion_on_41st_bullet(wiki):
     )
 
     assert len(result["updated"]) == 1
+    assert result["updated"][0]["page"] == "projects/p/knowledge/auth/access-control.md"
 
     pending = pending_suggestions()
     matching = [
         s for s in pending
-        if s["fingerprint"] == "wrap-split:projects/p/knowledge/auth/auth.md"
+        if s["fingerprint"] == "wrap-split:projects/p/knowledge/auth/access-control.md"
     ]
     assert len(matching) == 1
     assert matching[0]["kind"] == "structured_action"
@@ -321,13 +404,22 @@ def test_split_suggestion_on_41st_bullet(wiki):
 
 def test_counters_partition_correctly(wiki):
     """(g) `created_concept + created_lesson == created`; `concept_updates`
-    is a subset of `updated`; `placement_rejected` counts independently."""
+    is a subset of `updated`; `placement_rejected` counts independently.
+
+    I3 ruled: the pre-existing "auth" node's Facts live on its own content
+    page (`access-control.md`), never on the folder-note hub."""
     _seed_schema(wiki, "p", "auth/\nbilling/\n")
-    node_page = wiki / "projects/p/knowledge/auth/auth.md"
-    node_page.parent.mkdir(parents=True, exist_ok=True)
-    node_page.write_text(
+    hub_page = wiki / "projects/p/knowledge/auth/auth.md"
+    hub_page.parent.mkdir(parents=True, exist_ok=True)
+    hub_page.write_text(
         "---\ntype: hub\nhub: true\ntitle: \"Auth Hub\"\n---\n\n"
-        "# Auth\n\n## Facts\n\n- Existing fact.\n",
+        "# Auth\n\nPages in this folder:\n\n- [access-control](access-control.md)\n",
+        encoding="utf-8",
+    )
+    content_page = wiki / "projects/p/knowledge/auth/access-control.md"
+    content_page.write_text(
+        "---\ntype: project-knowledge\nproject: p\ntitle: \"Access Control\"\n---\n\n"
+        "# Access Control\n\n## Facts\n\n- Existing fact.\n",
         encoding="utf-8",
     )
 
@@ -361,4 +453,113 @@ def test_counters_partition_correctly(wiki):
     assert outcome["created"] == 2
     assert outcome["concept_updates"] == 1
     assert outcome["concept_updates"] <= outcome["updated"]
+    assert outcome["placement_rejected"] == 0
+
+
+# --- C2 + M5/M7: the LIVE llm_call gate site (not verdicts=) ----------------
+
+
+def test_live_llm_call_gate_site_receives_taxonomy_block(wiki):
+    """C2: wrap's live-`llm_call` `gate()` call site must actually render
+    the loaded taxonomy into the classifier prompt — before this fix,
+    `taxonomy_block` defaulted to `""` there even when a healthy taxonomy
+    had loaded, so the prompt always told the LLM "kind must be lesson"."""
+    _seed_schema(wiki, "p", "architecture/\n")
+    item = "The router owns dispatch for every inbound request."
+    seen_prompts: list[str] = []
+
+    def llm_call(prompt: str) -> str:
+        if "Candidate item:" in prompt:
+            seen_prompts.append(prompt)
+            return json.dumps({
+                "verdict": "durable", "reason": "structural fact",
+                "scope": "project", "action": "create", "target_page": None,
+                "kind": "concept", "placement": "architecture/router",
+                "title": "Request Router",
+            })
+        return json.dumps({"material_change": False, "overview": ""})
+
+    result = wrap_session(
+        "# n", [item], "s-live-taxonomy", project="p", llm_call=llm_call,
+    )
+
+    assert len(seen_prompts) == 1
+    assert "architecture/" in seen_prompts[0]
+    assert '"kind" must be "lesson"' not in seen_prompts[0]
+
+    assert len(result["applied"]) == 1
+    assert result["applied"][0]["page"] == "projects/p/knowledge/architecture/router/request-router.md"
+
+
+def test_live_llm_call_gate_site_placement_error_falls_back_to_lesson(wiki):
+    """M5+M7: `gate()` used to swallow a `ConceptPlacementError` from the
+    LIVE `llm_call` path into the deterministic fallback — a durable item
+    would silently become "session-only" and be discarded (`gated_out`),
+    never reaching the `ConceptPlacementError` handler that already existed
+    in this loop. `gate()` now propagates it, so the existing handler
+    routes it to a lesson create instead of losing the fact."""
+    _seed_schema(wiki, "p", "billing/\n")
+    item = "A structural fact whose placement doesn't resolve."
+
+    def llm_call(prompt: str) -> str:
+        if "Candidate item:" in prompt:
+            return json.dumps({
+                "verdict": "durable", "reason": "structural fact",
+                "scope": "project", "action": "create", "target_page": None,
+                "kind": "concept", "placement": "missing-parent/child", "title": "Child Node",
+            })
+        return json.dumps({"material_change": False, "overview": ""})
+
+    result = wrap_session(
+        "# n", [item], "s-live-rejected", project="p", llm_call=llm_call,
+    )
+
+    assert result["gated_out"] == []
+    assert result["unplaced"] == []
+    assert len(result["applied"]) == 1
+    assert result["applied"][0]["page"].startswith("projects/p/knowledge/lessons/")
+
+    outcome = [
+        e for e in collect.read(kind=collect.KIND_DURABLE_OUTCOME)
+        if e.get("session") == "s-live-rejected"
+    ][-1]
+    assert outcome["placement_rejected"] == 1
+    assert outcome["created_lesson"] == 1
+
+
+# --- I4: the bootstrap stub's empty fence is defined-but-empty, not blind --
+
+
+def test_stamped_empty_taxonomy_stub_routes_concept_new_root_end_to_end(wiki):
+    """I4 (ruled, spec §6 authoritative): a project whose `schema.md` looks
+    exactly like the bootstrap skeleton's stamped stub (an empty
+    ```taxonomy fence — `_seed_schema(wiki, "p", "")`) is defined-but-EMPTY,
+    NOT blind. `load_taxonomy` must NOT raise, `concept_routing.blind` must
+    stay `None`, and a concept item proposing a brand-new ROOT node must
+    route through the real new-leaf create path end-to-end — not fall back
+    to a lesson."""
+    _seed_schema(wiki, "p", "")  # exactly the bootstrap stub's empty fence
+    item = "The scheduler owns every background job in this system."
+    verdict = _concept_verdict(placement="scheduler", title="Job Scheduler")
+
+    result = wrap_session(
+        "# n", [item], "s-empty-stub", project="p", verdicts=[verdict],
+    )
+
+    assert result.get("concept_routing") == {"blind": None}
+    assert result["unplaced"] == []
+    assert len(result["applied"]) == 1
+    page = result["applied"][0]["page"]
+    assert page == "projects/p/knowledge/scheduler/job-scheduler.md"
+    assert (wiki / page).is_file()
+
+    schema_text = (wiki / "projects/p/schema.md").read_text(encoding="utf-8")
+    tax = parse_taxonomy(schema_text)
+    assert tax.nodes == ("scheduler",)
+
+    outcome = [
+        e for e in collect.read(kind=collect.KIND_DURABLE_OUTCOME)
+        if e.get("session") == "s-empty-stub"
+    ][-1]
+    assert outcome["created_concept"] == 1
     assert outcome["placement_rejected"] == 0

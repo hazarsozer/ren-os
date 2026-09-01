@@ -34,7 +34,7 @@ whole-session multi-label classification.
 from __future__ import annotations
 
 import re
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from datetime import date, timedelta
 from pathlib import Path, PurePosixPath
 from typing import Callable, Final
@@ -684,10 +684,23 @@ def _durable_create_page(
     ALONGSIDE the leaf directory's folder-note hub, named by the concept's
     own title rather than the item text — `knowledge/<placement>/<slug
     (title)>.md`. Concepts require a project (spec §9: no global taxonomy),
-    so `placement` without `project` is a caller error, not a fallback."""
+    so `placement` without `project` is a caller error, not a fallback.
+
+    I3(a) collision guard: the leaf directory's folder-note hub already
+    lives at `<placement>/<last-segment>.md` (`_ensure_hub`'s naming
+    convention). When the concept title slugifies to that SAME last
+    segment (e.g. title "Memory Plane" under a `memory-plane` leaf), the
+    content page's filename would collide with — or, depending on write
+    order, shadow — the hub. A folder-note hub is NEVER a Facts target
+    (spec 2026-08-31 §5), so the content page gets a `-concept` suffix
+    instead (`memory-plane-concept.md`)."""
     if placement is not None:
         assert project, "concept placement requires a project (no global taxonomy)"
-        return f"projects/{project}/knowledge/{placement}/{_slugify(title or '')}.md"
+        slug = _slugify(title or "")
+        leaf_segment = placement.rsplit("/", 1)[-1]
+        if slug == leaf_segment:
+            slug = f"{slug}-concept"
+        return f"projects/{project}/knowledge/{placement}/{slug}.md"
     if scope == "project" and project:
         return f"projects/{project}/knowledge/lessons/{_slugify(item)}.md"
     return f"lessons/{_slugify(item)}.md"
@@ -841,11 +854,13 @@ def _concept_node_page(project: str, placement: str) -> str | None:
     page while the real content page (`<placement>/<slug(title)>.md`) never
     grew. The content page — "the single OTHER `*.md` file directly in the
     node's directory, excluding the hub" — is tried FIRST now. The hub
-    itself is the fallback, used only when NO other page exists (a
-    hand-seeded/legacy taxonomy node that has a hub but no content page
-    yet — or none at all, in which case there's nothing to accrete onto).
-    More than one non-hub page is ambiguous and never guessed at: returns
-    `None` just like "nothing at all", so the caller fails closed to a
+    itself is NEVER returned (I3 ruled: a folder-note hub is never a Facts
+    target) — a hand-seeded/legacy taxonomy node whose directory holds
+    ONLY the hub returns `None` here too, same as "nothing at all"; the
+    caller (`wrap_session`) distinguishes that specific shape via
+    `_concept_node_hub_only` and MINTS a fresh content page there instead
+    of falling back to a lesson. More than one non-hub page is ambiguous
+    and never guessed at: also `None`, so the caller fails closed to a
     lesson create + a `node_page_missing` placement_event.
 
     Never raises: any filesystem/path error degrades to `None`, same
@@ -864,14 +879,41 @@ def _concept_node_page(project: str, placement: str) -> str | None:
         )
         if len(others) == 1:
             return f"{node_dir_rel}/{others[0]}"
-        if len(others) > 1:
-            return None  # ambiguous — never guess which page the item belongs to
-        hub_rel = f"{node_dir_rel}/{hub_name}"
-        if ren_paths.safe_join(wiki, hub_rel).is_file():
-            return hub_rel  # legacy/hand-seeded node: hub exists, content page doesn't yet
-        return None
+        return None  # 0 (hub-only or truly empty) or >1 (ambiguous) — never a hub target
     except Exception:  # noqa: BLE001 - fails closed to the caller's lesson fallback
         return None
+
+
+def _concept_node_hub_only(project: str, placement: str) -> bool:
+    """I3(b): True iff an EXISTING taxonomy node's directory holds ONLY its
+    own folder-note hub — no content page yet. `_concept_node_page` already
+    returns `None` for this shape (along with "dir missing" and
+    "ambiguous — more than one non-hub page"); this helper re-checks the
+    SAME directory to tell those three None-cases apart at the call site:
+    only THIS one gets a freshly minted content page (same shape as a
+    new-leaf create) rather than falling back to a lesson — minting a page
+    onto an ambiguous or genuinely-missing node would guess, which the
+    original design never does.
+
+    Never raises: any filesystem/path error degrades to `False`, same
+    isolated-duty posture as `_concept_node_page`."""
+    try:
+        wiki = ren_paths.wiki_root()
+        lastseg = placement.rsplit("/", 1)[-1]
+        node_dir_rel = f"projects/{project}/knowledge/{placement}"
+        hub_name = f"{lastseg}.md"
+        node_dir = ren_paths.safe_join(wiki, node_dir_rel)
+        if not node_dir.is_dir():
+            return False
+        others = [
+            p for p in node_dir.glob("*.md")
+            if p.is_file() and p.name != hub_name
+        ]
+        if others:
+            return False
+        return ren_paths.safe_join(wiki, f"{node_dir_rel}/{hub_name}").is_file()
+    except Exception:  # noqa: BLE001 - fails closed, same posture as _concept_node_page
+        return False
 
 
 def _count_facts_bullets(text: str) -> int:
@@ -909,7 +951,37 @@ def _append_facts_bullet(text: str, item_text: str) -> str:
     return text[:m.end()] + section + "\n" + bullet + "\n\n" + text[insert_at:]
 
 
-def _apply_concept_create(item: str, decision: Decision, project: str, session: str) -> dict:
+def _route_concept_result(
+    concept_result: dict, applied: list[dict], unchanged: list[dict],
+    held: list[dict], suggested: list[dict],
+) -> int:
+    """Route one `_apply_concept_create` result dict into `wrap_session`'s
+    output lists — shared by the new-leaf call site and the I3(b)
+    hub-only-mint call site, which both produce the identical result shape.
+    Returns 1 (a `created_concept` counter increment is due) iff the page
+    actually landed, else 0."""
+    if concept_result["status"] == "applied":
+        applied.append({"qid": concept_result["qid"],
+                        "write_id": concept_result["write_id"],
+                        "page": concept_result["page"],
+                        "op": concept_result["op"]})
+        created = 1
+    elif concept_result["status"] == "unchanged":
+        unchanged.append({"page": concept_result["page"]})
+        created = 0
+    else:
+        held.append({"qid": concept_result["qid"],
+                     "page": concept_result["page"],
+                     "conflicts": concept_result["conflicts"]})
+        created = 0
+    if concept_result["schema_suggestion"]:
+        suggested.append(concept_result["schema_suggestion"])
+    return created
+
+
+def _apply_concept_create(
+    item: str, decision: Decision, project: str, session: str, *, update_schema: bool = True,
+) -> dict:
     """New-leaf concept CREATE (spec 2026-08-31 §3 behaviors 3+5, Task 7
     reuses this): writes the concept's own content page, then — ONLY once
     that page write actually lands (never for a `held` write; there is
@@ -923,6 +995,12 @@ def _apply_concept_create(item: str, decision: Decision, project: str, session: 
     plan's fail-closed rule an invalid/blocked placement never discards a
     durable item, and per spec §wiki-health the tree/fence drift is the
     auditor's job to reconcile, not this call's).
+
+    `update_schema=False` (I3(b)): reused to MINT a content page onto an
+    EXISTING taxonomy node whose directory holds only its folder-note hub —
+    same page+hub write shape as a true new-leaf create, but the node is
+    ALREADY in the taxonomy, so `schema.md` must be left untouched. The
+    caller (`wrap_session`) is the only intended user of `False`.
 
     Returns `{"status": "applied"|"unchanged"|"held", "page", "qid",
     "write_id", "op", "conflicts", "schema_suggestion"}` — `schema_suggestion`
@@ -987,6 +1065,9 @@ def _apply_concept_create(item: str, decision: Decision, project: str, session: 
     _ensure_hub(leaf_dir, session, project, heading=title)
     parent_name = parts[-2] if len(parts) > 1 else "knowledge"
     _ensure_hub(parent_dir, session, project, heading=_hub_heading_default(parent_name))
+
+    if not update_schema:
+        return result  # I3(b): node already in the taxonomy — nothing to splice
 
     try:
         schema_page = f"projects/{project}/schema.md"
@@ -1308,8 +1389,15 @@ def wrap_session(
                     item, verdicts[i], eligible_targets=eligible, project=project,
                     taxonomy=taxonomy)
             else:
+                # C2 fix: the live-LLM gate site is what actually renders the
+                # taxonomy into the classifier prompt — `build_classifier_
+                # prompt`'s default is "" (no taxonomy available), so a
+                # healthy loaded taxonomy that never reaches here means the
+                # classifier is told "kind must be lesson" even though
+                # concept routing isn't blind at all.
                 decision = gate(item, llm_call, eligible_targets=eligible,
-                                project=project, taxonomy=taxonomy)
+                                project=project, taxonomy=taxonomy,
+                                taxonomy_block=render_block(taxonomy) if taxonomy else "")
         except ConceptPlacementError as exc:
             # Spec 2026-08-31 §3 behavior 2: the classifier affirmed this
             # item is DURABLE — only its concept/taxonomy routing was
@@ -1385,24 +1473,48 @@ def wrap_session(
                 except SecretsFound as exc:
                     refused.append({"item": item, "reason": str(exc)})
                     continue
-                if concept_result["status"] == "applied":
-                    applied.append({"qid": concept_result["qid"],
-                                    "write_id": concept_result["write_id"],
-                                    "page": concept_result["page"],
-                                    "op": concept_result["op"]})
-                    created_concept += 1
-                elif concept_result["status"] == "unchanged":
-                    unchanged.append({"page": concept_result["page"]})
-                else:
-                    held.append({"qid": concept_result["qid"],
-                                 "page": concept_result["page"],
-                                 "conflicts": concept_result["conflicts"]})
-                if concept_result["schema_suggestion"]:
-                    suggested.append(concept_result["schema_suggestion"])
+                except ValueError as exc:
+                    # C1 defensive-only: `classify_placement`'s segment
+                    # validation should make an invalid page path
+                    # unreachable here, but a malformed `Proposal.page`
+                    # must never abort the whole wrap run — route to the
+                    # suggestions store like any other unplaceable item
+                    # instead of letting the exception propagate.
+                    unplaced.append(_route_unplaced(
+                        item, session, i,
+                        reason=f"concept placement produced an invalid page path: {exc}",
+                        fingerprint=f"wrap-concept-invalid-page:{session}:{i}"))
+                    continue
+                created_concept += _route_concept_result(
+                    concept_result, applied, unchanged, held, suggested)
                 continue
 
             if placement_kind == "existing":
                 node_page = _concept_node_page(project, decision.placement)
+                if node_page is None and _concept_node_hub_only(project, decision.placement):
+                    # I3(b) ruled: the node exists but its directory holds
+                    # only the folder-note hub — mint a content page there
+                    # (same page+hub shape as a new-leaf create) rather than
+                    # ever appending Facts to the hub. The node is already
+                    # in the taxonomy, so schema.md is untouched.
+                    lastseg = decision.placement.rsplit("/", 1)[-1]
+                    mint_decision = replace(
+                        decision, title=decision.title or _hub_heading_default(lastseg))
+                    try:
+                        concept_result = _apply_concept_create(
+                            item, mint_decision, project, session, update_schema=False)
+                    except SecretsFound as exc:
+                        refused.append({"item": item, "reason": str(exc)})
+                        continue
+                    except ValueError as exc:
+                        unplaced.append(_route_unplaced(
+                            item, session, i,
+                            reason=f"concept placement produced an invalid page path: {exc}",
+                            fingerprint=f"wrap-concept-invalid-page:{session}:{i}"))
+                        continue
+                    created_concept += _route_concept_result(
+                        concept_result, applied, unchanged, held, suggested)
+                    continue
                 if node_page is None:
                     collect.record(
                         collect.KIND_PLACEMENT_EVENT,

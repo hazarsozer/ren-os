@@ -82,8 +82,31 @@ End-of-session consolidation. The friend runs `/ren:wrap`; this skill writes the
    - **Classify via ONE classifier-class subagent (batched).** When there are
      candidate items, do not omit the classifier and do not classify inline:
 
-     1. Build the per-item prompts mechanically:
-        `uv run python -c "from skills.wrap.lib import eligible_update_targets; from skills.wrap.lib.classifier import build_classifier_prompt; import json,sys; items=json.load(sys.stdin); el=eligible_update_targets('<session-id>'); print(json.dumps([build_classifier_prompt(i, eligible_targets=el, project=<project-or-None>) for i in items]))" <<< '<JSON array of candidate strings>'`
+     1. Build the per-item prompts mechanically — including the project's
+        taxonomy block, so the classifier can actually propose a `concept`
+        placement instead of being told "kind must be lesson" every time
+        (C2 fix: a healthy taxonomy that never reaches the prompt is
+        indistinguishable from no taxonomy at all):
+
+        ```
+        uv run python -c "
+        from skills.wrap.lib import eligible_update_targets
+        from skills.wrap.lib.classifier import build_classifier_prompt
+        from lib.memory.taxonomy import load_taxonomy, render_block, TaxonomyError
+        import json, sys
+        items = json.load(sys.stdin)
+        el = eligible_update_targets('<session-id>')
+        project = <project-or-None>
+        tax = None
+        if project:
+            try:
+                tax = load_taxonomy(project)
+            except TaxonomyError:
+                tax = None
+        tb = render_block(tax) if tax else ''
+        print(json.dumps([build_classifier_prompt(i, eligible_targets=el, project=project, taxonomy_block=tb) for i in items]))
+        " <<< '<JSON array of candidate strings>'
+        ```
      2. Spawn ONE classifier-class subagent (cheapest rung — never worker- or
         orchestrator-class) whose task is: "Answer each of the following N
         prompts independently. Return ONLY a JSON array of N objects, one per
@@ -117,7 +140,7 @@ End-of-session consolidation. The friend runs `/ren:wrap`; this skill writes the
      update-verdict simply routes to suggestions instead of auto-applying.
    - ALWAYS pass `cwd=` explicitly, set to the session's actual working directory — the Python process's own cwd may be the plugin cache dir rather than the project checkout (the documented invocation pattern), and defaulting to it silently misfiles the L1 under global `l1/` (#45).
    - Do NOT pass `project=` yourself — leave it unset. `wrap_session` derives the current project from `cwd` via the same `lib.ren_paths.detect_project` helper the wake-up hook's read path uses, so the L1 page lands exactly where the NEXT wake-up for this project will read it (codex D4 wiring). Non-project cwds (or a cwd that doesn't match any `wiki/projects/<slug>/`) fall through to the original global `l1/` path unchanged — `render_wrap_screen` shouts about this on the close-out screen so it's never silent.
-   - **Concept-tree routing (spec 2026-08-31 §3).** A durable candidate the classifier marked `kind: "concept"` (structural knowledge about the system being studied — how a component works, what connects to what; `scope` must be `"project"`, concepts have no global taxonomy) carries a `placement`: the best-matching node path in `projects/<slug>/schema.md`'s fenced taxonomy block, or an existing node plus one new child segment together with a `title`. This is validated and applied in CODE (`lib.memory.taxonomy.classify_placement`, called from `skills.wrap.lib`) — the live session never reads `schema.md` itself to decide where a page goes. An **existing** node accretes: the item is appended as a new `## Facts` bullet on the node's own content page (not its folder-note hub, except a legacy hand-seeded node that has a hub but no content page yet); a node whose Facts pass 40 bullets raises a split suggestion — never auto-applied. A **new leaf** mints the node's own content page (`type: project-knowledge`, same as any project page) under `projects/<slug>/knowledge/<placement>/`, then refreshes the leaf's and its parent's folder-note hubs and additively splices the new leaf into `schema.md`'s taxonomy fence — the schema.md edit routes to the suggestions store instead of auto-applying when `schema.md` is human-owned (`ren_trust: "user"`). An invalid placement (no matching node, a missing new-leaf title, or any other rejected concept placement) NEVER discards the item: it falls back to an ordinary `kind: "lesson"` create and records a `placement_event` metric. If `projects/<slug>/schema.md` is missing or its taxonomy fence fails to parse, concept routing goes BLIND for the rest of this wrap — every `kind: "concept"` verdict falls back to a lesson create rather than guessing a placement, and the close-out screen says so explicitly ("concept routing blind: ..."). A `kind: "lesson"` item — the common case, and every item whenever concept routing is blind — still lands under that project's `projects/<slug>/knowledge/lessons/<slug>.md`, with the relevant hub (the folder note named after its directory, `<topic>/<topic>.md`) auto-maintained alongside it. Never a root-tier page for one project's fact.
+   - **Concept-tree routing (spec 2026-08-31 §3).** A durable candidate the classifier marked `kind: "concept"` (structural knowledge about the system being studied — how a component works, what connects to what; `scope` must be `"project"`, concepts have no global taxonomy) carries a `placement`: the best-matching node path in `projects/<slug>/schema.md`'s fenced taxonomy block, or an existing node plus one new child segment together with a `title`. This is validated and applied in CODE (`lib.memory.taxonomy.classify_placement`, called from `skills.wrap.lib`) — the live session never reads `schema.md` itself to decide where a page goes. An **existing** node accretes: the item is appended as a new `## Facts` bullet on the node's own content page — NEVER its folder-note hub (I3 ruled: a hub is never a Facts target); a legacy/hand-seeded node whose directory holds only the hub gets a fresh content page MINTED instead (same shape as a new-leaf create, minus the `schema.md` edit — the node already exists). A node whose Facts pass 40 bullets raises a split suggestion — never auto-applied. A **new leaf** mints the node's own content page (`type: project-knowledge`, same as any project page) under `projects/<slug>/knowledge/<placement>/`, then refreshes the leaf's and its parent's folder-note hubs and additively splices the new leaf into `schema.md`'s taxonomy fence — the schema.md edit routes to the suggestions store instead of auto-applying when `schema.md` is human-owned (`ren_trust: "user"`). An invalid placement (no matching node, a missing new-leaf title, or any other rejected concept placement) NEVER discards the item: it falls back to an ordinary `kind: "lesson"` create and records a `placement_event` metric. If `projects/<slug>/schema.md` is missing or its taxonomy fence fails to parse, concept routing goes BLIND for the rest of this wrap — every `kind: "concept"` verdict falls back to a lesson create rather than guessing a placement, and the close-out screen says so explicitly ("concept routing blind: ..."). A `kind: "lesson"` item — the common case, and every item whenever concept routing is blind — still lands under that project's `projects/<slug>/knowledge/lessons/<slug>.md`, with the relevant hub (the folder note named after its directory, `<topic>/<topic>.md`) auto-maintained alongside it. Never a root-tier page for one project's fact.
    - The judge (Task 4/0.5.0) runs over this session's applied writes (Task 11/0.5.2's `shortlist_pairs`, restricted via `focus_pages` to the pages `wrap_session` just applied) — ONLY when a caller supplies a live `llm_call`. Under the standard subagent + `verdicts` path, there is no `llm_call`, so the judge degrades to `semantic_findings: []` by design — expected, not an error, same fail-closed discipline as the classifier. The wrap screen's "Possible connections (unverified)" section simply renders empty/omitted; this never blocks or delays a write.
 4. **Present results to the friend:**
    - L1: "session summary saved (quarantined, unreviewed)."
