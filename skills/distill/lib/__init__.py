@@ -36,7 +36,12 @@ from skills.wrap.lib import (
     _target_trust,
     eligible_update_targets,
 )
-from skills.wrap.lib.classifier import PlacementError, gate, gate_precomputed
+from skills.wrap.lib.classifier import (
+    ConceptPlacementError,
+    PlacementError,
+    gate,
+    gate_precomputed,
+)
 
 WRITE_CAP = 10  # spec §3.4 — remainder carries to the next run, logged
 
@@ -394,7 +399,11 @@ def seed_tree(project: str, llm_call, *, cap: int | None = None) -> dict:
     classifier decision, not rejected noise, and must not be conflated with
     an actually-invalid one): kind == "lesson" or a non-durable verdict
     (ordinary skip, no counter); a concept placement `classify_placement`
-    rejects outright (`placement_rejected`, spec §8 — classifier noise);
+    rejects outright — caught here as `ConceptPlacementError`
+    PROPAGATING out of `gate()` itself (M5+M7 fix: `gate()` used to
+    swallow this into its deterministic fallback, which made
+    `placement_rejected` structurally unreachable via this live-LLM call
+    site) (`placement_rejected`, spec §8 — classifier noise);
     and a concept placement that resolves to an EXISTING taxonomy node
     (`existing_node_skipped` — seed_tree does NOT gain accretion onto
     existing nodes in this task; that machinery is wrap's
@@ -465,8 +474,27 @@ def seed_tree(project: str, llm_call, *, cap: int | None = None) -> dict:
             break
 
         body = _lesson_body(lesson["text"])
-        decision = gate(body, llm_call, project=project, taxonomy=taxonomy,
-                        taxonomy_block=taxonomy_block)
+        try:
+            decision = gate(body, llm_call, project=project, taxonomy=taxonomy,
+                            taxonomy_block=taxonomy_block)
+        except ConceptPlacementError as exc:
+            # M5+M7 fix: `gate()` now PROPAGATES a concept-placement
+            # failure instead of silently swallowing it into the
+            # deterministic fallback (which made this counter
+            # unreachable — a rejected placement used to come back as an
+            # ordinary "session-only" Decision with no concept signal at
+            # all). seed_tree's own fallback is to leave the source
+            # lesson exactly as-is (it never mints a NEW lesson page here,
+            # unlike wrap) while still counting the classifier noise.
+            placement_rejected += 1
+            gated_out.append({"page": lesson["page"], "kind": "concept",
+                              "reason": exc.reason})
+            processed_through = lesson["ren_ts"]
+            continue
+        except PlacementError as exc:
+            gated_out.append({"page": lesson["page"], "reason": exc.reason})
+            processed_through = lesson["ren_ts"]
+            continue
 
         # `placement_kind` is `None` for anything that isn't a concept
         # `action == "create"` verdict at all (kind=="lesson", non-durable,

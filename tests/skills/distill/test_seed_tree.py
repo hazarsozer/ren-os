@@ -259,6 +259,43 @@ def test_seed_tree_existing_node_placement_is_skipped_not_rejected(wiki):
     ]
 
 
+def test_seed_tree_genuinely_invalid_placement_increments_placement_rejected(wiki):
+    """M5+M7: `gate()` used to swallow a `ConceptPlacementError` from this
+    mode's LIVE `llm_call` path into the deterministic fallback — the
+    resulting Decision came back `kind == "lesson"`/non-durable with no
+    concept signal at all, so `placement_rejected` was structurally
+    unreachable via this call site. `gate()` now propagates the error,
+    caught here and counted — distinct from `existing_node_skipped`
+    (spec §8: that's a valid decision, this is classifier noise)."""
+    _lesson(wiki, "concept-bad.md", "2026-08-01T00:00:00Z",
+            "a fact whose classifier-proposed placement doesn't resolve at all.")
+
+    def llm_call(prompt: str) -> str:
+        return json.dumps({
+            "verdict": "durable", "reason": "structural fact",
+            "scope": "project", "action": "create", "target_page": None,
+            "kind": "concept", "placement": "missing-parent/child",
+            "title": "Child Node",
+        })
+
+    result = seed_tree("alpha", llm_call)
+
+    assert result["applied"] == [] and result["annotated"] == []
+    assert len(result["gated_out"]) == 1
+    entry = result["gated_out"][0]
+    assert entry["page"] == "projects/alpha/knowledge/lessons/concept-bad.md"
+    assert entry["kind"] == "concept"
+
+    run_event = collect.read(kind=collect.KIND_DISTILLER_RUN)[-1]
+    assert run_event["placement_rejected"] == 1
+    assert run_event["existing_node_skipped"] == 0
+
+    lesson_text = (
+        wiki / "projects/alpha/knowledge/lessons/concept-bad.md"
+    ).read_text(encoding="utf-8")
+    assert "See:" not in lesson_text
+
+
 def test_seed_tree_watermark_path_rejects_path_traversal(wiki):
     """Review fix round 1 CRITICAL #1: a traversal-shaped `project` string
     must never resolve outside the state dir."""
