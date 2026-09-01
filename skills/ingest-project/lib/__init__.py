@@ -201,12 +201,16 @@ def ingest(
     `schema.md` body — a ```taxonomy fence plus per-branch prose) and
     `hub_pages` (`{branch: <folder-note markdown>}`, one per branch) are
     given, `ingest` validates `schema_page` with
-    `lib.memory.taxonomy.parse_taxonomy` BEFORE queuing anything new.
-    `TaxonomyError` ⇒ refuse the whole schema/hub write group — no partial
-    tree, nothing queued for schema.md or any hub — and fall back to the
-    existing map-only behavior (the durable knowledge is still saved); the
-    refusal message comes back as `result["taxonomy_error"]`. On a valid
-    taxonomy, the queue order is schema.md, then each hub
+    `lib.memory.taxonomy.parse_taxonomy` BEFORE queuing anything new, THEN
+    (M6) validates every `hub_pages` key against that parsed taxonomy's
+    `nodes` — also before the first write. Either `TaxonomyError` from
+    `schema_page` itself, or an unknown/traversal-shaped `hub_pages` key
+    (not a real node) ⇒ refuse the WHOLE schema/hub write group — no
+    partial tree, nothing queued for schema.md or any hub — and fall back
+    to the existing map-only behavior (the durable knowledge is still
+    saved); the refusal message comes back as `result["taxonomy_error"]`.
+    On a valid taxonomy AND valid hub_pages keys, the queue order is
+    schema.md, then each hub
     (`projects/<slug>/knowledge/<branch>/<branch>.md`, same
     `producer="ingest"`/`writer="llm-auto"` as the map), then the map itself
     — one pointer per hub is added to the Decision map automatically (topic
@@ -226,10 +230,23 @@ def ingest(
 
     if schema_page is not None:
         try:
-            parse_taxonomy(schema_page)
+            parsed_taxonomy = parse_taxonomy(schema_page)
         except TaxonomyError as exc:
             taxonomy_error = str(exc)
         else:
+            unknown_branches = sorted(set(hub_pages or {}) - set(parsed_taxonomy.nodes))
+            if unknown_branches:
+                # M6: refuse the WHOLE write group (schema.md included) —
+                # not just the offending hub — matching the docstring's
+                # "no partial tree" promise. An unknown or traversal-shaped
+                # `hub_pages` key would otherwise either write a hub the
+                # taxonomy never declares, or (traversal-shaped) blow up
+                # mid-loop on `safe_join` after earlier hubs already landed.
+                taxonomy_error = (
+                    f"hub_pages has branch(es) not in the taxonomy: {unknown_branches}"
+                )
+
+        if taxonomy_error is None:
             schema_page_path = f"projects/{project_slug}/schema.md"
             schema_abs = ren_paths.safe_join(ren_paths.wiki_root(), schema_page_path)
             schema_entry, _ = propose_and_apply(

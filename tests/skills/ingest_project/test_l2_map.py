@@ -542,6 +542,59 @@ def test_ingest_with_invalid_taxonomy_refuses_schema_and_hubs_but_map_proceeds(w
     assert result["hub_write_ids"] == {}
 
 
+def test_ingest_with_unknown_hub_pages_branch_refuses_whole_group(wiki):
+    """M6: `hub_pages` keys must be validated against the PARSED taxonomy's
+    nodes BEFORE the first write — an unknown branch (not declared in
+    `schema_page`'s fence) refuses the whole schema/hub write group (no
+    partial tree), same as an unparseable `schema_page` itself. The map-only
+    behavior still proceeds."""
+    result = ingest(
+        "unknown-branch-demo",
+        ["a scan fact"],
+        [],
+        session="sess-1",
+        schema_page=_VALID_SCHEMA_PAGE,
+        hub_pages={"architecture": "# architecture hub\n", "typo-branch": "# oops\n"},
+    )
+
+    assert result["taxonomy_error"] is not None
+    assert "typo-branch" in result["taxonomy_error"]
+
+    assert not (wiki / "projects" / "unknown-branch-demo" / "schema.md").exists()
+    assert not (wiki / "projects" / "unknown-branch-demo" / "knowledge").exists()
+
+    assert result["write_id"] is not None
+    assert result["schema_write_id"] is None
+    assert result["hub_write_ids"] == {}
+
+
+def test_ingest_with_traversal_shaped_hub_pages_key_refuses_whole_group(wiki):
+    """M6: a path-traversal-shaped `hub_pages` key (never a valid taxonomy
+    segment, so never in `parsed.nodes`) must refuse the whole write group
+    up front rather than blow up mid-loop on `safe_join` after earlier hubs
+    already landed — no partial tree either way."""
+    result = ingest(
+        "traversal-demo",
+        ["a scan fact"],
+        [],
+        session="sess-1",
+        schema_page=_VALID_SCHEMA_PAGE,
+        hub_pages={
+            "architecture": "# architecture hub\n",
+            "../../../../etc/pwned": "# malicious\n",
+        },
+    )
+
+    assert result["taxonomy_error"] is not None
+
+    assert not (wiki / "projects" / "traversal-demo" / "schema.md").exists()
+    assert not (wiki / "projects" / "traversal-demo" / "knowledge").exists()
+
+    assert result["write_id"] is not None
+    assert result["schema_write_id"] is None
+    assert result["hub_write_ids"] == {}
+
+
 def test_ingest_without_schema_page_is_unaffected_regression(wiki):
     """Step 1(c): a legacy call with no `schema_page`/`hub_pages` must behave
     exactly as it did before Task 6 — no schema/hub writes, no taxonomy
