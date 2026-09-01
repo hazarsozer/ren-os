@@ -234,7 +234,16 @@ def ingest(
         except TaxonomyError as exc:
             taxonomy_error = str(exc)
         else:
-            unknown_branches = sorted(set(hub_pages or {}) - set(parsed_taxonomy.nodes))
+            # Residual-review fix: normalise `hub_pages` keys the same way
+            # `_hub_page` does (`rstrip("/")`) BEFORE the set difference —
+            # otherwise a trailing-slash key ("architecture/") that
+            # `_hub_page` would happily resolve to the same hub as
+            # "architecture" gets refused as "unknown" purely because the
+            # raw key never string-equals a taxonomy node.
+            normalized_hub_pages = {
+                branch.rstrip("/"): body for branch, body in (hub_pages or {}).items()
+            }
+            unknown_branches = sorted(set(normalized_hub_pages) - set(parsed_taxonomy.nodes))
             if unknown_branches:
                 # M6: refuse the WHOLE write group (schema.md included) —
                 # not just the offending hub — matching the docstring's
@@ -263,7 +272,7 @@ def ingest(
             )
             schema_write_id = schema_entry.write_id
 
-            for branch, body in (hub_pages or {}).items():
+            for branch, body in normalized_hub_pages.items():
                 hub_page = _hub_page(project_slug, branch)
                 hub_abs = ren_paths.safe_join(ren_paths.wiki_root(), hub_page)
                 hub_entry, _ = propose_and_apply(

@@ -1105,8 +1105,17 @@ def _apply_concept_create(
         else:
             try:
                 propose_and_apply(Proposal(**proposal_kwargs))
-            except SecretsFound:
-                pass  # a taxonomy line can't realistically trip scrub; degrade quietly
+            except (SecretsFound, ValueError):
+                # Residual-review fix: this Proposal-construction step runs
+                # AFTER the content page (and its hubs) have already landed
+                # — `ValueError` here (same class the caller's own
+                # Proposal-construction guard exists for) must degrade
+                # quietly exactly like `SecretsFound` already does, never
+                # propagate. Letting it escape here would make the wrap
+                # loop's `except ValueError` (scoped to THIS function call)
+                # misreport an already-applied page as "invalid, nothing
+                # written" and double-report it to the suggestions store.
+                pass
 
     return result
 
@@ -1391,13 +1400,19 @@ def wrap_session(
             else:
                 # C2 fix: the live-LLM gate site is what actually renders the
                 # taxonomy into the classifier prompt — `build_classifier_
-                # prompt`'s default is "" (no taxonomy available), so a
-                # healthy loaded taxonomy that never reaches here means the
-                # classifier is told "kind must be lesson" even though
-                # concept routing isn't blind at all.
+                # prompt`'s default (`None`) means "no taxonomy available",
+                # so a healthy loaded taxonomy that never reaches here means
+                # the classifier is told "kind must be lesson" even though
+                # concept routing isn't blind at all. `None` (not `""`) is
+                # passed when there's genuinely no taxonomy object — `""` is
+                # reserved for a taxonomy that loaded but has zero nodes yet
+                # (I4: defined-but-empty must still read as "propose a new
+                # root", not collapse into the same prompt text as "blind").
                 decision = gate(item, llm_call, eligible_targets=eligible,
                                 project=project, taxonomy=taxonomy,
-                                taxonomy_block=render_block(taxonomy) if taxonomy else "")
+                                taxonomy_block=(
+                                    render_block(taxonomy) if taxonomy is not None else None
+                                ))
         except ConceptPlacementError as exc:
             # Spec 2026-08-31 §3 behavior 2: the classifier affirmed this
             # item is DURABLE — only its concept/taxonomy routing was
@@ -1479,7 +1494,13 @@ def wrap_session(
                     # unreachable here, but a malformed `Proposal.page`
                     # must never abort the whole wrap run — route to the
                     # suggestions store like any other unplaceable item
-                    # instead of letting the exception propagate.
+                    # instead of letting the exception propagate. Scoped
+                    # correctly (residual-review fix): `_apply_concept_
+                    # create` only ever raises `ValueError` from its FIRST
+                    # `Proposal(...)` construction — before anything is
+                    # written — every later write inside it degrades its
+                    # own `ValueError` quietly, so this can never fire
+                    # after the page has already landed on disk.
                     unplaced.append(_route_unplaced(
                         item, session, i,
                         reason=f"concept placement produced an invalid page path: {exc}",
@@ -1507,6 +1528,11 @@ def wrap_session(
                         refused.append({"item": item, "reason": str(exc)})
                         continue
                     except ValueError as exc:
+                        # Same guarantee as the new-leaf call site above —
+                        # and `update_schema=False` here means this call
+                        # never even reaches the schema-splice step, so the
+                        # ONLY possible `ValueError` source is the initial
+                        # (pre-write) `Proposal(...)` construction.
                         unplaced.append(_route_unplaced(
                             item, session, i,
                             reason=f"concept placement produced an invalid page path: {exc}",

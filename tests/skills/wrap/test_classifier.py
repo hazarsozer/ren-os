@@ -366,3 +366,34 @@ def test_build_classifier_prompt_falls_back_to_no_taxonomy_block_when_omitted():
 
     prompt = build_classifier_prompt("an item")
     assert _NO_TAXONOMY_BLOCK in prompt
+
+
+def test_build_classifier_prompt_renders_empty_sentinel_for_defined_but_empty_taxonomy():
+    """Residual-review fix: `taxonomy_block=""` (a taxonomy loaded and
+    parsed cleanly but has zero nodes yet — I4, defined-but-empty) must
+    render `_EMPTY_TAXONOMY_BLOCK` ("propose a new root"), never
+    `_NO_TAXONOMY_BLOCK` ("kind must be lesson") — those are two distinct
+    states that used to collapse into the same "" default."""
+    from skills.wrap.lib.classifier import (
+        _EMPTY_TAXONOMY_BLOCK,
+        _NO_TAXONOMY_BLOCK,
+        build_classifier_prompt,
+    )
+
+    prompt = build_classifier_prompt("an item", taxonomy_block="")
+    assert _EMPTY_TAXONOMY_BLOCK in prompt
+    assert _NO_TAXONOMY_BLOCK not in prompt
+
+
+def test_build_classifier_prompt_absent_taxonomy_block_still_no_taxonomy():
+    """The `None` (absent, default) case is unchanged by the empty-sentinel
+    fix — still renders `_NO_TAXONOMY_BLOCK`, never the empty sentinel."""
+    from skills.wrap.lib.classifier import (
+        _EMPTY_TAXONOMY_BLOCK,
+        _NO_TAXONOMY_BLOCK,
+        build_classifier_prompt,
+    )
+
+    prompt = build_classifier_prompt("an item", taxonomy_block=None)
+    assert _NO_TAXONOMY_BLOCK in prompt
+    assert _EMPTY_TAXONOMY_BLOCK not in prompt

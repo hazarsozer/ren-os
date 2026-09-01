@@ -50,6 +50,10 @@ _TITLE_SLUG_RE: Final = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 _NO_TAXONOMY_BLOCK: Final[str] = (
     '(no taxonomy available — "kind" must be "lesson", "placement" must be null)'
 )
+_EMPTY_TAXONOMY_BLOCK: Final[str] = (
+    '(the taxonomy is defined but empty — propose a new ROOT segment as '
+    '"placement" plus a 2-4 word "title")'
+)
 
 _CLASSIFIER_PROMPT_TEMPLATE: Final[str] = """\
 You are deciding whether ONE candidate item from an end-of-session wrap
@@ -168,7 +172,7 @@ class Decision:
 
 def build_classifier_prompt(
     item_text: str, *, eligible_targets: tuple[str, ...] = (), project: str | None = None,
-    taxonomy_block: str = "", branch_notes: str = "",
+    taxonomy_block: str | None = None, branch_notes: str = "",
 ) -> str:
     """Build the strict, JSON-only classification prompt for one candidate
     item. Truncates defensively (from the end, keeping the most recent/final
@@ -177,18 +181,33 @@ def build_classifier_prompt(
     `taxonomy_block` is the rendered project taxonomy — the caller (wrap's
     live-`llm_call` `gate()` call site, `skills/wrap/lib/__init__.py`, and
     the distiller's `seed_tree`) supplies it via `render_block(taxonomy)`
-    when a taxonomy loaded; when empty, concept routing is unavailable and
-    the prompt tells the LLM "kind" must be "lesson"."""
+    when a taxonomy loaded. Three distinct states, per the residual-review
+    fix (a `Taxonomy(nodes=())` — I4, defined-but-empty — must NOT read as
+    "no taxonomy" to the classifier, even though `render_block` renders it
+    as the empty string same as any other falsy value would):
+    - `None` (the default) — no taxonomy was even attempted/available
+      (blind, or no project in scope) — renders `_NO_TAXONOMY_BLOCK`
+      ("kind" must be "lesson").
+    - `""` — a taxonomy loaded and parsed cleanly but has zero nodes yet —
+      renders `_EMPTY_TAXONOMY_BLOCK`, inviting a new ROOT segment (spec
+      §6: "first sessions grow the tree additively").
+    - any non-empty string — the real rendered tree, used verbatim."""
     if not isinstance(item_text, str):
         raise TypeError(f"item_text must be str, got {type(item_text).__name__}")
     text = item_text
     if len(text) > _MAX_ITEM_CHARS:
         text = text[-_MAX_ITEM_CHARS:]
     targets_block = "\n".join(f"- {t}" for t in eligible_targets) or "(none — action must be \"create\")"
+    if taxonomy_block is None:
+        rendered_taxonomy_block = _NO_TAXONOMY_BLOCK
+    elif taxonomy_block == "":
+        rendered_taxonomy_block = _EMPTY_TAXONOMY_BLOCK
+    else:
+        rendered_taxonomy_block = taxonomy_block
     return _CLASSIFIER_PROMPT_TEMPLATE.format(
         item_text=text, project=project or "(no project in scope)",
         targets_block=targets_block,
-        taxonomy_block=taxonomy_block or _NO_TAXONOMY_BLOCK,
+        taxonomy_block=rendered_taxonomy_block,
         branch_notes=branch_notes,
     )
 
@@ -196,7 +215,7 @@ def build_classifier_prompt(
 def _valid_concept_title(title: object) -> bool:
     """A new-leaf title must be a 2-4 word string whose slug — words
     lowercased and joined with '-' — matches the taxonomy segment pattern
-    (spec 2026-08-31 §3.1's `_SEGMENT_RE`)."""
+    (spec 2026-08-31 §3's `_SEGMENT_RE`)."""
     if not isinstance(title, str):
         return False
     words = title.split()
@@ -313,7 +332,7 @@ def decision_from_data(
 def classify_llm(
     item_text: str, llm_call: Callable[[str], str], *,
     eligible_targets: tuple[str, ...] = (), project: str | None = None,
-    taxonomy: Taxonomy | None = None, taxonomy_block: str = "", branch_notes: str = "",
+    taxonomy: Taxonomy | None = None, taxonomy_block: str | None = None, branch_notes: str = "",
 ) -> Decision:
     """The REAL gate: ask `llm_call` to classify `item_text`, parse STRICTLY.
 
@@ -359,7 +378,7 @@ def classify_deterministic(item_text: str) -> Decision:
 def gate(
     item_text: str, llm_call: Callable[[str], str] | None = None, *,
     eligible_targets: tuple[str, ...] = (), project: str | None = None,
-    taxonomy: Taxonomy | None = None, taxonomy_block: str = "", branch_notes: str = "",
+    taxonomy: Taxonomy | None = None, taxonomy_block: str | None = None, branch_notes: str = "",
 ) -> Decision:
     """The single entry point `wrap_session` (and anything else gating a
     durable-write candidate) calls.

@@ -515,6 +515,41 @@ def test_ingest_with_valid_taxonomy_queues_schema_hubs_and_map_pointers(wiki):
     assert all(v is not None for v in result["hub_write_ids"].values())
 
 
+def test_ingest_with_trailing_slash_hub_pages_key_writes_correctly(wiki):
+    """Residual-review fix: a `hub_pages` key carrying a trailing slash
+    ("architecture/") is exactly what `_hub_page` already normalizes
+    (`branch.rstrip("/")`) — the taxonomy-membership check must normalize
+    the same way BEFORE the set difference, or a key `_hub_page` would
+    happily resolve gets refused as "unknown" purely on string mismatch."""
+    hub_pages = {
+        "architecture/": "# architecture hub\n\nWhat belongs here: system structure.\n",
+        "governance": "# governance hub\n\nWhat belongs here: process + policy.\n",
+    }
+
+    result = ingest(
+        "slash-demo",
+        ["a scan fact"],
+        [],
+        session="sess-1",
+        schema_page=_VALID_SCHEMA_PAGE,
+        hub_pages=hub_pages,
+    )
+
+    assert result["taxonomy_error"] is None
+    assert result["schema_write_id"] is not None
+
+    arch_hub = wiki / "projects" / "slash-demo" / "knowledge" / "architecture" / "architecture.md"
+    assert arch_hub.exists()
+
+    # The normalized (slash-stripped) branch name is what's reported and
+    # pointed at — not the raw trailing-slash key.
+    assert set(result["hub_write_ids"]) == {"architecture", "governance"}
+    assert all(v is not None for v in result["hub_write_ids"].values())
+
+    map_text = (wiki / "projects" / "slash-demo" / "map.md").read_text(encoding="utf-8")
+    assert "projects/slash-demo/knowledge/architecture/architecture.md" in map_text
+
+
 def test_ingest_with_invalid_taxonomy_refuses_schema_and_hubs_but_map_proceeds(wiki):
     """Task 6 fail-closed rule: an unparseable `schema_page` refuses the
     whole schema/hub write group (no partial tree) — but existing map-only

@@ -41,11 +41,16 @@ def test_parse_empty_fence_is_defined_but_empty_not_blind():
     tax = parse_taxonomy("```taxonomy\n```\n")
     assert tax.nodes == ()
 
-def test_parse_comment_only_fence_is_also_empty():
-    """A `#`-prefixed comment line inside the fence is ignored, not a
-    segment — a fence that carries only comments is still empty."""
-    tax = parse_taxonomy("```taxonomy\n# add branches as slug/ lines\n```\n")
-    assert tax.nodes == ()
+def test_parse_hash_prefixed_line_is_an_invalid_segment_not_a_comment():
+    """Residual-review ruling: `#`-prefixed lines are NOT comment syntax
+    inside the fence — a `#` line is an invalid segment like any other.
+    The shipped skeleton stub's fence is genuinely EMPTY; its own
+    `<!-- # add branches... -->` note lives OUTSIDE the fence in the
+    surrounding markdown (see wiki-skeleton/templates/projects/
+    schema.md.tmpl), so no shipped artifact depends on in-fence comment
+    syntax — pinned here so it can't silently regress back in."""
+    with pytest.raises(TaxonomyError):
+        parse_taxonomy("```taxonomy\n# add branches as slug/ lines\n```\n")
 
 def test_parse_bad_segment_raises():
     with pytest.raises(TaxonomyError):

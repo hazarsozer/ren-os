@@ -51,12 +51,16 @@ def parse_taxonomy(schema_md_text: str) -> Taxonomy:
     - depth > 2
     - duplicate path
 
-    An empty (or comment-only, `#`-prefixed lines ignored) fence is NOT an
-    error (I4, spec §6 ruled authoritative): it parses to `Taxonomy(nodes=())`
-    — defined-but-empty, the state the bootstrap skeleton's stub stamps and
-    every project starts in before its first branch is added. Concept
-    routing for such a project is NOT blind (`lib/reporting.py` Unknown
-    conventions) — only a missing/unparseable fence is.
+    An empty fence is NOT an error (I4, spec §6 ruled authoritative): it
+    parses to `Taxonomy(nodes=())` — defined-but-empty, the state the
+    bootstrap skeleton's stub stamps and every project starts in before
+    its first branch is added. Concept routing for such a project is NOT
+    blind (`lib/reporting.py` Unknown conventions) — only a missing/
+    unparseable fence is. A `#`-prefixed line is NOT a comment — it is an
+    invalid segment like any other (the shipped skeleton stub's own fence
+    is genuinely empty; its `<!-- # add branches... -->` note lives
+    OUTSIDE the fence, in the surrounding markdown, so no shipped artifact
+    depends on in-fence comment syntax — residual-review ruling).
     """
     m = _FENCE_RE.search(schema_md_text)
     if not m:
@@ -66,14 +70,13 @@ def parse_taxonomy(schema_md_text: str) -> Taxonomy:
     stack: list[str] = []
 
     for raw in m.group(1).splitlines():
-        stripped = raw.strip()
-        if not stripped or stripped.startswith("#"):
+        if not raw.strip():
             continue
         indent = len(raw) - len(raw.lstrip(" "))
         if indent % 2:
             raise TaxonomyError(f"odd indentation: {raw!r}")
         depth = indent // 2
-        seg = stripped.rstrip("/")
+        seg = raw.strip().rstrip("/")
         if not _SEGMENT_RE.match(seg):
             raise TaxonomyError(f"invalid segment {seg!r}")
         if depth > len(stack):

@@ -18,6 +18,7 @@ import json
 
 import pytest
 
+import skills.wrap.lib as _wraplib
 from lib.instrument import collect
 from lib.memory.taxonomy import parse_taxonomy
 from lib.ren_paths import wiki_root
@@ -563,3 +564,101 @@ def test_stamped_empty_taxonomy_stub_routes_concept_new_root_end_to_end(wiki):
     ][-1]
     assert outcome["created_concept"] == 1
     assert outcome["placement_rejected"] == 0
+
+
+def test_stamped_empty_taxonomy_stub_live_llm_call_new_root_end_to_end(wiki):
+    """Residual-review fix: the SAME end-to-end scenario, but through the
+    LIVE `llm_call` path (not `verdicts=`) — this is what actually proves
+    the empty-taxonomy sentinel reaches the real prompt `wrap_session`
+    sends. Before the fix, `render_block(Taxonomy(nodes=()))` returned ""
+    and the live gate site's `taxonomy_block=... or ""`-shaped default
+    collapsed "defined but empty" into the same `_NO_TAXONOMY_BLOCK`
+    ("kind must be lesson") text as "no taxonomy at all", making spec §6's
+    "first sessions grow the tree additively" unreachable on this path."""
+    from skills.wrap.lib.classifier import _EMPTY_TAXONOMY_BLOCK, _NO_TAXONOMY_BLOCK
+
+    _seed_schema(wiki, "p", "")  # exactly the bootstrap stub's empty fence
+    item = "The scheduler owns every background job in this system."
+    seen_prompts: list[str] = []
+
+    def llm_call(prompt: str) -> str:
+        if "Candidate item:" in prompt:
+            seen_prompts.append(prompt)
+            return json.dumps({
+                "verdict": "durable", "reason": "structural fact",
+                "scope": "project", "action": "create", "target_page": None,
+                "kind": "concept", "placement": "scheduler", "title": "Job Scheduler",
+            })
+        return json.dumps({"material_change": False, "overview": ""})
+
+    result = wrap_session(
+        "# n", [item], "s-empty-stub-live", project="p", llm_call=llm_call,
+    )
+
+    assert len(seen_prompts) == 1
+    assert _EMPTY_TAXONOMY_BLOCK in seen_prompts[0]
+    assert _NO_TAXONOMY_BLOCK not in seen_prompts[0]
+
+    assert result.get("concept_routing") == {"blind": None}
+    assert len(result["applied"]) == 1
+    assert result["applied"][0]["page"] == "projects/p/knowledge/scheduler/job-scheduler.md"
+
+    schema_text = (wiki / "projects/p/schema.md").read_text(encoding="utf-8")
+    assert parse_taxonomy(schema_text).nodes == ("scheduler",)
+
+
+# --- residual-review finding 6: a post-page-write failure can't double-report --
+
+
+def test_apply_concept_create_swallows_post_page_write_schema_proposal_valueerror(wiki):
+    """Residual-review fix: `_apply_concept_create`'s SECOND `Proposal(...)`
+    construction (the schema.md splice) now degrades a `ValueError` the
+    same way it already degrades `SecretsFound` — quietly — rather than
+    letting it escape. This is what GUARANTEES the wrap loop's own
+    `except ValueError` (scoped around the whole `_apply_concept_create`
+    call) can only ever fire from the FIRST (pre-write) `Proposal(...)`:
+    if a post-page-write `ValueError` were allowed to propagate, the item
+    would be double-reported — a real page already on disk, AND an
+    `unplaced` suggestion telling a human to place it as if nothing had
+    landed. Verified directly against `_apply_concept_create` (not through
+    the wrap loop, since we need to fail only the SECOND `propose_and_
+    apply` call) by monkeypatching it to raise `ValueError` on that call
+    only."""
+    from skills.wrap.lib import Decision, _apply_concept_create
+
+    _seed_schema(wiki, "p", "billing/\n")
+    item = "The topic subsystem owns routing for cross-cutting concerns."
+    decision = Decision(
+        verdict="durable", reason="r", scope="project", action="create",
+        kind="concept", placement="topic", title="New Topic",
+    )
+
+    # Call order inside `_apply_concept_create`: (1) the content page ADD,
+    # (2) the leaf hub, (3) the parent hub — both hubs' own `propose_and_
+    # apply` calls are already isolated-duty (never raise) inside
+    # `_ensure_hub`, so raising there wouldn't exercise this fix at all —
+    # then (4) the schema.md UPDATE, the one this fix targets.
+    real_propose_and_apply = _wraplib.propose_and_apply
+    calls = {"n": 0}
+
+    def flaky_propose_and_apply(proposal):
+        calls["n"] += 1
+        if calls["n"] == 4:
+            raise ValueError("simulated post-page-write path failure")
+        return real_propose_and_apply(proposal)
+
+    import unittest.mock
+    with unittest.mock.patch.object(_wraplib, "propose_and_apply", flaky_propose_and_apply):
+        result = _apply_concept_create(item, decision, "p", "s-flaky-schema")
+
+    # The content page landed — status "applied" — never lost, never
+    # double-reported as a caller-visible exception.
+    assert result["status"] == "applied"
+    assert result["page"] == "projects/p/knowledge/topic/new-topic.md"
+    assert (wiki / result["page"]).is_file()
+    assert calls["n"] == 4
+
+    # schema.md itself is untouched (the splice attempt failed and was
+    # swallowed) — no partial/corrupt write landed either.
+    schema_text = (wiki / "projects/p/schema.md").read_text(encoding="utf-8")
+    assert parse_taxonomy(schema_text).nodes == ("billing",)
