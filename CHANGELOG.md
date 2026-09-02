@@ -14,9 +14,11 @@ episodic lesson about how the work went. Spec:
 - **`lib/memory/taxonomy` parses, validates, and renders `schema.md`'s
   fenced taxonomy block.** One slug per line, two-space-indented children,
   depth capped at two levels below `knowledge/`; `parse_taxonomy` raises
-  `TaxonomyError` on a missing fence, bad indentation, an invalid segment, a
-  duplicate path, or an empty fence — a defined, reported outcome, never a
-  crash. `classify_placement` resolves a placement to `"existing"` or
+  `TaxonomyError` on a missing fence, bad indentation, an invalid segment,
+  or a duplicate path — a defined, reported outcome, never a crash — while
+  an EMPTY fence parses to an empty taxonomy (defined-but-empty, spec §6:
+  the classifier is invited to propose a new root, not told concepts are
+  unavailable). `classify_placement` resolves a placement to `"existing"` or
   `"new-leaf"` against a loaded `Taxonomy`.
 - **The classifier gains `kind`/`placement`/`title`.** A durable verdict now
   also decides `kind` (`"concept"` vs `"lesson"`) and, for a concept, a
