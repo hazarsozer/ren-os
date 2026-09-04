@@ -71,7 +71,10 @@ project memory — here's what I captured."*
 
 > **Requirements:** Claude Code with plugin support, Python ≥ 3.11, `uv`
 > (skills run their mechanical cores via `uv run`). No API keys, no services,
-> no telemetry — see [What stays local](docs/data-flow.md).
+> no telemetry — see [What stays local](docs/data-flow.md). On Windows: Git
+> for Windows (it provides `git` and Git Bash, which hooks and skill scripts
+> run under); Python must be on PATH as `python` or `python3`. WSL counts as
+> Linux.
 
 ---
 

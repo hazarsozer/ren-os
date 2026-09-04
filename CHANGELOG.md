@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.8.6] - unreleased — "runs where your friend runs"
+
+Native Windows constraint declared: Claude Code (CLI, desktop app, VS Code
+extension) shells hook `command` strings and skill scripts out through Git
+Bash, so Git for Windows is now the documented requirement — everything else
+on the Python side was already portable (pathlib, `as_posix`, `O_EXCL`
+locks).
+
+- **`hooks/run-hook.sh`** launches every hook's Python script instead of
+  `hooks.json` hardcoding `python3` — it resolves `python3` -> `python` ->
+  `py -3` (in that order, `REN_HOOK_PYTHON` overrides), and fails open
+  (`{}` on stdout, exit 0) rather than blocking tool use when no
+  interpreter is found on PATH.
+- **`hooks/hooks.json`**'s five `command` entries all route through
+  `run-hook.sh` now; the doctor-grepped `ren-wake-up.py` substring survives
+  the edit.
+- **`/ren:doctor`'s `check_env`** now also checks for `bash` on PATH, and
+  warns with a Git-for-Windows install hint when it's missing on `win32`.
+- **Windows `uv` venv layout** (`.envs/<version>/Scripts/python.exe`)
+  confirmed covered by `lib.interpreter` and doctor's interpreter-freshness
+  check — no code change needed, just tests proving it.
+
+NOT done: the PowerShell-only path (no Git for Windows installed) still has
+no story — `hooks/run-hook.sh` and the other shipped `.sh` scripts are bash,
+not ported to Python, and that port is explicitly out of scope here.
+Ledgered as a follow-up.
+
 ## [0.8.5] - 2026-09-01 — "durable knowledge finds its shelf"
 
 Concept-tree routing: durable memory stops being flat. A project's own
