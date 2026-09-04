@@ -327,8 +327,12 @@ def test_durable_item_with_planted_secret_is_refused_not_crashed(wiki):
     # 2026-08-21 knowledge-flow-seams Task 1: the write door now derives a
     # missing frontmatter `type:` for every proposal, and lessons/<slug>.md
     # (Rule 3) matches — so the stored content carries a `type: lesson`
-    # stamp ahead of the raw item text.
-    assert entry.proposal.content == "---\ntype: lesson\n---\n" + clean_item
+    # stamp ahead of the raw item text. 2026-09-04 §3/§7: the lesson create
+    # path now also stamps the `Parent:`/`## Related` link convention.
+    assert entry.proposal.content == (
+        "---\ntype: lesson\n---\nParent: [[lessons]]\n\n"
+        + clean_item + "\n\n## Related\n"
+    )
 
 
 # =============================================================================
@@ -856,8 +860,13 @@ class TestSemanticFindings:
         # (near-similar Jaccard, since the durable item is a single line and
         # can't trip the multi-line duplicate heuristic). Content is chosen
         # with enough shared significant tokens to clear the 0.5 near-similar
-        # threshold even after the quarantine banner's own tokens dilute it.
-        durable_item = "always run the linter and formatter before every commit to catch mistakes early"
+        # threshold even after the quarantine banner's tokens AND (2026-09-04
+        # §3/§7) the lesson create path's `Parent:`/`## Related` stamp both
+        # dilute it.
+        durable_item = (
+            "always run the linter and formatter before every commit to catch "
+            "mistakes early in the review process"
+        )
 
         existing_page = wiki / "lessons" / "existing-fact.md"
         existing_page.parent.mkdir(parents=True, exist_ok=True)

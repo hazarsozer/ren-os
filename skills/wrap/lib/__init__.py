@@ -46,10 +46,14 @@ from lib.adapter.worker import parse_worker_json
 from lib.instrument import calibration, collect
 from lib.memory import journal, queue
 from lib.memory import quarantine
+from lib.memory.fanout import FanoutResult, LandedItem, fan_out
 from lib.memory.links import (
     CONCEPT_SPLIT_BULLETS as _CONCEPT_SPLIT_BULLETS,
+    RELATED_HEADING,
     append_facts_bullet as _append_facts_bullet,
     count_facts_bullets as _count_facts_bullets,
+    render_related,
+    upsert_parent,
 )
 from lib.memory.judge import JUDGE_MIN_CONFIDENCE, JUDGE_PAIR_CAP, judge_pairs
 from lib.memory.lifecycle import consolidate_duplicates, run_decay
@@ -913,21 +917,71 @@ def _concept_node_hub_only(project: str, placement: str) -> bool:
         return False
 
 
+def _parent_stem_for(placement: str, project: str) -> str:
+    """The `Parent:` stem for a page landing at `placement` (spec §3): the
+    page's own folder-note hub, which is named after the leaf segment. The
+    classifier may override this later; the default is the shelf the page
+    sits on."""
+    return placement.rsplit("/", 1)[-1]
+
+
+def _concept_page_content(item: str, title: str, project: str, parent_stem: str) -> str:
+    """The concept page body, carrying the 2026-09-04 §3 link convention:
+    H1, then `Parent:`, then the body, then a `## Related` section that is
+    rendered EVEN WHEN EMPTY (a visible "nothing linked yet")."""
+    sentence_match = _SENTENCE_SPLIT_RE.split(item.strip(), maxsplit=1)
+    first_sentence = sentence_match[0] if sentence_match else item.strip()
+    return (
+        "---\n"
+        "type: project-knowledge\n"
+        "schema_version: 1\n"
+        f"project: {project}\n"
+        f'title: "{title}"\n'
+        "---\n\n"
+        f"# {title}\n\n"
+        f"Parent: [[{parent_stem}]]\n\n"
+        f"{first_sentence}\n\n"
+        f"{render_related([])}\n"
+        "## Facts\n\n"
+        f"- {item}\n"
+    )
+
+
 def _route_concept_result(
     concept_result: dict, applied: list[dict], unchanged: list[dict],
-    held: list[dict], suggested: list[dict],
+    held: list[dict], suggested: list[dict], *,
+    item: str = "", title: str = "", project: str | None = None,
+    session: str = "", llm_call=None, fanout: dict | None = None,
 ) -> int:
     """Route one `_apply_concept_create` result dict into `wrap_session`'s
     output lists — shared by the new-leaf call site and the I3(b)
     hub-only-mint call site, which both produce the identical result shape.
     Returns 1 (a `created_concept` counter increment is due) iff the page
-    actually landed, else 0."""
+    actually landed, else 0.
+
+    2026-09-04 §5/§7: when the page actually LANDED (never for a held or
+    unchanged write — there is nothing new on disk to fan out from) and an
+    `llm_call` is available, fan the item out across the project's other
+    knowledge pages. Never raises: `fan_out` returns `unknown_reason`
+    instead, which is accumulated in `fanout["unknown"]` for the close-out.
+    """
     if concept_result["status"] == "applied":
         applied.append({"qid": concept_result["qid"],
                         "write_id": concept_result["write_id"],
                         "page": concept_result["page"],
                         "op": concept_result["op"]})
         created = 1
+        if llm_call is not None and project and fanout is not None:
+            fanout_result = fan_out(
+                LandedItem(page=concept_result["page"], title=title, text=item,
+                           write_id=concept_result["write_id"]),
+                project, session, llm_call, producer="wrap",
+            )
+            fanout["applied"] += len(fanout_result.applied)
+            fanout["suggested"] += len(fanout_result.suggested)
+            suggested.extend(fanout_result.suggested)
+            if fanout_result.unknown_reason:
+                fanout["unknown"].append(fanout_result.unknown_reason)
     elif concept_result["status"] == "unchanged":
         unchanged.append({"page": concept_result["page"]})
         created = 0
@@ -978,20 +1032,7 @@ def _apply_concept_create(
         if len(parts) > 1 else f"projects/{project}/knowledge"
     )
 
-    sentence_match = _SENTENCE_SPLIT_RE.split(item.strip(), maxsplit=1)
-    first_sentence = sentence_match[0] if sentence_match else item.strip()
-    content = (
-        "---\n"
-        "type: project-knowledge\n"
-        "schema_version: 1\n"
-        f"project: {project}\n"
-        f'title: "{title}"\n'
-        "---\n\n"
-        f"# {title}\n\n"
-        f"{first_sentence}\n\n"
-        "## Facts\n\n"
-        f"- {item}\n"
-    )
+    content = _concept_page_content(item, title, project, _parent_stem_for(placement, project))
     page = _durable_create_page(item, decision.scope, project, placement=placement, title=title)
 
     entry, prov = propose_and_apply(
@@ -1312,6 +1353,7 @@ def wrap_session(
     suggested: list[dict] = []
     unplaced: list[dict] = []
     unchanged: list[dict] = []
+    fanout: dict = {"unknown": [], "applied": 0, "suggested": 0}
 
     # Concept-tree routing (spec 2026-08-31 §3, behavior 1): loaded ONCE for
     # this whole wrap, not per-item — `gate`/`gate_precomputed` below get the
@@ -1469,7 +1511,9 @@ def wrap_session(
                         fingerprint=f"wrap-concept-invalid-page:{session}:{i}"))
                     continue
                 created_concept += _route_concept_result(
-                    concept_result, applied, unchanged, held, suggested)
+                    concept_result, applied, unchanged, held, suggested,
+                    item=item, title=decision.title, project=project,
+                    session=session, llm_call=llm_call, fanout=fanout)
                 continue
 
             if placement_kind == "existing":
@@ -1501,7 +1545,9 @@ def wrap_session(
                             fingerprint=f"wrap-concept-invalid-page:{session}:{i}"))
                         continue
                     created_concept += _route_concept_result(
-                        concept_result, applied, unchanged, held, suggested)
+                        concept_result, applied, unchanged, held, suggested,
+                        item=item, title=mint_decision.title, project=project,
+                        session=session, llm_call=llm_call, fanout=fanout)
                     continue
                 if node_page is None:
                     collect.record(
@@ -1678,12 +1724,15 @@ def wrap_session(
         # a defensive re-check failure): `decision.kind` is always "lesson"
         # by this point.
         page = _durable_create_page(item, decision.scope, project)
+        content = upsert_parent(item, "lessons")
+        if RELATED_HEADING not in content:
+            content = content.rstrip("\n") + "\n\n" + render_related([])
         try:
             entry, prov = propose_and_apply(
                 Proposal(
                     op="ADD",
                     page=page,
-                    content=item,
+                    content=content,
                     reason=decision.reason,
                     producer="wrap",
                     writer="llm-auto",
@@ -1798,6 +1847,7 @@ def wrap_session(
             "l1_touched": 0, "log_entry": False, "sessions_entry": False,
             "auto_pointers": [], "warnings": [],
         },
+        "fanout": fanout,
     }
 
     # Behavior 7: blindness is Unknown, not a guess (`lib/reporting.py`
@@ -2387,6 +2437,10 @@ def render_wrap_screen(wrap_result: dict, session: str) -> str:
     concept_blind = (wrap_result.get("concept_routing") or {}).get("blind")
     if concept_blind is not None:
         lines.append(f"- ⚠ concept routing blind: {Unknown(reason=concept_blind).reason}")
+    # §9: an unparseable fan-out verdict is Unknown, not silence — the
+    # friend sees exactly which item's fan-out produced no edits and why.
+    for reason in (wrap_result.get("fanout") or {}).get("unknown") or []:
+        lines.append(f"- ⚠ fan-out unknown: {Unknown(reason=reason).reason}")
     # #78 finding 5: the durable loop's `unchanged` bucket (noop-duplicate
     # entries — content that normalized equal to what's already on the
     # target page) is NEVER persisted to disk, so it cannot come from
