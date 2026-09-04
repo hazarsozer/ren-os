@@ -937,6 +937,11 @@ def _recorded_interpreter_version(recorded: str) -> str:
     `~/.renos/.envs/<version>/bin/python3`, whose parents contain no `ren`
     directory at all, so this returned "unknown" and the currency comparison
     was skipped rather than performed.
+
+    Both layouts already cover Windows: `uv` lays a venv out as
+    `.../.envs/<version>/Scripts/python.exe` there (`Scripts\\python.exe`
+    instead of POSIX `bin/python3`) — the version dir's parent is still
+    named `.envs`, so no extra branch is needed.
     """
     parents = Path(recorded).parents
     version = next((p.name for p in parents if p.parent.name == "ren"), None)

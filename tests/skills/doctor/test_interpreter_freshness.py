@@ -184,6 +184,7 @@ def test_non_dict_record_is_info_not_crash(state):
     [
         ("/h/.claude/plugins/cache/ren-os/ren/0.8.2/.venv/bin/python3", "0.8.2"),
         ("/h/.renos/.envs/0.8.2/bin/python3", "0.8.2"),
+        ("C:/Users/h/.renos/.envs/0.8.6/Scripts/python.exe", "0.8.6"),
         ("/somewhere/else/bin/python3", "unknown"),
     ],
 )
