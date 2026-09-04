@@ -93,6 +93,41 @@ def test_check_env_ok_regardless_of_api_key(monkeypatch):
     assert result.status == "ok"
 
 
+def _which_missing(names):
+    def _which(cmd):
+        if cmd in names:
+            return None
+        return f"/usr/bin/{cmd}"
+    return _which
+
+
+def test_check_env_ok_when_bash_present(monkeypatch):
+    monkeypatch.setattr(doctor.shutil, "which", _which_missing(set()))
+    result = doctor.check_env()
+    assert result.status == "ok"
+    assert "bash" in result.message
+
+
+def test_check_env_bash_missing_on_darwin_no_hint(monkeypatch):
+    monkeypatch.setattr(doctor.shutil, "which", _which_missing({"bash"}))
+    monkeypatch.setattr(doctor.sys, "platform", "darwin")
+    result = doctor.check_env()
+    assert result.status == "warn"
+    assert "bash" in result.message
+    assert "Git for Windows" not in result.message
+
+
+def test_check_env_bash_missing_on_win32_has_hint(monkeypatch):
+    monkeypatch.setattr(doctor.shutil, "which", _which_missing({"bash"}))
+    monkeypatch.setattr(doctor.sys, "platform", "win32")
+    result = doctor.check_env()
+    assert result.status == "warn"
+    assert "bash" in result.message
+    assert result.message.endswith(
+        "install Git for Windows (provides git + Git Bash; RenOS hooks and scripts run under Git Bash)"
+    )
+
+
 # ----------------------------------------------------------- check_wiki_structure
 
 

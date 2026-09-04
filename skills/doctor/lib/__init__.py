@@ -85,17 +85,29 @@ def _wrap(name: str, fn) -> CheckResult:
 
 
 def check_env() -> CheckResult:
-    """git present, python present. Donor's Node/gh/claude-cli checks dropped
-    (feed/marketplace-era, not applicable here). No API-key check — RenOS runs on
-    subscription auth and ships with no keys, no services, no telemetry."""
+    """git, python, and bash present. Donor's Node/gh/claude-cli checks
+    dropped (feed/marketplace-era, not applicable here). No API-key check —
+    RenOS runs on subscription auth and ships with no keys, no services, no
+    telemetry. bash is required because hooks.json's `command` strings and
+    skill scripts run under it (via `hooks/run-hook.sh`); on Windows the
+    warn names Git for Windows as the fix, since it ships both `git` and
+    Git Bash."""
     missing = []
     if shutil.which("git") is None:
         missing.append("git")
     if shutil.which("python3") is None and shutil.which("python") is None:
         missing.append("python3")
+    if shutil.which("bash") is None:
+        missing.append("bash")
     if missing:
-        return CheckResult("env", "warn", f"missing on PATH: {', '.join(missing)}")
-    return CheckResult("env", "ok", "git, python3 all present")
+        message = f"missing on PATH: {', '.join(missing)}"
+        if "bash" in missing and sys.platform == "win32":
+            message += (
+                " — install Git for Windows (provides git + Git Bash; "
+                "RenOS hooks and scripts run under Git Bash)"
+            )
+        return CheckResult("env", "warn", message)
+    return CheckResult("env", "ok", "git, python3, bash all present")
 
 
 def check_wiki_structure(wiki_root: Path | None = None) -> CheckResult:
