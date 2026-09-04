@@ -143,3 +143,16 @@ def test_uses_py_dash_3_when_only_py_present(tmp_path, coreutils_dir):
     proc = _run([tmp_path, coreutils_dir], "/some/hook.py")
     assert proc.returncode == 0
     assert proc.stdout.startswith("py:-3 /some/hook.py")
+
+
+def test_no_argv_fails_open_instead_of_unbound_variable(tmp_path):
+    """`set -eu` with no `$1` given is an unbound-variable error (exit 1)
+    under a naive `script_path="$1"`. A missing argument must still fail
+    OPEN — print `{}`, note it on stderr, exit 0 — not crash."""
+    proc = subprocess.run(
+        [BASH, str(RUN_HOOK)],
+        capture_output=True, text=True, env={"PATH": str(tmp_path)}, timeout=10,
+    )
+    assert proc.returncode == 0
+    assert proc.stdout.strip() == "{}"
+    assert proc.stderr.strip() != ""

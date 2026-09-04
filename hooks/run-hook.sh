@@ -25,7 +25,13 @@
 # Usage: run-hook.sh <absolute-path-to-hook.py>
 set -eu
 
-script_path="$1"
+script_path="${1:-}"
+
+if [ -z "$script_path" ]; then
+  echo '{}'
+  echo "ren-hook: no hook script path given" 1>&2
+  exit 0
+fi
 
 _probe() {
   # "$@" is the full candidate command (e.g. `py -3`); a real interpreter
