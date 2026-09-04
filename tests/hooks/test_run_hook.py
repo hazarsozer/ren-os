@@ -26,14 +26,30 @@ BASH = shutil.which("bash")
 
 
 def _make_shim(dir_: Path, name: str, echoes: str) -> Path:
-    """A fake interpreter shim: echoes its own argv[1] and then stdin."""
+    """A fake interpreter shim: responds to a `-c pass` probe (any arg is
+    literally `-c`) by exiting 0 with no output — like a real interpreter —
+    and otherwise echoes `<echoes>:<all argv, space-joined>` then its stdin.
+    """
     shim = dir_ / name
     shim.write_text(
         f"#!{BASH}\n"
-        f"echo {echoes}:\"$1\"\n"
+        "for a in \"$@\"; do\n"
+        "  if [ \"$a\" = \"-c\" ]; then exit 0; fi\n"
+        "done\n"
+        f"echo {echoes}:\"$*\"\n"
         "cat\n",
         encoding="utf-8",
     )
+    shim.chmod(shim.stat().st_mode | stat.S_IEXEC | stat.S_IRUSR | stat.S_IXUSR)
+    return shim
+
+
+def _make_alias_stub_shim(dir_: Path, name: str) -> Path:
+    """Mimics the Windows WindowsApps App Execution Alias `python.exe` stub:
+    on PATH (`command -v` finds it) but exits 9009 with no output for any
+    invocation, including a `-c pass` probe."""
+    shim = dir_ / name
+    shim.write_text(f"#!{BASH}\nexit 9009\n", encoding="utf-8")
     shim.chmod(shim.stat().st_mode | stat.S_IEXEC | stat.S_IRUSR | stat.S_IXUSR)
     return shim
 
@@ -89,3 +105,15 @@ def test_env_override_wins(tmp_path, coreutils_dir):
     override = _make_shim(tmp_path, "custom-python", "custom")
     proc = _run([tmp_path, coreutils_dir], "/some/hook.py", env_extra={"REN_HOOK_PYTHON": str(override)})
     assert proc.stdout.startswith("custom:/some/hook.py")
+
+
+def test_windows_app_execution_alias_stub_is_skipped_for_py(tmp_path, coreutils_dir):
+    """On stock Windows, `python.exe` on PATH is often the WindowsApps App
+    Execution Alias stub: `command -v` finds it, but running it exits 9009
+    with no output. The launcher must probe before exec'ing, skip this
+    candidate, and fall through to `py -3` (the real interpreter)."""
+    _make_alias_stub_shim(tmp_path, "python")
+    _make_shim(tmp_path, "py", "py")
+    proc = _run([tmp_path, coreutils_dir], "/some/hook.py")
+    assert proc.returncode == 0
+    assert proc.stdout.startswith("py:-3 /some/hook.py")
