@@ -64,8 +64,10 @@ carries a hub `index.md`; immutable source material lives in
    it. Future sessions read and follow it; evolving it is a normal wiki
    write through the queue.
 
-2. **`knowledge/` is a tree, not a directory.** Arbitrary-depth
-   subdirectories are sanctioned. Every subdirectory MUST carry a hub page
+2. **`knowledge/` is a tree, not a directory.** Nested subdirectories
+   are sanctioned — up to two levels below `knowledge/` (amended
+   2026-09-04, `docs/decisions/2026-09-04-taxonomy-depth-cap.md`: deeper
+   hierarchy is carried by links inside pages, not directories). Every subdirectory MUST carry a hub page
    `index.md` — `type: project-knowledge` (no new type minted) with a
    `hub: true` frontmatter key — that summarizes and links its children.
    The L2 map's Decision-map points at **hubs and top-level pages, not deep

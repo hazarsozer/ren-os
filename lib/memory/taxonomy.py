@@ -14,7 +14,10 @@ from lib import ren_paths
 
 _SEGMENT_RE: Final = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 _FENCE_RE: Final = re.compile(r"```taxonomy\n(.*?)```", re.DOTALL)
-MAX_DEPTH: Final[int] = 2  # levels below knowledge/
+# Levels below knowledge/. Permanent by ruling (docs/decisions/
+# 2026-09-04-taxonomy-depth-cap.md): deeper hierarchy is carried by links
+# inside pages, not by directory nesting. No per-project override.
+MAX_DEPTH: Final[int] = 2
 
 __all__ = [
     "Taxonomy",
