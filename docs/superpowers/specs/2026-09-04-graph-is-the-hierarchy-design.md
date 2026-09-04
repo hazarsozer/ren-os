@@ -1,7 +1,7 @@
 # The graph is the hierarchy — link convention, write-time fan-out, graph-aware lint and recall (0.8.7)
 
 - **Date:** 2026-09-04
-- **Status:** draft, awaiting Hazar's review
+- **Status:** accepted 2026-09-04 (Hazar); open questions resolved in §12
 - **Builds on:** `docs/decisions/2026-09-04-taxonomy-depth-cap.md` (depth 2 is
   a shelf, hierarchy is links), `docs/superpowers/specs/2026-08-31-concept-tree-routing-design.md`
   (0.8.5 concept routing), `docs/superpowers/specs/2026-08-12-orphan-detection-design.md`
@@ -127,11 +127,11 @@ worker is told to draft `Parent:`/`## Related` itself (§7) and does not call
 fan-out — the draft already touches many pages.
 
 ```python
-FANOUT_CANDIDATES = 8   # pages the classifier sees
-FANOUT_CAP = 5          # edits per landed item
+FANOUT_CANDIDATES = 12  # pages the classifier sees — and the only bound on
+                        # edits per landed item (Karpathy: 10–15 touches)
 
 def fan_out(item: LandedItem, project: str, session: str, llm_call, *,
-            cap: int = FANOUT_CAP) -> FanoutResult
+            candidates: int = FANOUT_CANDIDATES) -> FanoutResult
 ```
 
 Steps:
@@ -149,13 +149,16 @@ Steps:
    Any parse failure or missing field → the whole fan-out is `unknown`,
    reported, no edits (fail-closed, same as every other classifier in
    RenOS).
-3. **Apply, capped.** For the first `cap` non-`none` verdicts, in verdict
-   order:
+3. **Apply.** For every non-`none` verdict, in verdict order (the
+   candidate count is the bound — no second cap):
    - `relate`: `upsert_related` on BOTH pages (the item gains
      `[[candidate]] — reason`, the candidate gains `[[item]] — reason`).
      Two proposals, one per page, `op="UPDATE"`.
    - `fact`: the candidate gets `_append_facts_bullet(fact)` (existing
      helper; creates `## Facts` if absent) AND the `relate` edge above.
+     Only concept-node content pages accept `fact`; a `fact` verdict on a
+     `lessons/` page is downgraded to `relate` (lessons are episodic and
+     accrete badly — resolved §12 Q1).
      The 40-bullet split suggestion fires exactly as it does today.
    - A candidate whose `ren_trust` is `"user"` is never edited: the edit
      becomes a suggestion (`lib.suggestions`, kind `fanout-edit`), same
@@ -171,7 +174,7 @@ Steps:
    broken, not that nothing was related.
 
 Budget: a session that lands 3 durable items pays at most 3 small
-classifier calls and 15 queued writes. Distill's `WRITE_CAP` counts fan-out
+classifier calls and 36 queued writes in the worst case. Distill's `WRITE_CAP` counts fan-out
 edits, so a capped distill run lands fewer items rather than more writes.
 
 ## 6. Graph-aware lint — `skills/wiki-health`
@@ -240,7 +243,8 @@ Every path is "reported, never guessed" per `lib/reporting.py`.
   fixture wiki with known edges, `_orphan_pages` byte-identical before/after
   the refactor.
 - `lib/memory/fanout.py`: candidate exclusions; verdict application with a
-  fake `llm_call`; cap honoured; human-owned → suggestion; unparseable →
+  fake `llm_call`; candidate count bounds edits; `fact` on a lesson
+  downgrades to `relate`; human-owned → suggestion; unparseable →
   unknown with zero writes; `fanout_event` shape.
 - wiki-health: `asymmetric_links` finds and fixes; never edits user pages;
   `unpaged_concepts` on a fixture taxonomy.
@@ -260,11 +264,11 @@ count) and unpaged concepts. Dogfood: the study project's ingest-draft
 (paused this session) is the first producer run under the new drafting
 spec; its first `/ren:wrap` is the first fan-out.
 
-## 12. Open questions for review
+## 12. Resolved questions
 
-1. Should `fact` edges be allowed onto `lessons/` pages, or only onto
-   concept-node content pages? Draft says concept pages only; lessons are
-   episodic and accrete badly.
-2. `FANOUT_CAP = 5` vs Karpathy's 10–15 touches: deliberately low for the
-   first release, raise once `fanout_event` shows the classifier's `relate`
-   precision. Agree?
+1. `fact` edges land only on concept-node content pages; on a `lessons/`
+   page the verdict is downgraded to `relate`. (Hazar, 2026-09-04)
+2. No separate edit cap. The candidate count is the single bound, set at 12
+   to sit inside Karpathy's 10–15 touches; a cap under it would only discard
+   verdicts the classifier already made. Distill's `WRITE_CAP` still applies
+   on top. (Hazar, 2026-09-04)
