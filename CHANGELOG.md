@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.8.6] - unreleased — "runs where your friend runs"
+## [0.8.6] - 2026-09-04 — "runs where your friend runs"
 
 Native Windows constraint declared: Claude Code (CLI, desktop app, VS Code
 extension) shells hook `command` strings and skill scripts out through Git
