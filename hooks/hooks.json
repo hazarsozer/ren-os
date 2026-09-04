@@ -8,7 +8,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PLUGIN_ROOT/hooks/wake-up/ren-wake-up.py\"",
+            "command": "bash \"$CLAUDE_PLUGIN_ROOT/hooks/run-hook.sh\" \"$CLAUDE_PLUGIN_ROOT/hooks/wake-up/ren-wake-up.py\"",
             "timeout": 10,
             "description": "ren-wake-up: SessionStart context injection per ADR-008 (fresh sessions)",
             "id": "ren-wake-up-startup"
@@ -20,7 +20,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PLUGIN_ROOT/hooks/wake-up/ren-wake-up.py\"",
+            "command": "bash \"$CLAUDE_PLUGIN_ROOT/hooks/run-hook.sh\" \"$CLAUDE_PLUGIN_ROOT/hooks/wake-up/ren-wake-up.py\"",
             "timeout": 10,
             "description": "ren-wake-up: re-inject context after compaction per hooks-guide compact-matcher pattern",
             "id": "ren-wake-up-compact"
@@ -34,14 +34,14 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PLUGIN_ROOT/hooks/guards/pre_push_scan.py\"",
+            "command": "bash \"$CLAUDE_PLUGIN_ROOT/hooks/run-hook.sh\" \"$CLAUDE_PLUGIN_ROOT/hooks/guards/pre_push_scan.py\"",
             "timeout": 20,
             "description": "ren-pre-push-scan: force-push guard + outgoing push content/secrets scan (spec §3.6 A-8 items 1+6)",
             "id": "ren-pre-push-scan"
           },
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PLUGIN_ROOT/hooks/guards/write_gate.py\"",
+            "command": "bash \"$CLAUDE_PLUGIN_ROOT/hooks/run-hook.sh\" \"$CLAUDE_PLUGIN_ROOT/hooks/guards/write_gate.py\"",
             "timeout": 10,
             "description": "ren-write-gate: wiki mass-delete guard + backup-remote-change confirmation (spec §3.6 A-8 items 2+6)",
             "id": "ren-write-gate-bash"
@@ -53,7 +53,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PLUGIN_ROOT/hooks/guards/write_gate.py\"",
+            "command": "bash \"$CLAUDE_PLUGIN_ROOT/hooks/run-hook.sh\" \"$CLAUDE_PLUGIN_ROOT/hooks/guards/write_gate.py\"",
             "timeout": 10,
             "description": "ren-write-gate: durable wiki writes go through the queue, not direct edits (spec §3.6 A-8 item 5)",
             "id": "ren-write-gate-direct"
@@ -67,7 +67,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PLUGIN_ROOT/hooks/observers/read_tracker.py\"",
+            "command": "bash \"$CLAUDE_PLUGIN_ROOT/hooks/run-hook.sh\" \"$CLAUDE_PLUGIN_ROOT/hooks/observers/read_tracker.py\"",
             "timeout": 5,
             "description": "ren-read-tracker: wiki page-read usage events for decay (spec 0.5.5 §4.3)",
             "id": "ren-read-tracker"
