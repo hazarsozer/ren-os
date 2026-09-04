@@ -117,3 +117,12 @@ def test_windows_app_execution_alias_stub_is_skipped_for_py(tmp_path, coreutils_
     proc = _run([tmp_path, coreutils_dir], "/some/hook.py")
     assert proc.returncode == 0
     assert proc.stdout.startswith("py:-3 /some/hook.py")
+
+
+def test_uses_py_dash_3_when_only_py_present(tmp_path, coreutils_dir):
+    """Dedicated `py -3` coverage: with no python3/python on PATH at all,
+    the launcher must fall all the way through to `py -3 <script>`."""
+    _make_shim(tmp_path, "py", "py")
+    proc = _run([tmp_path, coreutils_dir], "/some/hook.py")
+    assert proc.returncode == 0
+    assert proc.stdout.startswith("py:-3 /some/hook.py")
