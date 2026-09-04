@@ -11,6 +11,7 @@ Skipped entirely if `bash` is not on PATH.
 """
 from __future__ import annotations
 
+import json
 import shutil
 import stat
 import subprocess
@@ -92,6 +93,22 @@ def test_exits_zero_and_prints_empty_json_when_no_interpreter(tmp_path):
     assert proc.returncode == 0
     assert proc.stdout.strip() == "{}"
     assert "no python interpreter on PATH" in proc.stderr
+
+
+def test_no_interpreter_for_wake_up_degrades_loudly(tmp_path):
+    """B1's contract (hooks/wake-up/ren-wake-up.py) requires the wake-up
+    hook to degrade LOUDLY rather than silently — a bare `{}` here would
+    look like a normal, context-free session start. The launcher must emit
+    a hookSpecificOutput.additionalContext explaining what happened,
+    instead, only when the script is ren-wake-up.py."""
+    proc = _run([tmp_path], "/anywhere/hooks/wake-up/ren-wake-up.py")
+    assert proc.returncode == 0
+    assert "no python interpreter on PATH" in proc.stderr
+    payload = json.loads(proc.stdout)
+    ctx = payload["hookSpecificOutput"]["additionalContext"]
+    assert payload["hookSpecificOutput"]["hookEventName"] == "SessionStart"
+    assert "no Python interpreter" in ctx
+    assert "README Requirements" in ctx
 
 
 def test_stdin_passed_through_untouched(tmp_path, coreutils_dir):

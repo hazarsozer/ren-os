@@ -12,7 +12,11 @@
 # a later candidate (e.g. `py -3`) get tried instead. If none is found it
 # fails OPEN — a missing interpreter must never block tool use — by
 # printing `{}` (a harmless response for any hook type) to stdout, a
-# one-line diagnostic to stderr, and exiting 0.
+# one-line diagnostic to stderr, and exiting 0. The wake-up hook's own B1
+# contract (hooks/wake-up/ren-wake-up.py) requires it to degrade LOUDLY
+# rather than silently, so when the script is ren-wake-up.py specifically,
+# that `{}` is replaced with a hookSpecificOutput.additionalContext
+# explaining no interpreter was found — still exit 0.
 #
 # Must run on macOS bash 3.2 and Git Bash: no bash-4-only features
 # (mapfile/readarray, associative arrays, etc.) — see
@@ -46,6 +50,10 @@ if command -v py >/dev/null 2>&1 && _probe py -3; then
   exec py -3 "$script_path"
 fi
 
-echo '{}'
+if [ "${script_path##*/}" = "ren-wake-up.py" ]; then
+  printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"## RenOS wake-up: no Python interpreter on PATH (tried python3, python, py -3). Install Python 3.11+ and put it on PATH; on Windows also Git for Windows. See README Requirements."}}'
+else
+  echo '{}'
+fi
 echo "ren-hook: no python interpreter on PATH (python3/python/py)" 1>&2
 exit 0
