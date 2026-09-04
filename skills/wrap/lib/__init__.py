@@ -46,6 +46,11 @@ from lib.adapter.worker import parse_worker_json
 from lib.instrument import calibration, collect
 from lib.memory import journal, queue
 from lib.memory import quarantine
+from lib.memory.links import (
+    CONCEPT_SPLIT_BULLETS as _CONCEPT_SPLIT_BULLETS,
+    append_facts_bullet as _append_facts_bullet,
+    count_facts_bullets as _count_facts_bullets,
+)
 from lib.memory.judge import JUDGE_MIN_CONFIDENCE, JUDGE_PAIR_CAP, judge_pairs
 from lib.memory.lifecycle import consolidate_duplicates, run_decay
 from lib.memory.provenance import new_provenance, read_frontmatter_provenance
@@ -81,15 +86,7 @@ _L1_TYPE_RE = re.compile(r"^type:\s*\S", re.MULTILINE)
 
 # --- concept-tree routing (spec 2026-08-31 §3, Task 3) ----------------------
 
-#: Split-suggestion threshold (plan Global Constraints): a concept node page
-#: accreting past this many `## Facts` bullets gets a (never auto-applied)
-#: split suggestion rather than growing without bound.
-_CONCEPT_SPLIT_BULLETS: Final = 40
-
 _TAXONOMY_FENCE_RE = re.compile(r"```taxonomy\n.*?```", re.DOTALL)
-_FACTS_HEADING_RE = re.compile(r"^## Facts\s*$", re.MULTILINE)
-_ANY_HEADING_RE = re.compile(r"^#{1,6} ", re.MULTILINE)
-_BULLET_LINE_RE = re.compile(r"^- ", re.MULTILINE)
 _SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+")
 
 
@@ -914,41 +911,6 @@ def _concept_node_hub_only(project: str, placement: str) -> bool:
         return ren_paths.safe_join(wiki, f"{node_dir_rel}/{hub_name}").is_file()
     except Exception:  # noqa: BLE001 - fails closed, same posture as _concept_node_page
         return False
-
-
-def _count_facts_bullets(text: str) -> int:
-    """`^- ` bullet lines under a `## Facts` heading in `text` (up to the
-    next heading of any level, or end of text) — the split-suggestion
-    threshold's input (behavior 8). `0` when there's no `## Facts` heading
-    at all."""
-    m = _FACTS_HEADING_RE.search(text)
-    if m is None:
-        return 0
-    rest = text[m.end():]
-    next_heading = _ANY_HEADING_RE.search(rest)
-    section = rest[:next_heading.start()] if next_heading else rest
-    return len(_BULLET_LINE_RE.findall(section))
-
-
-def _append_facts_bullet(text: str, item_text: str) -> str:
-    """Mechanical (no-LLM) merge for a concept node accretion (behavior 4):
-    append `- <item_text>` as the LAST bullet under `text`'s `## Facts`
-    heading, creating the heading (at the end of the page) if `text` has
-    none yet. Deterministic and dependency-free — the fallback used when
-    neither a precomputed merge nor a live `llm_call` is available, and the
-    no-LLM-fallback used in place of `MergeError`-to-unplaced for this one
-    branch (spec 2026-08-31 §3 behavior 4)."""
-    bullet = f"- {item_text}"
-    m = _FACTS_HEADING_RE.search(text)
-    if m is None:
-        return text.rstrip("\n") + "\n\n## Facts\n\n" + bullet + "\n"
-    rest = text[m.end():]
-    next_heading = _ANY_HEADING_RE.search(rest)
-    if next_heading is None:
-        return text.rstrip("\n") + "\n" + bullet + "\n"
-    insert_at = m.end() + next_heading.start()
-    section = text[m.end():insert_at].rstrip("\n")
-    return text[:m.end()] + section + "\n" + bullet + "\n\n" + text[insert_at:]
 
 
 def _route_concept_result(

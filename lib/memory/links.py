@@ -36,6 +36,41 @@ _MD_LINK_RE: Final = re.compile(
 _ANY_HEADING_RE: Final = re.compile(r"^#{1,6}\s+.*$", re.MULTILINE)
 _H1_RE: Final = re.compile(r"^#\s+.*$", re.MULTILINE)
 
+#: A concept node past this many `## Facts` bullets is too big to stay one
+#: page — the split is a SUGGESTION, never an auto-apply (spec 2026-08-31 §3).
+CONCEPT_SPLIT_BULLETS: Final[int] = 40
+
+_FACTS_HEADING_RE: Final = re.compile(r"^##\s+Facts\s*$", re.MULTILINE)
+_BULLET_LINE_RE: Final = re.compile(r"^-\s+\S.*$", re.MULTILINE)
+
+
+def count_facts_bullets(text: str) -> int:
+    """Bullets under `text`'s `## Facts` heading (0 when there is none)."""
+    m = _FACTS_HEADING_RE.search(text)
+    if m is None:
+        return 0
+    rest = text[m.end():]
+    next_heading = _ANY_HEADING_RE.search(rest)
+    section = rest[:next_heading.start()] if next_heading else rest
+    return len(_BULLET_LINE_RE.findall(section))
+
+
+def append_facts_bullet(text: str, item_text: str) -> str:
+    """Mechanical (no-LLM) merge for a concept node accretion: append
+    `- <item_text>` as the LAST bullet under `## Facts`, creating the heading
+    at the end of the page when absent."""
+    bullet = f"- {item_text}"
+    m = _FACTS_HEADING_RE.search(text)
+    if m is None:
+        return text.rstrip("\n") + "\n\n## Facts\n\n" + bullet + "\n"
+    rest = text[m.end():]
+    next_heading = _ANY_HEADING_RE.search(rest)
+    if next_heading is None:
+        return text.rstrip("\n") + "\n" + bullet + "\n"
+    insert_at = m.end() + next_heading.start()
+    section = text[m.end():insert_at].rstrip("\n")
+    return text[:m.end()] + section + "\n" + bullet + "\n\n" + text[insert_at:]
+
 
 @dataclass(frozen=True)
 class PageLinks:
@@ -199,7 +234,10 @@ __all__ = [
     "PageLinks",
     "PARENT_PREFIX",
     "RELATED_HEADING",
+    "CONCEPT_SPLIT_BULLETS",
+    "append_facts_bullet",
     "build_link_index",
+    "count_facts_bullets",
     "parse_page_links",
     "render_related",
     "upsert_parent",

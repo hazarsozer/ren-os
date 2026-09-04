@@ -106,6 +106,12 @@ KIND_DISTILLER_RUN = "distiller_run"
 #: parse/fail-closed signal, this one is wrap's routing decision made
 #: AFTER a valid "durable" verdict was already returned.
 KIND_PLACEMENT_EVENT = "placement_event"
+#: One per durable item landed under `projects/<slug>/knowledge/` (spec
+#: 2026-09-04 §5.5): `{item, candidates, verdicts: {relate, fact, none},
+#: applied, held, unknown_reason}`. Zero-candidate events over a week are
+#: metric-watch's "fan-out silent" signal — a broken scorer or walk, not an
+#: unrelated item.
+KIND_FANOUT_EVENT = "fanout_event"
 
 
 def _now_iso() -> str:
@@ -286,6 +292,7 @@ __all__ = [
     "KIND_DURABLE_OUTCOME",
     "KIND_DISTILLER_RUN",
     "KIND_PLACEMENT_EVENT",
+    "KIND_FANOUT_EVENT",
     "record",
     "read",
     "harvest_session_usage",
