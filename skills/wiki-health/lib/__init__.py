@@ -72,7 +72,6 @@ caller such as wrap's close-out.
 from __future__ import annotations
 
 import hashlib
-import os
 import re
 import yaml
 from datetime import datetime, timedelta, timezone
@@ -84,6 +83,7 @@ from lib.evalkit.runner import run_retrieval_eval
 from lib.governance.tiers import is_instruction_plane_page
 from lib.instrument import collect
 from lib.memory import journal, quarantine, semantics
+from lib.memory.links import LinkIndex, build_link_index
 from lib.memory.judge import (
     JUDGE_MAX_TEXT_CHARS,
     JUDGE_MIN_CONFIDENCE,
@@ -432,10 +432,20 @@ _MD_FULL_LINK_RE = re.compile(
 )
 
 
-def _orphan_pages(wiki_root: Path) -> list[str]:
+def _orphan_pages(wiki_root: Path, index: LinkIndex | None = None) -> list[str]:
     """#55 — durable pages with no incoming links, wiki-wide (spec
     2026-08-12-orphan-detection-design.md; the design's Candidates/Corpus
     rules are the contract).
+
+    Refactored 2026-09-04 (§4) onto `lib.memory.links.build_link_index`, so
+    the wiki has ONE link resolver instead of two. The index also resolves
+    `[[wikilinks]]` — `Parent:` and `## Related` lines now save a page from
+    orphanhood, which is the entire point of the convention. Everything
+    below the resolution step (arrow pointers, the corpus scrub, the
+    word-bounded prose-mention fallback, the exemptions) is unchanged.
+
+    `index` (optional) lets a caller that already built the graph — `sweep`,
+    which needs it for `asymmetric_links` too — pay for the walk once.
 
     Candidates: every `*.md` under `wiki_root` except dot-dirs,
     `projects/<slug>/raw/` (`ren_paths.in_project_raw` — canonical, do not
@@ -463,30 +473,12 @@ def _orphan_pages(wiki_root: Path) -> list[str]:
     prose mention of that OTHER page — mentions (c) is prose-only, exactly
     like `_knowledge_tree_findings`' fallback. Self-links never count, but
     exempt pages still contribute both links and mentions to the corpus."""
-    # Deliberately NOT `walk_wiki_pages` here: this needs every page, incl.
-    # `raw/`, in the corpus (an exempt/quarantined page can still legitimately
-    # link or mention a candidate — see the docstring above), and skips ALL
-    # dot-dirs rather than only `.ren/` — a stricter walk than the lint's.
-    pages: dict[str, str] = {}  # rel posix path -> raw text, ALL pages incl. exempt
-    for md in sorted(wiki_root.rglob("*.md")):
-        rel = md.relative_to(wiki_root)
-        if any(part.startswith(".") for part in rel.parts):
-            continue
-        pages[rel.as_posix()] = md.read_text(encoding="utf-8", errors="replace")
+    index = index if index is not None else build_link_index(wiki_root)
+    pages = index.pages
+    linked: set[str] = {rel for rel, srcs in index.inbound.items() if srcs}
 
-    linked: set[str] = set()
     corpus: dict[str, str] = {}  # rel -> text with link/arrow markup stripped, for mention (c)
     for src, text in pages.items():
-        src_dir = Path(src).parent
-        for target in _MD_LINK_RE.findall(text):
-            for cand in (
-                (src_dir / target),  # relative to linking file
-                Path(target),  # wiki-root-relative
-            ):
-                norm = Path(os.path.normpath(cand.as_posix())).as_posix()
-                if norm in pages and norm != src:
-                    linked.add(norm)
-
         mention_lines: list[str] = []
         for line in text.splitlines():
             ptr = parse_pointer_line(line)
