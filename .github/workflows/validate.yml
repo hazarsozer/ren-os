@@ -80,7 +80,7 @@ jobs:
           UV_CACHE_DIR: /tmp/definitely-empty-uv-cache
         run: |
           python3 scripts/seam/hook_contract_check.py \
-            --hook-cmd "python3 hooks/wake-up/ren-wake-up.py"
+            --hook-cmd "bash hooks/run-hook.sh hooks/wake-up/ren-wake-up.py"
 
   # ──────────────────────────────────────────────────────────────────
   # Installed-plugin smoke: copies the git-tracked (shipped) file set

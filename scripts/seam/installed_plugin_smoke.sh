@@ -21,5 +21,5 @@ export CLAUDE_PLUGIN_ROOT="$scratch"
 cd "$scratch"   # crucially: NOT the git clone
 
 python3 "$scratch/scripts/seam/hook_contract_check.py" \
-  --hook-cmd "python3 $scratch/hooks/wake-up/ren-wake-up.py"
+  --hook-cmd "bash $scratch/hooks/run-hook.sh $scratch/hooks/wake-up/ren-wake-up.py"
 echo "installed-plugin smoke OK"
