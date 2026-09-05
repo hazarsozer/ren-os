@@ -386,14 +386,32 @@ def _page_trust(md_text: str) -> str | None:
 
 def _missing_reverse_stems(page: str, index: LinkIndex) -> list[tuple[str, str]]:
     """`(stem, reason)` for every page that lists `page` under `## Related`
-    while `page` does not list it back."""
+    while `page` does not list it back.
+
+    Wikilinks resolve by basename, so a reverse bullet is only safe when
+    BOTH stems are unique in the index: if `page`'s stem is shared, the
+    forward `[[stem]]` may have meant the other page; if the source's stem
+    is shared, the reverse `[[src-stem]]` would not resolve. Same rule the
+    sweep's `_asymmetric_links` applies (0.8.7 review ledger)."""
+    by_stem: dict[str, int] = {}
+    for rel in index.pages:
+        s = Path(rel).stem
+        by_stem[s] = by_stem.get(s, 0) + 1
+
+    page_stem = Path(page).stem
+    if by_stem.get(page_stem, 0) != 1:
+        return []
+
     own = {s for s, _ in index.related.get(page, [])}
     out: list[tuple[str, str]] = []
     for src, related in index.related.items():
         if src == page:
             continue
-        if any(s == Path(page).stem for s, _ in related) and Path(src).stem not in own:
-            out.append((Path(src).stem, ""))
+        src_stem = Path(src).stem
+        if by_stem.get(src_stem, 0) != 1:
+            continue
+        if any(s == page_stem for s, _ in related) and src_stem not in own:
+            out.append((src_stem, ""))
     return sorted(set(out))
 
 

@@ -137,3 +137,39 @@ def test_render_report_renders_both_sections_with_none():
     assert "## Asymmetric links" in text
     assert "## Unpaged concepts" in text
     assert text.count("- none") >= 2
+
+
+def test_reverse_bullet_is_not_written_when_the_target_stem_is_ambiguous(wiki):
+    # A second `b.md` under another node: `[[b]]` now resolves to two pages.
+    other = wiki / "projects/demo/knowledge/other"
+    other.mkdir()
+    (other / "other.md").write_text("---\ntype: hub\n---\n# Other\n", encoding="utf-8")
+    (other / "b.md").write_text(
+        "---\ntype: project-knowledge\n---\n# B2\n\nParent: [[other]]\n\n## Related\n",
+        encoding="utf-8",
+    )
+    index = build_link_index(wiki)
+    for rel in ("projects/demo/knowledge/architecture/b.md", "projects/demo/knowledge/other/b.md"):
+        text = (wiki / rel).read_text(encoding="utf-8")
+        new_text, fixes = lint._asymmetric_link_findings(wiki, rel, text, index)
+        assert fixes == [], rel
+        assert new_text == text, rel
+
+
+def test_reverse_bullet_is_not_written_when_the_source_stem_is_ambiguous(wiki):
+    # Two pages named `a.md` both list `[[b]]`; the reverse `[[a]]` on b.md
+    # would not resolve to one page, so the lint must not write it.
+    other = wiki / "projects/demo/knowledge/other"
+    other.mkdir()
+    (other / "other.md").write_text("---\ntype: hub\n---\n# Other\n", encoding="utf-8")
+    (other / "a.md").write_text(
+        "---\ntype: project-knowledge\n---\n# A2\n\nParent: [[other]]\n\n"
+        "## Related\n- [[b]] — a2 knows b\n",
+        encoding="utf-8",
+    )
+    index = build_link_index(wiki)
+    rel = "projects/demo/knowledge/architecture/b.md"
+    text = (wiki / rel).read_text(encoding="utf-8")
+    new_text, fixes = lint._asymmetric_link_findings(wiki, rel, text, index)
+    assert fixes == []
+    assert new_text == text
