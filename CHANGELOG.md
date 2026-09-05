@@ -1,5 +1,57 @@
 # Changelog
 
+## [0.8.7] - unreleased — "the graph is the hierarchy"
+
+Depth 2 is a shelf; hierarchy is links. The cross-reference graph becomes a
+first-class object: a body-text convention every producer emits, a write-time
+fan-out that updates the pages a new item should touch, and lint and recall
+that read the graph instead of throwing it away.
+
+- **`lib/memory/links.py`** is the one link resolver: `parse_page_links`
+  (tolerant — a page with no `Parent:` line is not an error), `render_related`
+  (an EMPTY `## Related` is rendered, never omitted), the idempotent
+  `upsert_parent`/`upsert_related`, and `build_link_index` → `LinkIndex`
+  (outbound/inbound/parent/related, one regex walk, no LLM). It also now
+  holds `CONCEPT_SPLIT_BULLETS` / `count_facts_bullets` / `append_facts_bullet`,
+  moved down from `skills/wrap/lib/__init__.py` (pure body-section text edits,
+  the same job `upsert_related` already does here); wrap re-exports them
+  under their old private names so no existing call site or test changes.
+- **The link convention**: every `project-knowledge` and `lesson` page body
+  carries `Parent: [[<stem>]]` after its H1 and a flat `## Related` list of
+  `- [[<stem>]] — <why>`. No frontmatter fields — links live where Obsidian
+  and `_orphan_pages` already see them. Hubs directly under `knowledge/` and
+  `map.md` carry no `Parent:` line at all; only a nested hub carries one,
+  naming its parent hub. Leaves always carry one.
+- **`lib/memory/fanout.py`** runs after every durable landing under
+  `projects/<slug>/knowledge/`: 12 candidates ranked by recall's own scorer,
+  one classifier call, a `relate`/`fact`/`none` verdict each, every edit
+  through `propose_and_apply`. `fact` lands only on concept-node content
+  pages — on a `lessons/` page it downgrades to `relate`. A human-owned
+  (`ren_trust: "user"`) candidate becomes a suggestion, never an edit. Any
+  parse failure is `unknown`: zero edits, reported on the wrap close-out. An
+  I/O or queue exception mid-apply-loop is also `unknown` — already-applied
+  edits stay listed (queued, revertible), never rolled back.
+- **`ingest()` gained an optional `leaf_pages` parameter** and now queues
+  leaves itself, rather than the live session queuing them directly, so
+  drafted leaf pages have a seam `parse_page_links` can validate before the
+  first write.
+- **`skills/wiki-health`** gains `asymmetric_links` (A lists B, B does not
+  list A — the reverse bullet is a safe auto-fix through the queue, never on
+  a human-owned page) and `unpaged_concepts` (a hub-only taxonomy node, or a
+  `[[stem]]` three pages link and nothing resolves — a suggestion, never an
+  auto-create). `_orphan_pages` now reads the shared index, so a `Parent:` or
+  `## Related` link saves a page from orphanhood. `_MD_LINK_RE`, dead since
+  the shared index took over link resolution, is removed.
+- **`skills/recall`'s `rank`** multiplies by `1 + 0.1 * min(inbound, 5)`,
+  hubs excluded (their inbound count is structural, not earned). The index is
+  memoised on the wiki root's mtime; `rank`'s signature is unchanged.
+- **`/ren:metric-watch`** watches a sixth signal, **fan-out silent**: a week
+  of `fanout_event`s that all landed zero candidates means the scorer or the
+  walk is broken, not that nothing was related.
+- **No migration.** Existing pages gain links lazily when touched or when the
+  asymmetry auto-fix runs. The first `/ren:wiki-health` after this update will
+  report many asymmetric links — that is the backlog, not a regression.
+
 ## [0.8.6] - 2026-09-04 — "runs where your friend runs"
 
 Native Windows constraint declared: Claude Code (CLI, desktop app, VS Code

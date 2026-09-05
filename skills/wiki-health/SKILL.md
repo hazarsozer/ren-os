@@ -95,7 +95,16 @@ used to catch, by sweeping periodically instead of gating continuously.
    queues NOTHING (`corrections_queued` is always `0`), because unattended
    callers — wrap's close-out runs this sweep on every session — must never
    write behind the friend's back. Anything not mechanically checkable, and
-   any unknown marker kind, reports as unverifiable rather than guessing)
+   any unknown marker kind, reports as unverifiable rather than guessing),
+   `asymmetric_links` (spec 2026-09-04 §6: page A lists B under `## Related`
+   while B's `## Related` does not list A. The `ren-wiki-lint` agent
+   auto-applies the reverse bullet (`(reverse of [[A]])`) through the queue
+   as a mechanically safe fix; a page whose `ren_trust` is `"user"` is
+   reported and never edited), `unpaged_concepts` (a taxonomy node from
+   `schema.md` whose directory holds only its folder-note hub, or a
+   `[[stem]]` that at least three distinct pages link and that resolves to
+   nothing. Reported as a suggestion, never auto-created: minting a page is
+   model work)
    and `generated_at`.
 2. Call `render_report(findings)` and show the friend the full report
    **before** touching anything — the friend sees what was found even if

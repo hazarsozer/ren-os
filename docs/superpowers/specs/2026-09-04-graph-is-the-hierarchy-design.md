@@ -73,9 +73,13 @@ Rules:
   page's folder-note hub (`page_types._is_folder_note_hub`); the classifier
   or drafter may pick any other page in the same project when the
   conceptual parent is not the shelf the page sits on. Exactly one parent.
-  A hub's parent is its parent hub; a top-level hub's parent is the
-  project `map.md`. Hubs at the top of the shelf and `map.md` itself have
-  no `Parent:` line.
+  A hub's parent is its parent hub. Hubs at the top of the shelf and
+  `map.md` itself have no `Parent:` line.
+  **Ruling (2026-09-05):** the sentence "a top-level hub's parent is the
+  project `map.md`" is struck — it contradicted the rule right after it.
+  Binding rule: hubs directly under `knowledge/` and `map.md` carry NO
+  `Parent:` line; only nested hubs carry `Parent: [[<parent-hub-stem>]]`;
+  leaves always do (`skills/ingest-project/SKILL.md` already states this).
 - **`## Related` is a flat list of wikilinks**, one per line, each with a
   reason clause. Order is insertion order. The section is created on first
   need and never removed when empty (an empty section is a visible "nothing
@@ -163,6 +167,9 @@ Steps:
    - A candidate whose `ren_trust` is `"user"` is never edited: the edit
      becomes a suggestion (`lib.suggestions`, kind `fanout-edit`), same
      hold as the human-owned `schema.md` splice in 0.8.5.
+     **Ruling (2026-09-05):** "kind `fanout-edit`" names the suggestion
+     FINGERPRINT label `fanout-edit:{item}:{rel}`; `SuggestionSpec.kind`
+     stays the closed enum (`page_write`) — this is not a new kind value.
 4. **Queue.** Every edit is `propose_and_apply(producer=<caller's producer>,
    writer="llm-auto", reason="fanout: <item write_id>")`. A `contradicts`
    hold stays held; a `supersedes` conflict records lineage and applies,
@@ -195,6 +202,11 @@ Two new finding keys, both built on `LinkIndex`:
 
 `orphan_pages` keeps its contract and now reads the shared index (§4).
 
+**Ruling (2026-09-05):** the asymmetric-link auto-fix has no cap of its own;
+asymmetry is computed only over `## Related` sections, so the first run
+after upgrade is bounded by whatever pages fan-out has already touched
+(the backlog described in §11), not by a fixed count in the lint code.
+
 ## 7. Producers emit the convention
 
 - **wrap** — `_durable_create_page` and `_apply_concept_create` render
@@ -221,6 +233,12 @@ from the boost (their inbound count is structural, not earned), same
 exclusion the 0.8.5 concept-tree boost uses. The retrieval-eval fixture
 gains two cases: a well-linked page outranks a fresh unlinked twin; a hub
 does not.
+**Ruling (2026-09-05):** the harness scores top-k membership at k=3, not
+order, so "linked page outranks unlinked twin" cannot be a fixture case —
+membership doesn't observe ordering. The discriminating pin for the boost
+is the unit test in `tests/skills/recall`; the two added fixture cases
+document the boost (both cases stay in top-3 membership) without
+discriminating on it.
 
 `rank`'s signature is unchanged; the index is built once per call and
 memoised on `wiki_root` mtime, so wake-up's single call pays one walk.
@@ -234,8 +252,12 @@ memoised on `wiki_root` mtime, so wake-up's single call pays one walk.
 | Candidate is human-owned | suggestion, not edit | `/ren:suggestions` |
 | Reverse edit contradicts | held, forward edit applied | queue hold, as today |
 | Link index cannot walk (I/O) | `Unknown(reason)`; fan-out and boost skip, lint reports | doctor/wiki-health line |
+| Apply-phase failure (I/O or queue exception mid-loop) | `unknown_reason` names the failure and the edit count so far; already-applied edits stay listed (queued, revertible) | one `fanout_event` |
 
 Every path is "reported, never guessed" per `lib/reporting.py`.
+**Ruling (2026-09-05):** the apply-phase-failure row above is the
+authoritative statement of that failure mode (fan-out's applying loop is
+fail-closed but never rolls back what already landed).
 
 ## 10. Testing
 
@@ -272,3 +294,5 @@ spec; its first `/ren:wrap` is the first fan-out.
    to sit inside Karpathy's 10–15 touches; a cap under it would only discard
    verdicts the classifier already made. Distill's `WRITE_CAP` still applies
    on top. (Hazar, 2026-09-04)
+   **Ruling (2026-09-05):** confirmed — `FANOUT_CANDIDATES = 12` is the
+   only bound; no stale "edit cap" wording remains elsewhere in this spec.

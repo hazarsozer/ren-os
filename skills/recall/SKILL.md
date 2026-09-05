@@ -69,6 +69,12 @@ Per spec §3.2 ("Honest miss measurement"): a fetch of active-project knowledge 
 
 Carried from the pre-0.2 recall heuristic: word-boundary token matching against a page's frontmatter `title`, its markdown headings, and its body (title hits weigh most, body hits are capped per token so keyword-stuffing can't dominate), a small recency bonus for pages touched in the last 30 days, and a path-kind multiplier (`decisions/` and `patterns/` pages score higher; `.session-notes/` lower). `rank`'s signature — `(query, candidate_pages, wiki_root) -> list[str]` — matches the retrieval-eval harness's `ranker_fn` contract exactly, so Phase 5's wake-up ranker and this skill's `fetch` can share the same scoring function and the same eval fixture.
 
+Ranking also reads the graph (spec 2026-09-04 §8): a page's score is
+multiplied by `1 + 0.1 * min(inbound_links, 5)`, where inbound links are the
+`Parent:`/`## Related`/body wikilinks other pages point at it with. Folder-note
+hubs are excluded — their inbound count is structural, not earned. The index is
+built once per `rank` call and memoised on the wiki root's mtime.
+
 ## What this skill does NOT do
 
 - Route to an "instincts-only" mode. Donor's `--instincts` flag is dropped entirely for 0.2 — recall here only ranks ordinary wiki pages.
