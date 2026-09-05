@@ -50,7 +50,7 @@ GRAPH_FILENAME = "graph.json"
 _VERSION_RE = re.compile(r"\d+\.\d+(?:\.\d+)?")
 
 _INSTALL_POINTER = (
-    "graphify not installed — `uv tool install graphifyy` "
+    "graphify not installed — `uv tool install graphifyy` (double y, not a typo) "
     "(optional companion; see doctrine/companions.md)"
 )
 

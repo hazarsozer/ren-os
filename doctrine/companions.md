@@ -12,7 +12,7 @@ Optional tools that pair well with RenOS. **Everything on this page is optional*
 
 The §3.2 code-map (`/ren:code-map`) is a thin wrapper over [Graphify](https://github.com/), an open-source (MIT), tree-sitter-based, deterministic code-structure tool — not a hand-rolled engine of ours.
 
-- Install: `uv tool install graphifyy`
+- Install: `uv tool install graphifyy` — the double **y** is the real PyPI name, not a typo (`graphify` without it does not exist on PyPI).
 - Pin note: RenOS is built against the **0.9.x** line (`GRAPHIFY_PIN = "0.9"` in `lib.code_map`... see `skills/code-map/lib`). Graphify's API has churned across major versions; a version outside 0.9.x is a warning, not a hard failure.
 - Doctor checks Graphify specifically (installed? pinned version? output fresh?) — it's the one companion on this page that gets that deeper treatment, because the code-map capability directly depends on it. Since 0.3.5, every companion also gets a lighter drift check (accepted-but-not-installed) via `/ren:doctor`'s `check_companions` — Graphify's version/staleness check is on top of that, not instead of it.
 - Graceful absence: not installed → the code-map capability says so plainly and stays unavailable. No fallback engine.
