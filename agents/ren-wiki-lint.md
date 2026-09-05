@@ -49,6 +49,21 @@ since the last clean watermark, unless told `--full`.
 4. Report: pages checked, fixes applied (with pages), held proposals (with
    why), suggestions queued, watermark state.
 
+## What the engine auto-fixes
+
+These are the mechanically safe classes; everything else becomes a suggestion.
+
+- `hub-missing-entry` — a folder-note hub missing an entry for a page beside it.
+- `dangling-link-repointed` — a `[[link]]` whose target moved and resolves
+  unambiguously by filename.
+- `stale-link-commented` — a `[[link]]` to a page the journal says was DELETED
+  (commented out, never deleted — the line is evidence).
+- `asymmetric-link-reversed` — page A's `## Related` lists B but B's does
+  not list A; the engine adds the reverse bullet with the fixed reason
+  `(reverse of [[A]])`. Mechanically safe: the forward edge is already on
+  disk, so the reverse asserts nothing new. Never applied to a page whose
+  `ren_trust` is `"user"` — those come back as findings for a human.
+
 ## Hard rules
 
 - ALL wiki writes happen inside the engine (queue-mediated). You never edit

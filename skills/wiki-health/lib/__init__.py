@@ -76,14 +76,15 @@ import re
 import yaml
 from datetime import datetime, timedelta, timezone
 from pathlib import Path, PurePosixPath
-from typing import Callable
+from typing import Callable, Final
 
 from lib import ren_paths
 from lib.evalkit.runner import run_retrieval_eval
 from lib.governance.tiers import is_instruction_plane_page
 from lib.instrument import collect
 from lib.memory import journal, quarantine, semantics
-from lib.memory.links import LinkIndex, build_link_index
+from lib.memory.links import LinkIndex, build_link_index, parse_page_links
+from lib.memory.taxonomy import TaxonomyError, parse_taxonomy
 from lib.memory.judge import (
     JUDGE_MAX_TEXT_CHARS,
     JUDGE_MIN_CONFIDENCE,
@@ -416,15 +417,9 @@ def _knowledge_tree_findings(wiki_root: Path) -> tuple[list[str], list[str]]:
     return hubless, unlinked
 
 
-#: Matches the `](target[...])` tail of a markdown link, capturing just the
-#: `.md` target. Handles the plain form, `#fragment`, an angle-bracketed
-#: target (`](<path.md>)`, needed when the path has spaces/parens), and a
-#: trailing title (`](path.md "Title")`) — any combination.
-_MD_LINK_RE = re.compile(
-    r"\]\(\s*<?([^()\s#>]+\.md)>?(?:#[^()\s]*)?(?:\s+\"[^\"]*\")?\s*\)"
-)
-#: Same link forms as `_MD_LINK_RE`, but matching the WHOLE `[label](...)`
-#: construct (label included) — used only to scrub the mention corpus (M5):
+#: Matches the WHOLE `[label](target.md)` construct (label included) — the
+#: plain form, `#fragment`, an angle-bracketed target and a trailing title, in
+#: any combination. Used only to scrub the mention corpus (M5):
 #: a link's label text (e.g. `[foo.md](bar.md)`) must not itself read as a
 #: prose mention of an unrelated `foo.md` elsewhere in the wiki.
 _MD_FULL_LINK_RE = re.compile(
@@ -837,6 +832,83 @@ def _judge_annotate(
     return contradiction_pairs, duplicate_pairs, numeric_drift_pairs, judge_dismissed, judge_supersedes
 
 
+#: How many distinct pages must link an unresolvable `[[stem]]` before it
+#: counts as a concept the wiki wants a page for (spec 2026-09-04 §6).
+_UNPAGED_LINKER_THRESHOLD: Final[int] = 3
+
+
+def _asymmetric_links(wiki_root: Path, index: LinkIndex) -> list[dict]:
+    """Spec 2026-09-04 §6 — page A lists B under `## Related` and B's own
+    `## Related` does not list A.
+
+    The finding is on B (the page MISSING the bullet), naming A as `with`:
+    that is the page the fix would write. Human-owned pages are still
+    REPORTED here — the write-side guard lives in the lint, so the sweep's
+    report stays complete."""
+    by_stem: dict[str, list[str]] = {}
+    for rel in index.pages:
+        by_stem.setdefault(Path(rel).stem, []).append(rel)
+
+    findings: list[dict] = []
+    for src, related in index.related.items():
+        for stem, reason in related:
+            targets = by_stem.get(stem, [])
+            if len(targets) != 1:
+                continue  # ambiguous or dangling — that's the lint's rule, not this one
+            dest = targets[0]
+            if dest == src:
+                continue
+            if any(s == Path(src).stem for s, _ in index.related.get(dest, [])):
+                continue
+            findings.append({"page": dest, "with": src, "reason": reason})
+    return sorted(findings, key=lambda f: (f["page"], f["with"]))
+
+
+def _unpaged_concepts(wiki_root: Path, index: LinkIndex) -> list[dict]:
+    """Spec 2026-09-04 §6 — a concept nothing has a page for.
+
+    Two shapes:
+      * `hub-only` — a taxonomy node from `schema.md` whose directory holds
+        only its folder-note hub (the "legacy hand-seeded node" case 0.8.5
+        special-cases).
+      * `unresolved-link` — a `[[stem]]` that at least three DISTINCT pages
+        link and that resolves to nothing.
+
+    Reported as a suggestion, never auto-created: minting a page is model
+    work, not a mechanical fix. Unreadable/unparseable schemas are skipped
+    silently — the taxonomy's own health is `/ren:doctor`'s finding, not
+    this one's."""
+    findings: list[dict] = []
+    for schema in sorted(wiki_root.glob("projects/*/schema.md")):
+        slug = schema.parent.name
+        try:
+            tax = parse_taxonomy(schema.read_text(encoding="utf-8"))
+        except (TaxonomyError, OSError):
+            continue
+        for node in tax.nodes:
+            node_dir = wiki_root / "projects" / slug / "knowledge" / node
+            if not node_dir.is_dir():
+                continue
+            hub_name = f"{node.rsplit('/', 1)[-1]}.md"
+            contents = [p.name for p in node_dir.glob("*.md")]
+            if contents == [hub_name]:
+                findings.append({"node": node, "kind": "hub-only", "linkers": []})
+
+    linkers: dict[str, set[str]] = {}
+    stems = {Path(rel).stem for rel in index.pages}
+    for src, text in index.pages.items():
+        links = parse_page_links(text)
+        for stem in [s for s, _ in links.related] + list(links.other):
+            if "/" in stem or stem.endswith(".md") or stem in stems:
+                continue
+            linkers.setdefault(stem, set()).add(src)
+    for stem, srcs in linkers.items():
+        if len(srcs) >= _UNPAGED_LINKER_THRESHOLD:
+            findings.append({"node": stem, "kind": "unresolved-link",
+                             "linkers": sorted(srcs)})
+    return sorted(findings, key=lambda f: (f["kind"], f["node"]))
+
+
 def sweep(
     wiki_root: Path | None = None,
     llm_call: Callable[[str], str] | None = None,
@@ -911,6 +983,20 @@ def sweep(
     proposals/suggestions this raises WHEN `apply_corrections=True`;
     `corrections_queued` is always `0` on the default read-only path.
 
+    A 14th key, `asymmetric_links` (spec 2026-09-04 §6): one record per
+    one-way `## Related` edge — `{"page", "with", "reason"}`, the finding on
+    the page MISSING the reverse bullet. Always present. The reverse bullet
+    is a safe auto-fix, but this sweep never writes it: that is the lint's
+    `asymmetric-link-reversed` class, which additionally refuses to touch a
+    human-owned (`ren_trust: "user"`) page the report still lists.
+
+    A 15th key, `unpaged_concepts` (spec 2026-09-04 §6): concepts with no
+    page — a taxonomy node whose directory holds only its hub
+    (`kind="hub-only"`), or a `[[stem]]` at least
+    `_UNPAGED_LINKER_THRESHOLD` distinct pages link that resolves to nothing
+    (`kind="unresolved-link"`). Always present, suggestion-shaped: minting a
+    page is model work, never a mechanical fix.
+
     Returns `Unknown` instead when the wiki root is not a directory — the
     check could not run, which is neither a finding nor health. Callers
     must branch on `isinstance(result, Unknown)` before touching keys."""
@@ -937,6 +1023,7 @@ def sweep(
         except Exception:  # noqa: BLE001 - fail-closed: keep the no-llm result already computed
             pass
     hubless_knowledge_dirs, unlinked_knowledge_pages = _knowledge_tree_findings(wiki_root)
+    link_index = build_link_index(wiki_root)
 
     from lib.memory.queue import all_entries
 
@@ -957,7 +1044,9 @@ def sweep(
         "single_project_global_pages": _single_project_global_pages(wiki_root),
         "hubless_knowledge_dirs": hubless_knowledge_dirs,
         "unlinked_knowledge_pages": unlinked_knowledge_pages,
-        "orphan_pages": _orphan_pages(wiki_root),
+        "orphan_pages": _orphan_pages(wiki_root, link_index),
+        "asymmetric_links": _asymmetric_links(wiki_root, link_index),
+        "unpaged_concepts": _unpaged_concepts(wiki_root, link_index),
         "stale_facts": _stale_facts(wiki_root, session, apply_corrections),
         "judge_dismissed": judge_dismissed,
         "judge_supersedes": judge_supersedes,
@@ -1050,6 +1139,29 @@ def render_report(findings: dict | Unknown) -> str:
     if hubless:
         lines.extend(
             f"- {d}: missing hub page ({Path(d).name}.md)" for d in hubless
+        )
+    else:
+        lines.append("- none")
+    lines.append("")
+
+    lines.append("## Asymmetric links")
+    asym = findings.get("asymmetric_links") or []
+    if asym:
+        lines.extend(
+            f"- {a['page']} is missing the reverse of {a['with']}: {a['reason']}"
+            for a in asym
+        )
+    else:
+        lines.append("- none")
+    lines.append("")
+
+    lines.append("## Unpaged concepts")
+    unpaged = findings.get("unpaged_concepts") or []
+    if unpaged:
+        lines.extend(
+            f"- {u['node']} ({u['kind']})"
+            + (f" — linked by {len(u['linkers'])} pages" if u["linkers"] else "")
+            for u in unpaged
         )
     else:
         lines.append("- none")

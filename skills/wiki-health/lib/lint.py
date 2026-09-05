@@ -47,6 +47,7 @@ from pathlib import Path, PurePosixPath
 from lib import ren_paths
 from lib.governance.tiers import is_instruction_plane_page
 from lib.memory import journal, quarantine
+from lib.memory.links import LinkIndex, build_link_index, upsert_related
 from lib.memory.page_types import _is_folder_note_hub
 from lib.memory.queue import NOOP_DUPLICATE, Proposal, propose_and_apply
 from lib.suggestions import SuggestionSpec, pending_suggestions, record, retract
@@ -373,14 +374,65 @@ def _link_findings(
     return text, fixes, judgments
 
 
+def _page_trust(md_text: str) -> str | None:
+    """`ren_trust` from a page's frontmatter, or None. Local copy of the
+    `__init__` helper — the dashed package name makes a cross-import
+    awkward, and the predicate is three lines."""
+    for line in md_text.splitlines()[:20]:
+        if line.startswith("ren_trust:"):
+            return line.split(":", 1)[1].strip().strip('"').strip("'")
+    return None
+
+
+def _missing_reverse_stems(page: str, index: LinkIndex) -> list[tuple[str, str]]:
+    """`(stem, reason)` for every page that lists `page` under `## Related`
+    while `page` does not list it back."""
+    own = {s for s, _ in index.related.get(page, [])}
+    out: list[tuple[str, str]] = []
+    for src, related in index.related.items():
+        if src == page:
+            continue
+        if any(s == Path(page).stem for s, _ in related) and Path(src).stem not in own:
+            out.append((Path(src).stem, ""))
+    return sorted(set(out))
+
+
+def _asymmetric_link_findings(
+    wiki_root: Path, page: str, text: str, index: LinkIndex
+) -> tuple[str, list[str]]:
+    """Add the missing reverse `## Related` bullet (spec 2026-09-04 §6).
+
+    Mechanically safe: the forward edge is already on disk and says these
+    two pages are related; the reverse bullet asserts nothing new. Reason
+    is the fixed clause `(reverse of [[A]])` so the fix is self-describing
+    and re-running it is a no-op (`upsert_related` is idempotent).
+
+    Human-owned pages (`ren_trust: "user"`) are NEVER written — the sweep
+    still reports them, the lint just refuses the edit, exactly like
+    `_ensure_hub`'s trust guard."""
+    if _page_trust(text) == "user":
+        return text, []
+    new_text = text
+    for stem, _reason in _missing_reverse_stems(page, index):
+        new_text = upsert_related(new_text, stem, f"(reverse of [[{stem}]])")
+    return new_text, (["asymmetric-link-reversed"] if new_text != text else [])
+
+
 def _lint_page(
     wiki_root: Path,
     page: str,
     text: str,
     all_pages: list[str],
     deleted: set[str],
+    index: LinkIndex | None = None,
 ) -> tuple[str, list[str], list[tuple[str, str]]]:
-    """All rules for one page. Returns `(new_text, fix_classes, judgments)`."""
+    """All rules for one page. Returns `(new_text, fix_classes, judgments)`.
+
+    `index` is the shared link graph (spec 2026-09-04 §4), built once per
+    run by `run_incremental_lint`. `None` skips the asymmetric-link rule —
+    that rule only ever produces a FIX, so the re-verification pass
+    (`_retract_resolved_findings`, which reads judgments only) has no use
+    for the walk."""
     fixes: list[str] = []
     judgments: list[tuple[str, str]] = []
 
@@ -398,6 +450,10 @@ def _lint_page(
     text, link_fixes, link_judgments = _link_findings(wiki_root, page, text, all_pages, deleted)
     fixes.extend(link_fixes)
     judgments.extend(link_judgments)
+
+    if index is not None:
+        text, asym_fixes = _asymmetric_link_findings(wiki_root, page, text, index)
+        fixes.extend(asym_fixes)
 
     return text, fixes, judgments
 
@@ -582,6 +638,7 @@ def run_incremental_lint(session: str, full: bool = False) -> dict:
         else _incremental_scope(wiki_root, touched)
     )
     deleted = _deleted_basenames()
+    link_index = build_link_index(wiki_root)
 
     fixed: list[dict] = []
     held: list[dict] = []
@@ -598,7 +655,9 @@ def run_incremental_lint(session: str, full: bool = False) -> dict:
             # linted; skip it rather than crashing the whole run.
             continue
 
-        new_text, fix_classes, judgments = _lint_page(wiki_root, page, text, all_pages, deleted)
+        new_text, fix_classes, judgments = _lint_page(
+            wiki_root, page, text, all_pages, deleted, link_index
+        )
 
         if fix_classes and not is_fixable_page(page):
             # Excluded page: the finding is real, but the lint may not write

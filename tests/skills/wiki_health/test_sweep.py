@@ -56,6 +56,7 @@ def test_sweep_returns_all_dict_keys(wiki):
         "retrieval_eval", "single_project_global_pages",
         "hubless_knowledge_dirs", "unlinked_knowledge_pages", "orphan_pages",
         "stale_facts", "machine_released_total", "generated_at",
+        "asymmetric_links", "unpaged_concepts",
     }
     assert result["generated_at"]
     assert result["contradiction_scan_note"] is None
