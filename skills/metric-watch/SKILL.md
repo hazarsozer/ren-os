@@ -1,9 +1,9 @@
 ---
 name: metric-watch
 description: |
-  The §3.5 minimal metric-watch routine. Watches five signals — injection
+  The §3.5 minimal metric-watch routine. Watches six signals — injection
   budget growth, memory growth rate, classifier fail-closed events,
-  no-LLM-with-candidates defects, and backup configuration — and writes
+  no-LLM-with-candidates defects, fan-out silence, and backup configuration — and writes
   findings to the journal for the next wake-up to surface. Triggers on
   /ren:metric-watch, or (recommended) a weekly scheduled routine.
 version: 0.8.6
@@ -41,7 +41,7 @@ references_on_demand: []
 
 # metric-watch
 
-Spec §3.5's minimal metric-watch: "one routine watches budget ceiling, memory growth rate, classifier fail-closed events, backup unconfigured and writes findings to the journal for the next wake-up." Five independent checks (the post-0.8.0 `no_llm-with-candidates` signal joined the original four), one journal line per run.
+Spec §3.5's minimal metric-watch: "one routine watches budget ceiling, memory growth rate, classifier fail-closed events, backup unconfigured and writes findings to the journal for the next wake-up." Six independent checks (the post-0.8.0 `no_llm-with-candidates` signal joined the original four; the 0.8.7 `fan-out-silent` signal made six), one journal line per run.
 
 ## What it watches
 
@@ -51,9 +51,15 @@ Spec §3.5's minimal metric-watch: "one routine watches budget ceiling, memory g
 | Memory growth | Wiki `*.md` page count OR total bytes grown > 20% since the last metric-watch run | `memory-growth` |
 | Classifier fail-closed | Any NEW `classifier_event` entries with `event=="fail_closed"` since the last run | `classifier-fail-closed` |
 | No-LLM with candidates | Any NEW `durable_outcome` entries since the last run where the classifier ran `no_llm` while candidates (`seen`) were non-zero | `no_llm-with-candidates` |
+| Fan-out silent | Every `fanout_event` in the last 7 days landed with ZERO candidates | `fan-out-silent` |
 | Backup unconfigured | No `backup` git remote on the wiki repo AND no tarball newer than 7 days in the backups dir | `backup-unconfigured` |
 
-Each check is isolated — one crashing produces a `check-error` finding (`{"kind": "check-error", "check": "<name>", "error": "<str>"}`) instead of preventing the other four from running.
+Each check is isolated — one crashing produces a `check-error` finding (`{"kind": "check-error", "check": "<name>", "error": "<str>"}`) instead of preventing the other five from running.
+
+- **fan-out silent** — every `fanout_event` in the last 7 days landed with
+  zero candidates. Items DO get related to other pages; a week of zeroes
+  means the candidate scorer or the link walk is broken, not that the
+  wiki has nothing in common with itself.
 
 ## When to use this skill
 
@@ -67,7 +73,7 @@ Each check is isolated — one crashing produces a `check-error` finding (`{"kin
 ## Behavior
 
 1. Call `importlib.import_module("skills.metric-watch.lib").watch(session)`.
-2. `watch` runs all five checks (see table above), each wrapped so a crash becomes a `check-error` finding rather than an exception.
+2. `watch` runs all six checks (see table above), each wrapped so a crash becomes a `check-error` finding rather than an exception.
 3. Findings are appended to the JOURNAL via `lib.memory.journal.append` — a `routine`-writer `Provenance` (`op="NOOP"`, `page="_metric-watch"`) carrying `extra={"findings": [...]}`. **Never a wiki page write** — wake-up already surfaces live routine state; the journal is the notify channel this check needs, and `_metric-watch` isn't a real page (no allowlist entry is needed for it — it's not a `lib.memory.queue.propose` call at all, `op="NOOP"` never touches a page).
 4. Cross-run state (the memory-growth snapshot, the classifier high-water mark) persists at `state_dir()/"metric-watch.json"` — this is the one piece of state that must survive between runs; everything else is recomputed fresh each time from `collect.read`.
 

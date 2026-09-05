@@ -6,7 +6,7 @@ Spec §3.5: "minimal metric-watch: one routine watches budget ceiling, memory
 growth rate, classifier fail-closed events, backup unconfigured and writes
 findings to the journal for the next wake-up."
 
-Five independent checks, each isolated (a crashing check produces a
+Six independent checks, each isolated (a crashing check produces a
 `"check-error"` finding instead of killing the others):
 
   - `_check_budget` — is the latest `injected_bytes` wake-up payload
@@ -21,6 +21,9 @@ Five independent checks, each isolated (a crashing check produces a
     `no_llm` classifier_event AND a since-last-watch wrap `durable_outcome`
     with `seen > 0` both present (a wrap that HAD candidates but ran without
     any classifier — a defect signal, not background noise)?
+  - `_check_fanout_silent` — spec 2026-09-04 §5.5: did EVERY `fanout_event`
+    in the last 7 days land with zero candidates (a broken scorer or walk,
+    not an unrelated wiki)?
   - `_check_backup` — is there neither a configured `backup` git remote NOR a
     tarball newer than 7 days in the plugin's backups dir?
 
@@ -36,8 +39,9 @@ from __future__ import annotations
 import json
 import statistics
 import subprocess
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import Final
 
 from lib import ren_paths
 from lib.instrument import collect
@@ -50,6 +54,7 @@ MEMORY_GROWTH_THRESHOLD = 0.20
 BACKUP_REMOTE_NAME = "backup"
 BACKUP_TARBALL_MAX_AGE_DAYS = 7
 _GIT_TIMEOUT_S = 5.0
+FANOUT_SILENT_DAYS: Final[int] = 7
 
 
 def _state_path() -> Path:
@@ -163,6 +168,30 @@ def _check_no_llm_with_candidates(state: dict) -> dict | None:
     return None
 
 
+def _check_fanout_silent(state: dict) -> dict | None:
+    """Spec 2026-09-04 §5.5 — every `fanout_event` in the last
+    `FANOUT_SILENT_DAYS` had ZERO candidates.
+
+    An item with no candidates is not "nothing was related"; it means the
+    scorer found no token overlap anywhere, or the walk returned nothing —
+    a broken instrument, which is exactly the class of thing this routine
+    exists to notice. One non-zero event in the window is enough to clear
+    the signal: the machinery demonstrably works.
+    """
+    cutoff = (
+        datetime.now(timezone.utc) - timedelta(days=FANOUT_SILENT_DAYS)
+    ).strftime("%Y-%m-%dT%H:%M:%SZ")
+    recent = [
+        e for e in collect.read(kind=collect.KIND_FANOUT_EVENT)
+        if e.get("ts", "") >= cutoff
+    ]
+    if not recent:
+        return None
+    if any(e.get("candidates", 0) > 0 for e in recent):
+        return None
+    return {"kind": "fan-out-silent", "count": len(recent), "days": FANOUT_SILENT_DAYS}
+
+
 def _git_remote_configured(wiki_root: Path, remote_name: str) -> bool:
     try:
         proc = subprocess.run(
@@ -204,12 +233,13 @@ _CHECKS: tuple[tuple[str, str], ...] = (
     ("memory_growth", "_check_memory_growth"),
     ("classifier", "_check_classifier_fail_closed"),
     ("no_llm_with_candidates", "_check_no_llm_with_candidates"),
+    ("fanout_silent", "_check_fanout_silent"),
     ("backup", "_check_backup"),
 )
 
 
 def watch(session: str) -> list[dict]:
-    """Run all five checks; write findings to the journal (never a wiki
+    """Run all six checks; write findings to the journal (never a wiki
     page). Each check is isolated: a crash in one produces a `"check-error"`
     finding for that check and never prevents the others from running.
     Returns the list of findings (may be empty).
@@ -227,6 +257,7 @@ def watch(session: str) -> list[dict]:
         ("memory_growth", lambda: _check_memory_growth(wiki_root, state)),
         ("classifier", lambda: _check_classifier_fail_closed(state)),
         ("no_llm_with_candidates", lambda: _check_no_llm_with_candidates(state)),
+        ("fanout_silent", lambda: _check_fanout_silent(state)),
         ("backup", lambda: _check_backup(wiki_root)),
     ]
 
