@@ -49,8 +49,9 @@ that read the graph instead of throwing it away.
   of `fanout_event`s that all landed zero candidates means the scorer or the
   walk is broken, not that nothing was related.
 - **No migration.** Existing pages gain links lazily when touched or when the
-  asymmetry auto-fix runs. The first `/ren:wiki-health` after this update will
-  report many asymmetric links — that is the backlog, not a regression.
+  asymmetry auto-fix runs. A pre-0.8.7 wiki has no `## Related` sections at
+  all, so the first `/ren:wiki-health` after this update reports zero
+  asymmetric links; findings appear gradually as fan-out populates `Related`.
 
 ## [0.8.6] - 2026-09-04 — "runs where your friend runs"
 
