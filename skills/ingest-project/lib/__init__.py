@@ -46,6 +46,7 @@ from lib.adapter.claude_md import write_project_claude_md
 from lib.governance.backup_gate import require_backup
 from lib.memory import quarantine
 from lib.memory.queue import Proposal, QueueEntry, propose_and_apply
+from lib.memory.links import parse_page_links
 from lib.memory.taxonomy import TaxonomyError, parse_taxonomy
 from lib.pointer import parse_pointer_line, render_pointer_line
 
@@ -142,6 +143,22 @@ def _hub_page(project_slug: str, branch: str) -> str:
     return f"projects/{project_slug}/knowledge/{branch}/{name}.md"
 
 
+def _validate_leaf_links(page: str, body: str) -> str | None:
+    """The link convention's drafting contract (spec 2026-09-04 §7): every
+    leaf needs a `Parent:` line and a `## Related` with at least one
+    sibling. Returns the error string, or None when clean.
+
+    A failure is a DRAFTING error, reported — never a reason to drop the
+    leaf. Missing links are lint's job to find; lost knowledge is nobody's.
+    """
+    links = parse_page_links(body)
+    if links.parent is None:
+        return "leaf has no `Parent:` line"
+    if not links.related:
+        return "leaf has no `## Related` sibling"
+    return None
+
+
 def ingest(
     project_slug: str,
     knowledge: list[str],
@@ -150,6 +167,7 @@ def ingest(
     repo_root: Path | None = None,
     schema_page: str | None = None,
     hub_pages: dict[str, str] | None = None,
+    leaf_pages: list[dict] | None = None,
 ) -> dict:
     """Assemble and queue an L2 map from scan-derived (LLM-shaped) knowledge.
 
@@ -220,6 +238,18 @@ def ingest(
     (`{branch: write_id}`) report what was queued; both are `None`/`{}`
     when `schema_page` is omitted or refused. A legacy call with no
     `schema_page` is unaffected — byte-identical to pre-Task-6 behavior.
+
+    Spec 2026-09-04 §7: `leaf_pages` (a list of `{"name": "<relative path
+    under knowledge/>", "body": "<markdown>"}`) is queued HERE — after the
+    hubs, so a leaf's `Parent:` points at a hub already on disk, and before
+    the map. Each body is checked against the link convention with
+    `lib.memory.links.parse_page_links`: a leaf missing its `Parent:` line
+    or its `## Related` sibling is reported in `result["link_errors"]`
+    (`[{"page": ..., "error": ...}]` — always present, `[]` when clean) and
+    written ANYWAY, with the same `_page_op` ADD/UPDATE choice every other
+    write site here uses, so a re-ingest updates in place. Missing links
+    are lint's job to find, never a reason to lose knowledge. `ingest`
+    does NOT call `fan_out` — the worker drafts the links itself.
     """
     require_backup(ren_paths.wiki_root(), operation="ingest-project")
 
@@ -297,6 +327,28 @@ def ingest(
                     }
                 )
 
+    link_errors: list[dict] = []
+    for leaf in leaf_pages or []:
+        name = str(leaf.get("name", "")).lstrip("/")
+        body = leaf.get("body") or ""
+        leaf_page = f"projects/{project_slug}/knowledge/{name}"
+        error = _validate_leaf_links(leaf_page, body)
+        if error is not None:
+            link_errors.append({"page": leaf_page, "error": error})
+        leaf_abs = ren_paths.safe_join(ren_paths.wiki_root(), leaf_page)
+        propose_and_apply(
+            Proposal(
+                op=_page_op(leaf_abs),
+                page=leaf_page,
+                content=body,
+                reason="ingest-project leaf",
+                producer="ingest",
+                writer="llm-auto",
+                session=session,
+                salience=False,
+            )
+        )
+
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     content = assemble_l2(project_slug, knowledge, all_pointers, f"{today}: ingested from existing repository")
 
@@ -341,6 +393,7 @@ def ingest(
         "taxonomy_error": taxonomy_error,
         "schema_write_id": schema_write_id,
         "hub_write_ids": hub_write_ids,
+        "link_errors": link_errors,
     }
 
 
