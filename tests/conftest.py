@@ -100,6 +100,17 @@ def _claude_watch_paths() -> list[Path]:
     return watch
 
 
+#: Directories under the real wiki that the friend's EDITOR owns and rewrites
+#: on its own schedule while the suite runs. RenOS never writes there, so
+#: excluding them loses no isolation coverage; including them makes the guard
+#: fail on an Obsidian workspace save (0.8.7 review ledger).
+_EDITOR_OWNED_DIRS = frozenset({".obsidian"})
+
+
+def _is_editor_owned(path: Path) -> bool:
+    return any(part in _EDITOR_OWNED_DIRS for part in path.parts)
+
+
 @pytest.fixture(scope="session", autouse=True)
 def _real_renos_untouched():
     """Fail the run loudly if the suite modified the real ~/.renos, or any
@@ -112,6 +123,8 @@ def _real_renos_untouched():
         if not root.exists():
             continue
         for path in (root.rglob("*") if root.is_dir() else [root]):
+            if _is_editor_owned(path):
+                continue
             try:
                 if path.lstat().st_mtime > start:
                     touched.append(str(path))
