@@ -18,6 +18,8 @@ from pathlib import Path, PurePosixPath
 from lib import ren_paths
 from lib.instrument import collect
 from lib.memory import journal
+from lib.memory.fanout import FanoutResult, LandedItem, fan_out
+from lib.memory.links import RELATED_HEADING, render_related, upsert_parent
 from lib.memory.quarantine import escape_untrusted
 from lib.memory.queue import NOOP_DUPLICATE, Proposal, propose_and_apply
 from lib.memory.scrub import SecretsFound
@@ -166,7 +168,8 @@ def _watermark_after(batch: list[dict] | None, unprocessed: list[dict]) -> str |
 def apply_candidates(candidates: list[dict], *, run_session: str,
                      cap: int = WRITE_CAP,
                      batch: list[dict] | None = None,
-                     watermark_before: str | None = None) -> dict:
+                     watermark_before: str | None = None,
+                     llm_call=None) -> dict:
     applied: list[dict] = []
     held: list[dict] = []
     suggested: list[dict] = []
@@ -175,9 +178,11 @@ def apply_candidates(candidates: list[dict], *, run_session: str,
     duplicates: list[dict] = []
     capped_remainder = 0
     unprocessed: list[dict] = []
+    fanout = {"unknown": [], "applied": 0, "suggested": 0}
+    fanout_writes = 0
 
     for idx, cand in enumerate(candidates):
-        if len(applied) + len(held) >= cap:
+        if len(applied) + len(held) + fanout_writes >= cap:
             capped_remainder = len(candidates) - idx
             unprocessed = candidates[idx:]
             break
@@ -197,11 +202,13 @@ def apply_candidates(candidates: list[dict], *, run_session: str,
                               "reason": decision.reason})
             continue
 
+        content = cand["content"]
         if decision.action == "update":
             page = decision.target_page
         else:
             page = cand.get("page") or _durable_create_page(
                 item, decision.scope, cand.get("project"))
+            content = _annotate_lesson(content, "lessons")
         if _target_trust(page) == "user":
             suggested.append(_suggest_unplaced(
                 item, source, idx, f"target {page} is human-authored (trust=user)"))
@@ -209,7 +216,7 @@ def apply_candidates(candidates: list[dict], *, run_session: str,
         try:
             entry, prov = propose_and_apply(Proposal(
                 op="UPDATE" if decision.action == "update" else "ADD",
-                page=page, content=cand["content"], reason=decision.reason,
+                page=page, content=content, reason=decision.reason,
                 producer="distiller", writer="llm-auto", session=run_session,
             ))
         except SecretsFound as exc:
@@ -237,6 +244,19 @@ def apply_candidates(candidates: list[dict], *, run_session: str,
                     cand.get("project") if page.startswith("projects/") else None,
                     heading="Lessons",
                 )
+            if llm_call is not None and cand.get("project"):
+                title = decision.title or PurePosixPath(page).stem
+                fanout_result = fan_out(
+                    LandedItem(page=page, title=title,
+                              text=content, write_id=prov.write_id),
+                    cand["project"], run_session, llm_call, producer="distiller",
+                )
+                fanout_writes += _fanout_write_count(fanout_result)
+                fanout["applied"] += len(fanout_result.applied)
+                fanout["suggested"] += len(fanout_result.suggested)
+                suggested.extend(fanout_result.suggested)
+                if fanout_result.unknown_reason:
+                    fanout["unknown"].append(fanout_result.unknown_reason)
         else:
             held.append({"qid": entry.qid, "page": page,
                          "conflicts": entry.conflicts})
@@ -270,7 +290,7 @@ def apply_candidates(candidates: list[dict], *, run_session: str,
     return {"applied": applied, "held": held, "suggested": suggested,
             "gated_out": gated_out, "refused": refused,
             "duplicates": duplicates, "capped_remainder": capped_remainder,
-            "watermark_after": watermark_after}
+            "watermark_after": watermark_after, "fanout": fanout}
 
 
 # --- --seed-tree backfill mode (spec 2026-08-31 §3, Task 7) -----------------
@@ -280,9 +300,10 @@ def apply_candidates(candidates: list[dict], *, run_session: str,
 # routing existed, or missed by a session's own wrap gate — for durable
 # concepts, and places them into the taxonomy via Task 3's shared machinery
 # (`_apply_concept_create`, which already maintains its own leaf/parent hubs
-# and additively splices `schema.md`). A lesson that becomes a concept gets a
-# `See: [[<node>]]` pointer appended to it, so a reader who lands on the old
-# lesson can follow the pointer to the now-canonical concept page.
+# and additively splices `schema.md`). A lesson that becomes a concept gets
+# a `Parent: [[<node>]]` line (spec 2026-09-04 §7 — replaces the old
+# `See: [[<node>]]` marker), so a reader who lands on the old lesson can
+# follow the pointer to the now-canonical concept page.
 
 _LESSON_FRONTMATTER_RE = re.compile(r"\A---\n.*?\n---\n?", re.DOTALL)
 
@@ -330,7 +351,29 @@ def _lesson_body(text: str) -> str:
     return _LESSON_FRONTMATTER_RE.sub("", text, count=1).strip()
 
 
-_SEE_MARKER_RE = re.compile(r"^See: \[\[", re.MULTILINE)
+#: Matches BOTH the legacy `See: [[node]]` marker and the new `Parent:
+#: [[node]]` convention line (controller ruling): an already-annotated
+#: lesson, under either spelling, must never be re-batched.
+_SEE_MARKER_RE = re.compile(r"^(?:See|Parent): \[\[", re.MULTILINE)
+
+
+def _annotate_lesson(text: str, node_stem: str) -> str:
+    """Point a distilled lesson at the concept node it seeded (spec
+    2026-09-04 §7). This REPLACES the old `See: [[<node>]]` marker line: the
+    pointer is the same edge, now expressed in the convention every consumer
+    reads. Idempotent — `upsert_parent` replaces the single `Parent:` line
+    and `## Related` is created only once."""
+    out = upsert_parent(text, node_stem)
+    if RELATED_HEADING not in out:
+        out = out.rstrip("\n") + "\n\n" + render_related([])
+    return out
+
+
+def _fanout_write_count(result: FanoutResult) -> int:
+    """Fan-out writes that actually landed — what `WRITE_CAP` charges for
+    (spec §5 budget: a capped run lands fewer ITEMS, never more writes).
+    Held and suggested edits are not writes on disk, so they are free."""
+    return len(result.applied)
 
 
 def seed_tree_batch(project: str, after: str | None) -> list[dict]:
@@ -340,8 +383,9 @@ def seed_tree_batch(project: str, after: str | None) -> list[dict]:
     excluded: it is bookkeeping, not a lesson to mine. A project with no
     lessons directory yet returns `[]` rather than raising.
 
-    Also excludes any lesson already carrying a `See: [[...]]` pointer line —
-    seed_tree's own annotation UPDATE re-stamps that page's `ren_ts` (the
+    Also excludes any lesson already carrying a `Parent: [[...]]` line (or
+    the legacy `See: [[...]]` marker it replaced) — seed_tree's own
+    annotation UPDATE re-stamps that page's `ren_ts` (the
     write door restamps `ren_*` provenance on EVERY write, not just
     creation), which would otherwise make an already-routed lesson outrun its
     own watermark and get re-batched forever. This is the idempotency
@@ -467,6 +511,7 @@ def seed_tree(project: str, llm_call, *, cap: int | None = None) -> dict:
     existing_node_skipped = 0
     writes = 0
     processed_through = watermark_before
+    fanout = {"unknown": [], "applied": 0, "suggested": 0}
 
     for idx, lesson in enumerate(batch):
         if writes >= write_cap:
@@ -555,11 +600,25 @@ def seed_tree(project: str, llm_call, *, cap: int | None = None) -> dict:
             if concept_result["schema_suggestion"]:
                 suggested.append(concept_result["schema_suggestion"])
 
+            if llm_call is not None:
+                fanout_result = fan_out(
+                    LandedItem(page=concept_result["page"],
+                               title=decision.title or lastseg,
+                               text=body, write_id=concept_result["write_id"]),
+                    project, run_session, llm_call, producer="distiller",
+                )
+                writes += _fanout_write_count(fanout_result)
+                fanout["applied"] += len(fanout_result.applied)
+                fanout["suggested"] += len(fanout_result.suggested)
+                suggested.extend(fanout_result.suggested)
+                if fanout_result.unknown_reason:
+                    fanout["unknown"].append(fanout_result.unknown_reason)
+
             lastseg = decision.placement.rsplit("/", 1)[-1]
-            marker = f"See: [[{lastseg}]]"
-            if marker in lesson["text"]:
-                # Already annotated (watermark-reset re-run, or the same
-                # placement landed via another path) — nothing new to write.
+            annotate_content = _annotate_lesson(lesson["text"], lastseg)
+            if annotate_content == lesson["text"]:
+                # Already carries this Parent: — a watermark-reset re-run,
+                # or the same placement landed via another path.
                 duplicates.append({"page": lesson["page"]})
             elif _target_trust(lesson["page"]) == "user":
                 # Lesson pages are model-trust by default, but the guard
@@ -572,14 +631,13 @@ def seed_tree(project: str, llm_call, *, cap: int | None = None) -> dict:
                         evidence={"page": lesson["page"], "placement": decision.placement},
                         kind="page_write",
                         payload={"op": "UPDATE", "page": lesson["page"],
-                                 "append": f"\n{marker}\n"},
+                                 "content": annotate_content},
                         fingerprint=f"seed-tree-annotate:{project}:{lesson['page']}",
                     )
                 )
                 suggested.append({"page": lesson["page"],
                                   "sid": entry["sid"] if entry else None})
             else:
-                annotate_content = lesson["text"].rstrip("\n") + f"\n{marker}\n"
                 try:
                     a_entry, a_prov = propose_and_apply(Proposal(
                         op="UPDATE", page=lesson["page"], content=annotate_content,

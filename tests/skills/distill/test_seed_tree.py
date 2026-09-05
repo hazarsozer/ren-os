@@ -123,7 +123,7 @@ def test_seed_tree_places_concept_annotates_lesson_leaves_episodic_untouched(wik
     concept_lesson_text = (
         wiki / "projects/alpha/knowledge/lessons/concept-one.md"
     ).read_text(encoding="utf-8")
-    assert "See: [[event-loop]]" in concept_lesson_text
+    assert "Parent: [[event-loop]]" in concept_lesson_text
     assert CONCEPT_MARK in concept_lesson_text  # original body survives
 
     episodic_text = (
@@ -168,7 +168,7 @@ def test_seed_tree_cap_stops_run_with_resumable_watermark(wiki):
             "title": "Task Scheduler",
         })
 
-    # cap=2: exactly one lesson's worth of writes (concept create + See:
+    # cap=2: exactly one lesson's worth of writes (concept create + Parent:
     # annotation) — the second lesson must never be reached.
     result = seed_tree("alpha", llm_call, cap=2)
 
@@ -176,7 +176,13 @@ def test_seed_tree_cap_stops_run_with_resumable_watermark(wiki):
     assert len(result["annotated"]) == 1
     assert result["capped_remainder"] == 2
     assert result["watermark_after"] == "2026-08-01T00:00:00Z"
-    assert calls["n"] == 1
+    # One call to classify the lesson, plus one fan-out call over the two
+    # other (still-unprocessed) lessons that qualify as fan-out candidates
+    # for the newly-created concept page. The fake `llm_call` returns a
+    # concept-classification shape either way, so `fan_out` rejects it as
+    # malformed and lands zero fan-out edits (never raises — §9) — it only
+    # costs the one extra call, not an extra write.
+    assert calls["n"] == 2
 
     run_event = collect.read(kind=collect.KIND_DISTILLER_RUN)[-1]
     assert run_event["capped_remainder"] == 2
@@ -212,7 +218,7 @@ def test_seed_tree_rerun_after_completion_is_idempotent(wiki):
     concept_lesson_text = (
         wiki / "projects/alpha/knowledge/lessons/concept-one.md"
     ).read_text(encoding="utf-8")
-    assert concept_lesson_text.count("See: [[event-loop]]") == 1
+    assert concept_lesson_text.count("Parent: [[event-loop]]") == 1
 
 
 def test_seed_tree_existing_node_placement_is_skipped_not_rejected(wiki):
