@@ -11,3 +11,6 @@ Vite's native ES-module dev server made hot reload nearly instant, which was
 the whole point of the switch. The production bundle step still uses Rollup
 under the hood, but the dev-loop speedup is the win developers actually feel
 every day.
+
+## Related
+- [[use-postgres]] — the other stack decision for widget-tracker

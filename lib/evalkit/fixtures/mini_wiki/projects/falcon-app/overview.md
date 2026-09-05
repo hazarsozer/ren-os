@@ -10,3 +10,7 @@ bank statements, categorizes transactions, and shows a monthly spending
 summary. The whole app runs locally — no cloud sync, no server — since the
 budgeting data is sensitive personal financial information and the simplest
 trust story is "it never leaves your machine."
+
+## Related
+- [[use-postgres]] — the storage decision this app follows
+- [[retry-with-backoff]] — how Falcon retries its payment provider

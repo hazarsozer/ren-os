@@ -12,3 +12,6 @@ enough to flip the ordering of events that were actually seconds apart in
 real wall-clock time. The lesson: never trust raw timestamp comparisons across
 machines for ordering; use a logical clock or a single authoritative clock
 source instead.
+
+## Related
+- [[retry-with-backoff]] — the sibling reliability lesson

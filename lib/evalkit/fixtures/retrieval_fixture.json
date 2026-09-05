@@ -48,6 +48,14 @@
     {
       "query": "What caused the Comet API outage in June 2026?",
       "expected_page": "projects/comet-api/incident-2026-06.md"
+    },
+    {
+      "query": "Which page is the hub of what we know about Postgres choices?",
+      "expected_page": "decisions/use-postgres.md"
+    },
+    {
+      "query": "What do the most-referenced notes say about retry backoff?",
+      "expected_page": "lessons/retry-with-backoff.md"
     }
   ]
 }

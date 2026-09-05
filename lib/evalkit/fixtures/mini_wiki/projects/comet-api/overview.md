@@ -10,3 +10,6 @@ front of an upstream weather provider, caches responses briefly, and enforces
 a per-client rate limit so a single noisy caller can't exhaust the upstream
 provider's quota for everyone else. Comet exposes a small REST surface: current
 conditions, a short forecast, and historical daily summaries.
+
+## Related
+- [[retry-with-backoff]] — the retry policy Comet clients use

@@ -200,15 +200,15 @@ def test_missing_fixture_version_raises_value_error(tmp_path):
         run_retrieval_eval(ranker, bad_fixture, wiki_root)
 
 
-# --- answerable-by-construction: naive ranker scores >= 10/12 --------------
+# --- answerable-by-construction: naive ranker scores >= 12/14 --------------
 
 
-def test_naive_ranker_scores_at_least_ten_of_twelve_on_real_fixture():
+def test_naive_ranker_scores_at_least_twelve_of_fourteen_on_real_fixture():
     report = run_retrieval_eval(_naive_rank, RETRIEVAL_FIXTURE, MINI_WIKI, k=3)
 
-    assert report.total == 12
-    assert report.hits >= 10, f"naive ranker only hit {report.hits}/12 — fixture may be mis-keyed: {report.failures}"
-    assert report.hit_rate == pytest.approx(report.hits / 12)
+    assert report.total == 14
+    assert report.hits >= 12, f"naive ranker only hit {report.hits}/14 — fixture may be mis-keyed: {report.failures}"
+    assert report.hit_rate == pytest.approx(report.hits / 14)
 
 
 # --- gate eval ---------------------------------------------------------------

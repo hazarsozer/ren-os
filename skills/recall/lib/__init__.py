@@ -30,12 +30,15 @@ from __future__ import annotations
 
 import re
 from datetime import datetime, timezone
+from functools import lru_cache
 from pathlib import Path, PurePosixPath
 from typing import Final
 
 from lib import ren_paths
 from lib.instrument import miss_log
 from lib.memory import archive, quarantine
+from lib.memory.links import build_link_index
+from lib.memory.page_types import _is_folder_note_hub
 from lib.memory.provenance import read_frontmatter_provenance
 
 # Stop-words removed from queries to focus the token-overlap score.
@@ -56,6 +59,13 @@ HEADING_HIT_WEIGHT: Final[int] = 2
 BODY_HIT_WEIGHT: Final[int] = 1
 RECENCY_BONUS: Final[float] = 0.5
 RECENCY_DAYS: Final[int] = 30
+
+#: Spec 2026-09-04 §8 — inbound-link count is the signal for "which pages
+#: are hubs of MEANING". Multiplicative, small, and capped: a well-linked
+#: page beats a fresh unlinked twin, but no amount of linking beats a real
+#: token match.
+INBOUND_BOOST_PER_LINK: Final[float] = 0.1
+INBOUND_BOOST_CAP: Final[int] = 5
 
 DEFAULT_K: Final[int] = 3
 
@@ -158,6 +168,42 @@ def _safe_read(path: Path) -> str:
         return ""
 
 
+@lru_cache(maxsize=8)
+def _inbound_counts_cached(wiki_root_str: str, _mtime: float) -> dict[str, int]:
+    """Inbound-link count per page (spec 2026-09-04 §8). Structural hubs are
+    excluded — their inbound count is architecture, not earned attention.
+
+    Keyed on `wiki_root`'s own mtime so wake-up's single `rank` call pays
+    exactly one walk, and a wiki that changed gets a fresh index.
+    """
+    root = Path(wiki_root_str)
+    try:
+        index = build_link_index(root)
+    except OSError:  # the wiki could not be walked — no boost, never a crash
+        return {}
+    counts: dict[str, int] = {}
+    for rel, srcs in index.inbound.items():
+        if _is_folder_note_hub(Path(rel).parts):
+            counts[rel] = 0
+            continue
+        counts[rel] = len(srcs)
+    return counts
+
+
+def _inbound_counts(wiki_root: Path) -> dict[str, int]:
+    """Inbound counts for `wiki_root`, memoised on its mtime."""
+    root = Path(wiki_root)
+    try:
+        mtime = root.stat().st_mtime
+    except OSError:
+        return {}
+    return _inbound_counts_cached(root.as_posix(), mtime)
+
+
+# Tests reach for `_inbound_counts.cache_clear()`; forward it.
+_inbound_counts.cache_clear = _inbound_counts_cached.cache_clear  # type: ignore[attr-defined]
+
+
 def rank(query: str, candidate_pages: list[str], wiki_root: Path) -> list[str]:
     """Rank `candidate_pages` (wiki-relative path strings) against `query`.
 
@@ -171,6 +217,7 @@ def rank(query: str, candidate_pages: list[str], wiki_root: Path) -> list[str]:
     """
     wiki_root = Path(wiki_root)
     tokens = tokenize_query(query)
+    inbound = _inbound_counts(wiki_root)
 
     scored: list[tuple[float, str]] = []
     for rel in candidate_pages:
@@ -179,7 +226,8 @@ def rank(query: str, candidate_pages: list[str], wiki_root: Path) -> list[str]:
         token_score = _score_content(content, tokens) if tokens else 0.0
         kind_mult = _classify_kind(rel)
         recency = _recency_bonus(path)
-        final_score = token_score * kind_mult + recency
+        boost = 1.0 + INBOUND_BOOST_PER_LINK * min(inbound.get(rel, 0), INBOUND_BOOST_CAP)
+        final_score = (token_score * kind_mult + recency) * boost
         scored.append((final_score, rel))
 
     scored.sort(key=lambda t: (t[0], _safe_mtime(wiki_root / t[1])), reverse=True)
@@ -254,6 +302,8 @@ def fetch(
 __all__ = [
     "STOP_WORDS",
     "KIND_MULTIPLIERS",
+    "INBOUND_BOOST_CAP",
+    "INBOUND_BOOST_PER_LINK",
     "DEFAULT_K",
     "tokenize_query",
     "rank",
