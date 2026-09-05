@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.8.7] - unreleased — "the graph is the hierarchy"
+## [0.8.7] - 2026-09-05 — "the graph is the hierarchy"
 
 Depth 2 is a shelf; hierarchy is links. The cross-reference graph becomes a
 first-class object: a body-text convention every producer emits, a write-time

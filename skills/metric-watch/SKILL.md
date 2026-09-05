@@ -6,10 +6,10 @@ description: |
   no-LLM-with-candidates defects, fan-out silence, and backup configuration — and writes
   findings to the journal for the next wake-up to surface. Triggers on
   /ren:metric-watch, or (recommended) a weekly scheduled routine.
-version: 0.8.6
+version: 0.8.7
 license: MIT
 
-framework_version: "0.8.6"
+framework_version: "0.8.7"
 schema_version: 1
 type: skill
 execution_tier: deterministic
