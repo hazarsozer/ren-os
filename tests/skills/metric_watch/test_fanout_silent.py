@@ -4,6 +4,7 @@ means the scorer or the walk is broken, not that nothing was related."""
 from __future__ import annotations
 
 import importlib
+import time
 
 import pytest
 
@@ -48,3 +49,23 @@ def test_watch_includes_the_check():
         _event(0, 1)
     findings = mw.watch("s1")
     assert any(f["kind"] == "fan-out-silent" for f in findings)
+
+
+def test_same_silent_window_fires_once_across_runs():
+    for _ in range(3):
+        _event(0, 1)
+    state: dict = {}
+    first = mw._check_fanout_silent(state)
+    assert first == {"kind": "fan-out-silent", "count": 3, "days": 7}
+    assert state.get("last_fanout_ts")
+    second = mw._check_fanout_silent(state)
+    assert second is None
+
+
+def test_new_silent_events_after_watermark_fire_again():
+    _event(0, 1)
+    state: dict = {}
+    assert mw._check_fanout_silent(state) is not None
+    time.sleep(1.1)
+    _event(0, 1)
+    assert mw._check_fanout_silent(state) is not None

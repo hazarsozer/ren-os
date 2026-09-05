@@ -51,7 +51,7 @@ Spec §3.5's minimal metric-watch: "one routine watches budget ceiling, memory g
 | Memory growth | Wiki `*.md` page count OR total bytes grown > 20% since the last metric-watch run | `memory-growth` |
 | Classifier fail-closed | Any NEW `classifier_event` entries with `event=="fail_closed"` since the last run | `classifier-fail-closed` |
 | No-LLM with candidates | Any NEW `durable_outcome` entries since the last run where the classifier ran `no_llm` while candidates (`seen`) were non-zero | `no_llm-with-candidates` |
-| Fan-out silent | Every `fanout_event` in the last 7 days landed with ZERO candidates | `fan-out-silent` |
+| Fan-out silent | Every `fanout_event` in the last 7 days landed with ZERO candidates. Fires once per new batch of events | `fan-out-silent` |
 | Backup unconfigured | No `backup` git remote on the wiki repo AND no tarball newer than 7 days in the backups dir | `backup-unconfigured` |
 
 Each check is isolated — one crashing produces a `check-error` finding (`{"kind": "check-error", "check": "<name>", "error": "<str>"}`) instead of preventing the other five from running.

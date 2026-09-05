@@ -23,7 +23,7 @@ Six independent checks, each isolated (a crashing check produces a
     any classifier — a defect signal, not background noise)?
   - `_check_fanout_silent` — spec 2026-09-04 §5.5: did EVERY `fanout_event`
     in the last 7 days land with zero candidates (a broken scorer or walk,
-    not an unrelated wiki)?
+    not an unrelated wiki)? Fires once per new batch of events.
   - `_check_backup` — is there neither a configured `backup` git remote NOR a
     tarball newer than 7 days in the plugin's backups dir?
 
@@ -177,6 +177,10 @@ def _check_fanout_silent(state: dict) -> dict | None:
     a broken instrument, which is exactly the class of thing this routine
     exists to notice. One non-zero event in the window is enough to clear
     the signal: the machinery demonstrably works.
+
+    Fires once per batch of new events: the newest ts seen is kept in
+    state["last_fanout_ts"], and a run with no events newer than it is
+    silent.
     """
     cutoff = (
         datetime.now(timezone.utc) - timedelta(days=FANOUT_SILENT_DAYS)
@@ -186,6 +190,16 @@ def _check_fanout_silent(state: dict) -> dict | None:
         if e.get("ts", "") >= cutoff
     ]
     if not recent:
+        return None
+
+    # Since-last-watch watermark — same pattern as `_check_classifier_fail_closed`.
+    # Without it the same silent window re-fires on every run until it ages
+    # out of the seven-day cutoff (0.8.7 review ledger).
+    last_ts = state.get("last_fanout_ts")
+    new_events = [e for e in recent if not last_ts or e.get("ts", "") > last_ts]
+    state["last_fanout_ts"] = max(e.get("ts", "") for e in recent)
+
+    if not new_events:
         return None
     if any(e.get("candidates", 0) > 0 for e in recent):
         return None
