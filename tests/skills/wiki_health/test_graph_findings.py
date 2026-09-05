@@ -51,7 +51,7 @@ def wiki(tmp_path: Path) -> Path:
 
 
 def test_asymmetric_link_found(wiki):
-    findings = wiki_health._asymmetric_links(wiki, build_link_index(wiki))
+    findings = wiki_health._asymmetric_links(build_link_index(wiki))
     pairs = {(f["page"], f["with"]) for f in findings}
     assert ("projects/demo/knowledge/architecture/b.md",
             "projects/demo/knowledge/architecture/a.md") in pairs
@@ -60,7 +60,7 @@ def test_asymmetric_link_found(wiki):
 def test_symmetric_pair_is_not_a_finding(wiki):
     p = wiki / "projects/demo/knowledge/architecture/b.md"
     p.write_text(p.read_text(encoding="utf-8") + "- [[a]] — b knows a\n", encoding="utf-8")
-    findings = wiki_health._asymmetric_links(wiki, build_link_index(wiki))
+    findings = wiki_health._asymmetric_links(build_link_index(wiki))
     pairs = {(f["page"], f["with"]) for f in findings}
     assert ("projects/demo/knowledge/architecture/b.md",
             "projects/demo/knowledge/architecture/a.md") not in pairs
@@ -68,12 +68,12 @@ def test_symmetric_pair_is_not_a_finding(wiki):
 
 def test_human_owned_page_is_reported_never_fixed(wiki):
     index = build_link_index(wiki)
-    findings = wiki_health._asymmetric_links(wiki, index)
+    findings = wiki_health._asymmetric_links(index)
     human = "projects/demo/knowledge/architecture/human.md"
     assert any(f["page"] == human for f in findings)
     assert lint.is_fixable_page(human) is True  # path-fixable...
     text = (wiki / human).read_text(encoding="utf-8")
-    new_text, fixes = lint._asymmetric_link_findings(wiki, human, text, index)
+    new_text, fixes = lint._asymmetric_link_findings(human, text, index)
     assert fixes == []          # ...but trust=user blocks the WRITE
     assert new_text == text
 
@@ -82,7 +82,7 @@ def test_reverse_bullet_is_applied_with_the_reverse_reason(wiki):
     index = build_link_index(wiki)
     page = "projects/demo/knowledge/architecture/b.md"
     text = (wiki / page).read_text(encoding="utf-8")
-    new_text, fixes = lint._asymmetric_link_findings(wiki, page, text, index)
+    new_text, fixes = lint._asymmetric_link_findings(page, text, index)
     assert fixes == ["asymmetric-link-reversed"]
     assert "- [[a]] — (reverse of [[a]])" in new_text
 
@@ -151,7 +151,7 @@ def test_reverse_bullet_is_not_written_when_the_target_stem_is_ambiguous(wiki):
     index = build_link_index(wiki)
     for rel in ("projects/demo/knowledge/architecture/b.md", "projects/demo/knowledge/other/b.md"):
         text = (wiki / rel).read_text(encoding="utf-8")
-        new_text, fixes = lint._asymmetric_link_findings(wiki, rel, text, index)
+        new_text, fixes = lint._asymmetric_link_findings(rel, text, index)
         assert fixes == [], rel
         assert new_text == text, rel
 
@@ -170,6 +170,6 @@ def test_reverse_bullet_is_not_written_when_the_source_stem_is_ambiguous(wiki):
     index = build_link_index(wiki)
     rel = "projects/demo/knowledge/architecture/b.md"
     text = (wiki / rel).read_text(encoding="utf-8")
-    new_text, fixes = lint._asymmetric_link_findings(wiki, rel, text, index)
+    new_text, fixes = lint._asymmetric_link_findings(rel, text, index)
     assert fixes == []
     assert new_text == text

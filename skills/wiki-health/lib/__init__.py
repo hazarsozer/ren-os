@@ -837,7 +837,7 @@ def _judge_annotate(
 _UNPAGED_LINKER_THRESHOLD: Final[int] = 3
 
 
-def _asymmetric_links(wiki_root: Path, index: LinkIndex) -> list[dict]:
+def _asymmetric_links(index: LinkIndex) -> list[dict]:
     """Spec 2026-09-04 §6 — page A lists B under `## Related` and B's own
     `## Related` does not list A.
 
@@ -1045,7 +1045,7 @@ def sweep(
         "hubless_knowledge_dirs": hubless_knowledge_dirs,
         "unlinked_knowledge_pages": unlinked_knowledge_pages,
         "orphan_pages": _orphan_pages(wiki_root, link_index),
-        "asymmetric_links": _asymmetric_links(wiki_root, link_index),
+        "asymmetric_links": _asymmetric_links(link_index),
         "unpaged_concepts": _unpaged_concepts(wiki_root, link_index),
         "stale_facts": _stale_facts(wiki_root, session, apply_corrections),
         "judge_dismissed": judge_dismissed,

@@ -416,7 +416,7 @@ def _missing_reverse_stems(page: str, index: LinkIndex) -> list[tuple[str, str]]
 
 
 def _asymmetric_link_findings(
-    wiki_root: Path, page: str, text: str, index: LinkIndex
+    page: str, text: str, index: LinkIndex
 ) -> tuple[str, list[str]]:
     """Add the missing reverse `## Related` bullet (spec 2026-09-04 §6).
 
@@ -470,7 +470,7 @@ def _lint_page(
     judgments.extend(link_judgments)
 
     if index is not None:
-        text, asym_fixes = _asymmetric_link_findings(wiki_root, page, text, index)
+        text, asym_fixes = _asymmetric_link_findings(page, text, index)
         fixes.extend(asym_fixes)
 
     return text, fixes, judgments

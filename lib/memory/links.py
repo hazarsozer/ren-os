@@ -167,7 +167,7 @@ def upsert_parent(text: str, stem: str) -> str:
     return text[:insert_at] + "\n\n" + line + "\n\n" + text[insert_at:].lstrip("\n")
 
 
-def _resolve(wiki_root: Path, pages: dict[str, str], src: str, target: str) -> str | None:
+def _resolve(pages: dict[str, str], src: str, target: str) -> str | None:
     """Resolve one link body to a page in `pages`. Wikilinks resolve by
     BASENAME (exactly as `skills/wiki-health/lib/lint.py::_resolves` does);
     markdown targets resolve relative to the linking file first, then to the
@@ -220,7 +220,7 @@ def build_link_index(wiki_root: Path, *, project: str | None = None) -> LinkInde
         if links.parent:
             targets.append(links.parent)
         for target in targets:
-            dest = _resolve(wiki_root, pages, src, target)
+            dest = _resolve(pages, src, target)
             if dest is not None and dest != src:
                 outbound[src].add(dest)
                 inbound[dest].add(src)

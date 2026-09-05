@@ -1147,7 +1147,7 @@ def _apply_concept_create(
     return result
 
 
-def _route_unplaced(item: str, session: str, index: int, *, reason: str,
+def _route_unplaced(item: str, session: str, *, reason: str,
                     fingerprint: str, claimed: dict | None = None) -> dict:
     """Spec 2026-08-18 §2.3: a durable-but-unplaceable (or unclassifiable)
     candidate goes to the suggestions store for a human to place — fail-closed
@@ -1416,7 +1416,7 @@ def wrap_session(
             gate(item, None, eligible_targets=eligible, project=project,
                  taxonomy=taxonomy)  # records no_llm
             unplaced.append(_route_unplaced(
-                item, session, i, reason="no classifier available at wrap time",
+                item, session, reason="no classifier available at wrap time",
                 fingerprint=f"wrap-noclassifier:{session}:{i}"))
             continue
 
@@ -1469,7 +1469,7 @@ def wrap_session(
             )
         except PlacementError as exc:
             unplaced.append(_route_unplaced(
-                item, session, i, reason=exc.reason,
+                item, session, reason=exc.reason,
                 fingerprint=f"wrap-unplaced:{session}:{i}",
                 claimed={"claimed_scope": exc.claimed_scope,
                          "claimed_action": exc.claimed_action,
@@ -1530,7 +1530,7 @@ def wrap_session(
                     # own `ValueError` quietly, so this can never fire
                     # after the page has already landed on disk.
                     unplaced.append(_route_unplaced(
-                        item, session, i,
+                        item, session,
                         reason=f"concept placement produced an invalid page path: {exc}",
                         fingerprint=f"wrap-concept-invalid-page:{session}:{i}"))
                     continue
@@ -1564,7 +1564,7 @@ def wrap_session(
                         # ONLY possible `ValueError` source is the initial
                         # (pre-write) `Proposal(...)` construction.
                         unplaced.append(_route_unplaced(
-                            item, session, i,
+                            item, session,
                             reason=f"concept placement produced an invalid page path: {exc}",
                             fingerprint=f"wrap-concept-invalid-page:{session}:{i}"))
                         continue
@@ -1701,7 +1701,7 @@ def wrap_session(
                 # placement — the classifier affirmed it as durable, so
                 # dropping it silently loses a real learning.
                 unplaced.append(_route_unplaced(
-                    item, session, i,
+                    item, session,
                     reason=f"update to {target} could not be merged: {exc}",
                     fingerprint=f"wrap-unmerged:{session}:{i}"))
                 continue
