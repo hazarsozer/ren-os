@@ -592,6 +592,7 @@ def seed_tree(project: str, llm_call, *, cap: int | None = None) -> dict:
             processed_through = lesson["ren_ts"]
             continue
 
+        lastseg = decision.placement.rsplit("/", 1)[-1]
         if concept_result["status"] == "applied":
             applied.append({"page": concept_result["page"], "qid": concept_result["qid"],
                             "write_id": concept_result["write_id"],
@@ -614,7 +615,6 @@ def seed_tree(project: str, llm_call, *, cap: int | None = None) -> dict:
                 if fanout_result.unknown_reason:
                     fanout["unknown"].append(fanout_result.unknown_reason)
 
-            lastseg = decision.placement.rsplit("/", 1)[-1]
             annotate_content = _annotate_lesson(lesson["text"], lastseg)
             if annotate_content == lesson["text"]:
                 # Already carries this Parent: — a watermark-reset re-run,

@@ -332,3 +332,35 @@ def test_seed_tree_refuses_path_traversal_project_end_to_end(wiki):
     result = seed_tree("../../../../../../../../tmp/pwned", _fake_llm)
     assert result["blind"] == "no taxonomy — run ingest's taxonomy draft first"
     assert result["applied"] == [] and result["annotated"] == []
+
+
+def test_empty_title_on_first_iteration_uses_the_placement_last_segment(
+    wiki, monkeypatch
+):
+    """I1: `lastseg` was read before it was assigned — a falsy
+    `decision.title` on the FIRST lesson raised UnboundLocalError (and on a
+    later one silently reused the previous lesson's segment)."""
+    import skills.distill.lib as distill_lib
+    from lib.memory.fanout import FanoutResult
+    from skills.wrap.lib.classifier import Decision
+
+    _lesson(wiki, "concept-one.md", "2026-08-01T00:00:00Z", CONCEPT_MARK + ".")
+
+    monkeypatch.setattr(distill_lib, "gate", lambda *a, **k: Decision(
+        verdict="durable", reason="structural fact", scope="project",
+        action="create", target_page=None, kind="concept",
+        placement="architecture/event-loop", title="",
+    ))
+
+    seen: list[str] = []
+
+    def _fake_fanout(item, *a, **k):
+        seen.append(item.title)
+        return FanoutResult()
+
+    monkeypatch.setattr(distill_lib, "fan_out", _fake_fanout)
+
+    result = seed_tree("alpha", _fake_llm)
+
+    assert result["applied"], repr(result)
+    assert seen == ["event-loop"]
