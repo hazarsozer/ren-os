@@ -90,3 +90,35 @@ def test_unreadable_wiki_root_scores_zero_boost_not_a_crash(tmp_path):
     missing = tmp_path / "nope"
     assert rank("anything", [], missing) == []
     assert _inbound_counts(missing) == {}
+
+
+@pytest.mark.parametrize(
+    "rel, is_hub",
+    [
+        ("projects/demo/knowledge/architecture/architecture.md", True),
+        ("knowledge/architecture/architecture.md", True),
+        ("projects/demo/knowledge/architecture/linked.md", False),
+    ],
+)
+def test_boost_skips_exactly_the_pages_the_kind_multiplier_calls_hubs(
+    tmp_path: Path, rel: str, is_hub: bool
+) -> None:
+    """One hub predicate: the boost's exclusion must agree with
+    `_classify_kind`'s (spec 2026-09-04 §8)."""
+    from skills.recall.lib import DEFAULT_KIND_MULTIPLIER, _classify_kind, _is_hub_path
+
+    root = tmp_path / "wiki"
+    page = root / rel
+    page.parent.mkdir(parents=True)
+    page.write_text("# P\n\n## Related\n", encoding="utf-8")
+    (root / "src.md").write_text(
+        f"# Src\n\n## Related\n- [[{Path(rel).stem}]] — points at it\n", encoding="utf-8"
+    )
+
+    assert _is_hub_path(rel) is is_hub
+    kind_says_hub = "/knowledge/" in f"/{rel}/" and _classify_kind(rel) == DEFAULT_KIND_MULTIPLIER
+    assert _is_hub_path(rel) is kind_says_hub
+
+    _inbound_counts.cache_clear()
+    counts = _inbound_counts(root)
+    assert (counts.get(rel, 0) == 0) is is_hub

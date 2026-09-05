@@ -38,7 +38,6 @@ from lib import ren_paths
 from lib.instrument import miss_log
 from lib.memory import archive, quarantine
 from lib.memory.links import build_link_index
-from lib.memory.page_types import _is_folder_note_hub
 from lib.memory.provenance import read_frontmatter_provenance
 
 # Stop-words removed from queries to focus the token-overlap score.
@@ -81,6 +80,16 @@ def tokenize_query(query: str) -> list[str]:
     return [t for t in raw if t and t not in STOP_WORDS]
 
 
+def _is_hub_path(rel_path: str) -> bool:
+    """THE hub predicate for recall: a folder note (`<dir>/<dir>.md`) under a
+    `knowledge/` tree. One definition, used by BOTH the kind multiplier and
+    the §8 inbound boost, so the two cannot drift apart."""
+    if "/knowledge/" not in f"/{rel_path}/":
+        return False
+    path_obj = PurePosixPath(rel_path)
+    return path_obj.stem == path_obj.parent.name
+
+
 def _classify_kind(rel_path: str) -> float:
     """Map a wiki-relative path to its kind multiplier (path hint).
 
@@ -94,7 +103,7 @@ def _classify_kind(rel_path: str) -> float:
         path_obj = PurePosixPath(rel_path)
 
         # Hub pages (stem == parent name) keep default multiplier
-        if path_obj.stem == path_obj.parent.name:
+        if _is_hub_path(rel_path):
             return DEFAULT_KIND_MULTIPLIER
 
         # Lesson pages (immediate parent is "lessons") keep default multiplier
@@ -174,7 +183,10 @@ def _inbound_counts_cached(wiki_root_str: str, _mtime: float) -> dict[str, int]:
     excluded — their inbound count is architecture, not earned attention.
 
     Keyed on `wiki_root`'s own mtime so wake-up's single `rank` call pays
-    exactly one walk, and a wiki that changed gets a fresh index.
+    exactly one walk, and a wiki that changed gets a fresh index. Note that
+    editing a NESTED page does not change the root dir's mtime, so a
+    long-lived process can serve a stale index — acceptable for the
+    one-call-per-session hook the spec targets.
     """
     root = Path(wiki_root_str)
     try:
@@ -183,7 +195,7 @@ def _inbound_counts_cached(wiki_root_str: str, _mtime: float) -> dict[str, int]:
         return {}
     counts: dict[str, int] = {}
     for rel, srcs in index.inbound.items():
-        if _is_folder_note_hub(Path(rel).parts):
+        if _is_hub_path(rel):
             counts[rel] = 0
             continue
         counts[rel] = len(srcs)
