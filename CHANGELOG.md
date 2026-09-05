@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.8.8] - 2026-09-05 — "the fix runs where your friend runs"
+
+Two defects from the first native-Windows smoke test, four small items
+carried from the 0.8.7 review.
+
+- **`/ren:backup` and `--setup` now `git init` a fresh wiki** instead of
+  refusing with advice to run `/ren:install` — which never ran `git init`
+  and so could not help. A friend who declined backup at install was stuck:
+  `require_backup` then blocked a second `/ren:ingest-project`. The only
+  remaining refusal is a `git init` that itself fails (`git-init-failed`).
+- **Graphify install hint** says the double **y** in `graphifyy` is the real
+  PyPI name, at every documentation site it appears. A tester read it as a typo, ran the
+  single-y name, and reported that failure as ours.
+- **`/ren:metric-watch`'s fan-out-silent signal** fires once per batch of new
+  events, not on every run until the window ages out — the same
+  since-last-watch watermark its sibling checks already kept.
+- **The lint's asymmetric-link fix skips ambiguous basenames.** Wikilinks
+  resolve by basename; two pages sharing one both received the reverse
+  bullet and one was wrong. The write side now applies the uniqueness rule
+  the sweep already did.
+- **Test suite:** the real-`~/.renos` isolation guard ignores Obsidian's own
+  `.obsidian/` state, which changed under a running suite and tripped a
+  false breach.
+- Four unused parameters introduced by the 0.8.7 train are removed.
+- **No migration.**
+
 ## [0.8.7] - 2026-09-05 — "the graph is the hierarchy"
 
 Depth 2 is a shelf; hierarchy is links. The cross-reference graph becomes a
