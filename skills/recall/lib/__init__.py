@@ -81,13 +81,21 @@ def tokenize_query(query: str) -> list[str]:
 
 
 def _is_hub_path(rel_path: str) -> bool:
-    """THE hub predicate for recall: a folder note (`<dir>/<dir>.md`) under a
-    `knowledge/` tree. One definition, used by BOTH the kind multiplier and
-    the §8 inbound boost, so the two cannot drift apart."""
-    if "/knowledge/" not in f"/{rel_path}/":
-        return False
+    """The §8 inbound-boost hub predicate: ANY folder note (`<dir>/<dir>.md`),
+    wherever it sits. Deliberately wider than `_is_knowledge_hub` below: the
+    root `lessons/lessons.md` hub is not under a `knowledge/` tree, yet every
+    wrap lesson now points at it via `Parent: [[lessons]]`, so its inbound
+    count is structural — exactly what §8 excludes from the boost."""
     path_obj = PurePosixPath(rel_path)
-    return path_obj.stem == path_obj.parent.name
+    return bool(path_obj.parent.name) and path_obj.stem == path_obj.parent.name
+
+
+def _is_knowledge_hub(rel_path: str) -> bool:
+    """The kind-multiplier hub predicate: a folder note under a `knowledge/`
+    tree. Narrower than `_is_hub_path` on purpose — `_classify_kind` only ever
+    asks this inside its `/knowledge/` branch, and widening it would change
+    which non-knowledge pages fall through to the prefix table."""
+    return "/knowledge/" in f"/{rel_path}/" and _is_hub_path(rel_path)
 
 
 def _classify_kind(rel_path: str) -> float:
@@ -103,7 +111,7 @@ def _classify_kind(rel_path: str) -> float:
         path_obj = PurePosixPath(rel_path)
 
         # Hub pages (stem == parent name) keep default multiplier
-        if _is_hub_path(rel_path):
+        if _is_knowledge_hub(rel_path):
             return DEFAULT_KIND_MULTIPLIER
 
         # Lesson pages (immediate parent is "lessons") keep default multiplier

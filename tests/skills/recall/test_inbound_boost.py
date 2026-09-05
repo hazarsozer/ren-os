@@ -122,3 +122,22 @@ def test_boost_skips_exactly_the_pages_the_kind_multiplier_calls_hubs(
     _inbound_counts.cache_clear()
     counts = _inbound_counts(root)
     assert (counts.get(rel, 0) == 0) is is_hub
+
+
+def test_root_lessons_hub_is_excluded_from_the_inbound_boost(tmp_path):
+    """I2: `lessons/lessons.md` is a folder-note hub outside any
+    `knowledge/` tree — every wrap lesson points at it via
+    `Parent: [[lessons]]`, so its inbound count is structural, not earned
+    (spec 2026-09-04 §8: hubs are excluded)."""
+    root = tmp_path / "wiki"
+    hub = root / "lessons" / "lessons.md"
+    hub.parent.mkdir(parents=True)
+    hub.write_text("# Lessons\n\n## Related\n", encoding="utf-8")
+    for i in range(5):
+        (root / "lessons" / f"l{i}.md").write_text(
+            f"# L{i}\n\nParent: [[lessons]]\n\n## Related\n- [[lessons]] — hub\n",
+            encoding="utf-8",
+        )
+
+    _inbound_counts.cache_clear()
+    assert _inbound_counts(root).get("lessons/lessons.md", 0) == 0
