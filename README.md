@@ -164,13 +164,13 @@ judgment (approvals, session narrative) stays with the main model.
 | `/ren:suggestions` | Review pending suggestions one at a time — accept/decline in chat, rare and high-stakes by design |
 | _(conversational)_ | Suggestions also surface at wake-up and wrap; answer in chat — no queue verbs. Say "undo \<write_id>" to revert a write |
 | `/ren:routine-init` | Declare a bounded routine: schedule, exit criterion, failure handler, capability/path allowlist |
-| `/ren:metric-watch` | The minimal watch routine: budget growth, memory growth, gate failures, dead classifier wiring → journal findings |
+| `/ren:metric-watch` | The minimal watch routine, six signals: budget growth, memory growth, gate failures, dead classifier wiring, silent fan-out, unconfigured backup → journal findings |
 
 ### Maintenance
 | Skill | What it's for |
 |---|---|
-| `/ren:doctor` | Twenty-five isolated health checks — env, wiki structure, schema versions, budgets, pointers, tiers, guards, drift — all warn-not-block |
-| `/ren:wiki-health` | Coherence auditor: dangling pointers, contradictions, mass-deletion anomaly, quarantine inventory |
+| `/ren:doctor` | Twenty-seven isolated health checks — env, wiki structure, schema versions, budgets, pointers, tiers, guards, drift, cache-env hygiene — all warn-not-block |
+| `/ren:wiki-health` | Coherence auditor: dangling pointers, contradictions, asymmetric and orphan links, unpaged concepts, mass-deletion anomaly, quarantine inventory |
 | `/ren:backup` | Git-push-to-`backup`-remote primary, tarball fallback, retention |
 | `/ren:update` | Snapshot → migrate → verify → diff-approve → apply, rollback built in |
 | `/ren:retrospective [--since]` | Mine instrumentation + journal + session history for lessons and skill candidates |
