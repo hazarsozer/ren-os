@@ -69,3 +69,11 @@ def test_new_silent_events_after_watermark_fire_again():
     time.sleep(1.1)
     _event(0, 1)
     assert mw._check_fanout_silent(state) is not None
+
+
+def test_mixed_window_does_not_advance_the_watermark():
+    _event(0, 1)
+    _event(4, 1)
+    state: dict = {}
+    assert mw._check_fanout_silent(state) is None
+    assert "last_fanout_ts" not in state

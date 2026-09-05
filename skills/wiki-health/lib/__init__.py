@@ -844,7 +844,10 @@ def _asymmetric_links(index: LinkIndex) -> list[dict]:
     The finding is on B (the page MISSING the bullet), naming A as `with`:
     that is the page the fix would write. Human-owned pages are still
     REPORTED here — the write-side guard lives in the lint, so the sweep's
-    report stays complete."""
+    report stays complete. The lint's write side (`lint._missing_reverse_stems`)
+    additionally requires the SOURCE stem to be unique, so a finding here
+    whose `with` page shares its basename is reported but never auto-fixed —
+    the same report-without-fix shape as human-owned pages."""
     by_stem: dict[str, list[str]] = {}
     for rel in index.pages:
         by_stem.setdefault(Path(rel).stem, []).append(rel)

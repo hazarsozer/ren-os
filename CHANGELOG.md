@@ -8,7 +8,9 @@ carried from the 0.8.7 review.
 - **`/ren:backup` and `--setup` now `git init` a fresh wiki** instead of
   refusing with advice to run `/ren:install` — which never ran `git init`
   and so could not help. A friend who declined backup at install was stuck:
-  `require_backup` then blocked a second `/ren:ingest-project`. The only
+  `require_backup` then blocked a second `/ren:ingest-project`. On a wiki
+  that was never a repo, the first `/ren:backup` therefore creates the repo
+  and commits the whole wiki as its first commit. The only
   remaining refusal is a `git init` that itself fails (`git-init-failed`).
 - **Graphify install hint** says the double **y** in `graphifyy` is the real
   PyPI name, at every documentation site it appears. A tester read it as a typo, ran the

@@ -28,6 +28,7 @@ contract:
       - "~/.renos/wiki/**"
     write:
       - "~/.claude/plugins/data/renos/backups/**"
+      - "~/.renos/wiki/.git/**"
     execute: []
   completion_conditions:
     - "On --status: status output naming wiki path, remote URL (or 'not configured'), and last-backup timestamp"
@@ -59,7 +60,7 @@ Wiki-only backup: git push to a configured `backup` remote is primary; a local t
 
 ### `/ren:backup`
 
-1. Refuse if the wiki isn't a git repo (point at `/ren:install`).
+1. Ensure the wiki is a git repo — `ensure_git_repo` runs `git init` if it isn't one. Refuse only if that init fails (`git-init-failed`).
 2. Commit any pending changes (idempotent if the tree is clean).
 3. If a `backup` remote is configured: push. Success → done, no tarball. Non-fast-forward → refuse (never force-push automatically; point at the recovery doc). Transport failure → tarball fallback + warning.
 4. If no remote configured: tarball, with a nag to run `--setup`.
@@ -67,7 +68,7 @@ Wiki-only backup: git push to a configured `backup` remote is primary; a local t
 
 ### `/ren:backup --setup <remote-url>`
 
-Validates the URL shape, confirms the wiki is a git repo, adds or updates the `backup` remote, and reads it back to confirm.
+Validates the URL shape, initialises the wiki as a git repo if it isn't one (`ensure_git_repo`), adds or updates the `backup` remote, and reads it back to confirm.
 
 ### `/ren:backup --tarball`
 

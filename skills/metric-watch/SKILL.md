@@ -59,7 +59,8 @@ Each check is isolated — one crashing produces a `check-error` finding (`{"kin
 - **fan-out silent** — every `fanout_event` in the last 7 days landed with
   zero candidates. Items DO get related to other pages; a week of zeroes
   means the candidate scorer or the link walk is broken, not that the
-  wiki has nothing in common with itself.
+  wiki has nothing in common with itself. Fires once per new batch of
+  events, never on a run with nothing new.
 
 ## When to use this skill
 

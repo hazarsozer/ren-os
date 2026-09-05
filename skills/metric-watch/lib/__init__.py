@@ -181,6 +181,11 @@ def _check_fanout_silent(state: dict) -> dict | None:
     Fires once per batch of new events: the newest ts seen is kept in
     state["last_fanout_ts"], and a run with no events newer than it is
     silent.
+
+    Timestamps are second-precision and the "new" comparison is strict, so
+    an event recorded in the same wall-clock second as the watermark is not
+    counted as new. The two sibling watermark checks share this boundary; a
+    coordinated fix is a separate item.
     """
     cutoff = (
         datetime.now(timezone.utc) - timedelta(days=FANOUT_SILENT_DAYS)
@@ -192,17 +197,18 @@ def _check_fanout_silent(state: dict) -> dict | None:
     if not recent:
         return None
 
-    # Since-last-watch watermark — same pattern as `_check_classifier_fail_closed`.
-    # Without it the same silent window re-fires on every run until it ages
-    # out of the seven-day cutoff (0.8.7 review ledger).
+    # Since-last-watch watermark — same pattern as `_check_classifier_fail_closed`,
+    # but advanced ONLY when the finding fires. A mixed window (some events
+    # with candidates, some without) must stay armed: once the non-zero event
+    # ages past the cutoff the window is all-silent and must fire then, which
+    # an unconditional advance would have swallowed (0.8.8 review).
     last_ts = state.get("last_fanout_ts")
     new_events = [e for e in recent if not last_ts or e.get("ts", "") > last_ts]
-    state["last_fanout_ts"] = max(e.get("ts", "") for e in recent)
-
     if not new_events:
         return None
     if any(e.get("candidates", 0) > 0 for e in recent):
         return None
+    state["last_fanout_ts"] = max(e.get("ts", "") for e in recent)
     return {"kind": "fan-out-silent", "count": len(recent), "days": FANOUT_SILENT_DAYS}
 
 

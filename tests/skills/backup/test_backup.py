@@ -274,7 +274,7 @@ def test_backup_inits_a_fresh_wiki_then_falls_back_to_tarball(tmp_path):
     result = backup_lib.backup(wiki, tmp_path / "backups")
     assert backup_lib.is_git_repo(wiki)
     assert result.error != "not-a-git-repo"
-    assert result.method in ("tarball-fallback", "tarball")
+    assert result.method == "tarball"
 
 
 def test_backup_fails_closed_when_git_init_fails(tmp_path):
