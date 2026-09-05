@@ -94,7 +94,8 @@ Donor's SKILL.md described a "confirm before changing the backup remote" behavio
 | No remote configured + `/ren:backup` | Tarball fallback automatic + nag | "No remote configured. Created tarball at \<path\>. Configure with /ren:backup --setup \<url\>" |
 | git push network failure | Tarball fallback + warning | "Push failed (network). Tarball at \<path\>. Retry with /ren:backup later." |
 | Non-fast-forward push rejection | Refused, no auto-tarball (user decision moment) | "Push rejected: remote diverged. See recovery doc. Force-push NOT performed automatically." |
-| Wiki not a git repo | Refused | "Wiki is not a git repo. Run /ren:install to bootstrap." |
+| Wiki not a git repo | `git init` run automatically, then proceed | (silent — the wiki becomes a repo on first `/ren:backup` or `--setup`) |
+| `git init` fails | Refused | "Could not initialise a git repo at \<path\>. Is it a directory git can write to?" |
 
 ## References
 

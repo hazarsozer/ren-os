@@ -156,10 +156,22 @@ def test_setup_remote_rejects_bad_url(tmp_path):
     assert result.error == "invalid-url-shape"
 
 
-def test_setup_remote_refuses_non_git_dir(tmp_path):
-    result = backup_lib.setup_remote("https://example.com/x.git", tmp_path)
+def test_setup_remote_inits_a_fresh_wiki(tmp_path):
+    wiki = tmp_path / "wiki"
+    wiki.mkdir()
+    (wiki / "index.md").write_text("# wiki\n", encoding="utf-8")
+    result = backup_lib.setup_remote("https://example.com/x.git", wiki)
+    assert result.success is True
+    assert backup_lib.is_git_repo(wiki)
+    assert backup_lib.get_remote_url(wiki) == "https://example.com/x.git"
+
+
+def test_setup_remote_fails_closed_when_git_init_fails(tmp_path):
+    not_a_dir = tmp_path / "file.txt"
+    not_a_dir.write_text("x", encoding="utf-8")
+    result = backup_lib.setup_remote("https://example.com/x.git", not_a_dir)
     assert result.success is False
-    assert result.error == "not-a-git-repo"
+    assert result.error == "git-init-failed"
 
 
 # --------------------------------------------------------------------- status
@@ -253,10 +265,24 @@ def test_create_tarball_missing_wiki_root_fails_clean(tmp_path):
 # ------------------------------------------------------------- backup orchestrator
 
 
-def test_backup_non_git_dir_refused(tmp_path):
-    result = backup_lib.backup(tmp_path, tmp_path / "backups")
+def test_backup_inits_a_fresh_wiki_then_falls_back_to_tarball(tmp_path):
+    wiki = tmp_path / "wiki"
+    wiki.mkdir()
+    (wiki / "index.md").write_text("# wiki\n", encoding="utf-8")
+    subprocess.run(["git", "config", "--global", "user.email", "t@example.com"], check=True, capture_output=True)
+    subprocess.run(["git", "config", "--global", "user.name", "Test"], check=True, capture_output=True)
+    result = backup_lib.backup(wiki, tmp_path / "backups")
+    assert backup_lib.is_git_repo(wiki)
+    assert result.error != "not-a-git-repo"
+    assert result.method in ("tarball-fallback", "tarball")
+
+
+def test_backup_fails_closed_when_git_init_fails(tmp_path):
+    not_a_dir = tmp_path / "file.txt"
+    not_a_dir.write_text("x", encoding="utf-8")
+    result = backup_lib.backup(not_a_dir, tmp_path / "backups")
     assert result.success is False
-    assert result.error == "not-a-git-repo"
+    assert result.error == "git-init-failed"
 
 
 def test_backup_no_remote_falls_back_to_tarball(tmp_path):

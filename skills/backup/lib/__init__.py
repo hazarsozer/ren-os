@@ -176,6 +176,20 @@ def is_git_repo(wiki_root: Path) -> bool:
     return result.returncode == 0 and result.stdout.strip() == "true"
 
 
+def ensure_git_repo(wiki_root: Path) -> bool:
+    """True iff `wiki_root` is a git repo when this returns — initialising
+    one if needed. `/ren:install` stamps the wiki skeleton but never runs
+    `git init`; before 0.8.8 both `setup_remote` and `backup` refused a
+    non-repo wiki and pointed the friend back at install, which could not
+    help (Windows smoke 2026-09-05). The backup verbs now own the init."""
+    if is_git_repo(wiki_root):
+        return True
+    if not wiki_root.is_dir():
+        return False
+    result = _run_git(["init"], cwd=wiki_root)
+    return result.returncode == 0 and is_git_repo(wiki_root)
+
+
 def get_remote_url(wiki_root: Path, *, remote_name: str = BACKUP_REMOTE_NAME) -> str | None:
     result = _run_git(["remote", "get-url", remote_name], cwd=wiki_root)
     if result.returncode != 0:
@@ -205,11 +219,11 @@ def setup_remote(remote_url: str, wiki_root: Path, *, remote_name: str = BACKUP_
             message=f"URL doesn't look like a git remote: {remote_url!r}",
             error="invalid-url-shape",
         )
-    if not is_git_repo(wiki_root):
+    if not ensure_git_repo(wiki_root):
         return BackupResult(
             success=False, method="setup", path_or_remote=str(wiki_root),
-            message=f"Wiki at {wiki_root} is not a git repo. Run /ren:install to bootstrap.",
-            error="not-a-git-repo",
+            message=f"Could not initialise a git repo at {wiki_root}. Is it a directory git can write to?",
+            error="git-init-failed",
         )
 
     existing = get_remote_url(wiki_root, remote_name=remote_name)
@@ -362,11 +376,11 @@ def backup(
     re-implement that confirmation; see SKILL.md."""
     backup_dir = backup_dir or default_backup_dir()
 
-    if not is_git_repo(wiki_root):
+    if not ensure_git_repo(wiki_root):
         return BackupResult(
             success=False, method="skipped", path_or_remote=str(wiki_root),
-            message=f"Wiki at {wiki_root} is not a git repo. Run /ren:install to bootstrap.",
-            error="not-a-git-repo",
+            message=f"Could not initialise a git repo at {wiki_root}. Is it a directory git can write to?",
+            error="git-init-failed",
         )
 
     if not commit_pending_changes(wiki_root, now=now):
@@ -443,6 +457,7 @@ __all__ = [
     "list_existing_tarballs",
     "prune_old_tarballs",
     "is_git_repo",
+    "ensure_git_repo",
     "get_remote_url",
     "get_head_info",
     "has_uncommitted_changes",
