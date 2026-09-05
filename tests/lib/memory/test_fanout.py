@@ -277,3 +277,56 @@ def test_fact_verdict_under_the_threshold_raises_no_split(wiki):
         {"page": "write-door", "edge": "fact", "reason": "r", "fact": "one more"},
     ]))
     assert not [s for s in suggestions.pending_suggestions() if s["fingerprint"].startswith("wrap-split:")]
+
+
+def test_apply_failure_is_unknown_with_prior_edits_still_applied(wiki, monkeypatch):
+    """Fix round 1: the apply phase (item-page read, each write-door call)
+    must be fail-closed too — a raise partway through must not propagate
+    into wrap/distill, and edits already applied stay listed."""
+    (wiki / ITEM.page).write_text(
+        "---\ntype: project-knowledge\n---\n# Queue Holds\n\nParent: [[architecture]]\n\n## Related\n",
+        encoding="utf-8",
+    )
+    from lib.memory import fanout as fanout_mod
+
+    real_propose_and_apply = fanout_mod.propose_and_apply
+    calls = {"n": 0}
+
+    def flaky(proposal):
+        calls["n"] += 1
+        if calls["n"] == 2:
+            raise RuntimeError("boom")
+        return real_propose_and_apply(proposal)
+
+    monkeypatch.setattr(fanout_mod, "propose_and_apply", flaky)
+
+    result = fan_out(ITEM, "demo", "s1", _llm([
+        {"page": "journal", "edge": "relate", "reason": "r1"},
+        {"page": "write-door", "edge": "relate", "reason": "r2"},
+    ]))
+    assert result.unknown_reason is not None
+    assert "boom" in result.unknown_reason
+    assert len(result.applied) == 1
+    events = collect.read(kind=collect.KIND_FANOUT_EVENT)
+    assert len(events) == 1
+    assert events[-1]["unknown_reason"] is not None
+
+
+def test_item_page_unreadable_during_apply_is_unknown_with_zero_edits(wiki):
+    (wiki / ITEM.page).write_text(
+        "---\ntype: project-knowledge\n---\n# Queue Holds\n\nParent: [[architecture]]\n\n## Related\n",
+        encoding="utf-8",
+    )
+    # Candidate selection succeeds (it scores against item.title/item.text,
+    # not the on-disk file), but the item's own page vanishes before the
+    # apply phase's read.
+    (wiki / ITEM.page).unlink()
+
+    result = fan_out(ITEM, "demo", "s1", _llm([
+        {"page": "journal", "edge": "relate", "reason": "r"},
+    ]))
+    assert result.unknown_reason is not None
+    assert result.applied == []
+    events = collect.read(kind=collect.KIND_FANOUT_EVENT)
+    assert len(events) == 1
+    assert events[-1]["unknown_reason"] is not None

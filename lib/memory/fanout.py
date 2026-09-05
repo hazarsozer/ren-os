@@ -205,9 +205,13 @@ def fan_out(
 ) -> FanoutResult:
     """Fan one landed item out across the pages that should now mention it.
 
-    Never raises: a walk/read failure, a classifier failure, or a malformed
-    verdict all come back as `unknown_reason` with zero edits (§9). One
-    `fanout_event` is recorded per call, always.
+    Never raises: a walk/read failure, a classifier failure, a malformed
+    verdict, or a failure partway through applying the verdicts (an
+    unreadable item page, a raised `propose_and_apply`/`record_suggestion`
+    call) all come back as `unknown_reason` (§9). Edits already applied
+    before such a failure stay in `applied` — they are queued and
+    revertible, never rolled back here. One `fanout_event` is recorded per
+    call, always.
     """
     result = FanoutResult()
     wiki_root = ren_paths.wiki_root()
@@ -238,58 +242,69 @@ def fan_out(
         _record_event(item, result)
         return result
 
-    item_text = (wiki_root / item.page).read_text(encoding="utf-8")
-    reason = f"fanout: {item.write_id}"
-    item_stem = _stem(item.page)
+    try:
+        item_text = (wiki_root / item.page).read_text(encoding="utf-8")
+        reason = f"fanout: {item.write_id}"
+        item_stem = _stem(item.page)
 
-    for verdict in verdicts:
-        rel = by_stem[verdict["page"]]
-        edge, clause = verdict["edge"], (verdict.get("reason") or "").strip()
-        if edge == "none":
-            result.verdicts["none"] += 1
-            continue
-        # §12 Q1: lessons are episodic and accrete badly — a `fact` verdict
-        # on a `lessons/` page is downgraded to `relate`, never dropped.
-        if edge == "fact" and _is_lesson(rel):
-            edge = "relate"
-        result.verdicts[edge] += 1
+        for verdict in verdicts:
+            rel = by_stem[verdict["page"]]
+            edge, clause = verdict["edge"], (verdict.get("reason") or "").strip()
+            if edge == "none":
+                result.verdicts["none"] += 1
+                continue
+            # §12 Q1: lessons are episodic and accrete badly — a `fact`
+            # verdict on a `lessons/` page is downgraded to `relate`, never
+            # dropped.
+            if edge == "fact" and _is_lesson(rel):
+                edge = "relate"
+            result.verdicts[edge] += 1
 
-        target_text = texts[rel]
-        new_target = upsert_related(target_text, item_stem, clause)
-        split_due = False
-        if edge == "fact":
-            new_target = append_facts_bullet(new_target, verdict["fact"])
-            # Spec §5.3: "the 40-bullet split suggestion fires exactly as it
-            # does today" — today's rule (wrap's concept-update branch) is a
-            # strict `>` check AFTER the append, so a node at exactly the
-            # threshold crosses it on this bullet and fires.
-            split_due = count_facts_bullets(new_target) > CONCEPT_SPLIT_BULLETS
+            target_text = texts[rel]
+            new_target = upsert_related(target_text, item_stem, clause)
+            split_due = False
+            if edge == "fact":
+                new_target = append_facts_bullet(new_target, verdict["fact"])
+                # Spec §5.3: "the 40-bullet split suggestion fires exactly as
+                # it does today" — today's rule (wrap's concept-update
+                # branch) is a strict `>` check AFTER the append, so a node
+                # at exactly the threshold crosses it on this bullet and
+                # fires.
+                split_due = count_facts_bullets(new_target) > CONCEPT_SPLIT_BULLETS
 
-        if _trust(target_text) == "user":
-            # Same hold as the human-owned schema.md splice in 0.8.5: the
-            # edit becomes a suggestion, the forward edge still lands.
-            entry = record_suggestion(SuggestionSpec(
-                producer=producer,
-                title=f"Fan-out edit on a human-authored page: {rel}",
-                rationale=f"{item.page} landed and relates to {rel}: {clause}",
-                evidence={"page": rel, "item": item.page, "session": session},
-                kind="page_write",
-                payload={"op": "UPDATE", "page": rel, "content": new_target,
-                         "reason": reason, "producer": producer,
-                         "writer": "llm-auto", "session": session},
-                fingerprint=f"fanout-edit:{item.page}:{rel}",
-            ))
-            result.suggested.append({"page": rel, "sid": entry["sid"] if entry else None})
-        else:
-            _write(rel, new_target, session, producer, reason, result)
+            if _trust(target_text) == "user":
+                # Same hold as the human-owned schema.md splice in 0.8.5:
+                # the edit becomes a suggestion, the forward edge still
+                # lands.
+                entry = record_suggestion(SuggestionSpec(
+                    producer=producer,
+                    title=f"Fan-out edit on a human-authored page: {rel}",
+                    rationale=f"{item.page} landed and relates to {rel}: {clause}",
+                    evidence={"page": rel, "item": item.page, "session": session},
+                    kind="page_write",
+                    payload={"op": "UPDATE", "page": rel, "content": new_target,
+                             "reason": reason, "producer": producer,
+                             "writer": "llm-auto", "session": session},
+                    fingerprint=f"fanout-edit:{item.page}:{rel}",
+                ))
+                result.suggested.append({"page": rel, "sid": entry["sid"] if entry else None})
+            else:
+                _write(rel, new_target, session, producer, reason, result)
 
-        if split_due:
-            _suggest_split(rel, session, producer, result)
+            if split_due:
+                _suggest_split(rel, session, producer, result)
 
-        item_text = upsert_related(item_text, _stem(rel), clause)
+            item_text = upsert_related(item_text, _stem(rel), clause)
 
-    if item_text != (wiki_root / item.page).read_text(encoding="utf-8"):
-        _write(item.page, item_text, session, producer, reason, result)
+        if item_text != (wiki_root / item.page).read_text(encoding="utf-8"):
+            _write(item.page, item_text, session, producer, reason, result)
+    except Exception as exc:  # noqa: BLE001 - fail-closed: the apply phase (item-page read, each write door call, each suggestion record) must never raise into the landing (spec §9); edits already applied stay listed — they are queued and revertible, never rolled back here
+        n = len(result.applied)
+        result = FanoutResult(
+            applied=result.applied, held=result.held, suggested=result.suggested,
+            candidates=result.candidates, verdicts=result.verdicts,
+            unknown_reason=f"fan-out apply failed after {n} edits: {exc}",
+        )
 
     _record_event(item, result)
     return result
