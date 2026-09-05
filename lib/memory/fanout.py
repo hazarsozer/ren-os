@@ -143,6 +143,7 @@ def _parse_verdicts(raw: str, by_stem: dict[str, str]) -> list[dict]:
     if not isinstance(data, dict) or not isinstance(data.get("verdicts"), list):
         raise ValueError("output has no 'verdicts' list")
     out: list[dict] = []
+    seen: set[str] = set()
     for v in data["verdicts"]:
         if not isinstance(v, dict):
             raise ValueError(f"verdict is not an object: {v!r}")
@@ -155,6 +156,12 @@ def _parse_verdicts(raw: str, by_stem: dict[str, str]) -> list[dict]:
             raise ValueError(f"verdict for {page!r} has no reason")
         if edge == "fact" and not (isinstance(v.get("fact"), str) and v["fact"].strip()):
             raise ValueError(f"fact verdict for {page!r} carries no fact")
+        if page in seen:
+            # Two verdicts for one page is a malformed output, not a
+            # last-one-wins tie-break: which edge the classifier meant is
+            # unknowable, so the whole fan-out goes Unknown.
+            raise ValueError(f"duplicate verdicts for page: {page!r}")
+        seen.add(page)
         out.append(v)
     return out
 

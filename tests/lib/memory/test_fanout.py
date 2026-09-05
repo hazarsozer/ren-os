@@ -355,3 +355,24 @@ def test_scorer_failure_during_candidate_selection_is_unknown(wiki, monkeypatch)
     assert "scorer exploded" in result.unknown_reason
     assert result.applied == [] and result.held == []
     assert len(collect.read(kind=collect.KIND_FANOUT_EVENT)) == before + 1
+
+
+def test_duplicate_verdicts_for_one_page_are_rejected(wiki):
+    """M1: two verdicts naming the same stem is a malformed classifier
+    output — fail-closed on the whole fan-out, not last-one-wins."""
+    (wiki / ITEM.page).write_text(
+        "---\ntype: project-knowledge\n---\n# Queue Holds\n\nParent: [[architecture]]\n\n## Related\n",
+        encoding="utf-8",
+    )
+    before = (wiki / "projects/demo/knowledge/architecture/journal.md").read_text(encoding="utf-8")
+
+    result = fan_out(ITEM, "demo", "s1", _llm([
+        {"page": "journal", "edge": "relate", "reason": "first"},
+        {"page": "journal", "edge": "none", "reason": "second"},
+    ]))
+
+    assert result.unknown_reason is not None
+    assert "journal" in result.unknown_reason
+    assert result.applied == []
+    assert (wiki / "projects/demo/knowledge/architecture/journal.md").read_text(
+        encoding="utf-8") == before
