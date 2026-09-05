@@ -330,3 +330,28 @@ def test_item_page_unreadable_during_apply_is_unknown_with_zero_edits(wiki):
     events = collect.read(kind=collect.KIND_FANOUT_EVENT)
     assert len(events) == 1
     assert events[-1]["unknown_reason"] is not None
+
+
+def test_scorer_failure_during_candidate_selection_is_unknown(wiki, monkeypatch):
+    """I3: `_select_candidates` imports skills.recall.lib and calls the
+    scorer — anything but OSError used to propagate into wrap/distill,
+    against the "never raises" contract (spec §9)."""
+    import skills.recall.lib as recall_lib
+
+    (wiki / ITEM.page).write_text(
+        "---\ntype: project-knowledge\n---\n# Queue Holds\n\nParent: [[architecture]]\n\n## Related\n",
+        encoding="utf-8",
+    )
+
+    def _boom(*a, **k):
+        raise RuntimeError("scorer exploded")
+
+    monkeypatch.setattr(recall_lib, "_score_content", _boom)
+
+    before = len(collect.read(kind=collect.KIND_FANOUT_EVENT))
+    result = fan_out(ITEM, "demo", "s1", _llm([]))
+
+    assert result.unknown_reason is not None
+    assert "scorer exploded" in result.unknown_reason
+    assert result.applied == [] and result.held == []
+    assert len(collect.read(kind=collect.KIND_FANOUT_EVENT)) == before + 1

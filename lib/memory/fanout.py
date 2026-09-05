@@ -217,8 +217,8 @@ def fan_out(
     wiki_root = ren_paths.wiki_root()
     try:
         picked = _select_candidates(wiki_root, item, project, candidates)
-    except OSError as exc:
-        result = FanoutResult(unknown_reason=f"link index could not walk the wiki: {exc}")
+    except Exception as exc:  # noqa: BLE001 - fail-closed: candidate selection failure is Unknown, never a raise (it walks the wiki AND runs recall's scorer through a function-local import — spec §9)
+        result = FanoutResult(unknown_reason=f"fan-out candidate selection failed: {exc}")
         _record_event(item, result)
         return result
 
