@@ -97,3 +97,126 @@ def test_route_concept_result_collects_the_unknown_reason(monkeypatch):
         llm_call=lambda p: "x", fanout=fanout_acc,
     )
     assert fanout_acc["unknown"] == ["classifier output rejected: nope"]
+
+
+# --- C1: every durable landing under projects/<slug>/knowledge/ fans out -----
+
+
+@pytest.fixture
+def wiki(tmp_path, monkeypatch):
+    """A project whose knowledge tree already holds one page, so the real
+    `fan_out` has a candidate to rank and actually calls its classifier."""
+    root = tmp_path / "wiki"
+    (root / "projects" / "demo" / "knowledge" / "lessons").mkdir(parents=True)
+    arch = root / "projects" / "demo" / "knowledge" / "architecture"
+    arch.mkdir(parents=True)
+    (arch / "journal.md").write_text(
+        "---\ntype: project-knowledge\nren_trust: \"model\"\n---\n# Journal\n\n"
+        "Parent: [[architecture]]\n\nThe queue is the single write door.\n\n"
+        "## Related\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("REN_WIKI_ROOT", str(root))
+    monkeypatch.setenv("REN_STATE_DIR", str(tmp_path / "state"))
+    return root
+
+
+_FANOUT_MARK = "EXISTING PAGES:"
+
+
+def _durable_lesson_verdict(scope):
+    return {"verdict": "durable", "reason": "r", "scope": scope,
+            "action": "create", "target_page": None}
+
+
+def _llm(prompts):
+    """Records every prompt; answers a fan-out prompt with all-`none`."""
+    def call(p):
+        prompts.append(p)
+        return '{"verdicts": [{"page": "journal", "edge": "none"}]}'
+    return call
+
+
+def test_project_lesson_landing_fans_out(wiki):
+    """C1 (a): spec §5 — EVERY durable landing under
+    `projects/<slug>/knowledge/` fans out, not just concept creates."""
+    from lib.instrument import collect
+
+    prompts: list[str] = []
+    before = len(collect.read(kind=collect.KIND_FANOUT_EVENT))
+
+    result = wrap.wrap_session(
+        "---\n---\n\n# S\n\nnarrative.\n",
+        ["the queue is the single write door"],
+        "s-fan-lesson",
+        llm_call=_llm(prompts),
+        project="demo",
+        verdicts=[_durable_lesson_verdict("project")],
+    )
+
+    assert [a["page"] for a in result["applied"]][0].startswith(
+        "projects/demo/knowledge/lessons/")
+    assert any(_FANOUT_MARK in p for p in prompts)
+    events = collect.read(kind=collect.KIND_FANOUT_EVENT)
+    assert len(events) == before + 1
+    assert events[-1]["item"].startswith("projects/demo/knowledge/lessons/")
+
+
+def test_global_lesson_landing_does_not_fan_out(wiki):
+    """C1 (b): a global-scope lesson lives outside any project knowledge
+    tree — there is nothing to fan it out across."""
+    from lib.instrument import collect
+
+    prompts: list[str] = []
+    before = len(collect.read(kind=collect.KIND_FANOUT_EVENT))
+
+    result = wrap.wrap_session(
+        "---\n---\n\n# S\n\nnarrative.\n",
+        ["a global habit worth keeping"],
+        "s-fan-global",
+        llm_call=_llm(prompts),
+        project="demo",
+        verdicts=[_durable_lesson_verdict("global")],
+    )
+
+    assert result["applied"][0]["page"].startswith("lessons/")
+    assert not any(_FANOUT_MARK in p for p in prompts)
+    assert len(collect.read(kind=collect.KIND_FANOUT_EVENT)) == before
+
+
+def test_accretion_onto_an_existing_page_fans_out(wiki):
+    """C1 (c): an `action == "update"` landing on a project knowledge page
+    is an accretion — spec §5 counts it as a durable landing."""
+    from lib.instrument import collect
+
+    target = "projects/demo/knowledge/architecture/write-door.md"
+    page = wiki / target
+    page.write_text(
+        "---\ntype: project-knowledge\nren_trust: \"model\"\n---\n# Write Door\n\n"
+        "Parent: [[architecture]]\n\n## Related\n\n## Facts\n\n- the queue is the door\n",
+        encoding="utf-8",
+    )
+    # `update` targets must be in this session's eligibility set (§1).
+    collect.record(collect.KIND_L3_FETCH, {"session": "s-fan-accrete", "page": target})
+
+    prompts: list[str] = []
+    before = len(collect.read(kind=collect.KIND_FANOUT_EVENT))
+
+    result = wrap.wrap_session(
+        "---\n---\n\n# S\n\nnarrative.\n",
+        ["holds are reported with their conflicts"],
+        "s-fan-accrete",
+        llm_call=_llm(prompts),
+        project="demo",
+        verdicts=[{"verdict": "durable", "reason": "r", "scope": "project",
+                   "action": "update", "target_page": target}],
+        merges=[page.read_text(encoding="utf-8").replace(
+            "- the queue is the door",
+            "- the queue is the door\n- holds are reported with their conflicts")],
+    )
+
+    assert [u["page"] for u in result["updated"]] == [target], repr(result)
+    assert any(_FANOUT_MARK in p for p in prompts)
+    events = collect.read(kind=collect.KIND_FANOUT_EVENT)
+    assert len(events) == before + 1
+    assert events[-1]["item"] == target

@@ -947,6 +947,39 @@ def _concept_page_content(item: str, title: str, project: str, parent_stem: str)
     )
 
 
+def _fan_out_landed(
+    page: str, write_id: str | None, title: str, text: str,
+    project: str | None, session: str, llm_call, suggested: list[dict],
+    fanout: dict | None,
+) -> None:
+    """Fan one landed item out across the project's other knowledge pages
+    (spec 2026-09-04 §5/§7).
+
+    THE single fan-out call site for `wrap_session`: §5 says "every durable
+    create or accretion" under `projects/<slug>/knowledge/`, so the concept
+    route, the project-lesson create and both accretion branches all come
+    through here. Global `lessons/` pages are deliberately out — they sit in
+    no project tree, so there is nothing to fan them across.
+
+    Never raises: `fan_out` returns `unknown_reason` instead, accumulated in
+    `fanout["unknown"]` for the close-out.
+    """
+    if llm_call is None or not project or fanout is None:
+        return
+    if not page.startswith(f"projects/{project}/knowledge/"):
+        return
+    fanout_result = fan_out(
+        LandedItem(page=page, title=title or PurePosixPath(page).stem,
+                   text=text, write_id=write_id),
+        project, session, llm_call, producer="wrap",
+    )
+    fanout["applied"] += len(fanout_result.applied)
+    fanout["suggested"] += len(fanout_result.suggested)
+    suggested.extend(fanout_result.suggested)
+    if fanout_result.unknown_reason:
+        fanout["unknown"].append(fanout_result.unknown_reason)
+
+
 def _route_concept_result(
     concept_result: dict, applied: list[dict], unchanged: list[dict],
     held: list[dict], suggested: list[dict], *,
@@ -971,17 +1004,8 @@ def _route_concept_result(
                         "page": concept_result["page"],
                         "op": concept_result["op"]})
         created = 1
-        if llm_call is not None and project and fanout is not None:
-            fanout_result = fan_out(
-                LandedItem(page=concept_result["page"], title=title, text=item,
-                           write_id=concept_result["write_id"]),
-                project, session, llm_call, producer="wrap",
-            )
-            fanout["applied"] += len(fanout_result.applied)
-            fanout["suggested"] += len(fanout_result.suggested)
-            suggested.extend(fanout_result.suggested)
-            if fanout_result.unknown_reason:
-                fanout["unknown"].append(fanout_result.unknown_reason)
+        _fan_out_landed(concept_result["page"], concept_result["write_id"],
+                        title, item, project, session, llm_call, suggested, fanout)
     elif concept_result["status"] == "unchanged":
         unchanged.append({"page": concept_result["page"]})
         created = 0
@@ -1624,6 +1648,10 @@ def wrap_session(
                                                     "write_id": prov.write_id,
                                                     "page": node_page, "op": prov.op})
                                     concept_updates += 1
+                                    _fan_out_landed(
+                                        node_page, prov.write_id,
+                                        PurePosixPath(node_page).stem, item,
+                                        project, session, llm_call, suggested, fanout)
                                     if _count_facts_bullets(merged) > _CONCEPT_SPLIT_BULLETS:
                                         record_suggestion(
                                             SuggestionSpec(
@@ -1707,6 +1735,9 @@ def wrap_session(
                                 "page": target, "op": prov.op})
                 if decision.kind == "concept":
                     concept_updates += 1
+                _fan_out_landed(target, prov.write_id,
+                                PurePosixPath(target).stem, item,
+                                project, session, llm_call, suggested, fanout)
             elif entry.status == NOOP_DUPLICATE:
                 # #78: content normalized equal to the page on disk. The entry
                 # is synthetic and never persisted, so its qid is absent from
@@ -1753,6 +1784,8 @@ def wrap_session(
                 hub_dir, session, project if page.startswith("projects/") else None,
                 heading="Lessons",
             )
+            _fan_out_landed(page, prov.write_id, PurePosixPath(page).stem, item,
+                            project, session, llm_call, suggested, fanout)
         elif entry.status == NOOP_DUPLICATE:
             # #78: same discrimination as the update branch above — a
             # synthetic, never-persisted entry is not a hold.
